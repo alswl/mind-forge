@@ -21,6 +21,7 @@ Thumbs.db
 .agents/
 .claude/
 .specify/
+specs
 specs/
 AGENTS.md
 CLAUDE.md
