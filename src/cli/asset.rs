@@ -95,14 +95,12 @@ impl From<AssetListArgs> for AssetListPayload {
 struct AssetAddPayload {
     path: PathBuf,
     tag: Vec<String>,
-    copy: bool,
-    link: bool,
     mode: &'static str,
 }
 
 impl From<AssetAddArgs> for AssetAddPayload {
     fn from(value: AssetAddArgs) -> Self {
         let mode = if value.link { "link" } else { "copy" };
-        Self { path: value.path, tag: value.tag, copy: !value.link, link: value.link, mode }
+        Self { path: value.path, tag: value.tag, mode }
     }
 }

@@ -32,8 +32,7 @@ fn run(args: Vec<OsString>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> R
         return Ok(ExitCode::Ok);
     }
 
-    let wants_json = args.iter().any(|arg| arg == "--format" || arg == "json")
-        && args.iter().any(|arg| arg == "json");
+    let wants_json = args.windows(2).any(|w| w[0] == "--format" && w[1] == "json");
 
     let cli = match RootCli::try_parse_from(&args) {
         Ok(cli) => cli,
@@ -57,7 +56,7 @@ fn run(args: Vec<OsString>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> R
         }
         CommandOutcome::GroupHelp(target) => {
             write_group_help(target, stdout)?;
-            Ok(ExitCode::Ok)
+            Ok(ExitCode::UsageError)
         }
         CommandOutcome::Completion(shell) => cli::completion::render_completion(shell, stdout),
         CommandOutcome::Placeholder(invocation) => {
