@@ -1,0 +1,22 @@
+---
+source: tests/cli_help.rs
+assertion_line: 28
+expression: stdout
+---
+Manage content sources
+
+Usage: mf source [OPTIONS] [COMMAND]
+
+Commands:
+  list    List sources
+  add     Add a source
+  update  Update sources
+
+Options:
+      --config <PATH>    
+  -v, --verbose...       
+  -q, --quiet            
+      --format <FORMAT>  [default: text] [possible values: text, json]
+      --no-color         
+  -h, --help             Print help
+  -V, --version          Print version

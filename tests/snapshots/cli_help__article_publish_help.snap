@@ -1,0 +1,23 @@
+---
+source: tests/cli_help.rs
+assertion_line: 35
+expression: stdout
+---
+Publish an article
+
+Usage: mf article publish [OPTIONS] <ID_OR_PATH>
+
+Arguments:
+  <ID_OR_PATH>  
+
+Options:
+      --config <PATH>    
+      --target <TARGET>  
+      --dry-run          
+  -v, --verbose...       
+      --force            
+  -q, --quiet            
+      --format <FORMAT>  [default: text] [possible values: text, json]
+      --no-color         
+  -h, --help             Print help
+  -V, --version          Print version

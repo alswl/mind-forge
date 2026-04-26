@@ -1,0 +1,25 @@
+---
+source: tests/cli_help.rs
+assertion_line: 21
+expression: stdout
+---
+mind-forge command line interface
+
+Usage: mf [OPTIONS] [COMMAND]
+
+Commands:
+  source      Manage content sources
+  asset       Manage project assets
+  project     Manage projects
+  article     Manage articles
+  term        Manage terminology
+  completion  Generate shell completion scripts
+
+Options:
+      --config <PATH>    
+  -v, --verbose...       
+  -q, --quiet            
+      --format <FORMAT>  [default: text] [possible values: text, json]
+      --no-color         
+  -h, --help             Print help
+  -V, --version          Print version

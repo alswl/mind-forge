@@ -1,0 +1,26 @@
+[package]
+name = "mf"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "mind-forge CLI framework"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4.5", features = ["derive", "wrap_help", "suggestions"] }
+clap_complete = "4.5"
+directories = "5"
+is-terminal = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+
+[dev-dependencies]
+assert_cmd = "2"
+insta = "1"
+predicates = "3"
+tempfile = "3"
+
