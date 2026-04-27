@@ -4,8 +4,6 @@ release/
 *.rs.bk
 *.rlib
 *.prof*
-Cargo.lock
-
 .DS_Store
 Thumbs.db
 *.tmp

@@ -1,0 +1,23 @@
+---
+source: tests/cli_help.rs
+assertion_line: 32
+expression: stdout
+---
+Build articles
+
+Usage: mf build [OPTIONS] <ARTICLE>
+
+Arguments:
+  <ARTICLE>  
+
+Options:
+      --config <PATH>      
+      --project <PROJECT>  
+      --output <OUTPUT>    
+  -v, --verbose...         
+      --dry-run            
+  -q, --quiet              
+      --format <FORMAT>    [default: text] [possible values: text, json]
+      --no-color           
+  -h, --help               Print help
+  -V, --version            Print version

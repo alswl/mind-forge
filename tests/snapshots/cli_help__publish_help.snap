@@ -1,19 +1,15 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 25
+assertion_line: 60
 expression: stdout
 ---
-Manage content sources
+Publish articles
 
-Usage: mf source [OPTIONS] [COMMAND]
+Usage: mf publish [OPTIONS] [COMMAND]
 
 Commands:
-  list    List sources
-  add     Add a source
-  update  Update a source
-  index   Index sources
-  remove  Remove a source
-  clean   Clean source index
+  run     Publish a file to a target
+  update  Update publish record
 
 Options:
       --config <PATH>    

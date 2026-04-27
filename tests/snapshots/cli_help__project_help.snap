@@ -1,21 +1,23 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 35
+assertion_line: 53
 expression: stdout
 ---
-Publish an article
+Manage projects
 
-Usage: mf article publish [OPTIONS] <ID_OR_PATH>
+Usage: mf project [OPTIONS] [COMMAND]
 
-Arguments:
-  <ID_OR_PATH>  
+Commands:
+  new      Create a project
+  list     List projects
+  archive  Archive a project
+  status   Show project status
+  lint     Lint a project
+  index    Index projects
 
 Options:
       --config <PATH>    
-      --target <TARGET>  
-      --dry-run          
   -v, --verbose...       
-      --force            
   -q, --quiet            
       --format <FORMAT>  [default: text] [possible values: text, json]
       --no-color         

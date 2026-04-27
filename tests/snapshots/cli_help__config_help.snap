@@ -1,19 +1,16 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 25
+assertion_line: 46
 expression: stdout
 ---
-Manage content sources
+Manage configuration
 
-Usage: mf source [OPTIONS] [COMMAND]
+Usage: mf config [OPTIONS] [COMMAND]
 
 Commands:
-  list    List sources
-  add     Add a source
-  update  Update a source
-  index   Index sources
-  remove  Remove a source
-  clean   Clean source index
+  schema  Show config schema
+  show    Show effective config
+  init    Initialize config file
 
 Options:
       --config <PATH>    

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 
@@ -16,8 +18,14 @@ pub enum SourceSubcommand {
     List(SourceListArgs),
     #[command(about = "Add a source")]
     Add(SourceAddArgs),
-    #[command(about = "Update sources")]
+    #[command(about = "Update a source")]
     Update(SourceUpdateArgs),
+    #[command(about = "Index sources")]
+    Index(SourceIndexArgs),
+    #[command(about = "Remove a source")]
+    Remove(SourceRemoveArgs),
+    #[command(about = "Clean source index")]
+    Clean(SourceCleanArgs),
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -28,7 +36,7 @@ pub struct SourceListArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceAddArgs {
-    pub url: String,
+    pub path: PathBuf,
     #[arg(long)]
     pub name: Option<String>,
     #[arg(long = "type", value_enum, default_value_t = SourceKind::Auto)]
@@ -47,13 +55,26 @@ pub enum SourceKind {
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
-#[group(id = "target", required = true, multiple = false)]
 pub struct SourceUpdateArgs {
-    #[arg(group = "target")]
-    pub id: Option<String>,
-    #[arg(long, group = "target")]
-    pub all: bool,
+    pub path: PathBuf,
+    #[arg(long)]
+    pub url: Option<String>,
+    #[arg(long)]
+    pub name: Option<String>,
+    #[arg(long = "type")]
+    pub source_type: Option<String>,
 }
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct SourceIndexArgs {}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct SourceRemoveArgs {
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct SourceCleanArgs {}
 
 pub fn dispatch(command: SourceCmd) -> Result<CommandOutcome> {
     match command.command {
@@ -63,12 +84,15 @@ pub fn dispatch(command: SourceCmd) -> Result<CommandOutcome> {
             placeholder("mf source add", SourceAddPayload::from(args))
         }
         Some(SourceSubcommand::Update(args)) => placeholder("mf source update", args),
+        Some(SourceSubcommand::Index(args)) => placeholder("mf source index", args),
+        Some(SourceSubcommand::Remove(args)) => placeholder("mf source remove", args),
+        Some(SourceSubcommand::Clean(args)) => placeholder("mf source clean", args),
     }
 }
 
 #[derive(Debug, Serialize)]
 struct SourceAddPayload {
-    url: String,
+    path: PathBuf,
     name: Option<String>,
     #[serde(rename = "type")]
     source_type: SourceKind,
@@ -77,6 +101,6 @@ struct SourceAddPayload {
 
 impl From<SourceAddArgs> for SourceAddPayload {
     fn from(value: SourceAddArgs) -> Self {
-        Self { url: value.url, name: value.name, source_type: value.source_type, tag: value.tag }
+        Self { path: value.path, name: value.name, source_type: value.source_type, tag: value.tag }
     }
 }

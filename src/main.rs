@@ -1,6 +1,7 @@
 mod cli;
 mod error;
 mod exit;
+mod model;
 mod output;
 mod runtime;
 
@@ -49,14 +50,22 @@ fn run(args: Vec<OsString>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> R
         }
     };
     tracing::debug!(config_path = %context.config_path.display(), "resolved config path");
-    match cli.dispatch()? {
+    let outcome = match cli.dispatch() {
+        Ok(outcome) => outcome,
+        Err(err) => {
+            let code = err.exit_code();
+            render_error(stderr, context.format, &err)?;
+            return Ok(code);
+        }
+    };
+    match outcome {
         CommandOutcome::RootHelp => {
             write_command_help(&mut RootCli::command(), stdout)?;
             Ok(ExitCode::Ok)
         }
         CommandOutcome::GroupHelp(target) => {
             write_group_help(target, stdout)?;
-            Ok(ExitCode::UsageError)
+            Ok(ExitCode::Ok)
         }
         CommandOutcome::Completion(shell) => cli::completion::render_completion(shell, stdout),
         CommandOutcome::Placeholder(invocation) => {
@@ -109,6 +118,10 @@ fn write_group_help(target: HelpTarget, stdout: &mut dyn Write) -> Result<()> {
             command.find_subcommand_mut("article").expect("article command exists")
         }
         HelpTarget::Term => command.find_subcommand_mut("term").expect("term command exists"),
+        HelpTarget::Config => command.find_subcommand_mut("config").expect("config command exists"),
+        HelpTarget::Publish => {
+            command.find_subcommand_mut("publish").expect("publish command exists")
+        }
     };
     write_command_help(subcommand, stdout)?;
     Ok(())

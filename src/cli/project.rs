@@ -18,8 +18,14 @@ pub enum ProjectSubcommand {
     New(ProjectNewArgs),
     #[command(about = "List projects")]
     List(ProjectListArgs),
+    #[command(about = "Archive a project")]
+    Archive(ProjectArchiveArgs),
+    #[command(about = "Show project status")]
+    Status(ProjectStatusArgs),
     #[command(about = "Lint a project")]
     Lint(ProjectLintArgs),
+    #[command(about = "Index projects")]
+    Index(ProjectIndexArgs),
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -37,6 +43,18 @@ pub struct ProjectNewArgs {
 pub struct ProjectListArgs {}
 
 #[derive(Debug, Clone, Args, Serialize)]
+pub struct ProjectArchiveArgs {
+    pub name_or_path: String,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct ProjectStatusArgs {
+    pub name_or_path: Option<String>,
+    #[arg(long = "output-format")]
+    pub output_format: Option<String>,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectLintArgs {
     pub path: Option<PathBuf>,
     #[arg(long)]
@@ -44,6 +62,9 @@ pub struct ProjectLintArgs {
     #[arg(long = "rule")]
     pub rule: Vec<String>,
 }
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct ProjectIndexArgs {}
 
 pub fn dispatch(command: ProjectCmd) -> Result<CommandOutcome> {
     match command.command {
@@ -63,7 +84,10 @@ pub fn dispatch(command: ProjectCmd) -> Result<CommandOutcome> {
             placeholder("mf project new", ProjectNewPayload::from(args))
         }
         Some(ProjectSubcommand::List(args)) => placeholder("mf project list", args),
+        Some(ProjectSubcommand::Archive(args)) => placeholder("mf project archive", args),
+        Some(ProjectSubcommand::Status(args)) => placeholder("mf project status", args),
         Some(ProjectSubcommand::Lint(args)) => placeholder("mf project lint", args),
+        Some(ProjectSubcommand::Index(args)) => placeholder("mf project index", args),
     }
 }
 

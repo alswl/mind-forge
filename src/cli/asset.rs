@@ -4,7 +4,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 
 use crate::cli::{placeholder, CommandOutcome, HelpTarget};
-use crate::error::{MfError, Result};
+use crate::error::Result;
 
 #[derive(Debug, Clone, Args)]
 pub struct AssetCmd {
@@ -20,6 +20,8 @@ pub enum AssetSubcommand {
     Add(AssetAddArgs),
     #[command(about = "Update assets")]
     Update(AssetUpdateArgs),
+    #[command(about = "Index assets")]
+    Index(AssetIndexArgs),
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -51,13 +53,14 @@ pub struct AssetAddArgs {
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
-#[group(id = "target", required = true, multiple = false)]
 pub struct AssetUpdateArgs {
-    #[arg(group = "target")]
-    pub id: Option<String>,
-    #[arg(long, group = "target")]
+    pub path: Option<PathBuf>,
+    #[arg(long)]
     pub all: bool,
 }
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct AssetIndexArgs {}
 
 pub fn dispatch(command: AssetCmd) -> Result<CommandOutcome> {
     match command.command {
@@ -66,15 +69,10 @@ pub fn dispatch(command: AssetCmd) -> Result<CommandOutcome> {
             placeholder("mf asset list", AssetListPayload::from(args))
         }
         Some(AssetSubcommand::Add(args)) => {
-            if !args.path.exists() {
-                return Err(MfError::usage(
-                    format!("path '{}' does not exist", args.path.display()),
-                    None,
-                ));
-            }
             placeholder("mf asset add", AssetAddPayload::from(args))
         }
         Some(AssetSubcommand::Update(args)) => placeholder("mf asset update", args),
+        Some(AssetSubcommand::Index(args)) => placeholder("mf asset index", args),
     }
 }
 

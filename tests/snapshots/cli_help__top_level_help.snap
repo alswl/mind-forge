@@ -1,6 +1,6 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 21
+assertion_line: 18
 expression: stdout
 ---
 mind-forge command line interface
@@ -14,6 +14,9 @@ Commands:
   article     Manage articles
   term        Manage terminology
   completion  Generate shell completion scripts
+  build       Build articles
+  publish     Publish articles
+  config      Manage configuration
 
 Options:
       --config <PATH>    

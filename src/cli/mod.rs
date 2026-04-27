@@ -1,7 +1,10 @@
 pub mod article;
 pub mod asset;
+pub mod build;
 pub mod completion;
+pub mod config;
 pub mod project;
+pub mod publish;
 pub mod source;
 pub mod term;
 
@@ -56,6 +59,12 @@ pub enum TopLevelCommand {
     Term(term::TermCmd),
     #[command(about = "Generate shell completion scripts")]
     Completion(completion::CompletionArgs),
+    #[command(about = "Build articles")]
+    Build(build::BuildArgs),
+    #[command(about = "Publish articles")]
+    Publish(publish::PublishCmd),
+    #[command(about = "Manage configuration")]
+    Config(config::ConfigCmd),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -65,6 +74,8 @@ pub enum HelpTarget {
     Project,
     Article,
     Term,
+    Config,
+    Publish,
 }
 
 #[derive(Debug)]
@@ -85,6 +96,9 @@ impl RootCli {
             Some(TopLevelCommand::Article(command)) => article::dispatch(command),
             Some(TopLevelCommand::Term(command)) => term::dispatch(command),
             Some(TopLevelCommand::Completion(command)) => completion::dispatch(command),
+            Some(TopLevelCommand::Build(args)) => build::dispatch(args),
+            Some(TopLevelCommand::Publish(command)) => publish::dispatch(command),
+            Some(TopLevelCommand::Config(command)) => config::dispatch(command),
         }
     }
 }

@@ -1,6 +1,4 @@
-use std::path::PathBuf;
-
-use clap::{Args, Subcommand, ValueEnum};
+use clap::{Args, Subcommand};
 use serde::Serialize;
 
 use crate::cli::{placeholder, CommandOutcome, HelpTarget};
@@ -18,10 +16,10 @@ pub enum ArticleSubcommand {
     New(ArticleNewArgs),
     #[command(about = "List articles")]
     List(ArticleListArgs),
-    #[command(about = "Build articles")]
-    Build(ArticleBuildArgs),
-    #[command(about = "Publish an article")]
-    Publish(ArticlePublishArgs),
+    #[command(about = "Lint articles (see also `mf build --help`)")]
+    Lint(ArticleLintArgs),
+    #[command(about = "Index articles (see also `mf build --help`)")]
+    Index(ArticleIndexArgs),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -41,39 +39,16 @@ pub struct ArticleNewArgs {
 pub struct ArticleListArgs {
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = ArticleStatusFilter::All)]
-    pub status: ArticleStatusFilter,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ArticleStatusFilter {
-    Draft,
-    Published,
-    All,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
-pub struct ArticleBuildArgs {
-    pub id_or_path: Option<String>,
+pub struct ArticleLintArgs {
     #[arg(long)]
-    pub out: Option<PathBuf>,
-    #[arg(long)]
-    pub watch: bool,
-    #[arg(long)]
-    pub clean: bool,
+    pub fix: bool,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
-pub struct ArticlePublishArgs {
-    pub id_or_path: String,
-    #[arg(long)]
-    pub target: Option<String>,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
-    #[arg(long)]
-    pub force: bool,
-}
+pub struct ArticleIndexArgs {}
 
 pub fn dispatch(command: ArticleCmd) -> Result<CommandOutcome> {
     match command.command {
@@ -82,8 +57,8 @@ pub fn dispatch(command: ArticleCmd) -> Result<CommandOutcome> {
             placeholder("mf article new", ArticleNewPayload::from(args))
         }
         Some(ArticleSubcommand::List(args)) => placeholder("mf article list", args),
-        Some(ArticleSubcommand::Build(args)) => placeholder("mf article build", args),
-        Some(ArticleSubcommand::Publish(args)) => placeholder("mf article publish", args),
+        Some(ArticleSubcommand::Lint(args)) => placeholder("mf article lint", args),
+        Some(ArticleSubcommand::Index(args)) => placeholder("mf article index", args),
     }
 }
 

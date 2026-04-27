@@ -27,9 +27,9 @@ fn group_help_snapshot() {
 
 #[test]
 fn leaf_help_snapshot() {
-    let (stdout, _, code) = run(&["article", "publish", "--help"]);
+    let (stdout, _, code) = run(&["build", "--help"]);
     assert_eq!(code, 0);
-    assert_snapshot!("article_publish_help", stdout);
+    assert_snapshot!("build_help", stdout);
 }
 
 #[test]
@@ -37,4 +37,25 @@ fn version_works() {
     let (stdout, _, code) = run(&["--version"]);
     assert_eq!(code, 0);
     assert!(stdout.contains("mf 0.1.0"));
+}
+
+#[test]
+fn config_help_snapshot() {
+    let (stdout, _, code) = run(&["config", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("config_help", stdout);
+}
+
+#[test]
+fn project_help_snapshot() {
+    let (stdout, _, code) = run(&["project", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("project_help", stdout);
+}
+
+#[test]
+fn publish_help_snapshot() {
+    let (stdout, _, code) = run(&["publish", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("publish_help", stdout);
 }

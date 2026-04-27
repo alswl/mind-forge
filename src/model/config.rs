@@ -1,0 +1,149 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProjectMeta {
+    pub name: String,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublishTargetType {
+    Local,
+    Yuque,
+    GithubPages,
+    Custom,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublishTarget {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub target_type: PublishTargetType,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<serde_json::Value>,
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PublishConfig {
+    pub default_target: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub targets: Option<Vec<PublishTarget>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildConfig {
+    #[serde(default = "default_output_dir")]
+    pub output_dir: String,
+    #[serde(default)]
+    pub merge_order: Vec<String>,
+}
+
+impl Default for BuildConfig {
+    fn default() -> Self {
+        Self { output_dir: default_output_dir(), merge_order: Vec::new() }
+    }
+}
+
+fn default_output_dir() -> String {
+    "_build".to_string()
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SourceConfig {
+    #[serde(default)]
+    pub scan_paths: Vec<String>,
+    #[serde(default)]
+    pub types: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TermConfig {
+    #[serde(default = "default_term_enabled")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub case_sensitive: bool,
+}
+
+impl Default for TermConfig {
+    fn default() -> Self {
+        Self { enabled: true, case_sensitive: false }
+    }
+}
+
+fn default_term_enabled() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathsConfig {
+    #[serde(default = "default_docs")]
+    pub docs: String,
+    #[serde(default = "default_sources")]
+    pub sources: String,
+    #[serde(default = "default_assets")]
+    pub assets: String,
+    #[serde(default = "default_archive")]
+    pub archive: String,
+}
+
+impl Default for PathsConfig {
+    fn default() -> Self {
+        Self {
+            docs: default_docs(),
+            sources: default_sources(),
+            assets: default_assets(),
+            archive: default_archive(),
+        }
+    }
+}
+
+fn default_docs() -> String {
+    "docs".to_string()
+}
+fn default_sources() -> String {
+    "sources".to_string()
+}
+fn default_assets() -> String {
+    "assets".to_string()
+}
+fn default_archive() -> String {
+    "_archived".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MindConfig {
+    pub schema_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<ProjectMeta>,
+    #[serde(default)]
+    pub build: BuildConfig,
+    #[serde(default)]
+    pub publish: PublishConfig,
+    #[serde(default)]
+    pub source: SourceConfig,
+    #[serde(default)]
+    pub term: TermConfig,
+    #[serde(default)]
+    pub paths: PathsConfig,
+}
+
+impl Default for MindConfig {
+    fn default() -> Self {
+        Self {
+            schema_version: "1".to_string(),
+            project: None,
+            build: BuildConfig::default(),
+            publish: PublishConfig::default(),
+            source: SourceConfig::default(),
+            term: TermConfig::default(),
+            paths: PathsConfig::default(),
+        }
+    }
+}
