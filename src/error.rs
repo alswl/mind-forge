@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::Error as AnyhowError;
 use thiserror::Error;
 
@@ -15,16 +17,32 @@ pub enum MfError {
     Io(#[from] std::io::Error),
     #[error("{0}")]
     Json(#[from] serde_json::Error),
+    #[error("not in a mind repo")]
+    NotInMindRepo { hint: Option<String> },
+    #[error("incompatible schema: found '{found}', expected one of {expected:?}")]
+    IncompatibleSchema { path: PathBuf, found: String, expected: Vec<String> },
+    #[error("{kind} parse error in {path}: {detail}")]
+    ParseError { kind: String, path: PathBuf, detail: String },
 }
 
 impl MfError {
+    pub const INIT_REPO_HINT: &str =
+        "Run 'mf config init --target project' to initialize a new project";
+
     pub fn usage(message: impl Into<String>, hint: Option<String>) -> Self {
         Self::Usage { message: message.into(), hint }
+    }
+
+    pub fn not_in_mind_repo() -> Self {
+        Self::NotInMindRepo { hint: Some(Self::INIT_REPO_HINT.to_string()) }
     }
 
     pub fn exit_code(&self) -> ExitCode {
         match self {
             Self::Usage { .. } => ExitCode::UsageError,
+            Self::NotInMindRepo { .. }
+            | Self::IncompatibleSchema { .. }
+            | Self::ParseError { .. } => ExitCode::Failure,
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => ExitCode::Failure,
         }
     }
@@ -32,6 +50,9 @@ impl MfError {
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Usage { .. } => "usage",
+            Self::NotInMindRepo { .. } => "not-in-mind-repo",
+            Self::IncompatibleSchema { .. } => "incompatible-schema",
+            Self::ParseError { .. } => "parse-error",
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => "internal",
         }
     }
@@ -39,6 +60,9 @@ impl MfError {
     pub fn message(&self) -> String {
         match self {
             Self::Usage { message, .. } => message.clone(),
+            Self::NotInMindRepo { .. }
+            | Self::IncompatibleSchema { .. }
+            | Self::ParseError { .. } => self.to_string(),
             Self::Internal(error) => error.to_string(),
             Self::Io(error) => error.to_string(),
             Self::Json(error) => error.to_string(),
@@ -48,6 +72,11 @@ impl MfError {
     pub fn hint(&self) -> Option<&str> {
         match self {
             Self::Usage { hint, .. } => hint.as_deref(),
+            Self::NotInMindRepo { hint } => hint.as_deref(),
+            Self::IncompatibleSchema { .. } => {
+                Some("run 'mf upgrade' or update schema_version manually")
+            }
+            Self::ParseError { .. } => Some("check the file format and try again"),
             _ => None,
         }
     }

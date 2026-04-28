@@ -87,12 +87,32 @@ pub enum CommandOutcome {
 }
 
 impl RootCli {
-    pub fn dispatch(self) -> Result<CommandOutcome> {
+    /// 判断选中的命令是否需要 Mind Repo 上下文
+    pub fn command_needs_repo(&self) -> bool {
+        match &self.command {
+            None | Some(TopLevelCommand::Completion(_)) | Some(TopLevelCommand::Config(_)) => false,
+            Some(TopLevelCommand::Project(cmd)) if self.is_project_index(cmd) => false,
+            _ => true,
+        }
+    }
+
+    /// `mf project index` 可以在 Mind Repo 外运行（用于创建 minds.yaml）
+    fn is_project_index(&self, cmd: &project::ProjectCmd) -> bool {
+        matches!(cmd.command, Some(project::ProjectSubcommand::Index(_)))
+    }
+
+    pub fn dispatch(
+        self,
+        repo_root: Option<&std::path::PathBuf>,
+        format: Format,
+    ) -> Result<CommandOutcome> {
         match self.command {
             None => Ok(CommandOutcome::RootHelp),
             Some(TopLevelCommand::Source(command)) => source::dispatch(command),
             Some(TopLevelCommand::Asset(command)) => asset::dispatch(command),
-            Some(TopLevelCommand::Project(command)) => project::dispatch(command),
+            Some(TopLevelCommand::Project(command)) => {
+                project::dispatch(command, repo_root, format)
+            }
             Some(TopLevelCommand::Article(command)) => article::dispatch(command),
             Some(TopLevelCommand::Term(command)) => term::dispatch(command),
             Some(TopLevelCommand::Completion(command)) => completion::dispatch(command),

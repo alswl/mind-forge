@@ -5,6 +5,8 @@ use serde::Serialize;
 
 use crate::cli::{placeholder, CommandOutcome, HelpTarget};
 use crate::error::{MfError, Result};
+use crate::output::Format;
+use crate::runtime::repo;
 
 #[derive(Debug, Clone, Args)]
 pub struct ProjectCmd {
@@ -64,9 +66,17 @@ pub struct ProjectLintArgs {
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
-pub struct ProjectIndexArgs {}
+pub struct ProjectIndexArgs {
+    #[arg(long)]
+    pub dry_run: bool,
+}
 
-pub fn dispatch(command: ProjectCmd) -> Result<CommandOutcome> {
+/// dispatch 现在接受 repo_root 参数用于需要文件系统操作的子命令
+pub fn dispatch(
+    command: ProjectCmd,
+    repo_root: Option<&PathBuf>,
+    format: Format,
+) -> Result<CommandOutcome> {
     match command.command {
         None => Ok(CommandOutcome::GroupHelp(HelpTarget::Project)),
         Some(ProjectSubcommand::New(args)) => {
@@ -87,8 +97,62 @@ pub fn dispatch(command: ProjectCmd) -> Result<CommandOutcome> {
         Some(ProjectSubcommand::Archive(args)) => placeholder("mf project archive", args),
         Some(ProjectSubcommand::Status(args)) => placeholder("mf project status", args),
         Some(ProjectSubcommand::Lint(args)) => placeholder("mf project lint", args),
-        Some(ProjectSubcommand::Index(args)) => placeholder("mf project index", args),
+        Some(ProjectSubcommand::Index(args)) => handle_index(args, repo_root, format),
     }
+}
+
+fn handle_index(
+    args: ProjectIndexArgs,
+    repo_root: Option<&PathBuf>,
+    format: Format,
+) -> Result<CommandOutcome> {
+    // 无 repo_root 时使用 cwd（mf project index 可在 repo 外运行）
+    let root = repo_root
+        .cloned()
+        .or_else(|| std::env::current_dir().ok())
+        .ok_or_else(|| MfError::not_in_mind_repo())?;
+
+    // 扫描项目目录
+    let scanned = repo::scan_project_dirs(&root);
+
+    // 加载或创建 minds.yaml
+    let minds_path = root.join("minds.yaml");
+    let manifest = if minds_path.exists() {
+        repo::load_manifest(&minds_path)?
+    } else {
+        crate::model::manifest::MindsManifest::create_default()
+    };
+
+    // 计算 diff
+    let diff = repo::compute_diff(&manifest, &scanned);
+
+    if args.dry_run {
+        // dry-run 模式：输出 diff，不写入
+        let output = match format {
+            Format::Json => serde_json::to_string_pretty(&diff).map_err(MfError::Json)?,
+            Format::Text => repo::render_diff_text(&diff),
+        };
+        return Ok(CommandOutcome::Placeholder(crate::output::PlaceholderInvocation::new(
+            "mf project index (dry-run)",
+            serde_json::json!({"diff": output}),
+        )));
+    }
+
+    // 执行 reconcile
+    let updated = repo::reconcile(manifest, diff);
+
+    // 原子写入
+    repo::save_manifest(&updated, &minds_path)?;
+
+    // 返回成功输出
+    let payload = serde_json::json!({
+        "projects_count": updated.projects.len(),
+        "minds_path": minds_path.to_string_lossy().to_string(),
+    });
+    Ok(CommandOutcome::Placeholder(crate::output::PlaceholderInvocation::new(
+        "mf project index",
+        payload,
+    )))
 }
 
 #[derive(Debug, Serialize)]

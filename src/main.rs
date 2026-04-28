@@ -50,7 +50,16 @@ fn run(args: Vec<OsString>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> R
         }
     };
     tracing::debug!(config_path = %context.config_path.display(), "resolved config path");
-    let outcome = match cli.dispatch() {
+
+    // Mind Repo 守卫检查：需要上下文的命令必须在 Mind Repo 内运行
+    if cli.command_needs_repo() {
+        if let Err(err) = context.require_repo() {
+            render_error(stderr, context.format, &err)?;
+            return Ok(err.exit_code());
+        }
+    }
+
+    let outcome = match cli.dispatch(context.repo_root.as_ref(), context.format) {
         Ok(outcome) => outcome,
         Err(err) => {
             let code = err.exit_code();

@@ -1,10 +1,15 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
+use std::fs;
+
+mod common;
 
 #[test]
 fn verbose_and_quiet_conflict() {
+    let dir = common::setup_repo();
     Command::cargo_bin("mf")
         .expect("binary exists")
+        .current_dir(dir.path())
         .args(["--verbose", "--quiet", "source", "list"])
         .assert()
         .code(2)
@@ -13,8 +18,10 @@ fn verbose_and_quiet_conflict() {
 
 #[test]
 fn json_placeholder_uses_json_shape() {
+    let dir = common::setup_repo();
     Command::cargo_bin("mf")
         .expect("binary exists")
+        .current_dir(dir.path())
         .args(["--format", "json", "source", "list"])
         .assert()
         .code(64)
@@ -24,9 +31,13 @@ fn json_placeholder_uses_json_shape() {
 
 #[test]
 fn explicit_config_path_is_accepted() {
+    let dir = common::setup_repo();
+    let config_path = dir.path().join("mf.yaml");
+    fs::write(&config_path, "schema_version: '1'\n").unwrap();
     Command::cargo_bin("mf")
         .expect("binary exists")
-        .args(["--config", "/tmp/mf-test.toml", "term", "list"])
+        .current_dir(dir.path())
+        .args(["--config", &config_path.to_string_lossy(), "term", "list"])
         .assert()
         .code(64)
         .stdout(predicate::str::contains("[not implemented] mf term list"));
