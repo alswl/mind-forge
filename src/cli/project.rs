@@ -110,7 +110,7 @@ fn handle_index(
     let root = repo_root
         .cloned()
         .or_else(|| std::env::current_dir().ok())
-        .ok_or_else(|| MfError::not_in_mind_repo())?;
+        .ok_or_else(MfError::not_in_mind_repo)?;
 
     // 扫描项目目录
     let scanned = repo::scan_project_dirs(&root);
