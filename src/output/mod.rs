@@ -58,6 +58,34 @@ pub fn render_placeholder(
     Ok(())
 }
 
+pub fn render_success(
+    writer: &mut dyn Write,
+    format: Format,
+    data: &serde_json::Value,
+) -> Result<()> {
+    match format {
+        Format::Text => match data {
+            serde_json::Value::Object(map) => {
+                let max_key = map.keys().map(|k| k.len()).max().unwrap_or(0);
+                for (key, value) in map {
+                    let val_str = match value {
+                        serde_json::Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    writeln!(writer, "{key:>max_key$}  {val_str}")?;
+                }
+            }
+            other => writeln!(writer, "{other}")?,
+        },
+        Format::Json => {
+            let envelope = serde_json::json!({ "status": "ok", "data": data });
+            serde_json::to_writer_pretty(&mut *writer, &envelope)?;
+            writeln!(writer)?;
+        }
+    }
+    Ok(())
+}
+
 pub fn render_error(writer: &mut dyn Write, format: Format, error: &MfError) -> Result<()> {
     let message = error.message();
     match format {

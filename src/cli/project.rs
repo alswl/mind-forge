@@ -132,10 +132,7 @@ fn handle_index(
             Format::Json => serde_json::to_string_pretty(&diff).map_err(MfError::Json)?,
             Format::Text => repo::render_diff_text(&diff),
         };
-        return Ok(CommandOutcome::Placeholder(crate::output::PlaceholderInvocation::new(
-            "mf project index (dry-run)",
-            serde_json::json!({"diff": output}),
-        )));
+        return Ok(CommandOutcome::Success(serde_json::json!({"diff": output, "dry_run": true})));
     }
 
     // 执行 reconcile
@@ -149,10 +146,7 @@ fn handle_index(
         "projects_count": updated.projects.len(),
         "minds_path": minds_path.to_string_lossy().to_string(),
     });
-    Ok(CommandOutcome::Placeholder(crate::output::PlaceholderInvocation::new(
-        "mf project index",
-        payload,
-    )))
+    Ok(CommandOutcome::Success(payload))
 }
 
 #[derive(Debug, Serialize)]

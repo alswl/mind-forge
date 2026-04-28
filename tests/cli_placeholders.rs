@@ -42,7 +42,7 @@ fn all_leaf_commands_return_placeholder() {
         vec_strings!["project", "archive", "demo"],
         vec_strings!["project", "status", "demo"],
         vec_strings!["project", "lint"],
-        vec_strings!["project", "index"],
+        // project index 已实现为真实命令，不在此测试中
         vec_strings!["article", "new", "Hello"],
         vec_strings!["article", "list"],
         vec_strings!["article", "lint"],
@@ -95,4 +95,20 @@ fn unknown_flag_returns_usage_error() {
         .output()
         .expect("command runs");
     assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn project_index_returns_success() {
+    let repo = common::setup_repo();
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path())
+        .args(["project", "index"])
+        .output()
+        .expect("command runs");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "expected exit 0 for implemented command project index"
+    );
 }

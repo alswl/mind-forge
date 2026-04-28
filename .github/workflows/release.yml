@@ -1,23 +1,11 @@
-name: CI
+name: Release
 
 on:
   push:
-  pull_request:
-    branches: [master]
+    tags: [v*]
 
 jobs:
-  quality:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt, clippy
-      - run: cargo test --locked
-      - run: cargo clippy --locked -- -D warnings
-      - run: cargo fmt --check
-
-  build:
+  build-linux:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -50,3 +38,19 @@ jobs:
         with:
           name: mf-aarch64-apple-darwin
           path: target/release/mf
+
+  create-release:
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mf-*
+          merge-multiple: true
+          path: artifacts
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: artifacts/*
+          generateReleaseNotes: true
+          makeLatest: true

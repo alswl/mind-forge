@@ -1,5 +1,4 @@
 use assert_cmd::Command;
-use predicates::prelude::*;
 use std::fs;
 
 mod common;
@@ -10,7 +9,7 @@ fn test_index_adds_new_project() {
     common::create_project(&dir, "new-project");
     let mut cmd = Command::cargo_bin("mf").unwrap();
     cmd.current_dir(dir.path()).arg("project").arg("index");
-    cmd.assert().code(predicate::eq(64));
+    cmd.assert().code(0);
     let content = fs::read_to_string(dir.path().join("minds.yaml")).unwrap();
     assert!(content.contains("new-project"));
 }
@@ -20,10 +19,10 @@ fn test_index_removes_deleted_project() {
     let dir = common::setup_repo();
     common::create_project(&dir, "to-delete");
     let mut cmd1 = Command::cargo_bin("mf").unwrap();
-    cmd1.current_dir(dir.path()).arg("project").arg("index").assert().code(predicate::eq(64));
+    cmd1.current_dir(dir.path()).arg("project").arg("index").assert().code(0);
     fs::remove_dir_all(dir.path().join("to-delete")).unwrap();
     let mut cmd2 = Command::cargo_bin("mf").unwrap();
-    cmd2.current_dir(dir.path()).arg("project").arg("index").assert().code(predicate::eq(64));
+    cmd2.current_dir(dir.path()).arg("project").arg("index").assert().code(0);
     let content = fs::read_to_string(dir.path().join("minds.yaml")).unwrap();
     assert!(!content.contains("to-delete"));
 }
@@ -34,7 +33,7 @@ fn test_index_creates_minds_yaml_when_absent() {
     common::create_project(&dir, "some-project");
     let mut cmd = Command::cargo_bin("mf").unwrap();
     cmd.current_dir(dir.path()).arg("project").arg("index");
-    cmd.assert().code(predicate::eq(64));
+    cmd.assert().code(0);
     assert!(dir.path().join("minds.yaml").exists());
 }
 
@@ -45,7 +44,7 @@ fn test_index_dry_run_does_not_modify() {
     let before = fs::read_to_string(dir.path().join("minds.yaml")).unwrap();
     let mut cmd = Command::cargo_bin("mf").unwrap();
     cmd.current_dir(dir.path()).arg("project").arg("index").arg("--dry-run");
-    cmd.assert().code(predicate::eq(64));
+    cmd.assert().code(0);
     let after = fs::read_to_string(dir.path().join("minds.yaml")).unwrap();
     assert_eq!(before, after);
 }
@@ -56,6 +55,6 @@ fn test_index_works_in_non_repo() {
     common::create_project(&dir, "some-project");
     let mut cmd = Command::cargo_bin("mf").unwrap();
     cmd.current_dir(dir.path()).arg("project").arg("index");
-    cmd.assert().code(predicate::eq(64));
+    cmd.assert().code(0);
     assert!(dir.path().join("minds.yaml").exists());
 }

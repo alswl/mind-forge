@@ -13,7 +13,7 @@ use clap::{CommandFactory, Parser};
 use cli::{CommandOutcome, HelpTarget, RootCli};
 use error::{MfError, Result};
 use exit::ExitCode;
-use output::{render_error, render_placeholder};
+use output::{render_error, render_placeholder, render_success};
 use runtime::AppContext;
 
 fn main() -> ProcessExitCode {
@@ -77,6 +77,10 @@ fn run(args: Vec<OsString>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> R
             Ok(ExitCode::Ok)
         }
         CommandOutcome::Completion(shell) => cli::completion::render_completion(shell, stdout),
+        CommandOutcome::Success(data) => {
+            render_success(stdout, context.format, &data)?;
+            Ok(ExitCode::Ok)
+        }
         CommandOutcome::Placeholder(invocation) => {
             render_placeholder(stdout, context.format, &invocation, context.color_enabled)?;
             Ok(ExitCode::NotImplemented)

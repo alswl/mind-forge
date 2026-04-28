@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chrono::Utc;
 use serde::Serialize;
 
 use crate::error::{MfError, Result};
@@ -257,47 +258,7 @@ pub fn render_diff_text(diff: &IndexDiff) -> String {
 }
 
 fn iso_now() -> String {
-    // 简化的 ISO 8601 时间戳，不含时区
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
-    let secs = dur.as_secs();
-    // 转换成可读格式
-    let days = secs / 86400;
-    let time_secs = secs % 86400;
-    let hours = time_secs / 3600;
-    let minutes = (time_secs % 3600) / 60;
-    let seconds = time_secs % 60;
-
-    // 从 1970-01-01 推算日期（简化，仅用于测试和开发）
-    let mut y = 1970i64;
-    let mut remaining_days = days as i64;
-    loop {
-        let days_in_year = if is_leap(y) { 366 } else { 365 };
-        if remaining_days < days_in_year {
-            break;
-        }
-        remaining_days -= days_in_year;
-        y += 1;
-    }
-    let month_days = if is_leap(y) {
-        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    } else {
-        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    };
-    let mut m = 1usize;
-    for &md in month_days.iter() {
-        if remaining_days < md {
-            break;
-        }
-        remaining_days -= md;
-        m += 1;
-    }
-    let d = remaining_days + 1;
-    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, m, d, hours, minutes, seconds)
-}
-
-fn is_leap(y: i64) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)
+    Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
 // ---------------------------------------------------------------------------

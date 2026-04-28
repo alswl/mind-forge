@@ -84,6 +84,7 @@ pub enum CommandOutcome {
     GroupHelp(HelpTarget),
     Completion(clap_complete::Shell),
     Placeholder(PlaceholderInvocation),
+    Success(serde_json::Value),
 }
 
 impl RootCli {
@@ -91,14 +92,9 @@ impl RootCli {
     pub fn command_needs_repo(&self) -> bool {
         match &self.command {
             None | Some(TopLevelCommand::Completion(_)) | Some(TopLevelCommand::Config(_)) => false,
-            Some(TopLevelCommand::Project(cmd)) if self.is_project_index(cmd) => false,
+            Some(TopLevelCommand::Project(cmd)) if is_project_index(cmd) => false,
             _ => true,
         }
-    }
-
-    /// `mf project index` 可以在 Mind Repo 外运行（用于创建 minds.yaml）
-    fn is_project_index(&self, cmd: &project::ProjectCmd) -> bool {
-        matches!(cmd.command, Some(project::ProjectSubcommand::Index(_)))
     }
 
     pub fn dispatch(
@@ -121,6 +117,11 @@ impl RootCli {
             Some(TopLevelCommand::Config(command)) => config::dispatch(command),
         }
     }
+}
+
+/// `mf project index` 可以在 Mind Repo 外运行（用于创建 minds.yaml）
+fn is_project_index(cmd: &project::ProjectCmd) -> bool {
+    matches!(cmd.command, Some(project::ProjectSubcommand::Index(_)))
 }
 
 pub fn placeholder(command: &str, args: impl Serialize) -> Result<CommandOutcome> {

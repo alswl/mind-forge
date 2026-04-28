@@ -13,7 +13,7 @@ fn index_discovers_new_project() {
     let ds = Dataset::empty().with_project("my-doc");
 
     let (_, _, code) = run_in(ds.root(), &["project", "index"]);
-    assert_eq!(code, 64, "placeholder exit");
+    assert_eq!(code, 0, "exit 0 for implemented command");
 
     let content = ds.read_manifest();
     assert!(content.contains("my-doc"), "manifest should contain new project: {content}");
@@ -120,11 +120,11 @@ fn index_json_output_format() {
     let ds = Dataset::empty().with_project("json-project");
 
     let (stdout, _, code) = run_in(ds.root(), &["--format", "json", "project", "index"]);
-    assert_eq!(code, 64);
+    assert_eq!(code, 0);
 
     let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
-    assert_eq!(parsed["status"], "not_implemented");
-    assert_eq!(parsed["command"], "mf project index");
+    assert_eq!(parsed["status"], "ok");
+    assert!(parsed["data"]["projects_count"].is_number());
 }
 
 /// E2E: 连续两次 index 是幂等的
