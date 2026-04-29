@@ -65,6 +65,7 @@ pub fn render_success(
 ) -> Result<()> {
     match format {
         Format::Text => match data {
+            serde_json::Value::String(s) => writeln!(writer, "{s}")?,
             serde_json::Value::Object(map) => {
                 let max_key = map.keys().map(|k| k.len()).max().unwrap_or(0);
                 for (key, value) in map {
@@ -78,6 +79,27 @@ pub fn render_success(
             other => writeln!(writer, "{other}")?,
         },
         Format::Json => {
+            let envelope = serde_json::json!({ "status": "ok", "data": data });
+            serde_json::to_writer_pretty(&mut *writer, &envelope)?;
+            writeln!(writer)?;
+        }
+    }
+    Ok(())
+}
+
+/// Render a pre-serialized raw string.
+///
+/// In text mode the string is printed as-is.
+/// In JSON mode the string is parsed as JSON (if valid) and embedded
+/// directly into the `{ status, data }` envelope, avoiding double-encoding.
+pub fn render_raw(writer: &mut dyn Write, format: Format, content: &str) -> Result<()> {
+    match format {
+        Format::Text => {
+            writeln!(writer, "{content}")?;
+        }
+        Format::Json => {
+            let data: serde_json::Value = serde_json::from_str(content)
+                .unwrap_or(serde_json::Value::String(content.to_string()));
             let envelope = serde_json::json!({ "status": "ok", "data": data });
             serde_json::to_writer_pretty(&mut *writer, &envelope)?;
             writeln!(writer)?;

@@ -33,7 +33,7 @@ fn test_non_repo_config_schema_succeeds() {
     let dir = tempfile::TempDir::new().unwrap();
     let mut cmd = Command::cargo_bin("mf").unwrap();
     cmd.current_dir(dir.path()).arg("config").arg("schema");
-    cmd.assert().code(predicate::eq(64));
+    cmd.assert().code(predicate::eq(0));
 }
 
 #[test]

@@ -23,6 +23,10 @@ pub enum MfError {
     IncompatibleSchema { path: PathBuf, found: String, expected: Vec<String> },
     #[error("{kind} parse error in {path}: {detail}")]
     ParseError { kind: String, path: PathBuf, detail: String },
+    #[error("refusing to overwrite existing file: {path}")]
+    FileExists { path: PathBuf },
+    #[error("{feature} is not yet implemented")]
+    NotImplemented { feature: String },
 }
 
 impl MfError {
@@ -37,12 +41,22 @@ impl MfError {
         Self::NotInMindRepo { hint: Some(Self::INIT_REPO_HINT.to_string()) }
     }
 
+    pub fn file_exists(path: PathBuf) -> Self {
+        Self::FileExists { path }
+    }
+
+    pub fn not_implemented(feature: impl Into<String>) -> Self {
+        Self::NotImplemented { feature: feature.into() }
+    }
+
     pub fn exit_code(&self) -> ExitCode {
         match self {
             Self::Usage { .. } => ExitCode::UsageError,
             Self::NotInMindRepo { .. }
             | Self::IncompatibleSchema { .. }
-            | Self::ParseError { .. } => ExitCode::Failure,
+            | Self::ParseError { .. }
+            | Self::FileExists { .. } => ExitCode::Failure,
+            Self::NotImplemented { .. } => ExitCode::NotImplemented,
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => ExitCode::Failure,
         }
     }
@@ -53,6 +67,8 @@ impl MfError {
             Self::NotInMindRepo { .. } => "not-in-mind-repo",
             Self::IncompatibleSchema { .. } => "incompatible-schema",
             Self::ParseError { .. } => "parse-error",
+            Self::FileExists { .. } => "file-exists",
+            Self::NotImplemented { .. } => "not-implemented",
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => "internal",
         }
     }
@@ -62,7 +78,9 @@ impl MfError {
             Self::Usage { message, .. } => message.clone(),
             Self::NotInMindRepo { .. }
             | Self::IncompatibleSchema { .. }
-            | Self::ParseError { .. } => self.to_string(),
+            | Self::ParseError { .. }
+            | Self::FileExists { .. }
+            | Self::NotImplemented { .. } => self.to_string(),
             Self::Internal(error) => error.to_string(),
             Self::Io(error) => error.to_string(),
             Self::Json(error) => error.to_string(),
@@ -77,6 +95,8 @@ impl MfError {
                 Some("run 'mf upgrade' or update schema_version manually")
             }
             Self::ParseError { .. } => Some("check the file format and try again"),
+            Self::FileExists { .. } => Some("pass --force to overwrite"),
+            Self::NotImplemented { .. } => Some("tracked for future ROADMAP iteration"),
             _ => None,
         }
     }
