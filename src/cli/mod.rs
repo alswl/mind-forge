@@ -85,6 +85,11 @@ pub enum CommandOutcome {
     Completion(clap_complete::Shell),
     Placeholder(PlaceholderInvocation),
     Success(serde_json::Value),
+    /// Pre-serialized string content for raw output (e.g. YAML/JSON config).
+    ///
+    /// In text mode the string is printed as-is; in JSON mode it is embedded
+    /// directly into the `{ status, data }` envelope, avoiding double-encoding.
+    Raw(String),
 }
 
 impl RootCli {
@@ -114,7 +119,7 @@ impl RootCli {
             Some(TopLevelCommand::Completion(command)) => completion::dispatch(command),
             Some(TopLevelCommand::Build(args)) => build::dispatch(args),
             Some(TopLevelCommand::Publish(command)) => publish::dispatch(command),
-            Some(TopLevelCommand::Config(command)) => config::dispatch(command),
+            Some(TopLevelCommand::Config(command)) => config::dispatch(command, repo_root, format),
         }
     }
 }

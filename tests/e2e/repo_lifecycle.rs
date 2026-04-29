@@ -29,7 +29,7 @@ fn non_repo_innocent_commands_succeed() {
     assert!(stdout.contains("compdef"));
 
     let (_, _, code) = run_in(outside.path(), &["config", "schema"]);
-    assert_eq!(code, 64);
+    assert_eq!(code, 0, "config schema should succeed outside repo");
 }
 
 /// E2E: minds.yaml 存在时在该目录及子目录中均可识别为 Mind Repo

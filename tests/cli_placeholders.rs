@@ -55,9 +55,7 @@ fn all_leaf_commands_return_placeholder() {
         vec_strings!["build", "article-name"],
         vec_strings!["publish", "run", "docs/foo.md"],
         vec_strings!["publish", "update", "docs/foo.md"],
-        vec_strings!["config", "schema"],
-        vec_strings!["config", "show"],
-        vec_strings!["config", "init"],
+        // config 命令已实现为真实命令，不在此测试中
     ];
 
     for case in &cases {

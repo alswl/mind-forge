@@ -3,7 +3,7 @@
 pub mod article;
 #[allow(dead_code)]
 pub mod asset;
-#[allow(dead_code)]
+// config 被 src/service/config.rs 引用，无需 dead_code 豁免
 pub mod config;
 #[allow(dead_code)]
 pub mod index;

@@ -1,12 +1,15 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// Project metadata for a mind-forge project.
+#[derive(Debug, Clone, Default, JsonSchema, Serialize, Deserialize)]
 pub struct ProjectMeta {
     pub name: String,
     pub created_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Publish target type: where to publish content.
+#[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PublishTargetType {
     Local,
@@ -15,7 +18,8 @@ pub enum PublishTargetType {
     Custom,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A single publish target definition.
+#[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
 pub struct PublishTarget {
     pub name: String,
     #[serde(rename = "type")]
@@ -30,14 +34,16 @@ fn default_enabled() -> bool {
     true
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// Publish configuration for the project.
+#[derive(Debug, Clone, Default, JsonSchema, Serialize, Deserialize)]
 pub struct PublishConfig {
     pub default_target: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub targets: Option<Vec<PublishTarget>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Build configuration for the project.
+#[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
 pub struct BuildConfig {
     #[serde(default = "default_output_dir")]
     pub output_dir: String,
@@ -55,7 +61,8 @@ fn default_output_dir() -> String {
     "_build".to_string()
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// Source scanning configuration.
+#[derive(Debug, Clone, Default, JsonSchema, Serialize, Deserialize)]
 pub struct SourceConfig {
     #[serde(default)]
     pub scan_paths: Vec<String>,
@@ -63,7 +70,8 @@ pub struct SourceConfig {
     pub types: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Terminology checking configuration.
+#[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
 pub struct TermConfig {
     #[serde(default = "default_term_enabled")]
     pub enabled: bool,
@@ -81,7 +89,8 @@ fn default_term_enabled() -> bool {
     true
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Default paths for project directories.
+#[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
 pub struct PathsConfig {
     #[serde(default = "default_docs")]
     pub docs: String,
@@ -117,7 +126,8 @@ fn default_archive() -> String {
     "_archived".to_string()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Top-level configuration for a mind-forge project (mind.yaml schema).
+#[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
 pub struct MindConfig {
     pub schema_version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

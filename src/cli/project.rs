@@ -6,7 +6,7 @@ use serde::Serialize;
 use crate::cli::{placeholder, CommandOutcome, HelpTarget};
 use crate::error::{MfError, Result};
 use crate::output::Format;
-use crate::runtime::repo;
+use crate::service::repo;
 
 #[derive(Debug, Clone, Args)]
 pub struct ProjectCmd {

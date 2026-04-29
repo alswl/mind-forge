@@ -1,3 +1,4 @@
+mod config;
 mod datasets;
 mod error_envelope;
 mod global_flags;
