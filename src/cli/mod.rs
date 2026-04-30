@@ -114,10 +114,12 @@ impl RootCli {
             Some(TopLevelCommand::Project(command)) => {
                 project::dispatch(command, repo_root, format)
             }
-            Some(TopLevelCommand::Article(command)) => article::dispatch(command),
+            Some(TopLevelCommand::Article(command)) => {
+                article::dispatch(command, repo_root, format)
+            }
             Some(TopLevelCommand::Term(command)) => term::dispatch(command),
             Some(TopLevelCommand::Completion(command)) => completion::dispatch(command),
-            Some(TopLevelCommand::Build(args)) => build::dispatch(args),
+            Some(TopLevelCommand::Build(args)) => build::dispatch(args, repo_root, format),
             Some(TopLevelCommand::Publish(command)) => publish::dispatch(command),
             Some(TopLevelCommand::Config(command)) => config::dispatch(command, repo_root, format),
         }
