@@ -1,8 +1,13 @@
+use std::path::PathBuf;
+
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
-use crate::cli::{placeholder, CommandOutcome, HelpTarget};
-use crate::error::Result;
+use crate::cli::CommandOutcome;
+use crate::error::{MfError, Result};
+use crate::model::article::ArticleStatus;
+use crate::output::Format;
+use crate::service::{article as article_svc, util as svc_util};
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleCmd {
@@ -16,9 +21,9 @@ pub enum ArticleSubcommand {
     New(ArticleNewArgs),
     #[command(about = "List articles")]
     List(ArticleListArgs),
-    #[command(about = "Lint articles (see also `mf build --help`)")]
+    #[command(about = "Lint articles")]
     Lint(ArticleLintArgs),
-    #[command(about = "Index articles (see also `mf build --help`)")]
+    #[command(about = "Index articles")]
     Index(ArticleIndexArgs),
 }
 
@@ -33,6 +38,8 @@ pub struct ArticleNewArgs {
     pub tag: Vec<String>,
     #[arg(long, default_value_t = true)]
     pub draft: bool,
+    #[arg(long)]
+    pub force: bool,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -48,37 +55,125 @@ pub struct ArticleLintArgs {
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
-pub struct ArticleIndexArgs {}
+pub struct ArticleIndexArgs {
+    #[arg(long)]
+    pub project: Option<String>,
+    #[arg(long, short = 'n')]
+    pub dry_run: bool,
+}
 
-pub fn dispatch(command: ArticleCmd) -> Result<CommandOutcome> {
+pub fn dispatch(
+    command: ArticleCmd,
+    repo_root: Option<&PathBuf>,
+    format: Format,
+) -> Result<CommandOutcome> {
+    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+
+    let cwd = std::env::current_dir().map_err(MfError::Io)?;
+
     match command.command {
-        None => Ok(CommandOutcome::GroupHelp(HelpTarget::Article)),
+        None => Ok(CommandOutcome::GroupHelp(super::HelpTarget::Article)),
         Some(ArticleSubcommand::New(args)) => {
-            placeholder("mf article new", ArticleNewPayload::from(args))
+            let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
+
+            let template_text = match args.template {
+                Some(ref path) => {
+                    let tmpl_path = project_path.join(path);
+                    Some(std::fs::read_to_string(&tmpl_path).map_err(|e| {
+                        MfError::usage(
+                            format!("cannot read template '{}': {e}", tmpl_path.display()),
+                            Some("use a path relative to the project root".to_string()),
+                        )
+                    })?)
+                }
+                None => None,
+            };
+
+            let filename = article_svc::new_article(
+                &project_path,
+                &args.title,
+                template_text.as_deref(),
+                &args.tag,
+                args.draft,
+                args.force,
+            )?;
+
+            let data = serde_json::json!({
+                "filename": filename,
+                "path": format!("docs/{}.md", filename),
+                "draft": args.draft,
+            });
+            Ok(CommandOutcome::Success(data))
         }
-        Some(ArticleSubcommand::List(args)) => placeholder("mf article list", args),
-        Some(ArticleSubcommand::Lint(args)) => placeholder("mf article lint", args),
-        Some(ArticleSubcommand::Index(args)) => placeholder("mf article index", args),
-    }
-}
+        Some(ArticleSubcommand::List(args)) => {
+            let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
+            let articles = article_svc::list_articles(&project_path)?;
 
-#[derive(Debug, Serialize)]
-struct ArticleNewPayload {
-    title: String,
-    project: Option<String>,
-    template: Option<String>,
-    tag: Vec<String>,
-    draft: bool,
-}
+            match format {
+                Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&articles)?)),
+                Format::Text => {
+                    if articles.is_empty() {
+                        return Ok(CommandOutcome::Success(serde_json::json!(
+                            "No articles found."
+                        )));
+                    }
+                    let mut lines = Vec::new();
+                    for a in &articles {
+                        let status = match a.status {
+                            ArticleStatus::Draft => "draft",
+                            ArticleStatus::Published => "published",
+                        };
+                        lines.push(format!("{}  {}  {}", a.title, a.source_path, status));
+                    }
+                    Ok(CommandOutcome::Raw(lines.join("\n")))
+                }
+            }
+        }
+        Some(ArticleSubcommand::Lint(args)) => {
+            let project_path = svc_util::resolve_project(root, None, &cwd)?;
+            let issues = article_svc::lint_articles(&project_path, args.fix)?;
 
-impl From<ArticleNewArgs> for ArticleNewPayload {
-    fn from(value: ArticleNewArgs) -> Self {
-        Self {
-            title: value.title,
-            project: value.project,
-            template: value.template,
-            tag: value.tag,
-            draft: value.draft,
+            match format {
+                Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&issues)?)),
+                Format::Text => {
+                    if issues.is_empty() {
+                        return Ok(CommandOutcome::Success(serde_json::json!("No issues found.")));
+                    }
+                    let mut lines = Vec::new();
+                    for issue in &issues {
+                        lines.push(format!(
+                            "[{}] {}: {}  ({})",
+                            issue.severity, issue.kind, issue.message, issue.path
+                        ));
+                    }
+                    Ok(CommandOutcome::Raw(lines.join("\n")))
+                }
+            }
+        }
+        Some(ArticleSubcommand::Index(args)) => {
+            let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
+            let scanned = article_svc::scan_docs(&project_path)?;
+            let index = article_svc::load_index(&project_path)?;
+            let diff = article_svc::compute_article_diff(&index, &scanned);
+
+            if args.dry_run {
+                let data = serde_json::json!({
+                    "added": diff.added,
+                    "removed": diff.removed,
+                    "dry_run": true,
+                });
+                return Ok(CommandOutcome::Success(data));
+            }
+
+            let updated = article_svc::reconcile_articles(&project_path, index, diff)?;
+            article_svc::save_index(&updated, &project_path)?;
+            let article_count = updated.articles.as_ref().map(|a| a.len()).unwrap_or(0);
+
+            let data = serde_json::json!({
+                "articles_count": article_count,
+                "project_path": project_path.to_string_lossy().to_string(),
+            });
+            Ok(CommandOutcome::Success(data))
         }
     }
 }

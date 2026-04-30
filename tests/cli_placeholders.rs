@@ -43,16 +43,13 @@ fn all_leaf_commands_return_placeholder() {
         vec_strings!["project", "status", "demo"],
         vec_strings!["project", "lint"],
         // project index 已实现为真实命令，不在此测试中
-        vec_strings!["article", "new", "Hello"],
-        vec_strings!["article", "list"],
-        vec_strings!["article", "lint"],
-        vec_strings!["article", "index"],
+        // article new/list/index/lint 已实现，不在此测试中
         vec_strings!["term", "list"],
         vec_strings!["term", "new", "CLI"],
         vec_strings!["term", "lint"],
         vec_strings!["term", "learn", "--original", "cli", "--correct", "CLI"],
         vec_strings!["term", "fix", "CLI"],
-        vec_strings!["build", "article-name"],
+        // build 已实现，不在此测试中
         vec_strings!["publish", "run", "docs/foo.md"],
         vec_strings!["publish", "update", "docs/foo.md"],
         // config 命令已实现为真实命令，不在此测试中
@@ -67,20 +64,6 @@ fn all_leaf_commands_return_placeholder() {
 #[test]
 fn completion_is_real_command() {
     Command::cargo_bin("mf").expect("binary exists").args(["completion", "zsh"]).assert().code(0);
-}
-
-#[test]
-fn build_invalid_article_returns_usage_error() {
-    let repo = common::setup_repo();
-    let output = Command::cargo_bin("mf")
-        .expect("binary exists")
-        .current_dir(repo.path())
-        .args(["build", ""])
-        .output()
-        .expect("command runs");
-    assert_eq!(output.status.code(), Some(2), "empty article should be usage error");
-    let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
-    assert!(stderr.contains("mf article list"), "hint should mention mf article list");
 }
 
 #[test]

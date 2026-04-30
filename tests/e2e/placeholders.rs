@@ -38,15 +38,13 @@ fn all_leaf_commands_are_placeholders() {
         vec_strings!["project", "status", "demo"],
         vec_strings!["project", "lint"],
         // project index 已实现为真实命令，不在此测试中
-        vec_strings!["article", "new", "Hello"],
-        vec_strings!["article", "list"],
-        vec_strings!["article", "lint"],
-        vec_strings!["article", "index"],
+        // article new/list/index/lint 已实现为真实命令，不在此测试中
         vec_strings!["term", "list"],
         vec_strings!["term", "new", "CLI"],
         vec_strings!["term", "lint"],
         vec_strings!["term", "learn", "--original", "cli", "--correct", "CLI"],
         vec_strings!["term", "fix", "CLI"],
+        // build 已实现为真实命令，不在此测试中
     ];
 
     for case in &cases {

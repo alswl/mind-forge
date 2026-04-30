@@ -47,11 +47,86 @@ pub fn try_canonicalize(path: &Path) -> PathBuf {
     match path.canonicalize() {
         Ok(p) => p,
         Err(e) => {
-            // Canonicalization can fail when the path does not exist or
-            // a component is inaccessible.  The caller must still have
-            // a path to work with, so we fall back to the raw path.
             tracing::debug!("canonicalize failed for {}: {e}; using raw path", path.display());
             path.to_path_buf()
+        }
+    }
+}
+
+/// Detect the current project name from `cwd` within a `repo_root`.
+///
+/// Walks up from `cwd` looking for `mind.yaml`, stopping at the `repo_root`
+/// boundary. Returns the directory name containing `mind.yaml`, or `None`.
+pub fn detect_current_project(repo_root: &Path, cwd: &Path) -> Option<String> {
+    let repo = try_canonicalize(repo_root);
+    let mut current = try_canonicalize(cwd);
+
+    loop {
+        if current.join("mind.yaml").exists() {
+            return current.file_name().map(|s| s.to_string_lossy().to_string());
+        }
+        if current == repo {
+            return None;
+        }
+        match current.parent() {
+            Some(parent) => current = parent.to_path_buf(),
+            None => return None,
+        }
+    }
+}
+
+/// Sanitize a string to kebab-case for use as a filename.
+pub fn to_filename(raw: &str) -> String {
+    let sanitized: String = raw
+        .to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'a'..='z' | '0'..='9' => c,
+            ' ' | '_' | '.' => '-',
+            _ => '-',
+        })
+        .collect();
+
+    let collapsed: String = sanitized
+        .chars()
+        .fold(String::new(), |mut acc, c| {
+            let last_is_dash = acc.ends_with('-');
+            if c == '-' && last_is_dash {
+                /* skip consecutive dashes */
+            } else {
+                acc.push(c);
+            }
+            acc
+        })
+        .trim_matches('-')
+        .to_string();
+
+    if collapsed.is_empty() {
+        "untitled".to_string()
+    } else {
+        collapsed
+    }
+}
+
+/// Extract the directory name from a path as a string.
+pub fn dir_name(path: &Path) -> String {
+    path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default()
+}
+
+/// Resolve a project path within a repo root.
+///
+/// If `project` is `Some(name)`, joins it under `repo_root`.
+/// If `None`, detects the current project from `cwd` by walking up for `mind.yaml`.
+pub fn resolve_project(repo_root: &Path, project: Option<&str>, cwd: &Path) -> Result<PathBuf> {
+    match project {
+        Some(name) => Ok(repo_root.join(name)),
+        None => {
+            detect_current_project(repo_root, cwd)
+                .ok_or_else(|| MfError::usage(
+                    "could not detect current project; run from a project directory or specify --project",
+                    Some("use `mf project list` to see available projects".to_string()),
+                ))
+                .map(|name| repo_root.join(name))
         }
     }
 }

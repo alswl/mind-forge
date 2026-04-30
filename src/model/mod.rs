@@ -1,11 +1,8 @@
-// 以下模块的类型为未来功能预留，暂未被业务代码引用
-#[allow(dead_code)]
 pub mod article;
 #[allow(dead_code)]
 pub mod asset;
 // config 被 src/service/config.rs 引用，无需 dead_code 豁免
 pub mod config;
-#[allow(dead_code)]
 pub mod index;
 #[allow(dead_code)]
 pub mod project;

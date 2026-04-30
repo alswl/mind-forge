@@ -36,3 +36,16 @@ pub struct IndexFile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub publish_records: Option<Vec<PublishRecord>>,
 }
+
+impl IndexFile {
+    pub fn create_default() -> Self {
+        Self {
+            schema_version: "1".to_string(),
+            sources: None,
+            assets: None,
+            articles: None,
+            terms: None,
+            publish_records: None,
+        }
+    }
+}
