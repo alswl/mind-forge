@@ -5,7 +5,7 @@ use chrono::Utc;
 
 use crate::error::{MfError, Result};
 use crate::model::article::{
-    Article, ArticleDiff, ArticleStatus, ArticleType, LintIssue, LintKind, ScannedArticle, Severity,
+    Article, ArticleDiff, ArticleStatus, ArticleType, LintIssue, ScannedArticle,
 };
 use crate::model::index::IndexFile;
 use crate::service::util;
@@ -115,11 +115,7 @@ pub fn scan_docs(project_path: &Path) -> Result<Vec<ScannedArticle>> {
 
     let mut scanned = Vec::new();
     let entries = fs::read_dir(&docs_dir).map_err(MfError::Io)?;
-    for entry in entries {
-        let entry = entry.map_err(|e| {
-            tracing::warn!("failed to read directory entry in {}: {e}", docs_dir.display());
-            MfError::Io(e)
-        })?;
+    for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) == Some("md") {
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
@@ -133,35 +129,37 @@ pub fn scan_docs(project_path: &Path) -> Result<Vec<ScannedArticle>> {
 
 /// Compare the index against a filesystem scan to find added/removed articles.
 pub fn compute_article_diff(index: &IndexFile, scanned: &[ScannedArticle]) -> ArticleDiff {
-    let scanned_names: std::collections::HashSet<&str> =
-        scanned.iter().map(|s| s.filename.as_str()).collect();
-
     let mut added = Vec::new();
     let mut removed = Vec::new();
 
-    if let Some(ref articles) = index.articles {
-        let mut index_names: std::collections::HashSet<&str> =
-            std::collections::HashSet::with_capacity(articles.len());
+    let index_names: std::collections::HashSet<&str> = index
+        .articles
+        .as_ref()
+        .map(|a| {
+            a.iter()
+                .filter_map(|a| {
+                    a.source_path.strip_prefix("docs/").and_then(|s| s.strip_suffix(".md"))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
-        for a in articles {
-            if let Some(name) =
-                a.source_path.strip_prefix("docs/").and_then(|s| s.strip_suffix(".md"))
-            {
-                index_names.insert(name);
-                if !scanned_names.contains(name) {
-                    removed.push(a.clone());
-                }
+    let scanned_names: std::collections::HashSet<&str> =
+        scanned.iter().map(|s| s.filename.as_str()).collect();
+
+    for a in index.articles.iter().flat_map(|a| a.iter()) {
+        if let Some(name) = a.source_path.strip_prefix("docs/").and_then(|s| s.strip_suffix(".md"))
+        {
+            if !scanned_names.contains(name) {
+                removed.push(a.clone());
             }
         }
+    }
 
-        for s in scanned {
-            if !index_names.contains(s.filename.as_str()) {
-                added.push(s.clone());
-            }
+    for s in scanned {
+        if !index_names.contains(s.filename.as_str()) {
+            added.push(s.clone());
         }
-    } else {
-        // No existing index — all scanned files are additions
-        added.extend(scanned.iter().cloned());
     }
 
     ArticleDiff { added, removed }
@@ -211,20 +209,18 @@ pub fn lint_articles(project_path: &Path, fix: bool) -> Result<Vec<LintIssue>> {
     let mut issues = Vec::new();
 
     let entries = fs::read_dir(&docs_dir).map_err(MfError::Io)?;
-    for entry in entries {
-        let entry = entry.map_err(|e| {
-            tracing::warn!("failed to read directory entry in {}: {e}", docs_dir.display());
-            MfError::Io(e)
-        })?;
+    for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;
         }
         if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+            let rel_path = format!("docs/{}.md", stem);
+
             // Check content before filename (filename may rename the file)
-            check_content(&mut issues, &path, stem)?;
+            check_content(&mut issues, &path, &rel_path)?;
             // Check filename convention: lowercase with hyphens only
-            check_filename(&mut issues, stem, fix, &path)?;
+            check_filename(&mut issues, stem, &rel_path, fix, &path)?;
         }
     }
 
@@ -234,6 +230,7 @@ pub fn lint_articles(project_path: &Path, fix: bool) -> Result<Vec<LintIssue>> {
 fn check_filename(
     issues: &mut Vec<LintIssue>,
     stem: &str,
+    rel_path: &str,
     fix: bool,
     full_path: &Path,
 ) -> Result<()> {
@@ -244,19 +241,19 @@ fn check_filename(
             .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' })
             .collect::<String>();
 
-        let expected_name = format!("{expected}.md");
         issues.push(LintIssue {
-            severity: Severity::Warning,
-            kind: LintKind::FilenameConvention,
+            severity: "warning".to_string(),
+            kind: "filename_convention".to_string(),
             message: format!(
-                "filename '{stem}' should be lowercase with hyphens (suggest: '{expected_name}')"
+                "filename '{}' should be lowercase with hyphens (suggest: '{}.md')",
+                stem, expected
             ),
-            path: format!("docs/{stem}.md"),
+            path: rel_path.to_string(),
             fixable: true,
         });
 
         if fix {
-            let new_path = full_path.with_file_name(&expected_name);
+            let new_path = full_path.with_file_name(format!("{}.md", expected));
             if !new_path.exists() {
                 fs::rename(full_path, &new_path).map_err(MfError::Io)?;
             }
@@ -265,15 +262,15 @@ fn check_filename(
     Ok(())
 }
 
-fn check_content(issues: &mut Vec<LintIssue>, full_path: &Path, stem: &str) -> Result<()> {
+fn check_content(issues: &mut Vec<LintIssue>, full_path: &Path, rel_path: &str) -> Result<()> {
     let content = fs::read_to_string(full_path).map_err(MfError::Io)?;
 
     if content.trim().is_empty() {
         issues.push(LintIssue {
-            severity: Severity::Error,
-            kind: LintKind::EmptyFile,
+            severity: "error".to_string(),
+            kind: "empty_file".to_string(),
             message: "article file is empty".to_string(),
-            path: format!("docs/{stem}.md"),
+            path: rel_path.to_string(),
             fixable: false,
         });
     }
