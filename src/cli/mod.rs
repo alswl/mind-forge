@@ -34,6 +34,8 @@ pub struct RootCli {
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct GlobalOpts {
     #[arg(long, global = true, value_name = "PATH")]
+    pub root: Option<PathBuf>,
+    #[arg(long, global = true, value_name = "PATH")]
     pub config: Option<PathBuf>,
     #[arg(short = 'v', long = "verbose", global = true, action = ArgAction::Count)]
     pub verbose: u8,
@@ -84,12 +86,15 @@ pub enum CommandOutcome {
     GroupHelp(HelpTarget),
     Completion(clap_complete::Shell),
     Placeholder(PlaceholderInvocation),
-    Success(serde_json::Value),
+    /// Successful command execution. The optional exit code overrides the default 0
+    /// (used by commands like `lint` that signal issues via non-zero exit codes).
+    Success(serde_json::Value, Option<u8>),
     /// Pre-serialized string content for raw output (e.g. YAML/JSON config).
     ///
     /// In text mode the string is printed as-is; in JSON mode it is embedded
     /// directly into the `{ status, data }` envelope, avoiding double-encoding.
-    Raw(String),
+    /// Optional exit code overrides the default 0.
+    Raw(String, Option<u8>),
 }
 
 impl RootCli {

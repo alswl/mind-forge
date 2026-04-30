@@ -32,19 +32,15 @@ fn all_leaf_commands_are_placeholders() {
         vec_strings!["asset", "add", "placeholder.pdf"],
         vec_strings!["asset", "update", "placeholder.pdf"],
         vec_strings!["asset", "index"],
-        vec_strings!["project", "new", "demo", "--force"],
-        vec_strings!["project", "list"],
-        vec_strings!["project", "archive", "demo"],
-        vec_strings!["project", "status", "demo"],
-        vec_strings!["project", "lint"],
-        // project index 已实现为真实命令，不在此测试中
-        // article new/list/index/lint 已实现为真实命令，不在此测试中
+        // project archive uses not-implemented error (exit 64 via stderr), not placeholder path
+        // project new/list/status/lint/index 已实现
+        // article new/list/index/lint 已实现
         vec_strings!["term", "list"],
         vec_strings!["term", "new", "CLI"],
         vec_strings!["term", "lint"],
         vec_strings!["term", "learn", "--original", "cli", "--correct", "CLI"],
         vec_strings!["term", "fix", "CLI"],
-        // build 已实现为真实命令，不在此测试中
+        // build 已实现
     ];
 
     for case in &cases {

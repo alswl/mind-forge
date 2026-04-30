@@ -24,7 +24,14 @@ impl AppContext {
         let config_path = config_path::resolve(global.config.as_ref())?;
         let color_enabled = color::is_color_enabled(global);
 
-        let repo_root = if let Some(ref cfg) = global.config {
+        let repo_root = if let Some(ref root) = global.root {
+            let canonical = root.canonicalize().map_err(|_| MfError::not_in_mind_repo())?;
+            if !canonical.join("minds.yaml").exists() {
+                return Err(MfError::not_in_mind_repo());
+            }
+            tracing::debug!("repo root via --root: {}", canonical.display());
+            Some(canonical)
+        } else if let Some(ref cfg) = global.config {
             if cfg.exists() {
                 repo::detect_repo_root_with_config(cfg)
             } else {

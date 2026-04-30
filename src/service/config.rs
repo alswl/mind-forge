@@ -327,11 +327,13 @@ mod tests {
     #[test]
     fn test_merge_project_overlay_some() {
         let base = MindConfig::default();
-        let mut overlay = MindConfig::default();
-        overlay.project = Some(ProjectMeta {
-            name: "my-project".to_string(),
-            created_at: Some("2026-01-01T00:00:00Z".to_string()),
-        });
+        let overlay = MindConfig {
+            project: Some(ProjectMeta {
+                name: "my-project".to_string(),
+                created_at: Some("2026-01-01T00:00:00Z".to_string()),
+            }),
+            ..Default::default()
+        };
         let result = merge(base, overlay);
         assert_eq!(result.project.unwrap().name, "my-project");
     }

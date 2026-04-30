@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 46
 expression: stdout
 ---
 Manage configuration
@@ -13,6 +12,7 @@ Commands:
   init    Initialize config file
 
 Options:
+      --root <PATH>      
       --config <PATH>    
   -v, --verbose...       
   -q, --quiet            

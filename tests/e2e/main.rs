@@ -5,4 +5,5 @@ mod global_flags;
 mod helpers;
 mod placeholders;
 mod project_index;
+mod project_lifecycle;
 mod repo_lifecycle;

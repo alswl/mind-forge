@@ -16,7 +16,12 @@ fn assert_exit_64(args: &[&str], repo: &common::TempDir) {
         output.status.code()
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
-    assert!(stdout.contains("[not implemented]"), "args {args:?}, stdout: {stdout}");
+    let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
+    let all = stdout + &stderr;
+    assert!(
+        all.contains("[not implemented]") || all.contains("not yet implemented"),
+        "args {args:?}, stdout+stderr: {all}"
+    );
 }
 
 macro_rules! vec_strings {
@@ -37,22 +42,20 @@ fn all_leaf_commands_return_placeholder() {
         vec_strings!["asset", "add", "placeholder.pdf"],
         vec_strings!["asset", "update", "placeholder.pdf"],
         vec_strings!["asset", "index"],
-        vec_strings!["project", "new", "demo", "--force"],
-        vec_strings!["project", "list"],
+        // project new/list/status/lint 已实现为真实命令
+        // project archive 仍为 placeholder（exit 64 通过 not-implemented 错误）
         vec_strings!["project", "archive", "demo"],
-        vec_strings!["project", "status", "demo"],
-        vec_strings!["project", "lint"],
-        // project index 已实现为真实命令，不在此测试中
-        // article new/list/index/lint 已实现，不在此测试中
+        // project index 已实现为真实命令
+        // article new/list/index/lint 已实现
         vec_strings!["term", "list"],
         vec_strings!["term", "new", "CLI"],
         vec_strings!["term", "lint"],
         vec_strings!["term", "learn", "--original", "cli", "--correct", "CLI"],
         vec_strings!["term", "fix", "CLI"],
-        // build 已实现，不在此测试中
+        // build 已实现
         vec_strings!["publish", "run", "docs/foo.md"],
         vec_strings!["publish", "update", "docs/foo.md"],
-        // config 命令已实现为真实命令，不在此测试中
+        // config 已实现
     ];
 
     for case in &cases {

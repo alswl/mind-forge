@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 25
 expression: stdout
 ---
 Manage content sources
@@ -16,6 +15,7 @@ Commands:
   clean   Clean source index
 
 Options:
+      --root <PATH>      
       --config <PATH>    
   -v, --verbose...       
   -q, --quiet            

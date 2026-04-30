@@ -16,3 +16,13 @@ pub fn create_project(repo: &TempDir, name: &str) {
     fs::create_dir_all(&project_dir).unwrap();
     fs::write(project_dir.join("mind.yaml"), "schema_version: '1'\n").unwrap();
 }
+
+/// 在项目目录中写入 mind-index.yaml
+#[allow(dead_code)]
+pub fn write_index(repo: &TempDir, name: &str, yaml: &str) {
+    let index_path = repo.path().join(name).join("mind-index.yaml");
+    if let Some(parent) = index_path.parent() {
+        fs::create_dir_all(parent).unwrap();
+    }
+    fs::write(&index_path, yaml).unwrap();
+}

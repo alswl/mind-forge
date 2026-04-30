@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 32
 expression: stdout
 ---
 Build articles
@@ -11,11 +10,12 @@ Arguments:
   <ARTICLE>  
 
 Options:
-      --config <PATH>      
       --project <PROJECT>  
+      --root <PATH>        
+      --config <PATH>      
       --output <OUTPUT>    
-  -v, --verbose...         
       --dry-run            
+  -v, --verbose...         
   -q, --quiet              
       --format <FORMAT>    [default: text] [possible values: text, json]
       --no-color           

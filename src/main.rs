@@ -78,17 +78,17 @@ fn run(args: Vec<OsString>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> R
             Ok(ExitCode::Ok)
         }
         CommandOutcome::Completion(shell) => cli::completion::render_completion(shell, stdout),
-        CommandOutcome::Success(data) => {
+        CommandOutcome::Success(data, exit_code) => {
             render_success(stdout, context.format, &data)?;
-            Ok(ExitCode::Ok)
+            Ok(ExitCode::from(exit_code.unwrap_or(0)))
         }
         CommandOutcome::Placeholder(invocation) => {
             render_placeholder(stdout, context.format, &invocation, context.color_enabled)?;
             Ok(ExitCode::NotImplemented)
         }
-        CommandOutcome::Raw(content) => {
+        CommandOutcome::Raw(content, exit_code) => {
             render_raw(stdout, context.format, &content)?;
-            Ok(ExitCode::Ok)
+            Ok(ExitCode::from(exit_code.unwrap_or(0)))
         }
     }
     .or_else(|err| {

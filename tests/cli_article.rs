@@ -371,7 +371,7 @@ fn article_index_with_project_flag() {
     std::fs::create_dir_all(&docs).unwrap();
     std::fs::write(docs.join("flagged-article.md"), "# Flagged\ncontent").unwrap();
 
-    let (parsed, output) = json_index(&["--project", "my-project"], &repo.path());
+    let (parsed, output) = json_index(&["--project", "my-project"], repo.path());
     assert_eq!(output.status.code(), Some(0), "should succeed with --project flag");
     assert!(parsed["data"]["articles_count"].as_u64().unwrap_or(0) >= 1);
 }

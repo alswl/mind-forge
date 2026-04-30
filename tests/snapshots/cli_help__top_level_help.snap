@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 18
 expression: stdout
 ---
 mind-forge command line interface
@@ -19,6 +18,7 @@ Commands:
   config      Manage configuration
 
 Options:
+      --root <PATH>      
       --config <PATH>    
   -v, --verbose...       
   -q, --quiet            

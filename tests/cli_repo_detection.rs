@@ -17,7 +17,7 @@ fn test_in_repo_succeeds() {
     let dir = common::setup_repo();
     let mut cmd = Command::cargo_bin("mf").unwrap();
     cmd.current_dir(dir.path()).arg("project").arg("list");
-    cmd.assert().code(predicate::eq(64));
+    cmd.assert().code(predicate::eq(0));
 }
 
 #[test]
@@ -51,7 +51,7 @@ fn test_repo_subdirectory_detection() {
     fs::create_dir_all(&sub).unwrap();
     let mut cmd = Command::cargo_bin("mf").unwrap();
     cmd.current_dir(&sub).arg("project").arg("list");
-    cmd.assert().code(predicate::eq(64));
+    cmd.assert().code(predicate::eq(0));
 }
 
 #[test]
@@ -67,5 +67,5 @@ fn test_config_flag_overrides_search() {
         .arg(repo_dir.path().join("mf.yaml"))
         .arg("project")
         .arg("list");
-    cmd.assert().code(predicate::eq(64));
+    cmd.assert().code(predicate::eq(0));
 }

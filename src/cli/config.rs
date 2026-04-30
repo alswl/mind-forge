@@ -61,7 +61,7 @@ pub fn dispatch(
 
 fn handle_schema(args: ConfigSchemaArgs) -> Result<CommandOutcome> {
     let output = service::config::schema_output(&args.output_format)?;
-    Ok(CommandOutcome::Raw(output))
+    Ok(CommandOutcome::Raw(output, None))
 }
 
 fn handle_show(args: ConfigShowArgs, repo_root: Option<&PathBuf>) -> Result<CommandOutcome> {
@@ -70,7 +70,7 @@ fn handle_show(args: ConfigShowArgs, repo_root: Option<&PathBuf>) -> Result<Comm
     })?;
     let output =
         service::config::show_effective(&cwd, repo_root.map(|p| p.as_path()), &args.output_format)?;
-    Ok(CommandOutcome::Raw(output))
+    Ok(CommandOutcome::Raw(output, None))
 }
 
 fn handle_init(args: ConfigInitArgs) -> Result<CommandOutcome> {
@@ -80,7 +80,10 @@ fn handle_init(args: ConfigInitArgs) -> Result<CommandOutcome> {
     let output_path = args.output.clone();
     let path =
         service::config::init_config(&cwd, output_path.as_deref(), &args.target, args.force)?;
-    Ok(CommandOutcome::Success(serde_json::json!({
-        "path": path.to_string_lossy().to_string(),
-    })))
+    Ok(CommandOutcome::Success(
+        serde_json::json!({
+            "path": path.to_string_lossy().to_string(),
+        }),
+        None,
+    ))
 }

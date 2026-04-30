@@ -45,7 +45,7 @@ pub fn dispatch(
                 "size_bytes": plan.size_bytes,
                 "dry_run": true,
             });
-            Ok(CommandOutcome::Success(data))
+            Ok(CommandOutcome::Success(data, None))
         }
         build_svc::BuildOutput::Content(content) => {
             if let Some(output_path) = args.output {
@@ -54,7 +54,7 @@ pub fn dispatch(
                     "output": output_path.to_string_lossy().to_string(),
                     "size_bytes": content.len(),
                 });
-                Ok(CommandOutcome::Success(data))
+                Ok(CommandOutcome::Success(data, None))
             } else {
                 // Print content directly in text mode
                 match format {
@@ -64,9 +64,9 @@ pub fn dispatch(
                             "content": content,
                             "size_bytes": content.len(),
                         });
-                        Ok(CommandOutcome::Success(data))
+                        Ok(CommandOutcome::Success(data, None))
                     }
-                    Format::Text => Ok(CommandOutcome::Raw(content)),
+                    Format::Text => Ok(CommandOutcome::Raw(content, None)),
                 }
             }
         }

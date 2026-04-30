@@ -79,8 +79,8 @@ fn repo_boundary_detection() {
     let outside = Dataset::outside();
 
     // 在 repo 内
-    let (_, _, code) = run_in(ds.root(), &["project", "list"]);
-    assert_eq!(code, 64, "in repo root");
+    let (stdout, _, code) = run_in(ds.root(), &["project", "list"]);
+    assert_eq!(code, 0, "in repo root, list should succeed: {stdout}");
 
     // 在 repo 上级目录（parent of repo dir）
     let (_, stderr, code) = run_in(outside.path(), &["project", "list"]);
@@ -93,9 +93,10 @@ fn repo_boundary_detection() {
 fn empty_minds_yaml_still_in_repo() {
     let ds = Dataset::empty_manifest();
 
-    // project list 不读取 manifest，只检测 minds.yaml 存在
-    let (_, _, code) = run_in(ds.root(), &["project", "list"]);
-    assert_eq!(code, 64, "repo detected, placeholder returned");
+    // project list 读取 manifest，空文件应报 parse error
+    let (_, stderr, code) = run_in(ds.root(), &["project", "list"]);
+    assert_eq!(code, 1, "parse error from empty manifest");
+    assert!(stderr.contains("parse error"), "stderr: {stderr}");
 
     // project index 读取 manifest，应报 parse error
     let (_, stderr, code) = run_in(ds.root(), &["project", "index"]);
@@ -108,9 +109,10 @@ fn empty_minds_yaml_still_in_repo() {
 fn incompatible_schema_reports_error() {
     let ds = Dataset::incompatible_schema();
 
-    // project list 不读取 manifest，不报错
-    let (_, _, code) = run_in(ds.root(), &["project", "list"]);
-    assert_eq!(code, 64, "list does not read manifest");
+    // project list 现在读取 manifest，应报错
+    let (_, stderr, code) = run_in(ds.root(), &["project", "list"]);
+    assert_eq!(code, 1, "list now reads manifest -> incompatible schema error");
+    assert!(stderr.contains("incompatible schema"), "stderr: {stderr}");
 
     // project index 读取 manifest，应报错
     let (_, stderr, code) = run_in(ds.root(), &["project", "index"]);

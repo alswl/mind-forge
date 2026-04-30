@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 53
 expression: stdout
 ---
 Manage projects
@@ -10,12 +9,13 @@ Usage: mf project [OPTIONS] [COMMAND]
 Commands:
   new      Create a project
   list     List projects
-  archive  Archive a project
+  archive  Archive a project (not yet implemented)
   status   Show project status
   lint     Lint a project
   index    Index projects
 
 Options:
+      --root <PATH>      
       --config <PATH>    
   -v, --verbose...       
   -q, --quiet            

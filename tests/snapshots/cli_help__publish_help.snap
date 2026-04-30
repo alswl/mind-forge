@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 60
 expression: stdout
 ---
 Publish articles
@@ -12,6 +11,7 @@ Commands:
   update  Update publish record
 
 Options:
+      --root <PATH>      
       --config <PATH>    
   -v, --verbose...       
   -q, --quiet            

@@ -103,19 +103,20 @@ pub fn dispatch(
                 "path": format!("docs/{}.md", filename),
                 "draft": args.draft,
             });
-            Ok(CommandOutcome::Success(data))
+            Ok(CommandOutcome::Success(data, None))
         }
         Some(ArticleSubcommand::List(args)) => {
             let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
             let articles = article_svc::list_articles(&project_path)?;
 
             match format {
-                Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&articles)?)),
+                Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&articles)?, None)),
                 Format::Text => {
                     if articles.is_empty() {
-                        return Ok(CommandOutcome::Success(serde_json::json!(
-                            "No articles found."
-                        )));
+                        return Ok(CommandOutcome::Success(
+                            serde_json::json!("No articles found."),
+                            None,
+                        ));
                     }
                     let mut lines = Vec::new();
                     for a in &articles {
@@ -125,7 +126,7 @@ pub fn dispatch(
                         };
                         lines.push(format!("{}  {}  {}", a.title, a.source_path, status));
                     }
-                    Ok(CommandOutcome::Raw(lines.join("\n")))
+                    Ok(CommandOutcome::Raw(lines.join("\n"), None))
                 }
             }
         }
@@ -134,10 +135,13 @@ pub fn dispatch(
             let issues = article_svc::lint_articles(&project_path, args.fix)?;
 
             match format {
-                Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&issues)?)),
+                Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&issues)?, None)),
                 Format::Text => {
                     if issues.is_empty() {
-                        return Ok(CommandOutcome::Success(serde_json::json!("No issues found.")));
+                        return Ok(CommandOutcome::Success(
+                            serde_json::json!("No issues found."),
+                            None,
+                        ));
                     }
                     let mut lines = Vec::new();
                     for issue in &issues {
@@ -146,7 +150,7 @@ pub fn dispatch(
                             issue.severity, issue.kind, issue.message, issue.path
                         ));
                     }
-                    Ok(CommandOutcome::Raw(lines.join("\n")))
+                    Ok(CommandOutcome::Raw(lines.join("\n"), None))
                 }
             }
         }
@@ -162,7 +166,7 @@ pub fn dispatch(
                     "removed": diff.removed,
                     "dry_run": true,
                 });
-                return Ok(CommandOutcome::Success(data));
+                return Ok(CommandOutcome::Success(data, None));
             }
 
             let updated = article_svc::reconcile_articles(&project_path, index, diff)?;
@@ -173,7 +177,7 @@ pub fn dispatch(
                 "articles_count": article_count,
                 "project_path": project_path.to_string_lossy().to_string(),
             });
-            Ok(CommandOutcome::Success(data))
+            Ok(CommandOutcome::Success(data, None))
         }
     }
 }
