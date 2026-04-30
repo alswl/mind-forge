@@ -27,6 +27,8 @@ pub enum MfError {
     FileExists { path: PathBuf },
     #[error("{feature} is not yet implemented")]
     NotImplemented { feature: String },
+    #[error("{message}")]
+    NotFound { message: String, hint: Option<String> },
 }
 
 impl MfError {
@@ -49,13 +51,18 @@ impl MfError {
         Self::NotImplemented { feature: feature.into() }
     }
 
+    pub fn not_found(message: impl Into<String>, hint: Option<String>) -> Self {
+        Self::NotFound { message: message.into(), hint }
+    }
+
     pub fn exit_code(&self) -> ExitCode {
         match self {
             Self::Usage { .. } => ExitCode::UsageError,
             Self::NotInMindRepo { .. }
             | Self::IncompatibleSchema { .. }
             | Self::ParseError { .. }
-            | Self::FileExists { .. } => ExitCode::Failure,
+            | Self::FileExists { .. }
+            | Self::NotFound { .. } => ExitCode::Failure,
             Self::NotImplemented { .. } => ExitCode::NotImplemented,
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => ExitCode::Failure,
         }
@@ -69,6 +76,7 @@ impl MfError {
             Self::ParseError { .. } => "parse-error",
             Self::FileExists { .. } => "file-exists",
             Self::NotImplemented { .. } => "not-implemented",
+            Self::NotFound { .. } => "not-found",
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => "internal",
         }
     }
@@ -80,7 +88,8 @@ impl MfError {
             | Self::IncompatibleSchema { .. }
             | Self::ParseError { .. }
             | Self::FileExists { .. }
-            | Self::NotImplemented { .. } => self.to_string(),
+            | Self::NotImplemented { .. }
+            | Self::NotFound { .. } => self.to_string(),
             Self::Internal(error) => error.to_string(),
             Self::Io(error) => error.to_string(),
             Self::Json(error) => error.to_string(),
@@ -97,6 +106,7 @@ impl MfError {
             Self::ParseError { .. } => Some("check the file format and try again"),
             Self::FileExists { .. } => Some("pass --force to overwrite"),
             Self::NotImplemented { .. } => Some("tracked for future ROADMAP iteration"),
+            Self::NotFound { hint, .. } => hint.as_deref(),
             _ => None,
         }
     }

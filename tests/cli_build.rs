@@ -1,4 +1,5 @@
 use assert_cmd::Command;
+use predicates::str;
 
 mod common;
 
@@ -16,15 +17,19 @@ fn build_succeeds_with_article() {
         .success();
 
     // Now build it
-    let output = Command::cargo_bin("mf")
+    Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
         .args(["build", "test-article"])
-        .output()
-        .expect("command runs");
-    assert_eq!(output.status.code(), Some(0), "build should succeed");
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Test Article"), "build output should contain article title");
+        .assert()
+        .success()
+        .stdout(str::contains("Article built:"));
+
+    // Verify output file exists at default output path
+    let output_path = repo.path().join("my-project").join("_build").join("test-article.md");
+    assert!(output_path.exists(), "output file should exist at {output_path:?}");
+    let content = std::fs::read_to_string(&output_path).unwrap();
+    assert!(content.contains("Test Article"), "output should contain article title");
 }
 
 #[test]
@@ -39,16 +44,17 @@ fn build_dry_run_shows_plan() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("mf")
+    Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
         .args(["build", "dry-run-test", "--dry-run"])
-        .output()
-        .expect("command runs");
-    assert_eq!(output.status.code(), Some(0));
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("dry_run"));
-    assert!(stdout.contains("size_bytes"));
+        .assert()
+        .success()
+        .stdout(str::contains("Build Plan:"));
+
+    // Verify no output file was created
+    let output_path = repo.path().join("my-project").join("_build").join("dry-run-test.md");
+    assert!(!output_path.exists(), "dry-run should not create output file");
 }
 
 #[test]
@@ -62,7 +68,7 @@ fn build_non_existent_article_fails() {
         .args(["build", "non-existent"])
         .output()
         .expect("command runs");
-    assert_eq!(output.status.code(), Some(2), "should fail for non-existent article");
+    assert_eq!(output.status.code(), Some(1), "should fail with exit 1 for non-existent article");
 }
 
 #[test]

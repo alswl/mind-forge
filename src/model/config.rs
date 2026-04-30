@@ -49,16 +49,26 @@ pub struct BuildConfig {
     pub output_dir: String,
     #[serde(default)]
     pub merge_order: Vec<String>,
+    #[serde(default = "default_build_format")]
+    pub format: String,
 }
 
 impl Default for BuildConfig {
     fn default() -> Self {
-        Self { output_dir: default_output_dir(), merge_order: Vec::new() }
+        Self {
+            output_dir: default_output_dir(),
+            merge_order: Vec::new(),
+            format: default_build_format(),
+        }
     }
 }
 
 fn default_output_dir() -> String {
     "_build".to_string()
+}
+
+fn default_build_format() -> String {
+    "md".to_string()
 }
 
 /// Source scanning configuration.
