@@ -53,8 +53,7 @@ fn all_leaf_commands_return_placeholder() {
         vec_strings!["term", "learn", "--original", "cli", "--correct", "CLI"],
         vec_strings!["term", "fix", "CLI"],
         // build 已实现
-        vec_strings!["publish", "run", "docs/foo.md"],
-        vec_strings!["publish", "update", "docs/foo.md"],
+        // publish run / publish update 已实现 (009-publish-mvp)
         // config 已实现
     ];
 

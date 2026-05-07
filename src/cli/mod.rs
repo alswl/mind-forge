@@ -125,7 +125,9 @@ impl RootCli {
             Some(TopLevelCommand::Term(command)) => term::dispatch(command),
             Some(TopLevelCommand::Completion(command)) => completion::dispatch(command),
             Some(TopLevelCommand::Build(args)) => build::dispatch(args, repo_root, format),
-            Some(TopLevelCommand::Publish(command)) => publish::dispatch(command),
+            Some(TopLevelCommand::Publish(command)) => {
+                publish::dispatch(command, repo_root, format)
+            }
             Some(TopLevelCommand::Config(command)) => config::dispatch(command, repo_root, format),
         }
     }

@@ -13,6 +13,8 @@ pub struct ProjectMeta {
 #[serde(rename_all = "snake_case")]
 pub enum PublishTargetType {
     Local,
+    #[serde(rename = "yuque-prompt")]
+    YuquePrompt,
     Yuque,
     GithubPages,
     Custom,
@@ -165,5 +167,55 @@ impl Default for MindConfig {
             term: TermConfig::default(),
             paths: PathsConfig::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn yaml_for(t: PublishTargetType) -> String {
+        let target =
+            PublishTarget { name: "x".to_string(), target_type: t, enabled: true, config: None };
+        serde_yaml::to_string(&target).unwrap()
+    }
+
+    #[test]
+    fn target_type_local_serializes_snake_case() {
+        assert!(yaml_for(PublishTargetType::Local).contains("type: local"));
+    }
+
+    #[test]
+    fn target_type_yuque_prompt_uses_kebab_case() {
+        assert!(yaml_for(PublishTargetType::YuquePrompt).contains("type: yuque-prompt"));
+    }
+
+    #[test]
+    fn target_type_yuque_serializes_snake_case() {
+        assert!(yaml_for(PublishTargetType::Yuque).contains("type: yuque"));
+    }
+
+    #[test]
+    fn target_type_github_pages_keeps_snake_case() {
+        assert!(yaml_for(PublishTargetType::GithubPages).contains("type: github_pages"));
+    }
+
+    #[test]
+    fn target_type_custom_serializes_snake_case() {
+        assert!(yaml_for(PublishTargetType::Custom).contains("type: custom"));
+    }
+
+    #[test]
+    fn target_type_yuque_prompt_round_trips() {
+        let yaml = "name: x\ntype: yuque-prompt\nenabled: true\n";
+        let target: PublishTarget = serde_yaml::from_str(yaml).unwrap();
+        assert!(matches!(target.target_type, PublishTargetType::YuquePrompt));
+    }
+
+    #[test]
+    fn target_type_github_pages_round_trips_snake_case() {
+        let yaml = "name: x\ntype: github_pages\nenabled: true\n";
+        let target: PublishTarget = serde_yaml::from_str(yaml).unwrap();
+        assert!(matches!(target.target_type, PublishTargetType::GithubPages));
     }
 }

@@ -26,7 +26,7 @@ pub enum MfError {
     #[error("refusing to overwrite existing file: {path}")]
     FileExists { path: PathBuf },
     #[error("{feature} is not yet implemented")]
-    NotImplemented { feature: String },
+    NotImplemented { feature: String, hint: Option<String> },
     #[error("{message}")]
     NotFound { message: String, hint: Option<String> },
 }
@@ -48,7 +48,11 @@ impl MfError {
     }
 
     pub fn not_implemented(feature: impl Into<String>) -> Self {
-        Self::NotImplemented { feature: feature.into() }
+        Self::NotImplemented { feature: feature.into(), hint: None }
+    }
+
+    pub fn not_implemented_with_hint(feature: impl Into<String>, hint: impl Into<String>) -> Self {
+        Self::NotImplemented { feature: feature.into(), hint: Some(hint.into()) }
     }
 
     pub fn not_found(message: impl Into<String>, hint: Option<String>) -> Self {
@@ -105,7 +109,9 @@ impl MfError {
             }
             Self::ParseError { .. } => Some("check the file format and try again"),
             Self::FileExists { .. } => Some("pass --force to overwrite"),
-            Self::NotImplemented { .. } => Some("tracked for future ROADMAP iteration"),
+            Self::NotImplemented { hint, .. } => {
+                hint.as_deref().or(Some("tracked for future ROADMAP iteration"))
+            }
             Self::NotFound { hint, .. } => hint.as_deref(),
             _ => None,
         }

@@ -6,6 +6,7 @@ pub mod config;
 pub mod index;
 #[allow(dead_code)]
 pub mod project;
+pub mod publish;
 #[allow(dead_code)]
 pub mod source;
 #[allow(dead_code)]

@@ -7,8 +7,8 @@ Publish articles
 Usage: mf publish [OPTIONS] [COMMAND]
 
 Commands:
-  run     Publish a file to a target
-  update  Update publish record
+  run     Publish article to a target (supported: local, yuque-prompt)
+  update  Update a publish_records entry in mind-index.yaml
 
 Options:
       --root <PATH>      
