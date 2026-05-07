@@ -38,10 +38,7 @@ fn all_leaf_commands_return_placeholder() {
         vec_strings!["source", "index"],
         vec_strings!["source", "remove", "placeholder.pdf"],
         vec_strings!["source", "clean"],
-        vec_strings!["asset", "list"],
-        vec_strings!["asset", "add", "placeholder.pdf"],
-        vec_strings!["asset", "update", "placeholder.pdf"],
-        vec_strings!["asset", "index"],
+        // asset * 已实现为真实命令（010-asset-core）
         // project new/list/status/lint 已实现为真实命令
         // project archive 仍为 placeholder（exit 64 通过 not-implemented 错误）
         vec_strings!["project", "archive", "demo"],

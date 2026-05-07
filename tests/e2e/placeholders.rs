@@ -28,10 +28,7 @@ fn all_leaf_commands_are_placeholders() {
         vec_strings!["source", "index"],
         vec_strings!["source", "remove", "placeholder.pdf"],
         vec_strings!["source", "clean"],
-        vec_strings!["asset", "list"],
-        vec_strings!["asset", "add", "placeholder.pdf"],
-        vec_strings!["asset", "update", "placeholder.pdf"],
-        vec_strings!["asset", "index"],
+        // asset * 已实现为真实命令（010-asset-core）
         // project archive uses not-implemented error (exit 64 via stderr), not placeholder path
         // project new/list/status/lint/index 已实现
         // article new/list/index/lint 已实现

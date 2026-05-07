@@ -1,0 +1,26 @@
+---
+source: tests/cli_help.rs
+assertion_line: 74
+expression: stdout
+---
+Add an asset
+
+Usage: mf asset add [OPTIONS] <PATH>
+
+Arguments:
+  <PATH>  
+
+Options:
+      --root <PATH>        
+      --tag <TAG>          
+      --config <PATH>      
+      --copy               
+      --link               
+  -v, --verbose...         
+      --force              
+  -q, --quiet              
+      --project <PROJECT>  
+      --format <FORMAT>    [default: text] [possible values: text, json]
+      --no-color           
+  -h, --help               Print help
+  -V, --version            Print version

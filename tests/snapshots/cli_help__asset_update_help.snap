@@ -1,0 +1,23 @@
+---
+source: tests/cli_help.rs
+assertion_line: 88
+expression: stdout
+---
+Update assets
+
+Usage: mf asset update [OPTIONS] [PATH]
+
+Arguments:
+  [PATH]  
+
+Options:
+      --all                
+      --root <PATH>        
+      --config <PATH>      
+      --project <PROJECT>  
+      --format <FORMAT>    [default: text] [possible values: text, json]
+  -v, --verbose...         
+  -q, --quiet              
+      --no-color           
+  -h, --help               Print help
+  -V, --version            Print version

@@ -1,0 +1,21 @@
+---
+source: tests/cli_help.rs
+assertion_line: 95
+expression: stdout
+---
+Index assets
+
+Usage: mf asset index [OPTIONS]
+
+Options:
+      --dry-run            
+      --root <PATH>        
+      --config <PATH>      
+      --refresh-metadata   
+      --project <PROJECT>  
+  -v, --verbose...         
+      --format <FORMAT>    [default: text] [possible values: text, json]
+  -q, --quiet              
+      --no-color           
+  -h, --help               Print help
+  -V, --version            Print version

@@ -1,0 +1,24 @@
+---
+source: tests/cli_help.rs
+assertion_line: 67
+expression: stdout
+---
+Manage project assets
+
+Usage: mf asset [OPTIONS] [COMMAND]
+
+Commands:
+  list    List assets
+  add     Add an asset
+  update  Update assets
+  index   Index assets
+
+Options:
+      --root <PATH>      
+      --config <PATH>    
+  -v, --verbose...       
+  -q, --quiet            
+      --format <FORMAT>  [default: text] [possible values: text, json]
+      --no-color         
+  -h, --help             Print help
+  -V, --version          Print version

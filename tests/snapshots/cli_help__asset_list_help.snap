@@ -1,0 +1,21 @@
+---
+source: tests/cli_help.rs
+assertion_line: 81
+expression: stdout
+---
+List assets
+
+Usage: mf asset list [OPTIONS]
+
+Options:
+      --filter <FILTER>    
+      --root <PATH>        
+      --config <PATH>      
+      --type <ASSET_TYPE>  [possible values: image, video, audio, other]
+      --project <PROJECT>  
+  -v, --verbose...         
+      --format <FORMAT>    [default: text] [possible values: text, json]
+  -q, --quiet              
+      --no-color           
+  -h, --help               Print help
+  -V, --version            Print version

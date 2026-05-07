@@ -59,3 +59,38 @@ fn publish_help_snapshot() {
     assert_eq!(code, 0);
     assert_snapshot!("publish_help", stdout);
 }
+
+#[test]
+fn asset_help_snapshot() {
+    let (stdout, _, code) = run(&["asset", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("asset_help", stdout);
+}
+
+#[test]
+fn asset_add_help_snapshot() {
+    let (stdout, _, code) = run(&["asset", "add", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("asset_add_help", stdout);
+}
+
+#[test]
+fn asset_list_help_snapshot() {
+    let (stdout, _, code) = run(&["asset", "list", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("asset_list_help", stdout);
+}
+
+#[test]
+fn asset_update_help_snapshot() {
+    let (stdout, _, code) = run(&["asset", "update", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("asset_update_help", stdout);
+}
+
+#[test]
+fn asset_index_help_snapshot() {
+    let (stdout, _, code) = run(&["asset", "index", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("asset_index_help", stdout);
+}
