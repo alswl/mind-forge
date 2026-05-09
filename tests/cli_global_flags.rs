@@ -48,11 +48,11 @@ fn json_placeholder_uses_json_shape() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(dir.path())
-        .args(["--format", "json", "source", "list"])
+        .args(["--format", "json", "term", "list"])
         .assert()
         .code(64)
         .stdout(predicate::str::contains("\"status\": \"not_implemented\""))
-        .stdout(predicate::str::contains("\"command\": \"mf source list\""));
+        .stdout(predicate::str::contains("\"command\": \"mf term list\""));
 }
 
 #[test]

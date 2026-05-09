@@ -1,0 +1,24 @@
+---
+source: tests/cli_help.rs
+assertion_line: 116
+expression: stdout
+---
+Update a source
+
+Usage: mf source update [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  
+
+Options:
+      --rename <RENAME>    
+      --root <PATH>        
+      --config <PATH>      
+      --url <URL>          
+      --project <PROJECT>  
+  -v, --verbose...         
+      --format <FORMAT>    [default: text] [possible values: text, json]
+  -q, --quiet              
+      --no-color           
+  -h, --help               Print help
+  -V, --version            Print version

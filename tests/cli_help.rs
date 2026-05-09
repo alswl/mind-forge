@@ -94,3 +94,45 @@ fn asset_index_help_snapshot() {
     assert_eq!(code, 0);
     assert_snapshot!("asset_index_help", stdout);
 }
+
+#[test]
+fn source_add_help_snapshot() {
+    let (stdout, _, code) = run(&["source", "add", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("source_add_help", stdout);
+}
+
+#[test]
+fn source_list_help_snapshot() {
+    let (stdout, _, code) = run(&["source", "list", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("source_list_help", stdout);
+}
+
+#[test]
+fn source_update_help_snapshot() {
+    let (stdout, _, code) = run(&["source", "update", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("source_update_help", stdout);
+}
+
+#[test]
+fn source_index_help_snapshot() {
+    let (stdout, _, code) = run(&["source", "index", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("source_index_help", stdout);
+}
+
+#[test]
+fn source_remove_help_snapshot() {
+    let (stdout, _, code) = run(&["source", "remove", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("source_remove_help", stdout);
+}
+
+#[test]
+fn source_clean_help_snapshot() {
+    let (stdout, _, code) = run(&["source", "clean", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("source_clean_help", stdout);
+}

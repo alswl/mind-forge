@@ -1,0 +1,21 @@
+---
+source: tests/cli_help.rs
+assertion_line: 109
+expression: stdout
+---
+List sources
+
+Usage: mf source list [OPTIONS]
+
+Options:
+      --filter <FILTER>    
+      --root <PATH>        
+      --config <PATH>      
+      --type <KIND>        [possible values: auto, pdf, file, rss, web]
+      --project <PROJECT>  
+  -v, --verbose...         
+      --format <FORMAT>    [default: text] [possible values: text, json]
+  -q, --quiet              
+      --no-color           
+  -h, --help               Print help
+  -V, --version            Print version

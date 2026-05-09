@@ -5,4 +5,5 @@ pub mod config;
 pub mod project;
 pub mod publish;
 pub mod repo;
+pub mod source;
 pub mod util;

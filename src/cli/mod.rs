@@ -114,7 +114,7 @@ impl RootCli {
     ) -> Result<CommandOutcome> {
         match self.command {
             None => Ok(CommandOutcome::RootHelp),
-            Some(TopLevelCommand::Source(command)) => source::dispatch(command),
+            Some(TopLevelCommand::Source(command)) => source::dispatch(command, repo_root, format),
             Some(TopLevelCommand::Asset(command)) => asset::dispatch(command, repo_root, format),
             Some(TopLevelCommand::Project(command)) => {
                 project::dispatch(command, repo_root, format)

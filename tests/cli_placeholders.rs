@@ -32,12 +32,7 @@ macro_rules! vec_strings {
 fn all_leaf_commands_return_placeholder() {
     let repo = common::setup_repo();
     let cases: Vec<Vec<String>> = vec![
-        vec_strings!["source", "list"],
-        vec_strings!["source", "add", "placeholder.pdf", "--type", "file"],
-        vec_strings!["source", "update", "placeholder.pdf"],
-        vec_strings!["source", "index"],
-        vec_strings!["source", "remove", "placeholder.pdf"],
-        vec_strings!["source", "clean"],
+        // source * 已全部实现为真实命令（011-source-core）
         // asset * 已实现为真实命令（010-asset-core）
         // project new/list/status/lint 已实现为真实命令
         // project archive 仍为 placeholder（exit 64 通过 not-implemented 错误）

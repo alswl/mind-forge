@@ -53,6 +53,21 @@ pub fn try_canonicalize(path: &Path) -> PathBuf {
     }
 }
 
+/// Compute a POSIX-separated relative path from `project_path` to `abs`.
+pub fn rel_posix_path(project_path: &Path, abs: &Path) -> Result<String> {
+    let rel = abs.strip_prefix(project_path).map_err(|_| {
+        MfError::usage(
+            format!(
+                "path '{}' is not under project root '{}'",
+                abs.display(),
+                project_path.display()
+            ),
+            None as Option<String>,
+        )
+    })?;
+    Ok(rel.to_string_lossy().replace('\\', "/"))
+}
+
 /// Detect the current project name from `cwd` within a `repo_root`.
 ///
 /// Walks up from `cwd` looking for `mind.yaml`, stopping at the `repo_root`

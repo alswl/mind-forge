@@ -67,9 +67,10 @@ fn create_minds_yaml_establishes_repo() {
     // 创建 minds.yaml
     fs::write(dir.path().join("minds.yaml"), "schema_version: '1'\nprojects: []\n").unwrap();
 
-    // 现在应有 repo
+    // 现在应有 repo（命令不会报 not-in-mind-repo）
     let (_, _, code) = run_in(dir.path(), &["source", "list"]);
-    assert_eq!(code, 64, "now in repo -> placeholder");
+    assert_ne!(code, 1, "should not report not-in-mind-repo");
+    assert_ne!(code, 64, "source list is no longer a placeholder");
 }
 
 /// E2E: 在 repo 边界测试 — 刚好在 repo 内成功，上一级失败

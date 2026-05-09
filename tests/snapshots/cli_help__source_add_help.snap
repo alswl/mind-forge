@@ -1,0 +1,26 @@
+---
+source: tests/cli_help.rs
+assertion_line: 102
+expression: stdout
+---
+Add a source
+
+Usage: mf source add [OPTIONS] <INPUT>
+
+Arguments:
+  <INPUT>  
+
+Options:
+      --name <NAME>        
+      --root <PATH>        
+      --config <PATH>      
+      --type <KIND>        [default: auto] [possible values: auto, pdf, file, rss, web]
+      --link               
+  -v, --verbose...         
+      --force              
+  -q, --quiet              
+      --project <PROJECT>  
+      --format <FORMAT>    [default: text] [possible values: text, json]
+      --no-color           
+  -h, --help               Print help
+  -V, --version            Print version

@@ -1,0 +1,20 @@
+---
+source: tests/cli_help.rs
+assertion_line: 123
+expression: stdout
+---
+Index sources
+
+Usage: mf source index [OPTIONS]
+
+Options:
+      --dry-run            
+      --root <PATH>        
+      --config <PATH>      
+      --project <PROJECT>  
+      --format <FORMAT>    [default: text] [possible values: text, json]
+  -v, --verbose...         
+  -q, --quiet              
+      --no-color           
+  -h, --help               Print help
+  -V, --version            Print version
