@@ -14,7 +14,7 @@ use clap::{ArgAction, Args, Parser, Subcommand};
 use serde::Serialize;
 
 use crate::error::Result;
-use crate::output::{Format, PlaceholderInvocation};
+use crate::output::Format;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -85,7 +85,6 @@ pub enum CommandOutcome {
     RootHelp,
     GroupHelp(HelpTarget),
     Completion(clap_complete::Shell),
-    Placeholder(PlaceholderInvocation),
     /// Successful command execution. The optional exit code overrides the default 0
     /// (used by commands like `lint` that signal issues via non-zero exit codes).
     Success(serde_json::Value, Option<u8>),
@@ -122,7 +121,7 @@ impl RootCli {
             Some(TopLevelCommand::Article(command)) => {
                 article::dispatch(command, repo_root, format)
             }
-            Some(TopLevelCommand::Term(command)) => term::dispatch(command),
+            Some(TopLevelCommand::Term(command)) => term::dispatch(command, repo_root, format),
             Some(TopLevelCommand::Completion(command)) => completion::dispatch(command),
             Some(TopLevelCommand::Build(args)) => build::dispatch(args, repo_root, format),
             Some(TopLevelCommand::Publish(command)) => {
@@ -136,11 +135,4 @@ impl RootCli {
 /// `mf project index` 可以在 Mind Repo 外运行（用于创建 minds.yaml）
 fn is_project_index(cmd: &project::ProjectCmd) -> bool {
     matches!(cmd.command, Some(project::ProjectSubcommand::Index(_)))
-}
-
-pub fn placeholder(command: &str, args: impl Serialize) -> Result<CommandOutcome> {
-    Ok(CommandOutcome::Placeholder(PlaceholderInvocation::new(
-        command,
-        serde_json::to_value(args)?,
-    )))
 }

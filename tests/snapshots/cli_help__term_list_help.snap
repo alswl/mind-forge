@@ -1,0 +1,19 @@
+---
+source: tests/cli_help.rs
+expression: stdout
+---
+List terms
+
+Usage: mf term list [OPTIONS]
+
+Options:
+      --filter <FILTER>    
+      --root <PATH>        
+      --config <PATH>      
+      --project <PROJECT>  
+      --format <FORMAT>    [default: text] [possible values: text, json]
+  -v, --verbose...         
+  -q, --quiet              
+      --no-color           
+  -h, --help               Print help
+  -V, --version            Print version

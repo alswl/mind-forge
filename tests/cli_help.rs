@@ -136,3 +136,47 @@ fn source_clean_help_snapshot() {
     assert_eq!(code, 0);
     assert_snapshot!("source_clean_help", stdout);
 }
+
+// ── Term help snapshots (012-term-core) ─────────────────────────────────
+
+#[test]
+fn term_help_snapshot() {
+    let (stdout, _, code) = run(&["term", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("term_help", stdout);
+}
+
+#[test]
+fn term_new_help_snapshot() {
+    let (stdout, _, code) = run(&["term", "new", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("term_new_help", stdout);
+}
+
+#[test]
+fn term_list_help_snapshot() {
+    let (stdout, _, code) = run(&["term", "list", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("term_list_help", stdout);
+}
+
+#[test]
+fn term_lint_help_snapshot() {
+    let (stdout, _, code) = run(&["term", "lint", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("term_lint_help", stdout);
+}
+
+#[test]
+fn term_learn_help_snapshot() {
+    let (stdout, _, code) = run(&["term", "learn", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("term_learn_help", stdout);
+}
+
+#[test]
+fn term_fix_help_snapshot() {
+    let (stdout, _, code) = run(&["term", "fix", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("term_fix_help", stdout);
+}

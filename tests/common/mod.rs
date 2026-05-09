@@ -59,3 +59,20 @@ pub fn write_article_index(repo: &TempDir, project_name: &str, article: &str) {
     );
     write_index(repo, project_name, &yaml);
 }
+
+/// 在项目 docs/ 目录中写入 Markdown 文件。
+#[allow(dead_code)]
+pub fn write_doc(repo: &TempDir, project_name: &str, name: &str, content: &str) {
+    let doc_dir = repo.path().join(project_name).join("docs");
+    fs::create_dir_all(&doc_dir).unwrap();
+    fs::write(doc_dir.join(format!("{name}.md")), content).unwrap();
+}
+
+/// 在 mind-index.yaml 中写入一个或多个术语条目。
+/// `terms_yaml` 应为 `terms:` 段内容（不含前导空格），例如：
+/// `"term: Mind Repo\n  definition: desc\n  corrections:\n    - original: mindrepo\n      correct: Mind Repo"`
+#[allow(dead_code)]
+pub fn write_term_index(repo: &TempDir, project_name: &str, terms_yaml: &str) {
+    let yaml = format!("schema_version: '1'\nterms:\n  - {terms_yaml}\n");
+    write_index(repo, project_name, &yaml);
+}

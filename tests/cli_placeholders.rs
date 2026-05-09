@@ -18,10 +18,7 @@ fn assert_exit_64(args: &[&str], repo: &common::TempDir) {
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
     let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
     let all = stdout + &stderr;
-    assert!(
-        all.contains("[not implemented]") || all.contains("not yet implemented"),
-        "args {args:?}, stdout+stderr: {all}"
-    );
+    assert!(all.contains("not yet implemented"), "args {args:?}, stdout+stderr: {all}");
 }
 
 macro_rules! vec_strings {
@@ -29,7 +26,7 @@ macro_rules! vec_strings {
 }
 
 #[test]
-fn all_leaf_commands_return_placeholder() {
+fn all_leaf_commands_return_not_implemented() {
     let repo = common::setup_repo();
     let cases: Vec<Vec<String>> = vec![
         // source * 已全部实现为真实命令（011-source-core）
@@ -39,11 +36,7 @@ fn all_leaf_commands_return_placeholder() {
         vec_strings!["project", "archive", "demo"],
         // project index 已实现为真实命令
         // article new/list/index/lint 已实现
-        vec_strings!["term", "list"],
-        vec_strings!["term", "new", "CLI"],
-        vec_strings!["term", "lint"],
-        vec_strings!["term", "learn", "--original", "cli", "--correct", "CLI"],
-        vec_strings!["term", "fix", "CLI"],
+        // term * 已全部实现为真实命令（012-term-core）
         // build 已实现
         // publish run / publish update 已实现 (009-publish-mvp)
         // config 已实现

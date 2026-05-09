@@ -1,0 +1,24 @@
+---
+source: tests/cli_help.rs
+expression: stdout
+---
+Manage terminology
+
+Usage: mf term [OPTIONS] [COMMAND]
+
+Commands:
+  list   List terms
+  new    Create a term
+  lint   Lint term consistency in project docs
+  learn  Learn a term correction
+  fix    Fix a term metadata
+
+Options:
+      --root <PATH>      
+      --config <PATH>    
+  -v, --verbose...       
+  -q, --quiet            
+      --format <FORMAT>  [default: text] [possible values: text, json]
+      --no-color         
+  -h, --help             Print help
+  -V, --version          Print version

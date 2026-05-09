@@ -1,0 +1,20 @@
+---
+source: tests/cli_help.rs
+expression: stdout
+---
+Lint term consistency in project docs
+
+Usage: mf term lint [OPTIONS]
+
+Options:
+      --fix                
+      --root <PATH>        
+      --config <PATH>      
+      --dry-run            
+      --project <PROJECT>  
+  -v, --verbose...         
+      --format <FORMAT>    [default: text] [possible values: text, json]
+  -q, --quiet              
+      --no-color           
+  -h, --help               Print help
+  -V, --version            Print version

@@ -5,31 +5,29 @@ use crate::helpers::*;
 // --format json 全局 flag
 // ---------------------------------------------------------------------------
 
-/// E2E: --format json 对所有 placeholder 命令输出结构化 JSON
+/// E2E: --format json 对所有命令输出结构化 JSON envelope
 #[test]
-fn json_format_for_placeholder() {
+fn json_format_on_real_command() {
     let ds = Dataset::empty();
 
-    let (stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "term", "list"]);
+    let (_stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "term", "list"]);
 
-    assert_eq!(code, 64);
-    assert!(stderr.is_empty(), "placeholder output to stdout, not stderr");
-    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
-    assert_eq!(parsed["status"], "not_implemented");
-    assert_eq!(parsed["command"], "mf term list");
+    assert_eq!(code, 2, "exit 2 (usage) because no project context, but JSON envelope still valid");
+    // Error JSON envelope goes to stderr
+    let parsed: serde_json::Value = serde_json::from_str(&stderr).expect("valid JSON");
+    assert_eq!(parsed["status"], "error");
+    assert!(parsed.get("error").is_some(), "JSON should contain error field: {parsed}");
 }
 
-/// E2E: 默认 text 格式输出 human-readable 信息
+/// E2E: 默认 text 格式输出
 #[test]
-fn text_format_for_placeholder() {
+fn text_format_on_real_command() {
     let ds = Dataset::empty();
 
-    let (stdout, stderr, code) = run_in(ds.root(), &["term", "list"]);
+    let (_stdout, stderr, code) = run_in(ds.root(), &["term", "list"]);
 
-    assert_eq!(code, 64);
-    assert!(stderr.is_empty(), "text output to stdout: {stderr}");
-    assert!(stdout.contains("[not implemented]"), "stdout: {stdout}");
-    assert!(stdout.contains("mf term list"), "stdout: {stdout}");
+    assert_eq!(code, 2, "exit 2 (usage) because no project context");
+    assert!(stderr.contains("could not detect"), "text error to stderr: {stderr}");
 }
 
 // ---------------------------------------------------------------------------
@@ -41,14 +39,14 @@ fn text_format_for_placeholder() {
 fn verbose_flag_accepted() {
     let ds = Dataset::empty();
 
-    let (_, _, code) = run_in(ds.root(), &["-v", "term", "list"]);
-    assert_eq!(code, 64);
+    let (_, _, code) = run_in(ds.root(), &["-v", "project", "list"]);
+    assert_eq!(code, 0);
 
-    let (_, _, code) = run_in(ds.root(), &["-vv", "term", "list"]);
-    assert_eq!(code, 64);
+    let (_, _, code) = run_in(ds.root(), &["-vv", "project", "list"]);
+    assert_eq!(code, 0);
 
-    let (_, _, code) = run_in(ds.root(), &["--verbose", "term", "list"]);
-    assert_eq!(code, 64);
+    let (_, _, code) = run_in(ds.root(), &["--verbose", "project", "list"]);
+    assert_eq!(code, 0);
 }
 
 /// E2E: --quiet 抑制非必要输出
@@ -56,8 +54,8 @@ fn verbose_flag_accepted() {
 fn quiet_flag_accepted() {
     let ds = Dataset::empty();
 
-    let (_, _, code) = run_in(ds.root(), &["--quiet", "term", "list"]);
-    assert_eq!(code, 64);
+    let (_, _, code) = run_in(ds.root(), &["--quiet", "project", "list"]);
+    assert_eq!(code, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -85,8 +83,8 @@ fn config_flag_with_directory() {
     let outside = Dataset::outside();
 
     let (_, _, code) =
-        run_in(outside.path(), &["--config", &ds.root().to_string_lossy(), "term", "list"]);
-    assert_eq!(code, 64, "--config pointing to repo dir should work");
+        run_in(outside.path(), &["--config", &ds.root().to_string_lossy(), "project", "list"]);
+    assert_eq!(code, 0, "--config pointing to repo dir should work");
 }
 
 // ---------------------------------------------------------------------------

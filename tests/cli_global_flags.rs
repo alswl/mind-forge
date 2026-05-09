@@ -1,6 +1,5 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
-use std::fs;
 
 mod common;
 
@@ -45,26 +44,31 @@ fn verbose_and_quiet_conflict() {
 #[test]
 fn json_placeholder_uses_json_shape() {
     let dir = common::setup_repo();
+    let project_dir = dir.path().join("test-proj");
+    std::fs::create_dir(&project_dir).unwrap();
+    std::fs::write(project_dir.join("mind.yaml"), "schema_version: '1'\n").unwrap();
     Command::cargo_bin("mf")
         .expect("binary exists")
-        .current_dir(dir.path())
+        .current_dir(&project_dir)
         .args(["--format", "json", "term", "list"])
         .assert()
-        .code(64)
-        .stdout(predicate::str::contains("\"status\": \"not_implemented\""))
-        .stdout(predicate::str::contains("\"command\": \"mf term list\""));
+        .code(0)
+        .stdout(predicate::str::contains("\"status\": \"ok\""))
+        .stdout(predicate::str::contains("\"data\":"));
 }
 
 #[test]
 fn explicit_config_path_is_accepted() {
     let dir = common::setup_repo();
+    let project_dir = dir.path().join("test-proj");
+    std::fs::create_dir(&project_dir).unwrap();
+    std::fs::write(project_dir.join("mind.yaml"), "schema_version: '1'\n").unwrap();
     let config_path = dir.path().join("mf.yaml");
-    fs::write(&config_path, "schema_version: '1'\n").unwrap();
+    std::fs::write(&config_path, "schema_version: '1'\n").unwrap();
     Command::cargo_bin("mf")
         .expect("binary exists")
-        .current_dir(dir.path())
+        .current_dir(&project_dir)
         .args(["--config", &config_path.to_string_lossy(), "term", "list"])
         .assert()
-        .code(64)
-        .stdout(predicate::str::contains("[not implemented] mf term list"));
+        .code(0);
 }

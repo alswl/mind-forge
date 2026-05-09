@@ -6,4 +6,5 @@ pub mod project;
 pub mod publish;
 pub mod repo;
 pub mod source;
+pub mod term;
 pub mod util;

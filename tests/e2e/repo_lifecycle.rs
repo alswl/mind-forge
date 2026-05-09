@@ -37,8 +37,8 @@ fn non_repo_innocent_commands_succeed() {
 fn repo_detection_from_subdirectory() {
     let ds = Dataset::empty().with_subdir("a/b/c");
 
-    let (_, _, code) = run_in(ds.root().join("a/b/c"), &["term", "list"]);
-    assert_eq!(code, 64, "should detect repo from subdirectory");
+    let (_, _, code) = run_in(ds.root().join("a/b/c"), &["project", "list"]);
+    assert_eq!(code, 0, "should detect repo from subdirectory");
 }
 
 /// E2E: 显式 --config 指向 repo 外部的 mf.yaml 时，以该文件父目录作为 repo root
@@ -49,9 +49,9 @@ fn config_flag_overrides_repo_search() {
 
     let (_, _, code) = run_in(
         outside.path(),
-        &["--config", &ds.root().join("mf.yaml").to_string_lossy(), "term", "list"],
+        &["--config", &ds.root().join("mf.yaml").to_string_lossy(), "project", "list"],
     );
-    assert_eq!(code, 64, "--config should allow outside dir to find repo");
+    assert_eq!(code, 0, "--config should allow outside dir to find repo");
 }
 
 /// E2E: 创建 minds.yaml 后目录从不属于 repo 变为属于 repo
@@ -126,6 +126,6 @@ fn incompatible_schema_reports_error() {
 fn multi_level_upward_search() {
     let ds = Dataset::empty().with_subdir("x/y/z");
 
-    let (_, _, code) = run_in(ds.root().join("x/y/z"), &["term", "list"]);
-    assert_eq!(code, 64, "found repo 3 levels up");
+    let (_, _, code) = run_in(ds.root().join("x/y/z"), &["project", "list"]);
+    assert_eq!(code, 0, "found repo 3 levels up");
 }

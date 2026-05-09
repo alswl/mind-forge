@@ -1,0 +1,24 @@
+---
+source: tests/cli_help.rs
+expression: stdout
+---
+Create a term
+
+Usage: mf term new [OPTIONS] <TERM>
+
+Arguments:
+  <TERM>  
+
+Options:
+      --definition <DEFINITION>  
+      --root <PATH>              
+      --alias <ALIAS>            
+      --config <PATH>            
+      --tag <TAG>                
+  -v, --verbose...               
+      --project <PROJECT>        
+  -q, --quiet                    
+      --format <FORMAT>          [default: text] [possible values: text, json]
+      --no-color                 
+  -h, --help                     Print help
+  -V, --version                  Print version

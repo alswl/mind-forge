@@ -1,4 +1,3 @@
-pub mod color;
 pub mod config_path;
 pub mod logging;
 pub mod repo;
@@ -13,7 +12,6 @@ use crate::output::Format;
 pub struct AppContext {
     pub format: Format,
     pub config_path: PathBuf,
-    pub color_enabled: bool,
     pub repo_root: Option<PathBuf>,
 }
 
@@ -22,7 +20,6 @@ impl AppContext {
         logging::validate(global)?;
         logging::init(global)?;
         let config_path = config_path::resolve(global.config.as_ref())?;
-        let color_enabled = color::is_color_enabled(global);
 
         let repo_root = if let Some(ref root) = global.root {
             let canonical = root.canonicalize().map_err(|_| MfError::not_in_mind_repo())?;
@@ -41,7 +38,7 @@ impl AppContext {
             std::env::current_dir().ok().and_then(|cwd| repo::detect_repo_root(&cwd, 50))
         };
 
-        Ok(Self { format: global.format, config_path, color_enabled, repo_root })
+        Ok(Self { format: global.format, config_path, repo_root })
     }
 
     /// 检查 repo_root，为 None 时返回 NotInMindRepo 错误

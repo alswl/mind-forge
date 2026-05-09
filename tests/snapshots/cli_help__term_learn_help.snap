@@ -1,0 +1,20 @@
+---
+source: tests/cli_help.rs
+expression: stdout
+---
+Learn a term correction
+
+Usage: mf term learn [OPTIONS] --original <ORIGINAL> --correct <CORRECT>
+
+Options:
+      --original <ORIGINAL>  
+      --root <PATH>          
+      --config <PATH>        
+      --correct <CORRECT>    
+      --project <PROJECT>    
+  -v, --verbose...           
+      --format <FORMAT>      [default: text] [possible values: text, json]
+  -q, --quiet                
+      --no-color             
+  -h, --help                 Print help
+  -V, --version              Print version
