@@ -9,7 +9,7 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt, clippy
@@ -25,7 +25,7 @@ jobs:
           - x86_64-unknown-linux-gnu
           - aarch64-unknown-linux-gnu
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: ${{ matrix.target }}
@@ -35,7 +35,7 @@ jobs:
           echo "/tmp/zig-linux-x86_64-0.14.0" >> "$GITHUB_PATH"
           cargo install cargo-zigbuild
       - run: cargo zigbuild --release --locked --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: mf-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/mf
@@ -43,10 +43,10 @@ jobs:
   build-macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - run: cargo build --release --locked
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: mf-aarch64-apple-darwin
           path: target/release/mf
