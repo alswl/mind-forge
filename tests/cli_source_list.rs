@@ -103,16 +103,7 @@ fn list_json_envelope() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "source",
-            "list",
-            "--project",
-            "alpha",
-            "--format",
-            "json",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "list", "--project", "alpha", "--format", "json"])
         .output()
         .unwrap();
 
@@ -133,16 +124,7 @@ fn list_filter_by_name_substring() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "source",
-            "list",
-            "--project",
-            "alpha",
-            "--filter",
-            "PAPER",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "list", "--project", "alpha", "--filter", "PAPER"])
         .output()
         .unwrap();
 
@@ -161,16 +143,7 @@ fn list_type_filter() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "source",
-            "list",
-            "--project",
-            "alpha",
-            "--type",
-            "rss",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "list", "--project", "alpha", "--type", "rss"])
         .output()
         .unwrap();
 
@@ -189,16 +162,7 @@ fn list_invalid_type_value() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "source",
-            "list",
-            "--project",
-            "alpha",
-            "--type",
-            "unknown",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "list", "--project", "alpha", "--type", "unknown"])
         .output()
         .unwrap();
 
@@ -253,12 +217,8 @@ sources:
 #[test]
 fn list_outside_repo() {
     let outside = TempDir::new().unwrap();
-    let output = Command::cargo_bin("mf")
-        .unwrap()
-        .args(["source", "list"])
-        .current_dir(outside.path())
-        .output()
-        .unwrap();
+    let output =
+        Command::cargo_bin("mf").unwrap().args(["source", "list"]).current_dir(outside.path()).output().unwrap();
 
     assert!(!output.status.success());
 }

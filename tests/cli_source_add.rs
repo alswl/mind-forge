@@ -179,9 +179,7 @@ fn add_file_rejects_existing() {
     assert!(!output.status.success(), "should fail on duplicate");
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
-        stderr.contains("file-exists")
-            || stderr.contains("already exists")
-            || stderr.contains("refusing to overwrite"),
+        stderr.contains("file-exists") || stderr.contains("already exists") || stderr.contains("refusing to overwrite"),
         "stderr: {stderr}"
     );
 }
@@ -210,8 +208,7 @@ fn add_file_force_overwrites() {
 
     let index_path = project.join("mind-index.yaml");
     let first_content = std::fs::read_to_string(&index_path).unwrap();
-    let added_at_match =
-        first_content.lines().find(|l| l.contains("added_at")).unwrap_or("").to_string();
+    let added_at_match = first_content.lines().find(|l| l.contains("added_at")).unwrap_or("").to_string();
 
     // Second add with --force
     std::fs::write(&source, b"updated content").unwrap();
@@ -272,13 +269,7 @@ fn add_without_project_context() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "source",
-            "add",
-            source_file.to_str().unwrap(),
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "add", source_file.to_str().unwrap()])
         .output()
         .unwrap();
 
@@ -422,10 +413,7 @@ fn add_url_requires_name() {
 
     assert!(!output.status.success(), "URL without --name should fail");
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(
-        stderr.contains("URL sources require") || stderr.contains("--name"),
-        "stderr: {stderr}"
-    );
+    assert!(stderr.contains("URL sources require") || stderr.contains("--name"), "stderr: {stderr}");
 }
 
 // ---------------------------------------------------------------------------

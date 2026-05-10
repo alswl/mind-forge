@@ -92,10 +92,8 @@ fn e2e_new_root_flag_overrides_cwd() {
     let ds = Dataset::empty();
     let outside = Dataset::outside();
 
-    let (stdout, stderr, code) = run_in(
-        outside.path(),
-        &["project", "new", "alpha", "--root", &ds.root().to_string_lossy()],
-    );
+    let (stdout, stderr, code) =
+        run_in(outside.path(), &["project", "new", "alpha", "--root", &ds.root().to_string_lossy()]);
 
     assert_eq!(code, 0, "stderr: {stderr}");
     assert!(stdout.contains("alpha"));
@@ -114,10 +112,7 @@ fn e2e_list_empty_manifest() {
     let (stdout, _, code) = run_in(ds.root(), &["project", "list"]);
 
     assert_eq!(code, 0);
-    assert!(
-        stdout.contains("no project") || stdout.contains("(no project)"),
-        "should show empty hint: {stdout}"
-    );
+    assert!(stdout.contains("no project") || stdout.contains("(no project)"), "should show empty hint: {stdout}");
 }
 
 /// E2E: 多项目按名称排序输出（FR-102, FR-103, SC-005）
@@ -219,10 +214,7 @@ fn e2e_status_empty_index() {
 
     assert_eq!(code, 0);
     assert!(stdout.contains("articles"), "should show articles: {stdout}");
-    assert!(
-        stdout.contains("0") || stdout.contains("-"),
-        "empty project should show zero: {stdout}"
-    );
+    assert!(stdout.contains("0") || stdout.contains("-"), "empty project should show zero: {stdout}");
 }
 
 /// E2E: 未知项目名返回 usage 错误（FR-206）
@@ -233,10 +225,7 @@ fn e2e_status_rejects_unknown_project() {
     let (_, stderr, code) = run_in(ds.root(), &["project", "status", "--project", "nonexistent"]);
 
     assert_eq!(code, 2, "should reject unknown project: {stderr}");
-    assert!(
-        stderr.contains("usage") || stderr.contains("not found") || stderr.contains("list"),
-        "stderr: {stderr}"
-    );
+    assert!(stderr.contains("usage") || stderr.contains("not found") || stderr.contains("list"), "stderr: {stderr}");
 }
 
 // ---------------------------------------------------------------------------
@@ -267,10 +256,7 @@ fn e2e_lint_reports_stale_index_entry() {
 
     assert_eq!(code, 1, "lint should find errors");
     let output = stdout + &stderr;
-    assert!(
-        output.contains("stale_index_entry") || output.contains("ghost"),
-        "should report stale entry: {output}"
-    );
+    assert!(output.contains("stale_index_entry") || output.contains("ghost"), "should report stale entry: {output}");
 }
 
 /// E2E: --fix 创建缺失目录（FR-305）
@@ -281,8 +267,7 @@ fn e2e_lint_fix_creates_missing_directory() {
     // 确认 sources 不存在
     assert!(!ds.root().join("alpha/sources").exists());
 
-    let (stdout, stderr, code) =
-        run_in(ds.root(), &["project", "lint", "--project", "alpha", "--fix"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["project", "lint", "--project", "alpha", "--fix"]);
 
     assert_eq!(code, 0, "all issues should be fixed: stderr={stderr}, stdout={stdout}");
 
@@ -313,10 +298,7 @@ fn e2e_lint_clean_project_no_issues() {
     let (stdout, _, code) = run_in(ds.root(), &["project", "lint", "--project", "alpha"]);
 
     assert_eq!(code, 0, "clean project should pass lint");
-    assert!(
-        stdout.contains("no issues") || stdout.contains("(no issues)"),
-        "should report no issues: {stdout}"
-    );
+    assert!(stdout.contains("no issues") || stdout.contains("(no issues)"), "should report no issues: {stdout}");
 }
 
 // ---------------------------------------------------------------------------
@@ -348,8 +330,7 @@ fn e2e_root_flag_overrides_cwd_for_list() {
     let ds = repo_008_with_data();
     let outside = Dataset::outside();
 
-    let (stdout, _, code) =
-        run_in(outside.path(), &["project", "list", "--root", &ds.root().to_string_lossy()]);
+    let (stdout, _, code) = run_in(outside.path(), &["project", "list", "--root", &ds.root().to_string_lossy()]);
 
     assert_eq!(code, 0, "should work with --root from outside");
     assert!(stdout.contains("alpha"), "should list projects: {stdout}");
@@ -360,8 +341,7 @@ fn e2e_root_flag_overrides_cwd_for_list() {
 fn e2e_root_flag_rejects_non_repo() {
     let outside = Dataset::outside();
 
-    let (_, stderr, code) =
-        run_in(outside.path(), &["project", "list", "--root", &outside.path().to_string_lossy()]);
+    let (_, stderr, code) = run_in(outside.path(), &["project", "list", "--root", &outside.path().to_string_lossy()]);
 
     assert_eq!(code, 1);
     assert!(stderr.contains("not in a mind repo"), "should reject non-repo: {stderr}");

@@ -28,15 +28,7 @@ fn add_copies_file() {
     let (repo, _source_dir, project, source) = setup();
     let assert = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "add",
-            source.to_str().unwrap(),
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "add", source.to_str().unwrap(), "--project", "alpha"])
         .assert();
 
     assert.success();
@@ -144,30 +136,14 @@ fn add_rejects_existing() {
     // First add succeeds
     Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "add",
-            source.to_str().unwrap(),
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "add", source.to_str().unwrap(), "--project", "alpha"])
         .assert()
         .success();
 
     // Second add fails with file-exists — error goes to stderr
     let assert = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "add",
-            source.to_str().unwrap(),
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "add", source.to_str().unwrap(), "--project", "alpha"])
         .assert();
 
     assert.code(predicate::eq(1)).stderr(predicate::str::contains("refusing to overwrite"));
@@ -183,15 +159,7 @@ fn add_force_overwrites() {
     // First add
     Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "add",
-            source.to_str().unwrap(),
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "add", source.to_str().unwrap(), "--project", "alpha"])
         .assert()
         .success();
 
@@ -223,8 +191,7 @@ fn add_outside_mind_repo() {
     let source = outside.path().join("test.png");
     std::fs::write(&source, b"content").unwrap();
 
-    let assert =
-        Command::cargo_bin("mf").unwrap().args(["asset", "add", source.to_str().unwrap()]).assert();
+    let assert = Command::cargo_bin("mf").unwrap().args(["asset", "add", source.to_str().unwrap()]).assert();
 
     assert.code(predicate::eq(1)).stderr(predicate::str::contains("not in a mind repo"));
 }
@@ -291,7 +258,7 @@ fn add_invalid_source() {
         ])
         .assert();
 
-    assert.code(predicate::eq(2));
+    assert.code(predicate::eq(1)).stderr(predicate::str::contains("error:"));
 }
 
 // ---------------------------------------------------------------------------
@@ -306,15 +273,7 @@ fn add_self_reference_rejected() {
 
     let assert = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "add",
-            inside.to_str().unwrap(),
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "add", inside.to_str().unwrap(), "--project", "alpha"])
         .assert();
 
     assert.code(predicate::eq(2));

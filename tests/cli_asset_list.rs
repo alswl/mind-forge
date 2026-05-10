@@ -106,16 +106,7 @@ fn list_json_envelope() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "--format",
-            "json",
-            "asset",
-            "list",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "--format", "json", "asset", "list", "--project", "alpha"])
         .output()
         .unwrap();
 
@@ -147,16 +138,7 @@ fn list_filter_substring() {
     // "cover" matches name
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "list",
-            "--project",
-            "alpha",
-            "--filter",
-            "cover",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "list", "--project", "alpha", "--filter", "cover"])
         .output()
         .unwrap();
 
@@ -168,16 +150,7 @@ fn list_filter_substring() {
     // "HERO" matches tag (case-insensitive)
     let output2 = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "list",
-            "--project",
-            "alpha",
-            "--filter",
-            "HERO",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "list", "--project", "alpha", "--filter", "HERO"])
         .output()
         .unwrap();
 
@@ -195,16 +168,7 @@ fn list_type_image() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "list",
-            "--project",
-            "alpha",
-            "--type",
-            "image",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "list", "--project", "alpha", "--type", "image"])
         .output()
         .unwrap();
 
@@ -224,16 +188,7 @@ fn list_type_other() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "list",
-            "--project",
-            "alpha",
-            "--type",
-            "other",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "list", "--project", "alpha", "--type", "other"])
         .output()
         .unwrap();
 
@@ -308,16 +263,7 @@ fn list_invalid_type() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "list",
-            "--project",
-            "alpha",
-            "--type",
-            "bogus",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "list", "--project", "alpha", "--type", "bogus"])
         .output()
         .unwrap();
 

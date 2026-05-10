@@ -81,8 +81,8 @@ mod tests {
             content: "hello".to_string(),
             prompt: "Please publish ...".to_string(),
             envelope: serde_json::json!({}),
-            suggested_update_command:
-                "mf publish update a --target tgt --status published --target-url <URL>".to_string(),
+            suggested_update_command: "mf publish update a --target tgt --status published --target-url <URL>"
+                .to_string(),
             dry_run: true,
         });
         let v = serde_json::to_value(&outcome).unwrap();

@@ -57,11 +57,7 @@ pub fn try_canonicalize(path: &Path) -> PathBuf {
 pub fn rel_posix_path(project_path: &Path, abs: &Path) -> Result<String> {
     let rel = abs.strip_prefix(project_path).map_err(|_| {
         MfError::usage(
-            format!(
-                "path '{}' is not under project root '{}'",
-                abs.display(),
-                project_path.display()
-            ),
+            format!("path '{}' is not under project root '{}'", abs.display(), project_path.display()),
             None as Option<String>,
         )
     })?;
@@ -135,14 +131,14 @@ pub fn dir_name(path: &Path) -> String {
 pub fn resolve_project(repo_root: &Path, project: Option<&str>, cwd: &Path) -> Result<PathBuf> {
     match project {
         Some(name) => Ok(repo_root.join(name)),
-        None => {
-            detect_current_project(repo_root, cwd)
-                .ok_or_else(|| MfError::usage(
+        None => detect_current_project(repo_root, cwd)
+            .ok_or_else(|| {
+                MfError::usage(
                     "could not detect current project; run from a project directory or specify --project",
                     Some("use `mf project list` to see available projects".to_string()),
-                ))
-                .map(|name| repo_root.join(name))
-        }
+                )
+            })
+            .map(|name| repo_root.join(name)),
     }
 }
 
@@ -186,27 +182,13 @@ pub fn validate_project_name(name: &str) -> Result<()> {
 /// If `target` does not exist on disk, canonicalizes the parent and checks
 /// the leaf component is a single safe filename (no `/`, `\`, `..`, `.`).
 pub fn canonicalize_within(root: &Path, target: &Path) -> Result<PathBuf> {
-    let root_canonical = root.canonicalize().map_err(|e| {
-        MfError::usage(
-            format!("cannot resolve root path '{}': {e}", root.display()),
-            Some("try --root <PATH>".to_string()),
-        )
-    })?;
+    let root_canonical = root.canonicalize().map_err(MfError::Io)?;
 
     if target.exists() {
-        let target_canonical = target.canonicalize().map_err(|e| {
-            MfError::usage(
-                format!("cannot resolve path '{}': {e}", target.display()),
-                Some("try --project <NAME> or --root <PATH>".to_string()),
-            )
-        })?;
+        let target_canonical = target.canonicalize().map_err(MfError::Io)?;
         if !target_canonical.starts_with(&root_canonical) {
             return Err(MfError::usage(
-                format!(
-                    "path '{}' is outside the Mind Repo root '{}'",
-                    target.display(),
-                    root_canonical.display(),
-                ),
+                format!("path '{}' is outside the Mind Repo root '{}'", target.display(), root_canonical.display(),),
                 Some("try --project <NAME> or --root <PATH>".to_string()),
             ));
         }
@@ -214,34 +196,18 @@ pub fn canonicalize_within(root: &Path, target: &Path) -> Result<PathBuf> {
     } else {
         // Target doesn't exist yet — canonicalize parent, validate leaf
         let parent = target.parent().ok_or_else(|| {
-            MfError::usage(
-                format!("cannot determine parent of '{}'", target.display()),
-                None as Option<String>,
-            )
+            MfError::usage(format!("cannot determine parent of '{}'", target.display()), None as Option<String>)
         })?;
-        let leaf =
-            target.file_name().map(|s| s.to_string_lossy().to_string()).ok_or_else(|| {
-                MfError::usage(
-                    format!("cannot extract filename from '{}'", target.display()),
-                    None as Option<String>,
-                )
-            })?;
+        let leaf = target.file_name().map(|s| s.to_string_lossy().to_string()).ok_or_else(|| {
+            MfError::usage(format!("cannot extract filename from '{}'", target.display()), None as Option<String>)
+        })?;
         validate_project_name(&leaf)?;
 
-        let parent_canonical = parent.canonicalize().map_err(|e| {
-            MfError::usage(
-                format!("cannot resolve parent path '{}': {e}", parent.display()),
-                Some("try --project <NAME> or --root <PATH>".to_string()),
-            )
-        })?;
+        let parent_canonical = parent.canonicalize().map_err(MfError::Io)?;
 
         if !parent_canonical.starts_with(&root_canonical) {
             return Err(MfError::usage(
-                format!(
-                    "path '{}' is outside the Mind Repo root '{}'",
-                    target.display(),
-                    root_canonical.display(),
-                ),
+                format!("path '{}' is outside the Mind Repo root '{}'", target.display(), root_canonical.display(),),
                 Some("try --project <NAME> or --root <PATH>".to_string()),
             ));
         }
@@ -369,7 +335,7 @@ mod tests {
         let target = dir.path().join("somewhere");
 
         let err = canonicalize_within(&nonexistent_root, &target).unwrap_err();
-        assert!(err.to_string().contains("cannot resolve root"));
+        assert!(matches!(err, MfError::Io(_)));
     }
 
     #[test]

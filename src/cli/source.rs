@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 
-use crate::cli::{CommandOutcome, HelpTarget};
+use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::model::source::SourceKind as ModelKind;
 use crate::output::Format;
@@ -86,8 +86,6 @@ pub struct SourceAddArgs {
     pub force: bool,
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    pub format: Format,
 }
 
 // ---------------------------------------------------------------------------
@@ -102,8 +100,6 @@ pub struct SourceListArgs {
     pub kind: Option<CliSourceKind>,
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    pub format: Format,
 }
 
 // ---------------------------------------------------------------------------
@@ -119,8 +115,6 @@ pub struct SourceUpdateArgs {
     pub url: Option<String>,
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    pub format: Format,
 }
 
 // ---------------------------------------------------------------------------
@@ -134,8 +128,6 @@ pub struct SourceRemoveArgs {
     pub keep_file: bool,
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    pub format: Format,
 }
 
 // ---------------------------------------------------------------------------
@@ -148,8 +140,6 @@ pub struct SourceIndexArgs {
     pub dry_run: bool,
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    pub format: Format,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -158,24 +148,18 @@ pub struct SourceCleanArgs {
     pub dry_run: bool,
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    pub format: Format,
 }
 
 // ---------------------------------------------------------------------------
 // T017: Dispatch — replaced by user story tasks
 // ---------------------------------------------------------------------------
 
-pub fn dispatch(
-    command: SourceCmd,
-    repo_root: Option<&PathBuf>,
-    format: Format,
-) -> Result<CommandOutcome> {
+pub fn dispatch(command: SourceCmd, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
 
     match command.command {
-        None => Ok(CommandOutcome::GroupHelp(HelpTarget::Source)),
+        None => Ok(CommandOutcome::GroupHelp("source")),
         Some(SourceSubcommand::Add(args)) => handle_add(args, root, &cwd, format),
         Some(SourceSubcommand::List(args)) => handle_list(args, root, &cwd, format),
         Some(SourceSubcommand::Update(args)) => handle_update(args, root, &cwd, format),
@@ -185,13 +169,7 @@ pub fn dispatch(
     }
 }
 
-fn handle_list(
-    args: SourceListArgs,
-    root: &Path,
-    cwd: &Path,
-    global_format: Format,
-) -> Result<CommandOutcome> {
-    let format = if args.format == Format::Text { global_format } else { args.format };
+fn handle_list(args: SourceListArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
 
     // Resolve type filter (CliSourceKind → model SourceKind; Auto is rejected)
@@ -218,10 +196,7 @@ fn handle_list(
         }
         Format::Text => {
             if sources.is_empty() {
-                return Ok(CommandOutcome::Success(
-                    serde_json::Value::String("No sources found.".to_string()),
-                    None,
-                ));
+                return Ok(CommandOutcome::Success(serde_json::Value::String("No sources found.".to_string()), None));
             }
             let mut lines = Vec::new();
             lines.push(format!("{:<24} {:<8} LOCATION", "NAME", "TYPE"));
@@ -235,20 +210,11 @@ fn handle_list(
     }
 }
 
-fn handle_update(
-    args: SourceUpdateArgs,
-    root: &Path,
-    cwd: &Path,
-    global_format: Format,
-) -> Result<CommandOutcome> {
-    let format = if args.format == Format::Text { global_format } else { args.format };
+fn handle_update(args: SourceUpdateArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
 
-    let update_args = svc_source::UpdateArgs {
-        name: &args.name,
-        rename: args.rename.as_deref(),
-        url: args.url.as_deref(),
-    };
+    let update_args =
+        svc_source::UpdateArgs { name: &args.name, rename: args.rename.as_deref(), url: args.url.as_deref() };
 
     let source = svc_source::update(&project_path, &update_args)?;
 
@@ -265,13 +231,7 @@ fn handle_update(
     }
 }
 
-fn handle_index(
-    args: SourceIndexArgs,
-    root: &Path,
-    cwd: &Path,
-    global_format: Format,
-) -> Result<CommandOutcome> {
-    let format = if args.format == Format::Text { global_format } else { args.format };
+fn handle_index(args: SourceIndexArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
 
     let report = svc_source::reconcile(&project_path, args.dry_run)?;
@@ -301,13 +261,7 @@ fn handle_index(
     }
 }
 
-fn handle_remove(
-    args: SourceRemoveArgs,
-    root: &Path,
-    cwd: &Path,
-    global_format: Format,
-) -> Result<CommandOutcome> {
-    let format = if args.format == Format::Text { global_format } else { args.format };
+fn handle_remove(args: SourceRemoveArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
 
     let report = svc_source::remove(&project_path, &args.name, args.keep_file)?;
@@ -336,13 +290,7 @@ fn handle_remove(
     }
 }
 
-fn handle_clean(
-    args: SourceCleanArgs,
-    root: &Path,
-    cwd: &Path,
-    global_format: Format,
-) -> Result<CommandOutcome> {
-    let format = if args.format == Format::Text { global_format } else { args.format };
+fn handle_clean(args: SourceCleanArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
 
     let report = svc_source::clean(&project_path, args.dry_run)?;
@@ -354,10 +302,7 @@ fn handle_clean(
         }
         Format::Text => {
             if report.removed.is_empty() {
-                return Ok(CommandOutcome::Success(
-                    serde_json::Value::String("No dirty sources.".to_string()),
-                    None,
-                ));
+                return Ok(CommandOutcome::Success(serde_json::Value::String("No dirty sources.".to_string()), None));
             }
             let mut lines = Vec::new();
             let prefix = if args.dry_run { "[dry-run] " } else { "" };
@@ -378,13 +323,7 @@ fn handle_clean(
 // Handle: mf source add
 // ---------------------------------------------------------------------------
 
-fn handle_add(
-    args: SourceAddArgs,
-    root: &Path,
-    cwd: &Path,
-    global_format: Format,
-) -> Result<CommandOutcome> {
-    let format = if args.format == Format::Text { global_format } else { args.format };
+fn handle_add(args: SourceAddArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
 
     let input_form = svc_source::classify_input(&args.input);
@@ -429,12 +368,7 @@ fn handle_add(
             Ok(CommandOutcome::Success(data, None))
         }
         Format::Text => {
-            let location = outcome
-                .source
-                .path
-                .as_deref()
-                .or(outcome.source.url.as_deref())
-                .unwrap_or("unknown");
+            let location = outcome.source.path.as_deref().or(outcome.source.url.as_deref()).unwrap_or("unknown");
             let kind_str = outcome.source.kind.as_str();
             let prefix = if outcome.replaced { "replaced source" } else { "added source" };
             let msg = format!("✓ {prefix}: {} ({kind_str}, {location})", outcome.source.name);

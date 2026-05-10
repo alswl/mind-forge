@@ -42,8 +42,7 @@ fn show_defaults_when_no_mind_yaml() {
 fn show_finds_mind_yaml_in_parent() {
     let ds = Dataset::empty().with_subdir("a/b/c");
     // 在项目目录创建 mind.yaml（与 minds.yaml 同级）
-    fs::write(ds.root().join("mind.yaml"), "schema_version: '1'\nbuild:\n  output_dir: _custom\n")
-        .unwrap();
+    fs::write(ds.root().join("mind.yaml"), "schema_version: '1'\nbuild:\n  output_dir: _custom\n").unwrap();
 
     let (stdout, _, code) = run_in(ds.root().join("a/b/c"), &["config", "show"]);
     assert_eq!(code, 0, "show should succeed from subdirectory");
@@ -54,8 +53,7 @@ fn show_finds_mind_yaml_in_parent() {
 #[test]
 fn show_finds_mind_yaml_at_repo_root() {
     let ds = Dataset::empty();
-    fs::write(ds.root().join("mind.yaml"), "schema_version: '1'\nbuild:\n  output_dir: _custom\n")
-        .unwrap();
+    fs::write(ds.root().join("mind.yaml"), "schema_version: '1'\nbuild:\n  output_dir: _custom\n").unwrap();
 
     let (stdout, _, code) = run_in(ds.root(), &["config", "show"]);
     assert_eq!(code, 0);
@@ -88,8 +86,7 @@ fn show_invalid_yaml_returns_parse_error() {
 #[test]
 fn show_json_output() {
     let ds = Dataset::empty();
-    fs::write(ds.root().join("mind.yaml"), "schema_version: '1'\nbuild:\n  output_dir: _custom\n")
-        .unwrap();
+    fs::write(ds.root().join("mind.yaml"), "schema_version: '1'\nbuild:\n  output_dir: _custom\n").unwrap();
 
     let (stdout, _, code) = run_in(ds.root(), &["config", "show", "--output-format", "json"]);
     assert_eq!(code, 0);
@@ -161,7 +158,6 @@ fn full_roundtrip_init_show_schema() {
     // schema 输出合法
     let (schema_stdout, _, code) = run_in(ds.root(), &["config", "schema"]);
     assert_eq!(code, 0, "schema after init");
-    let schema: serde_json::Value =
-        serde_json::from_str(&schema_stdout).expect("schema is valid JSON");
+    let schema: serde_json::Value = serde_json::from_str(&schema_stdout).expect("schema is valid JSON");
     assert!(schema.get("properties").is_some(), "schema has properties");
 }

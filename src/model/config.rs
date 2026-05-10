@@ -57,11 +57,7 @@ pub struct BuildConfig {
 
 impl Default for BuildConfig {
     fn default() -> Self {
-        Self {
-            output_dir: default_output_dir(),
-            merge_order: Vec::new(),
-            format: default_build_format(),
-        }
+        Self { output_dir: default_output_dir(), merge_order: Vec::new(), format: default_build_format() }
     }
 }
 
@@ -116,12 +112,7 @@ pub struct PathsConfig {
 
 impl Default for PathsConfig {
     fn default() -> Self {
-        Self {
-            docs: default_docs(),
-            sources: default_sources(),
-            assets: default_assets(),
-            archive: default_archive(),
-        }
+        Self { docs: default_docs(), sources: default_sources(), assets: default_assets(), archive: default_archive() }
     }
 }
 
@@ -175,8 +166,7 @@ mod tests {
     use super::*;
 
     fn yaml_for(t: PublishTargetType) -> String {
-        let target =
-            PublishTarget { name: "x".to_string(), target_type: t, enabled: true, config: None };
+        let target = PublishTarget { name: "x".to_string(), target_type: t, enabled: true, config: None };
         serde_yaml::to_string(&target).unwrap()
     }
 

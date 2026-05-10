@@ -65,12 +65,11 @@ pub fn load_project(cwd: &Path, repo_root: Option<&Path>) -> Result<Option<MindC
             if content.trim().is_empty() {
                 return Ok(None);
             }
-            let mut config: MindConfig =
-                serde_yaml::from_str(&content).map_err(|e| MfError::ParseError {
-                    kind: "yaml".to_string(),
-                    path: path.clone(),
-                    detail: e.to_string(),
-                })?;
+            let mut config: MindConfig = serde_yaml::from_str(&content).map_err(|e| MfError::ParseError {
+                kind: "yaml".to_string(),
+                path: path.clone(),
+                detail: e.to_string(),
+            })?;
             // Schema version fallback: missing → default "1"
             if config.schema_version.is_empty() {
                 config.schema_version = "1".to_string();
@@ -234,12 +233,7 @@ pub fn show_effective(cwd: &Path, repo_root: Option<&Path>, output_format: &str)
 
 /// Run `mf config init`: generate mind.yaml and atomic-write it.
 /// Returns the output file path.
-pub fn init_config(
-    cwd: &Path,
-    output: Option<&Path>,
-    target: &str,
-    force: bool,
-) -> Result<PathBuf> {
+pub fn init_config(cwd: &Path, output: Option<&Path>, target: &str, force: bool) -> Result<PathBuf> {
     if target != "project" {
         return Err(MfError::not_implemented("--target user"));
     }

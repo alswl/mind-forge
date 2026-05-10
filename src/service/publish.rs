@@ -12,7 +12,8 @@ use crate::model::index::{PublishRecord, PublishStatus};
 use crate::model::publish::{
     LocalRunOutcome, PublishRunOutcome, PublishUpdateOutcome, UpdateAction, YuquePromptRunOutcome,
 };
-use crate::service::{article as article_svc, config as config_svc, util};
+use crate::service::index;
+use crate::service::{config as config_svc, util};
 
 pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path) -> Result<PublishRunOutcome> {
     if args.article.is_empty() || args.article.contains('/') || args.article.contains('\\') {
@@ -24,13 +25,10 @@ pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path) -> Result<Publis
 
     let project_path = util::resolve_project(repo_root, args.project.as_deref(), cwd)?;
     let config = config_svc::load_project(&project_path, Some(repo_root))?.ok_or_else(|| {
-        MfError::usage(
-            "project missing mind.yaml".to_string(),
-            Some("run `mf config init` to create one".to_string()),
-        )
+        MfError::usage("project missing mind.yaml".to_string(), Some("run `mf config init` to create one".to_string()))
     })?;
 
-    let index = article_svc::load_index(&project_path)?;
+    let index = index::load(&project_path)?;
     let article_entry = index
         .articles
         .iter()
@@ -47,19 +45,11 @@ pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path) -> Result<Publis
 
     match target.target_type {
         PublishTargetType::Local => {
-            let outcome = run_local(
-                args,
-                target,
-                repo_root,
-                &project_path,
-                &config,
-                &article_entry.source_path,
-            )?;
+            let outcome = run_local(args, target, repo_root, &project_path, &config, &article_entry.source_path)?;
             Ok(PublishRunOutcome::Local(outcome))
         }
         PublishTargetType::YuquePrompt => {
-            let outcome =
-                run_yuque_prompt(args, target, &project_path, &config, &article_entry.source_path)?;
+            let outcome = run_yuque_prompt(args, target, &project_path, &config, &article_entry.source_path)?;
             Ok(PublishRunOutcome::YuquePrompt(outcome))
         }
         PublishTargetType::Yuque | PublishTargetType::GithubPages | PublishTargetType::Custom => {
@@ -72,11 +62,7 @@ pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path) -> Result<Publis
     }
 }
 
-pub fn update(
-    args: &PublishUpdateArgs,
-    repo_root: &Path,
-    cwd: &Path,
-) -> Result<PublishUpdateOutcome> {
+pub fn update(args: &PublishUpdateArgs, repo_root: &Path, cwd: &Path) -> Result<PublishUpdateOutcome> {
     if args.article.is_empty() || args.article.contains('/') || args.article.contains('\\') {
         return Err(MfError::usage(
             format!("invalid article name: '{}'", args.article),
@@ -94,13 +80,10 @@ pub fn update(
 
     let project_path = util::resolve_project(repo_root, args.project.as_deref(), cwd)?;
     let config = config_svc::load_project(&project_path, Some(repo_root))?.ok_or_else(|| {
-        MfError::usage(
-            "project missing mind.yaml".to_string(),
-            Some("run `mf config init` to create one".to_string()),
-        )
+        MfError::usage("project missing mind.yaml".to_string(), Some("run `mf config init` to create one".to_string()))
     })?;
 
-    let mut index = article_svc::load_index(&project_path)?;
+    let mut index = index::load(&project_path)?;
 
     let article_source_path = index
         .articles
@@ -123,28 +106,22 @@ pub fn update(
         ));
     }
 
-    let existing = index.publish_records.as_ref().and_then(|recs| {
-        recs.iter().find(|r| r.path == article_source_path && r.target_name == args.target)
-    });
+    let existing = index
+        .publish_records
+        .as_ref()
+        .and_then(|recs| recs.iter().find(|r| r.path == article_source_path && r.target_name == args.target));
 
-    let (record, action) = upsert_decision(
-        existing,
-        &article_source_path,
-        &args.target,
-        status_arg,
-        args.target_url.as_deref(),
-    )?;
+    let (record, action) =
+        upsert_decision(existing, &article_source_path, &args.target, status_arg, args.target_url.as_deref())?;
 
     if !args.dry_run {
         let recs = index.publish_records.get_or_insert_with(Vec::new);
-        if let Some(pos) =
-            recs.iter().position(|r| r.path == article_source_path && r.target_name == args.target)
-        {
+        if let Some(pos) = recs.iter().position(|r| r.path == article_source_path && r.target_name == args.target) {
             recs[pos] = record.clone();
         } else {
             recs.push(record.clone());
         }
-        article_svc::save_index(&index, &project_path)?;
+        index::save(&project_path, &index)?;
     }
 
     Ok(PublishUpdateOutcome {
@@ -223,10 +200,7 @@ pub fn render_prompt_text(o: &YuquePromptRunOutcome) -> String {
         map.remove("prompt");
     }
     let json = serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_string());
-    format!(
-        "### Publish Prompt\n\n{prompt}\n\n### Envelope\n\n```json\n{json}\n```",
-        prompt = o.prompt,
-    )
+    format!("### Publish Prompt\n\n{prompt}\n\n### Envelope\n\n```json\n{json}\n```", prompt = o.prompt,)
 }
 
 // ---------------------------------------------------------------------------
@@ -283,11 +257,7 @@ fn resolve_local_path(repo_root: &Path, target: &PublishTarget) -> Result<PathBu
     }
 }
 
-fn locate_build_artifact(
-    project_path: &Path,
-    config: &MindConfig,
-    article: &str,
-) -> Result<(PathBuf, u64)> {
+fn locate_build_artifact(project_path: &Path, config: &MindConfig, article: &str) -> Result<(PathBuf, u64)> {
     let format = if config.build.format.is_empty() { "md" } else { config.build.format.as_str() };
     let path = project_path.join(&config.build.output_dir).join(format!("{article}.{format}"));
     let metadata = fs::metadata(&path).map_err(|_| {
@@ -335,12 +305,8 @@ fn run_local(
     }
 
     let bytes = fs::read(&artifact_path).map_err(MfError::Io)?;
-    let content = String::from_utf8(bytes).map_err(|e| {
-        MfError::usage(
-            format!("build artifact is not valid UTF-8: {e}"),
-            Some("re-run `mf build` to regenerate".to_string()),
-        )
-    })?;
+    let content = String::from_utf8(bytes)
+        .map_err(|e| MfError::Internal(anyhow::anyhow!("build artifact is not valid UTF-8: {e}")))?;
     util::atomic_write(&dest_file, &content)?;
 
     Ok(LocalRunOutcome {
@@ -366,10 +332,8 @@ fn run_yuque_prompt(
 
     let envelope = target.config.clone().unwrap_or_else(|| serde_json::json!({}));
 
-    let suggested_update_command = format!(
-        "mf publish update {} --target {} --status published --target-url <URL>",
-        args.article, target.name
-    );
+    let suggested_update_command =
+        format!("mf publish update {} --target {} --status published --target-url <URL>", args.article, target.name);
 
     let prompt = format!(
         "Please publish the following article to yuque-prompt (target: {tgt}).\n\

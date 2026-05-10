@@ -187,24 +187,14 @@ fn update_no_change_flags() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "source",
-            "update",
-            "paper",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "update", "paper", "--project", "alpha"])
         .output()
         .unwrap();
 
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
-        stderr.contains("nothing to update")
-            || stderr.contains("--rename")
-            || stderr.contains("--url"),
+        stderr.contains("nothing to update") || stderr.contains("--rename") || stderr.contains("--url"),
         "stderr: {stderr}"
     );
 }

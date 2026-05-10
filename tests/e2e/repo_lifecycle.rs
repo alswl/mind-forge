@@ -47,10 +47,8 @@ fn config_flag_overrides_repo_search() {
     let ds = Dataset::empty().with_config();
     let outside = Dataset::outside();
 
-    let (_, _, code) = run_in(
-        outside.path(),
-        &["--config", &ds.root().join("mf.yaml").to_string_lossy(), "project", "list"],
-    );
+    let (_, _, code) =
+        run_in(outside.path(), &["--config", &ds.root().join("mf.yaml").to_string_lossy(), "project", "list"]);
     assert_eq!(code, 0, "--config should allow outside dir to find repo");
 }
 

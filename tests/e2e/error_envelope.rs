@@ -14,8 +14,7 @@ fn json_error_envelope_structure() {
 
     assert_eq!(code, 1);
 
-    let parsed: serde_json::Value =
-        serde_json::from_str(&stderr).expect("valid JSON error envelope");
+    let parsed: serde_json::Value = serde_json::from_str(&stderr).expect("valid JSON error envelope");
     assert_eq!(parsed["status"], "error");
     assert_eq!(parsed["command"], "mf");
     assert_eq!(parsed["error"]["kind"], "not-in-mind-repo");
@@ -69,8 +68,7 @@ fn json_parse_error_envelope() {
 fn json_cli_parse_error_envelope() {
     let ds = Dataset::empty();
 
-    let (_stdout, stderr, code) =
-        run_in(ds.root(), &["--format", "json", "term", "list", "--bogus-flag"]);
+    let (_stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "term", "list", "--bogus-flag"]);
 
     assert_eq!(code, 2);
 

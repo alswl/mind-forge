@@ -26,7 +26,7 @@ impl std::fmt::Display for SourceKind {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Source {
     pub name: String,
     #[serde(rename = "type")]

@@ -102,15 +102,7 @@ fn index_dry_run_no_writes() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "source",
-            "index",
-            "--project",
-            "alpha",
-            "--dry-run",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "index", "--project", "alpha", "--dry-run"])
         .output()
         .unwrap();
 
@@ -265,16 +257,7 @@ fn index_json_envelope() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "source",
-            "index",
-            "--project",
-            "alpha",
-            "--format",
-            "json",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "index", "--project", "alpha", "--format", "json"])
         .output()
         .unwrap();
 

@@ -133,15 +133,7 @@ fn clean_dry_run_no_writes() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "source",
-            "clean",
-            "--project",
-            "alpha",
-            "--dry-run",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "clean", "--project", "alpha", "--dry-run"])
         .output()
         .unwrap();
 
@@ -182,16 +174,7 @@ fn clean_json_envelope() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "source",
-            "clean",
-            "--project",
-            "alpha",
-            "--format",
-            "json",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "clean", "--project", "alpha", "--format", "json"])
         .output()
         .unwrap();
 

@@ -103,25 +103,14 @@ fn new_term_no_definition() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "term",
-            "new",
-            "Test",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "term", "new", "Test", "--project", "alpha"])
         .output()
         .unwrap();
 
     assert!(output.status.success());
 
     let index = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
-    assert!(
-        index.contains("definition: null") || index.contains("definition: ~"),
-        "index: {index}"
-    );
+    assert!(index.contains("definition: null") || index.contains("definition: ~"), "index: {index}");
 }
 
 // ---------------------------------------------------------------------------
@@ -134,30 +123,14 @@ fn new_term_duplicate_rejected() {
     // First one should succeed
     Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "term",
-            "new",
-            "Duplicate",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "term", "new", "Duplicate", "--project", "alpha"])
         .assert()
         .code(0);
 
     // Second one should fail
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "term",
-            "new",
-            "Duplicate",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "term", "new", "Duplicate", "--project", "alpha"])
         .output()
         .unwrap();
 
@@ -175,29 +148,13 @@ fn new_term_case_sensitive() {
     let (repo, _project) = setup();
     Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "term",
-            "new",
-            "mind repo",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "term", "new", "mind repo", "--project", "alpha"])
         .assert()
         .code(0);
 
     Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "term",
-            "new",
-            "Mind Repo",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "term", "new", "Mind Repo", "--project", "alpha"])
         .assert()
         .code(0);
 

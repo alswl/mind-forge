@@ -4,10 +4,9 @@ use std::path::Path;
 use chrono::Utc;
 
 use crate::error::{MfError, Result};
-use crate::model::article::{
-    Article, ArticleDiff, ArticleStatus, ArticleType, LintIssue, ScannedArticle,
-};
+use crate::model::article::{Article, ArticleDiff, ArticleStatus, ArticleType, LintIssue, ScannedArticle};
 use crate::model::index::IndexFile;
+use crate::service::index;
 use crate::service::util;
 
 const ARTICLE_TEMPLATE: &str = r#"# {title}
@@ -18,30 +17,6 @@ const ARTICLE_TEMPLATE: &str = r#"# {title}
 
 ## Content
 "#;
-
-pub fn load_index(project_path: &Path) -> Result<IndexFile> {
-    let path = project_path.join("mind-index.yaml");
-    if !path.exists() {
-        return Ok(IndexFile::create_default());
-    }
-    let content = fs::read_to_string(&path).map_err(MfError::Io)?;
-    if content.trim().is_empty() {
-        return Ok(IndexFile::create_default());
-    }
-    let index: IndexFile = serde_yaml::from_str(&content).map_err(|e| MfError::ParseError {
-        kind: "yaml".to_string(),
-        path: path.clone(),
-        detail: e.to_string(),
-    })?;
-    util::validate_schema_version(&index.schema_version, &path)?;
-    Ok(index)
-}
-
-pub fn save_index(index: &IndexFile, project_path: &Path) -> Result<()> {
-    let path = project_path.join("mind-index.yaml");
-    let content = serde_yaml::to_string(index).map_err(|e| MfError::Internal(e.into()))?;
-    util::atomic_write(&path, &content)
-}
 
 /// Create a new article in the given project directory.
 pub fn new_article(
@@ -67,16 +42,13 @@ pub fn new_article(
 
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let content = template_text.unwrap_or(ARTICLE_TEMPLATE);
-    let content = content
-        .replace("{title}", title)
-        .replace("{created_at}", &now)
-        .replace("{tags}", &tags.join(", "));
+    let content = content.replace("{title}", title).replace("{created_at}", &now).replace("{tags}", &tags.join(", "));
 
     fs::write(&article_path, content).map_err(MfError::Io)?;
 
     let project_name = util::dir_name(project_path);
 
-    let mut index = load_index(project_path)?;
+    let mut index = index::load(project_path)?;
     let articles = index.articles.get_or_insert_with(Vec::new);
     let status = if draft { ArticleStatus::Draft } else { ArticleStatus::Published };
 
@@ -95,14 +67,14 @@ pub fn new_article(
         created_at: now.clone(),
         updated_at: now,
     });
-    save_index(&index, project_path)?;
+    index::save(project_path, &index)?;
 
     Ok(filename)
 }
 
 /// List articles in a project.
 pub fn list_articles(project_path: &Path) -> Result<Vec<Article>> {
-    let index = load_index(project_path)?;
+    let index = index::load(project_path)?;
     Ok(index.articles.unwrap_or_default())
 }
 
@@ -136,20 +108,14 @@ pub fn compute_article_diff(index: &IndexFile, scanned: &[ScannedArticle]) -> Ar
         .articles
         .as_ref()
         .map(|a| {
-            a.iter()
-                .filter_map(|a| {
-                    a.source_path.strip_prefix("docs/").and_then(|s| s.strip_suffix(".md"))
-                })
-                .collect()
+            a.iter().filter_map(|a| a.source_path.strip_prefix("docs/").and_then(|s| s.strip_suffix(".md"))).collect()
         })
         .unwrap_or_default();
 
-    let scanned_names: std::collections::HashSet<&str> =
-        scanned.iter().map(|s| s.filename.as_str()).collect();
+    let scanned_names: std::collections::HashSet<&str> = scanned.iter().map(|s| s.filename.as_str()).collect();
 
     for a in index.articles.iter().flat_map(|a| a.iter()) {
-        if let Some(name) = a.source_path.strip_prefix("docs/").and_then(|s| s.strip_suffix(".md"))
-        {
+        if let Some(name) = a.source_path.strip_prefix("docs/").and_then(|s| s.strip_suffix(".md")) {
             if !scanned_names.contains(name) {
                 removed.push(a.clone());
             }
@@ -166,11 +132,7 @@ pub fn compute_article_diff(index: &IndexFile, scanned: &[ScannedArticle]) -> Ar
 }
 
 /// Apply a diff to the index: add new articles, remove deleted ones.
-pub fn reconcile_articles(
-    project_path: &Path,
-    mut index: IndexFile,
-    diff: ArticleDiff,
-) -> Result<IndexFile> {
+pub fn reconcile_articles(project_path: &Path, mut index: IndexFile, diff: ArticleDiff) -> Result<IndexFile> {
     let project_name = util::dir_name(project_path);
 
     // Remove deleted articles
@@ -227,13 +189,7 @@ pub fn lint_articles(project_path: &Path, fix: bool) -> Result<Vec<LintIssue>> {
     Ok(issues)
 }
 
-fn check_filename(
-    issues: &mut Vec<LintIssue>,
-    stem: &str,
-    rel_path: &str,
-    fix: bool,
-    full_path: &Path,
-) -> Result<()> {
+fn check_filename(issues: &mut Vec<LintIssue>, stem: &str, rel_path: &str, fix: bool, full_path: &Path) -> Result<()> {
     if !stem.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
         let expected = stem
             .to_lowercase()
@@ -244,10 +200,7 @@ fn check_filename(
         issues.push(LintIssue {
             severity: "warning".to_string(),
             kind: "filename_convention".to_string(),
-            message: format!(
-                "filename '{}' should be lowercase with hyphens (suggest: '{}.md')",
-                stem, expected
-            ),
+            message: format!("filename '{}' should be lowercase with hyphens (suggest: '{}.md')", stem, expected),
             path: rel_path.to_string(),
             fixable: true,
         });

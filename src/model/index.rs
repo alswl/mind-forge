@@ -5,7 +5,7 @@ use super::asset::Asset;
 use super::source::Source;
 use super::term::Term;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PublishStatus {
     Draft,
@@ -13,7 +13,7 @@ pub enum PublishStatus {
     Archived,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PublishRecord {
     pub path: String,
     pub target_name: String,
@@ -22,7 +22,7 @@ pub struct PublishRecord {
     pub published_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IndexFile {
     pub schema_version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

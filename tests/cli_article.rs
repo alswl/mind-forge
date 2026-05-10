@@ -187,10 +187,7 @@ fn article_lint_fix_renames_file() {
     if output.status.code() != Some(0) {
         let stderr = String::from_utf8(output.stderr).unwrap_or_default();
         let stdout = String::from_utf8(output.stdout).unwrap_or_default();
-        panic!(
-            "lint --fix failed (exit {:?})\nstderr: {stderr}\nstdout: {stdout}",
-            output.status.code()
-        );
+        panic!("lint --fix failed (exit {:?})\nstderr: {stderr}\nstdout: {stdout}", output.status.code());
     }
 
     // Original file should be renamed
@@ -247,16 +244,12 @@ fn article_lint_json_output() {
 fn json_index(args: &[&str], cwd: &std::path::Path) -> (serde_json::Value, std::process::Output) {
     let mut all = vec!["--format", "json", "article", "index"];
     all.extend_from_slice(args);
-    let output = Command::cargo_bin("mf")
-        .expect("binary exists")
-        .current_dir(cwd)
-        .args(&all)
-        .output()
-        .expect("command runs");
+    let output =
+        Command::cargo_bin("mf").expect("binary exists").current_dir(cwd).args(&all).output().expect("command runs");
     let out = output.stdout.clone();
     let stdout = String::from_utf8(out).unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("JSON parse error: {e}\nstdout: {stdout:?}"));
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("JSON parse error: {e}\nstdout: {stdout:?}"));
     (parsed, output)
 }
 

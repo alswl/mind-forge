@@ -1,5 +1,6 @@
 ---
 source: tests/cli_help.rs
+assertion_line: 174
 expression: stdout
 ---
 Learn a term correction
@@ -8,13 +9,13 @@ Usage: mf term learn [OPTIONS] --original <ORIGINAL> --correct <CORRECT>
 
 Options:
       --original <ORIGINAL>  
-      --root <PATH>          
-      --config <PATH>        
+      --root <PATH>          Mind Repo root directory
+      --config <PATH>        Config file path
       --correct <CORRECT>    
       --project <PROJECT>    
-  -v, --verbose...           
-      --format <FORMAT>      [default: text] [possible values: text, json]
-  -q, --quiet                
-      --no-color             
+  -v, --verbose...           Verbose output
+  -q, --quiet                Silence non-error output
+      --format <FORMAT>      Output format [default: text] [possible values: text, json]
+      --no-color             Disable colored output
   -h, --help                 Print help
   -V, --version              Print version

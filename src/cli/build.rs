@@ -18,11 +18,7 @@ pub struct BuildArgs {
     pub dry_run: bool,
 }
 
-pub fn dispatch(
-    args: BuildArgs,
-    repo_root: Option<&PathBuf>,
-    format: crate::output::Format,
-) -> Result<CommandOutcome> {
+pub fn dispatch(args: BuildArgs, repo_root: Option<&PathBuf>, format: crate::output::Format) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
 
     if args.article.is_empty() || args.article.contains('/') || args.article.contains('\\') {
@@ -35,13 +31,7 @@ pub fn dispatch(
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
 
-    match build_svc::build_article(
-        &project_path,
-        root,
-        &args.article,
-        args.dry_run,
-        args.output.as_deref(),
-    )? {
+    match build_svc::build_article(&project_path, root, &args.article, args.dry_run, args.output.as_deref())? {
         build_svc::BuildOutput::Plan(plan) => {
             let data = serde_json::json!({
                 "article": plan.article,

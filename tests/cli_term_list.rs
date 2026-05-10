@@ -95,16 +95,7 @@ fn list_terms_json_shape() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "--format",
-            "json",
-            "term",
-            "list",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "--format", "json", "term", "list", "--project", "alpha"])
         .output()
         .unwrap();
 
@@ -133,16 +124,7 @@ fn list_terms_filter_substring() {
     // "mind" matches Mind Repo's term, aliases, and tags
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "term",
-            "list",
-            "--project",
-            "alpha",
-            "--filter",
-            "mind",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "term", "list", "--project", "alpha", "--filter", "mind"])
         .output()
         .unwrap();
 
@@ -154,16 +136,7 @@ fn list_terms_filter_substring() {
     // "CLI" (case-insensitive) should match mf's tag
     let output2 = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "term",
-            "list",
-            "--project",
-            "alpha",
-            "--filter",
-            "CLI",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "term", "list", "--project", "alpha", "--filter", "CLI"])
         .output()
         .unwrap();
 

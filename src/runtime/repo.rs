@@ -45,11 +45,7 @@ pub fn detect_repo_root_with_config(config_path: &Path) -> Option<PathBuf> {
     if !config_path.exists() {
         return None;
     }
-    let path = if config_path.is_dir() {
-        config_path.to_path_buf()
-    } else {
-        config_path.parent()?.to_path_buf()
-    };
+    let path = if config_path.is_dir() { config_path.to_path_buf() } else { config_path.parent()?.to_path_buf() };
     if path.join("minds.yaml").exists() {
         Some(path)
     } else {

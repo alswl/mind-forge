@@ -62,17 +62,13 @@ pub struct ArticleIndexArgs {
     pub dry_run: bool,
 }
 
-pub fn dispatch(
-    command: ArticleCmd,
-    repo_root: Option<&PathBuf>,
-    format: Format,
-) -> Result<CommandOutcome> {
+pub fn dispatch(command: ArticleCmd, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
 
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
 
     match command.command {
-        None => Ok(CommandOutcome::GroupHelp(super::HelpTarget::Article)),
+        None => Ok(CommandOutcome::GroupHelp("article")),
         Some(ArticleSubcommand::New(args)) => {
             let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
 
@@ -113,10 +109,7 @@ pub fn dispatch(
                 Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&articles)?, None)),
                 Format::Text => {
                     if articles.is_empty() {
-                        return Ok(CommandOutcome::Success(
-                            serde_json::json!("No articles found."),
-                            None,
-                        ));
+                        return Ok(CommandOutcome::Success(serde_json::json!("No articles found."), None));
                     }
                     let mut lines = Vec::new();
                     for a in &articles {
@@ -138,17 +131,11 @@ pub fn dispatch(
                 Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&issues)?, None)),
                 Format::Text => {
                     if issues.is_empty() {
-                        return Ok(CommandOutcome::Success(
-                            serde_json::json!("No issues found."),
-                            None,
-                        ));
+                        return Ok(CommandOutcome::Success(serde_json::json!("No issues found."), None));
                     }
                     let mut lines = Vec::new();
                     for issue in &issues {
-                        lines.push(format!(
-                            "[{}] {}: {}  ({})",
-                            issue.severity, issue.kind, issue.message, issue.path
-                        ));
+                        lines.push(format!("[{}] {}: {}  ({})", issue.severity, issue.kind, issue.message, issue.path));
                     }
                     Ok(CommandOutcome::Raw(lines.join("\n"), None))
                 }
@@ -157,7 +144,7 @@ pub fn dispatch(
         Some(ArticleSubcommand::Index(args)) => {
             let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
             let scanned = article_svc::scan_docs(&project_path)?;
-            let index = article_svc::load_index(&project_path)?;
+            let index = crate::service::index::load(&project_path)?;
             let diff = article_svc::compute_article_diff(&index, &scanned);
 
             if args.dry_run {
@@ -170,7 +157,7 @@ pub fn dispatch(
             }
 
             let updated = article_svc::reconcile_articles(&project_path, index, diff)?;
-            article_svc::save_index(&updated, &project_path)?;
+            crate::service::index::save(&project_path, &updated)?;
             let article_count = updated.articles.as_ref().map(|a| a.len()).unwrap_or(0);
 
             let data = serde_json::json!({

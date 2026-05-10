@@ -9,12 +9,7 @@ fn assert_exit_64(args: &[&str], repo: &common::TempDir) {
         .args(args)
         .output()
         .expect("command runs");
-    assert_eq!(
-        output.status.code(),
-        Some(64),
-        "expected exit 64 for args {args:?}, got {:?}",
-        output.status.code()
-    );
+    assert_eq!(output.status.code(), Some(64), "expected exit 64 for args {args:?}, got {:?}", output.status.code());
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
     let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
     let all = stdout + &stderr;
@@ -74,9 +69,5 @@ fn project_index_returns_success() {
         .args(["project", "index"])
         .output()
         .expect("command runs");
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "expected exit 0 for implemented command project index"
-    );
+    assert_eq!(output.status.code(), Some(0), "expected exit 0 for implemented command project index");
 }

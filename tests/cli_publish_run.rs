@@ -86,10 +86,7 @@ fn local_happy_path_text_output() {
     assert!(stdout.contains("target      local-blog"), "stdout missing target row: {stdout}");
     assert!(stdout.contains("type        local"), "stdout missing type row: {stdout}");
     assert!(stdout.contains("article     my-article"), "stdout missing article row: {stdout}");
-    assert!(
-        stdout.contains(&format!("size        {} bytes", ARTICLE_BODY.len())),
-        "stdout missing size row: {stdout}"
-    );
+    assert!(stdout.contains(&format!("size        {} bytes", ARTICLE_BODY.len())), "stdout missing size row: {stdout}");
     let dest_file = dest_root.path().join("my-article.md");
     assert!(
         stdout.contains(&format!("destination {}", dest_file.display())),
@@ -105,10 +102,7 @@ fn local_happy_path_json_output() {
     let dest_root = tempfile::tempdir().unwrap();
     let repo = setup_repo_with_targets(&local_target_yaml("local-blog", dest_root.path()));
 
-    let out = run_publish(
-        &repo,
-        &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog"],
-    );
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value =
@@ -131,10 +125,8 @@ fn local_dry_run_does_not_write() {
     let dest_file = dest_root.path().join("my-article.md");
     let index_before = read_index_bytes(&repo);
 
-    let out = run_publish(
-        &repo,
-        &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog", "--dry-run"],
-    );
+    let out =
+        run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog", "--dry-run"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -151,17 +143,11 @@ fn local_rejects_existing_file_without_force() {
     let dest_file = dest_root.path().join("my-article.md");
     fs::write(&dest_file, b"PRE-EXISTING").unwrap();
 
-    let out = run_publish(
-        &repo,
-        &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog"],
-    );
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog"]);
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "file-exists");
-    assert!(
-        v["error"]["hint"].as_str().unwrap_or("").contains("--force"),
-        "hint should mention --force: {v}"
-    );
+    assert!(v["error"]["hint"].as_str().unwrap_or("").contains("--force"), "hint should mention --force: {v}");
 
     assert_eq!(fs::read(&dest_file).unwrap(), b"PRE-EXISTING", "destination bytes preserved");
 }
@@ -180,10 +166,7 @@ fn local_force_overwrites_existing_file() {
 
     for entry in fs::read_dir(dest_root.path()).unwrap() {
         let name = entry.unwrap().file_name().to_string_lossy().to_string();
-        assert!(
-            !name.contains(".tmp."),
-            "atomic write should not leave a .tmp.* file behind; found {name}"
-        );
+        assert!(!name.contains(".tmp."), "atomic write should not leave a .tmp.* file behind; found {name}");
     }
 }
 
@@ -207,22 +190,13 @@ fn missing_build_artifact_returns_not_found() {
 
     fs::remove_file(repo.path().join("my-project/_build/my-article.md")).unwrap();
 
-    let out = run_publish(
-        &repo,
-        &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog"],
-    );
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog"]);
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "not-found");
-    assert!(
-        v["error"]["hint"].as_str().unwrap_or("").contains("mf build"),
-        "hint should mention `mf build`: {v}"
-    );
+    assert!(v["error"]["hint"].as_str().unwrap_or("").contains("mf build"), "hint should mention `mf build`: {v}");
 
-    assert!(
-        !dest_root.path().join("my-article.md").exists(),
-        "destination must not be created when artifact missing"
-    );
+    assert!(!dest_root.path().join("my-article.md").exists(), "destination must not be created when artifact missing");
 }
 
 #[test]
@@ -230,10 +204,7 @@ fn unknown_target_returns_not_found() {
     let dest_root = tempfile::tempdir().unwrap();
     let repo = setup_repo_with_targets(&local_target_yaml("local-blog", dest_root.path()));
 
-    let out = run_publish(
-        &repo,
-        &["--format", "json", "publish", "run", ARTICLE, "--target", "does-not-exist"],
-    );
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "does-not-exist"]);
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "not-found");
@@ -249,10 +220,7 @@ fn disabled_target_returns_usage() {
     yaml = yaml.replace("enabled: true", "enabled: false");
     let repo = setup_repo_with_targets(&yaml);
 
-    let out = run_publish(
-        &repo,
-        &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog"],
-    );
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog"]);
     assert_eq!(out.status.code(), Some(2));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "usage");
@@ -284,10 +252,7 @@ fn default_target_used_when_flag_omitted() {
 
     let out = run_publish(&repo, &["publish", "run", ARTICLE]);
     assert_eq!(out.status.code(), Some(0));
-    assert!(
-        dest_root.path().join("my-article.md").exists(),
-        "default target should have produced output"
-    );
+    assert!(dest_root.path().join("my-article.md").exists(), "default target should have produced output");
 }
 
 #[test]
@@ -297,11 +262,7 @@ fn no_target_no_default_returns_usage() {
     let repo = common::setup_repo();
     let project_path = repo.path().join("my-project");
     fs::create_dir_all(&project_path).unwrap();
-    fs::write(
-        project_path.join("mind.yaml"),
-        "schema_version: '1'\nproject:\n  name: my-project\n",
-    )
-    .unwrap();
+    fs::write(project_path.join("mind.yaml"), "schema_version: '1'\nproject:\n  name: my-project\n").unwrap();
     fs::write(
         project_path.join("mind-index.yaml"),
         "schema_version: '1'\narticles:\n  - title: My Article\n    project: my-project\n    type: blog\n    source_path: docs/my-article.md\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n",
@@ -360,10 +321,7 @@ fn yuque_prompt_text_two_section_layout() {
     let prompt_idx = stdout.find("### Publish Prompt").unwrap();
     let envelope_idx = stdout.find("### Envelope").unwrap();
     let between = &stdout[prompt_idx..envelope_idx];
-    assert!(
-        between.contains("\n\n### Envelope") || envelope_idx > prompt_idx,
-        "sections must be separated"
-    );
+    assert!(between.contains("\n\n### Envelope") || envelope_idx > prompt_idx, "sections must be separated");
 
     assert!(!stdout.contains('\u{1b}'), "no ANSI escapes allowed: {stdout}");
 }
@@ -371,10 +329,7 @@ fn yuque_prompt_text_two_section_layout() {
 #[test]
 fn yuque_prompt_json_is_single_object() {
     let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
-    let out = run_publish(
-        &repo,
-        &["--format", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"],
-    );
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value =
@@ -385,11 +340,7 @@ fn yuque_prompt_json_is_single_object() {
     assert_eq!(data["target_type"], "yuque-prompt");
     assert_eq!(data["target_name"], "yuque-draft");
     assert_eq!(data["article"], ARTICLE);
-    assert_eq!(
-        data["content"].as_str().unwrap().as_bytes(),
-        ARTICLE_BODY,
-        "content must equal build artifact bytes"
-    );
+    assert_eq!(data["content"].as_str().unwrap().as_bytes(), ARTICLE_BODY, "content must equal build artifact bytes");
     assert!(data["envelope"].is_object());
     assert_eq!(data["envelope"]["namespace"], "my-blog");
     let suggested = data["suggested_update_command"].as_str().unwrap();
@@ -401,10 +352,8 @@ fn yuque_prompt_dry_run_marks_envelope() {
     let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
     let index_before = read_index_bytes(&repo);
 
-    let out = run_publish(
-        &repo,
-        &["--format", "json", "publish", "run", ARTICLE, "--target", "yuque-draft", "--dry-run"],
-    );
+    let out =
+        run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "yuque-draft", "--dry-run"]);
     assert_eq!(out.status.code(), Some(0));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["data"]["dry_run"], true);
@@ -415,10 +364,7 @@ fn yuque_prompt_dry_run_marks_envelope() {
 #[test]
 fn yuque_prompt_empty_config_defaults_to_object() {
     let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", false));
-    let out = run_publish(
-        &repo,
-        &["--format", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"],
-    );
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
     assert_eq!(out.status.code(), Some(0));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["data"]["envelope"], serde_json::json!({}));
@@ -429,10 +375,7 @@ fn yuque_prompt_missing_build_artifact_returns_not_found() {
     let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
     fs::remove_file(repo.path().join("my-project/_build/my-article.md")).unwrap();
 
-    let out = run_publish(
-        &repo,
-        &["--format", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"],
-    );
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "not-found");
@@ -486,12 +429,7 @@ fn quickstart_scenario_a_e2e() {
     .unwrap();
 
     // --- Step 0: `mf article index` to register the article ---
-    let out = Command::cargo_bin("mf")
-        .unwrap()
-        .current_dir(&project_path)
-        .args(["article", "index"])
-        .output()
-        .unwrap();
+    let out = Command::cargo_bin("mf").unwrap().current_dir(&project_path).args(["article", "index"]).output().unwrap();
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -500,22 +438,9 @@ fn quickstart_scenario_a_e2e() {
     );
 
     // --- Step 1: `mf build <ARTICLE>` (must exit 0) ---
-    let out = Command::cargo_bin("mf")
-        .unwrap()
-        .current_dir(&project_path)
-        .args(["build", article])
-        .output()
-        .unwrap();
-    assert_eq!(
-        out.status.code(),
-        Some(0),
-        "mf build exited non-zero: stderr={}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    assert!(
-        project_path.join("_build").join(format!("{article}.md")).exists(),
-        "build artifact must exist"
-    );
+    let out = Command::cargo_bin("mf").unwrap().current_dir(&project_path).args(["build", article]).output().unwrap();
+    assert_eq!(out.status.code(), Some(0), "mf build exited non-zero: stderr={}", String::from_utf8_lossy(&out.stderr));
+    assert!(project_path.join("_build").join(format!("{article}.md")).exists(), "build artifact must exist");
 
     // --- Step 2: `mf publish run <ARTICLE> --target local-blog` (must exit 0) ---
     let out = Command::cargo_bin("mf")
@@ -571,10 +496,7 @@ fn quickstart_scenario_a_e2e() {
         index_content.contains("publish_records"),
         "mind-index.yaml must contain publish_records after update; got:\n{index_content}"
     );
-    assert!(
-        index_content.contains(&target_url),
-        "mind-index.yaml must contain target_url; got:\n{index_content}"
-    );
+    assert!(index_content.contains(&target_url), "mind-index.yaml must contain target_url; got:\n{index_content}");
     assert!(
         index_content.contains("published"),
         "mind-index.yaml must contain status 'published'; got:\n{index_content}"
@@ -619,21 +541,13 @@ fn not_implemented_target_yaml(name: &str, type_: &str) -> String {
 fn assert_not_implemented(repo: &common::TempDir, target_name: &str, type_: &str) {
     let index_before = read_index_bytes(repo);
 
-    let out = run_publish(
-        repo,
-        &["--format", "json", "publish", "run", ARTICLE, "--target", target_name],
-    );
+    let out = run_publish(repo, &["--format", "json", "publish", "run", ARTICLE, "--target", target_name]);
 
     // Must exit 64 per FR-008, FR-304, SC-006
-    assert_eq!(
-        out.status.code(),
-        Some(64),
-        "exit code 64 expected for not-implemented target type '{type_}'"
-    );
+    assert_eq!(out.status.code(), Some(64), "exit code 64 expected for not-implemented target type '{type_}'");
 
     // Parse JSON error envelope from stderr
-    let v: serde_json::Value =
-        serde_json::from_slice(&out.stderr).expect("stderr must be a single JSON object");
+    let v: serde_json::Value = serde_json::from_slice(&out.stderr).expect("stderr must be a single JSON object");
     assert_eq!(v["error"]["kind"], "not-implemented", "error kind mismatch for '{type_}'");
 
     let message = v["error"]["message"].as_str().unwrap_or("");
@@ -647,11 +561,7 @@ fn assert_not_implemented(repo: &common::TempDir, target_name: &str, type_: &str
     assert!(stdout.is_empty(), "no stdout output on not-implemented error: {stdout}");
 
     // mind-index.yaml must be unchanged (SC-008)
-    assert_eq!(
-        read_index_bytes(repo),
-        index_before,
-        "mind-index.yaml unchanged after not-implemented target (SC-008)"
-    );
+    assert_eq!(read_index_bytes(repo), index_before, "mind-index.yaml unchanged after not-implemented target (SC-008)");
 }
 
 #[test]

@@ -16,6 +16,12 @@ use serde::Serialize;
 use crate::error::Result;
 use crate::output::Format;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepoRequirement {
+    Required,
+    NotRequired,
+}
+
 #[derive(Debug, Parser)]
 #[command(
     name = "mf",
@@ -33,17 +39,17 @@ pub struct RootCli {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct GlobalOpts {
-    #[arg(long, global = true, value_name = "PATH")]
+    #[arg(long, global = true, value_name = "PATH", help = "Mind Repo root directory")]
     pub root: Option<PathBuf>,
-    #[arg(long, global = true, value_name = "PATH")]
+    #[arg(long, global = true, value_name = "PATH", help = "Config file path")]
     pub config: Option<PathBuf>,
-    #[arg(short = 'v', long = "verbose", global = true, action = ArgAction::Count)]
+    #[arg(short = 'v', long = "verbose", global = true, action = ArgAction::Count, help = "Verbose output")]
     pub verbose: u8,
-    #[arg(short = 'q', long = "quiet", global = true)]
+    #[arg(short = 'q', long = "quiet", global = true, help = "Silence non-error output")]
     pub quiet: bool,
-    #[arg(long, global = true, value_enum, default_value_t = Format::Text)]
+    #[arg(long, global = true, value_enum, default_value_t = Format::Text, help = "Output format")]
     pub format: Format,
-    #[arg(long = "no-color", global = true)]
+    #[arg(long = "no-color", global = true, help = "Disable colored output")]
     pub no_color: bool,
 }
 
@@ -69,21 +75,10 @@ pub enum TopLevelCommand {
     Config(config::ConfigCmd),
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum HelpTarget {
-    Source,
-    Asset,
-    Project,
-    Article,
-    Term,
-    Config,
-    Publish,
-}
-
 #[derive(Debug)]
 pub enum CommandOutcome {
     RootHelp,
-    GroupHelp(HelpTarget),
+    GroupHelp(&'static str),
     Completion(clap_complete::Shell),
     /// Successful command execution. The optional exit code overrides the default 0
     /// (used by commands like `lint` that signal issues via non-zero exit codes).
@@ -97,42 +92,32 @@ pub enum CommandOutcome {
 }
 
 impl RootCli {
-    /// 判断选中的命令是否需要 Mind Repo 上下文
-    pub fn command_needs_repo(&self) -> bool {
-        match &self.command {
-            None | Some(TopLevelCommand::Completion(_)) | Some(TopLevelCommand::Config(_)) => false,
-            Some(TopLevelCommand::Project(cmd)) if is_project_index(cmd) => false,
-            _ => true,
-        }
+    pub fn requires_repo(&self) -> RepoRequirement {
+        self.command.as_ref().map(|c| c.requires_repo()).unwrap_or(RepoRequirement::NotRequired)
     }
 
-    pub fn dispatch(
-        self,
-        repo_root: Option<&std::path::PathBuf>,
-        format: Format,
-    ) -> Result<CommandOutcome> {
+    pub fn dispatch(self, repo_root: Option<&std::path::PathBuf>, format: Format) -> Result<CommandOutcome> {
         match self.command {
             None => Ok(CommandOutcome::RootHelp),
             Some(TopLevelCommand::Source(command)) => source::dispatch(command, repo_root, format),
             Some(TopLevelCommand::Asset(command)) => asset::dispatch(command, repo_root, format),
-            Some(TopLevelCommand::Project(command)) => {
-                project::dispatch(command, repo_root, format)
-            }
-            Some(TopLevelCommand::Article(command)) => {
-                article::dispatch(command, repo_root, format)
-            }
+            Some(TopLevelCommand::Project(command)) => project::dispatch(command, repo_root, format),
+            Some(TopLevelCommand::Article(command)) => article::dispatch(command, repo_root, format),
             Some(TopLevelCommand::Term(command)) => term::dispatch(command, repo_root, format),
             Some(TopLevelCommand::Completion(command)) => completion::dispatch(command),
             Some(TopLevelCommand::Build(args)) => build::dispatch(args, repo_root, format),
-            Some(TopLevelCommand::Publish(command)) => {
-                publish::dispatch(command, repo_root, format)
-            }
+            Some(TopLevelCommand::Publish(command)) => publish::dispatch(command, repo_root, format),
             Some(TopLevelCommand::Config(command)) => config::dispatch(command, repo_root, format),
         }
     }
 }
 
-/// `mf project index` 可以在 Mind Repo 外运行（用于创建 minds.yaml）
-fn is_project_index(cmd: &project::ProjectCmd) -> bool {
-    matches!(cmd.command, Some(project::ProjectSubcommand::Index(_)))
+impl TopLevelCommand {
+    pub fn requires_repo(&self) -> RepoRequirement {
+        match self {
+            Self::Completion(_) | Self::Config(_) => RepoRequirement::NotRequired,
+            Self::Project(cmd) => cmd.requires_repo(),
+            _ => RepoRequirement::Required,
+        }
+    }
 }

@@ -27,8 +27,7 @@ fn test_show_no_mind_yaml_returns_defaults() {
 #[test]
 fn test_show_with_overlay() {
     let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("mind.yaml"), "schema_version: '1'\nbuild:\n  output_dir: '_out'\n")
-        .unwrap();
+    fs::write(dir.path().join("mind.yaml"), "schema_version: '1'\nbuild:\n  output_dir: '_out'\n").unwrap();
     mf().current_dir(dir.path())
         .arg("config")
         .arg("show")
@@ -40,11 +39,7 @@ fn test_show_with_overlay() {
 #[test]
 fn test_show_json_format() {
     let dir = tempfile::tempdir().unwrap();
-    fs::write(
-        dir.path().join("mind.yaml"),
-        "schema_version: '1'\nbuild:\n  output_dir: '_custom'\n",
-    )
-    .unwrap();
+    fs::write(dir.path().join("mind.yaml"), "schema_version: '1'\nbuild:\n  output_dir: '_custom'\n").unwrap();
     mf().current_dir(dir.path())
         .arg("config")
         .arg("show")
@@ -130,12 +125,7 @@ fn test_init_roundtrip_with_show() {
     let dir = tempfile::tempdir().unwrap();
     mf().current_dir(dir.path()).arg("config").arg("init").assert().success();
     // show should contain the project name (directory name, sanitized to lowercase)
-    mf().current_dir(dir.path())
-        .arg("config")
-        .arg("show")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("name:"));
+    mf().current_dir(dir.path()).arg("config").arg("show").assert().success().stdout(predicate::str::contains("name:"));
 }
 
 // ---------------------------------------------------------------------------
@@ -165,11 +155,7 @@ fn test_schema_yaml_format() {
 
 #[test]
 fn test_schema_contains_enum_constraint() {
-    mf().arg("config")
-        .arg("schema")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("github_pages"));
+    mf().arg("config").arg("schema").assert().success().stdout(predicate::str::contains("github_pages"));
 }
 
 #[test]

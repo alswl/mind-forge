@@ -1,5 +1,6 @@
 ---
 source: tests/cli_help.rs
+assertion_line: 25
 expression: stdout
 ---
 Manage content sources
@@ -15,11 +16,11 @@ Commands:
   clean   Clean source index
 
 Options:
-      --root <PATH>      
-      --config <PATH>    
-  -v, --verbose...       
-  -q, --quiet            
-      --format <FORMAT>  [default: text] [possible values: text, json]
-      --no-color         
+      --root <PATH>      Mind Repo root directory
+      --config <PATH>    Config file path
+  -v, --verbose...       Verbose output
+  -q, --quiet            Silence non-error output
+      --format <FORMAT>  Output format [default: text] [possible values: text, json]
+      --no-color         Disable colored output
   -h, --help             Print help
   -V, --version          Print version

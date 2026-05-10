@@ -10,7 +10,7 @@ pub enum AssetKind {
     Other,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Asset {
     pub name: String,
     #[serde(rename = "type")]

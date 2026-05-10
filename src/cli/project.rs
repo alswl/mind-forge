@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use clap::ValueEnum;
 
-use crate::cli::{CommandOutcome, HelpTarget};
+use crate::cli::{CommandOutcome, RepoRequirement};
 use crate::error::{MfError, Result};
 use crate::model::project::LintKind;
 use crate::output::Format;
@@ -73,19 +73,22 @@ pub struct ProjectIndexArgs {
     pub dry_run: bool,
 }
 
+impl ProjectCmd {
+    pub fn requires_repo(&self) -> RepoRequirement {
+        match self.command {
+            Some(ProjectSubcommand::Index(_)) => RepoRequirement::NotRequired,
+            _ => RepoRequirement::Required,
+        }
+    }
+}
+
 /// dispatch 现在接受 repo_root 参数用于需要文件系统操作的子命令
-pub fn dispatch(
-    command: ProjectCmd,
-    repo_root: Option<&PathBuf>,
-    format: Format,
-) -> Result<CommandOutcome> {
+pub fn dispatch(command: ProjectCmd, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
     match command.command {
-        None => Ok(CommandOutcome::GroupHelp(HelpTarget::Project)),
+        None => Ok(CommandOutcome::GroupHelp("project")),
         Some(ProjectSubcommand::New(args)) => handle_new(args, repo_root, format),
         Some(ProjectSubcommand::List(args)) => handle_list(args, repo_root, format),
-        Some(ProjectSubcommand::Archive(_args)) => {
-            Err(MfError::not_implemented("mf project archive"))
-        }
+        Some(ProjectSubcommand::Archive(_args)) => Err(MfError::not_implemented("mf project archive")),
         Some(ProjectSubcommand::Status(args)) => handle_status(args, repo_root, format),
         Some(ProjectSubcommand::Lint(args)) => handle_lint(args, repo_root, format),
         Some(ProjectSubcommand::Index(args)) => handle_index(args, repo_root, format),
@@ -96,11 +99,7 @@ pub fn dispatch(
 // US1: mf project new
 // ---------------------------------------------------------------------------
 
-fn handle_new(
-    args: ProjectNewArgs,
-    repo_root: Option<&PathBuf>,
-    _format: Format,
-) -> Result<CommandOutcome> {
+fn handle_new(args: ProjectNewArgs, repo_root: Option<&PathBuf>, _format: Format) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
     let report = svc::project::scaffold(root, &args.name, args.force)?;
     let entry = svc::project::upsert_project_entry(root, &args.name, &report.created_at)?;
@@ -118,11 +117,7 @@ fn handle_new(
 // US2: mf project list
 // ---------------------------------------------------------------------------
 
-fn handle_list(
-    _args: ProjectListArgs,
-    repo_root: Option<&PathBuf>,
-    format: Format,
-) -> Result<CommandOutcome> {
+fn handle_list(_args: ProjectListArgs, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
     let entries = svc::project::list_projects(root)?;
 
@@ -136,16 +131,10 @@ fn handle_list(
                 return Ok(CommandOutcome::Raw("(no projects)".to_string(), None));
             }
             let mut lines = Vec::new();
-            lines.push(format!(
-                "{:<8} {:>4}  {:<24}  {}",
-                "NAME", "DOCS", "LAST ACTIVITY", "CREATED"
-            ));
+            lines.push(format!("{:<8} {:>4}  {:<24}  {}", "NAME", "DOCS", "LAST ACTIVITY", "CREATED"));
             for e in &entries {
                 let last_act = e.last_activity_at.as_deref().unwrap_or("-");
-                lines.push(format!(
-                    "{:<8} {:>4}  {:<24}  {}",
-                    e.name, e.document_count, last_act, e.created_at
-                ));
+                lines.push(format!("{:<8} {:>4}  {:<24}  {}", e.name, e.document_count, last_act, e.created_at));
             }
             Ok(CommandOutcome::Raw(lines.join("\n"), None))
         }
@@ -156,11 +145,7 @@ fn handle_list(
 // US3: mf project status
 // ---------------------------------------------------------------------------
 
-fn handle_status(
-    args: ProjectStatusArgs,
-    repo_root: Option<&PathBuf>,
-    _format: Format,
-) -> Result<CommandOutcome> {
+fn handle_status(args: ProjectStatusArgs, repo_root: Option<&PathBuf>, _format: Format) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
     let project_path = svc::project::resolve_project(root, args.project.as_deref(), &cwd)?;
@@ -174,11 +159,7 @@ fn handle_status(
 // US4: mf project lint
 // ---------------------------------------------------------------------------
 
-fn handle_lint(
-    args: ProjectLintArgs,
-    repo_root: Option<&PathBuf>,
-    format: Format,
-) -> Result<CommandOutcome> {
+fn handle_lint(args: ProjectLintArgs, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
 
     // Parse --rule args into LintKind values
@@ -191,7 +172,10 @@ fn handle_lint(
                 LintKind::from_str(r, true).map_err(|e| {
                     MfError::usage(
                         format!("unknown lint rule '{r}': {e}"),
-                        Some("available rules: missing_directory, stale_index_entry, name_convention, missing_manifest".to_string()),
+                        Some(
+                            "available rules: missing_directory, stale_index_entry, name_convention, missing_manifest"
+                                .to_string(),
+                        ),
                     )
                 })
             })
@@ -235,9 +219,7 @@ fn handle_lint(
             let warnings = summary["warnings"].as_u64().unwrap_or(0);
             let fixed = summary["fixed"].as_u64().unwrap_or(0);
             let project_count = 1;
-            lines.push(format!(
-                "\n{errors} errors, {warnings} warnings across {project_count} project."
-            ));
+            lines.push(format!("\n{errors} errors, {warnings} warnings across {project_count} project."));
             if fixed > 0 {
                 lines.push(format!("{fixed} fixed."));
             }
@@ -250,16 +232,9 @@ fn handle_lint(
 // mf project index (existing, unchanged)
 // ---------------------------------------------------------------------------
 
-fn handle_index(
-    args: ProjectIndexArgs,
-    repo_root: Option<&PathBuf>,
-    format: Format,
-) -> Result<CommandOutcome> {
+fn handle_index(args: ProjectIndexArgs, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
     // 无 repo_root 时使用 cwd（mf project index 可在 repo 外运行）
-    let root = repo_root
-        .cloned()
-        .or_else(|| std::env::current_dir().ok())
-        .ok_or_else(MfError::not_in_mind_repo)?;
+    let root = repo_root.cloned().or_else(|| std::env::current_dir().ok()).ok_or_else(MfError::not_in_mind_repo)?;
 
     let scanned = repo::scan_project_dirs(&root);
 
@@ -277,10 +252,7 @@ fn handle_index(
             Format::Json => serde_json::to_string_pretty(&diff).map_err(MfError::Json)?,
             Format::Text => repo::render_diff_text(&diff),
         };
-        return Ok(CommandOutcome::Success(
-            serde_json::json!({"diff": output, "dry_run": true}),
-            None,
-        ));
+        return Ok(CommandOutcome::Success(serde_json::json!({"diff": output, "dry_run": true}), None));
     }
 
     let updated = repo::reconcile(manifest, diff);

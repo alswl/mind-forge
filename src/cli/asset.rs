@@ -39,8 +39,6 @@ pub struct AssetListArgs {
     pub asset_type: Option<AssetKind>,
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    pub format: Format,
 }
 
 // ---------------------------------------------------------------------------
@@ -60,8 +58,6 @@ pub struct AssetAddArgs {
     pub force: bool,
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    pub format: Format,
 }
 
 // ---------------------------------------------------------------------------
@@ -75,8 +71,6 @@ pub struct AssetUpdateArgs {
     pub all: bool,
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    pub format: Format,
 }
 
 // ---------------------------------------------------------------------------
@@ -91,24 +85,18 @@ pub struct AssetIndexArgs {
     pub refresh_metadata: bool,
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    pub format: Format,
 }
 
 // ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
 
-pub fn dispatch(
-    command: AssetCmd,
-    repo_root: Option<&PathBuf>,
-    format: Format,
-) -> Result<CommandOutcome> {
+pub fn dispatch(command: AssetCmd, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
 
     match command.command {
-        None => Ok(CommandOutcome::GroupHelp(super::HelpTarget::Asset)),
+        None => Ok(CommandOutcome::GroupHelp("asset")),
         Some(AssetSubcommand::Add(args)) => handle_add(args, root, &cwd, format),
         Some(AssetSubcommand::List(args)) => handle_list(args, root, &cwd, format),
         Some(AssetSubcommand::Update(args)) => handle_update(args, root, &cwd, format),
@@ -120,20 +108,9 @@ pub fn dispatch(
 // Handle: mf asset add
 // ---------------------------------------------------------------------------
 
-fn handle_add(
-    args: AssetAddArgs,
-    root: &Path,
-    cwd: &Path,
-    global_format: Format,
-) -> Result<CommandOutcome> {
-    let format = if args.format == Format::Text { global_format } else { args.format };
+fn handle_add(args: AssetAddArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
-    let add_args = asset_svc::AddArgs {
-        source: args.path,
-        tags: args.tag,
-        link_mode: args.link,
-        force: args.force,
-    };
+    let add_args = asset_svc::AddArgs { source: args.path, tags: args.tag, link_mode: args.link, force: args.force };
     let asset = asset_svc::add(&project_path, cwd, &add_args)?;
     let mode = if add_args.link_mode { "link" } else { "copy" };
 
@@ -169,13 +146,7 @@ fn handle_add(
 // Handle: mf asset list
 // ---------------------------------------------------------------------------
 
-fn handle_list(
-    args: AssetListArgs,
-    root: &Path,
-    cwd: &Path,
-    global_format: Format,
-) -> Result<CommandOutcome> {
-    let format = if args.format == Format::Text { global_format } else { args.format };
+fn handle_list(args: AssetListArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
     let assets = asset_svc::list(&project_path, args.filter.as_deref(), args.asset_type)?;
 
@@ -186,18 +157,13 @@ fn handle_list(
         }
         Format::Text => {
             if assets.is_empty() {
-                return Ok(CommandOutcome::Success(
-                    serde_json::Value::String("No assets found.".to_string()),
-                    None,
-                ));
+                return Ok(CommandOutcome::Success(serde_json::Value::String("No assets found.".to_string()), None));
             }
             let mut lines = Vec::new();
             lines.push(format!("{:<24} {:<8} {:<28} {}", "NAME", "TYPE", "PATH", "SIZE"));
             for a in &assets {
-                let kind_str = serde_json::to_value(a.kind)
-                    .ok()
-                    .and_then(|v| v.as_str().map(String::from))
-                    .unwrap_or_default();
+                let kind_str =
+                    serde_json::to_value(a.kind).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
                 lines.push(format!("{:<24} {:<8} {:<28} {}", a.name, kind_str, a.path, a.size,));
             }
             Ok(CommandOutcome::Raw(lines.join("\n"), None))
@@ -209,13 +175,7 @@ fn handle_list(
 // Handle: mf asset update
 // ---------------------------------------------------------------------------
 
-fn handle_update(
-    args: AssetUpdateArgs,
-    root: &Path,
-    cwd: &Path,
-    global_format: Format,
-) -> Result<CommandOutcome> {
-    let format = if args.format == Format::Text { global_format } else { args.format };
+fn handle_update(args: AssetUpdateArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
 
     // Validate mutual exclusivity
@@ -300,13 +260,7 @@ fn handle_update(
 // Handle: mf asset index
 // ---------------------------------------------------------------------------
 
-fn handle_index(
-    args: AssetIndexArgs,
-    root: &Path,
-    cwd: &Path,
-    global_format: Format,
-) -> Result<CommandOutcome> {
-    let format = if args.format == Format::Text { global_format } else { args.format };
+fn handle_index(args: AssetIndexArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
 
     let report = asset_svc::reconcile(&project_path, args.dry_run, args.refresh_metadata)?;

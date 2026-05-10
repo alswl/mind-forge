@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
-use crate::cli::{CommandOutcome, HelpTarget};
+use crate::cli::CommandOutcome;
 use crate::error::Result;
 use crate::output::Format;
 use crate::service;
@@ -46,13 +46,9 @@ pub struct ConfigInitArgs {
     pub force: bool,
 }
 
-pub fn dispatch(
-    command: ConfigCmd,
-    repo_root: Option<&PathBuf>,
-    _format: Format,
-) -> Result<CommandOutcome> {
+pub fn dispatch(command: ConfigCmd, repo_root: Option<&PathBuf>, _format: Format) -> Result<CommandOutcome> {
     match command.command {
-        None => Ok(CommandOutcome::GroupHelp(HelpTarget::Config)),
+        None => Ok(CommandOutcome::GroupHelp("config")),
         Some(ConfigSubcommand::Schema(args)) => handle_schema(args),
         Some(ConfigSubcommand::Show(args)) => handle_show(args, repo_root),
         Some(ConfigSubcommand::Init(args)) => handle_init(args),
@@ -65,21 +61,17 @@ fn handle_schema(args: ConfigSchemaArgs) -> Result<CommandOutcome> {
 }
 
 fn handle_show(args: ConfigShowArgs, repo_root: Option<&PathBuf>) -> Result<CommandOutcome> {
-    let cwd = std::env::current_dir().map_err(|e| {
-        crate::error::MfError::usage(format!("failed to get current directory: {e}"), None)
-    })?;
-    let output =
-        service::config::show_effective(&cwd, repo_root.map(|p| p.as_path()), &args.output_format)?;
+    let cwd = std::env::current_dir()
+        .map_err(|e| crate::error::MfError::usage(format!("failed to get current directory: {e}"), None))?;
+    let output = service::config::show_effective(&cwd, repo_root.map(|p| p.as_path()), &args.output_format)?;
     Ok(CommandOutcome::Raw(output, None))
 }
 
 fn handle_init(args: ConfigInitArgs) -> Result<CommandOutcome> {
-    let cwd = std::env::current_dir().map_err(|e| {
-        crate::error::MfError::usage(format!("failed to get current directory: {e}"), None)
-    })?;
+    let cwd = std::env::current_dir()
+        .map_err(|e| crate::error::MfError::usage(format!("failed to get current directory: {e}"), None))?;
     let output_path = args.output.clone();
-    let path =
-        service::config::init_config(&cwd, output_path.as_deref(), &args.target, args.force)?;
+    let path = service::config::init_config(&cwd, output_path.as_deref(), &args.target, args.force)?;
     Ok(CommandOutcome::Success(
         serde_json::json!({
             "path": path.to_string_lossy().to_string(),

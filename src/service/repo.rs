@@ -21,12 +21,11 @@ use crate::service::util;
 /// Load `MindsManifest` from file with schema version validation.
 pub fn load_manifest(path: &Path) -> Result<MindsManifest> {
     let content = fs::read_to_string(path).map_err(MfError::Io)?;
-    let manifest: MindsManifest =
-        serde_yaml::from_str(&content).map_err(|e| MfError::ParseError {
-            kind: "yaml".to_string(),
-            path: path.to_path_buf(),
-            detail: e.to_string(),
-        })?;
+    let manifest: MindsManifest = serde_yaml::from_str(&content).map_err(|e| MfError::ParseError {
+        kind: "yaml".to_string(),
+        path: path.to_path_buf(),
+        detail: e.to_string(),
+    })?;
     util::validate_schema_version(&manifest.schema_version, path)?;
     Ok(manifest)
 }
@@ -111,19 +110,12 @@ pub fn compute_diff(manifest: &MindsManifest, scanned: &[ScannedProject]) -> Ind
         .difference(&manifest_names)
         .map(|name| {
             let sp = scanned_map[name];
-            ProjectEntry {
-                name: sp.name.clone(),
-                path: sp.path.clone(),
-                created_at: now.clone(),
-                archived_at: None,
-            }
+            ProjectEntry { name: sp.name.clone(), path: sp.path.clone(), created_at: now.clone(), archived_at: None }
         })
         .collect();
 
-    let removed: Vec<ProjectEntry> = manifest_names
-        .difference(&scanned_names)
-        .map(|name| (*manifest_map[name]).clone())
-        .collect();
+    let removed: Vec<ProjectEntry> =
+        manifest_names.difference(&scanned_names).map(|name| (*manifest_map[name]).clone()).collect();
 
     let updated: Vec<UpdatedProject> = manifest_names
         .intersection(&scanned_names)
@@ -277,10 +269,7 @@ mod tests {
                 archived_at: None,
             }],
         };
-        let scanned = vec![ScannedProject {
-            name: "new-project".to_string(),
-            path: "./new-project".to_string(),
-        }];
+        let scanned = vec![ScannedProject { name: "new-project".to_string(), path: "./new-project".to_string() }];
         let diff = compute_diff(&manifest, &scanned);
         assert_eq!(diff.added.len(), 1);
         assert_eq!(diff.added[0].name, "new-project");

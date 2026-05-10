@@ -5,21 +5,19 @@ mod model;
 mod output;
 mod runtime;
 mod service;
-
-use std::ffi::OsString;
-use std::io::{self, Write};
-use std::process::ExitCode as ProcessExitCode;
-
-use clap::{CommandFactory, Parser};
-use cli::{CommandOutcome, HelpTarget, RootCli};
+use clap::{error::ErrorKind, CommandFactory, Parser};
+use cli::{CommandOutcome, RepoRequirement, RootCli};
 use error::{MfError, Result};
 use exit::ExitCode;
-use output::{render_error, render_raw, render_success};
+use output::{render, Payload};
 use runtime::AppContext;
-
+use std::{
+    ffi::OsString,
+    io::{self, Write},
+    process::ExitCode as ProcessExitCode,
+};
 fn main() -> ProcessExitCode {
-    let args: Vec<OsString> = std::env::args_os().collect();
-    match run(args, &mut io::stdout(), &mut io::stderr()) {
+    match run(std::env::args_os().collect(), &mut io::stdout(), &mut io::stderr()) {
         Ok(code) => ProcessExitCode::from(code as u8),
         Err(err) => {
             let _ = writeln!(io::stderr(), "internal error: {err:#}");
@@ -27,91 +25,53 @@ fn main() -> ProcessExitCode {
         }
     }
 }
-
 fn run(args: Vec<OsString>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> Result<ExitCode> {
     if args.len() <= 1 {
         write_command_help(&mut RootCli::command(), stdout)?;
         return Ok(ExitCode::Ok);
     }
-
-    let wants_json = args.windows(2).any(|w| w[0] == "--format" && w[1] == "json");
-
     let cli = match RootCli::try_parse_from(&args) {
         Ok(cli) => cli,
-        Err(err) => {
-            return handle_parse_error(err, wants_json, stdout, stderr);
-        }
+        Err(err) => return handle_parse_error(err, &args, stdout, stderr),
     };
-
     let context = match AppContext::from_global_opts(&cli.global) {
         Ok(context) => context,
         Err(err) => {
-            render_error(stderr, cli.global.format, &err)?;
+            render(stderr, cli.global.format, Payload::Error(&err))?;
             return Ok(err.exit_code());
         }
     };
     tracing::debug!(config_path = %context.config_path.display(), "resolved config path");
-
-    // Mind Repo 守卫检查：需要上下文的命令必须在 Mind Repo 内运行
-    if cli.command_needs_repo() {
+    if cli.requires_repo() == RepoRequirement::Required {
         if let Err(err) = context.require_repo() {
-            render_error(stderr, context.format, &err)?;
+            render(stderr, context.format, Payload::Error(&err))?;
             return Ok(err.exit_code());
         }
     }
-
     let outcome = match cli.dispatch(context.repo_root.as_ref(), context.format) {
-        Ok(outcome) => outcome,
+        Ok(o) => o,
         Err(err) => {
-            let code = err.exit_code();
-            render_error(stderr, context.format, &err)?;
-            return Ok(code);
+            render(stderr, context.format, Payload::Error(&err))?;
+            return Ok(err.exit_code());
         }
     };
-    match outcome {
-        CommandOutcome::RootHelp => {
-            write_command_help(&mut RootCli::command(), stdout)?;
-            Ok(ExitCode::Ok)
-        }
-        CommandOutcome::GroupHelp(target) => {
-            write_group_help(target, stdout)?;
-            Ok(ExitCode::Ok)
-        }
-        CommandOutcome::Completion(shell) => cli::completion::render_completion(shell, stdout),
-        CommandOutcome::Success(data, exit_code) => {
-            render_success(stdout, context.format, &data)?;
-            Ok(ExitCode::from(exit_code.unwrap_or(0)))
-        }
-        CommandOutcome::Raw(content, exit_code) => {
-            render_raw(stdout, context.format, &content)?;
-            Ok(ExitCode::from(exit_code.unwrap_or(0)))
-        }
-    }
-    .or_else(|err| {
-        let code = err.exit_code();
-        render_error(stderr, context.format, &err)?;
-        Ok(code)
-    })
+    render_outcome(outcome, &context, stdout, stderr)
 }
-
 fn handle_parse_error(
     err: clap::Error,
-    wants_json: bool,
+    args: &[OsString],
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> Result<ExitCode> {
-    use clap::error::ErrorKind;
-
     match err.kind() {
         ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
             write!(stdout, "{err}")?;
             Ok(ExitCode::Ok)
         }
         _ => {
-            if wants_json {
-                let message = err.to_string();
-                let mf_error = MfError::usage(message.trim().to_string(), None);
-                render_error(stderr, output::Format::Json, &mf_error)?;
+            if args.windows(2).any(|w| w[0] == "--format" && w[1] == "json") {
+                let mf_error = MfError::usage(err.to_string().trim().to_string(), None);
+                render(stderr, output::Format::Json, Payload::Error(&mf_error))?;
             } else {
                 err.print()?;
             }
@@ -119,32 +79,42 @@ fn handle_parse_error(
         }
     }
 }
-
-fn write_group_help(target: HelpTarget, stdout: &mut dyn Write) -> Result<()> {
-    let mut command = RootCli::command();
-    let subcommand = match target {
-        HelpTarget::Source => command.find_subcommand_mut("source").expect("source command exists"),
-        HelpTarget::Asset => command.find_subcommand_mut("asset").expect("asset command exists"),
-        HelpTarget::Project => {
-            command.find_subcommand_mut("project").expect("project command exists")
+fn render_outcome(
+    outcome: CommandOutcome,
+    context: &AppContext,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> Result<ExitCode> {
+    match outcome {
+        CommandOutcome::RootHelp => {
+            write_command_help(&mut RootCli::command(), stdout)?;
+            Ok(ExitCode::Ok)
         }
-        HelpTarget::Article => {
-            command.find_subcommand_mut("article").expect("article command exists")
+        CommandOutcome::GroupHelp(name) => {
+            let mut command = RootCli::command();
+            let subcommand = command.find_subcommand_mut(name).expect("known subcommand");
+            write_command_help(subcommand, stdout)?;
+            Ok(ExitCode::Ok)
         }
-        HelpTarget::Term => command.find_subcommand_mut("term").expect("term command exists"),
-        HelpTarget::Config => command.find_subcommand_mut("config").expect("config command exists"),
-        HelpTarget::Publish => {
-            command.find_subcommand_mut("publish").expect("publish command exists")
+        CommandOutcome::Completion(shell) => cli::completion::render_completion(shell, stdout),
+        CommandOutcome::Success(data, exit_code) => {
+            render(stdout, context.format, Payload::Success(&data))?;
+            Ok(ExitCode::from(exit_code.unwrap_or(0)))
         }
-    };
-    write_command_help(subcommand, stdout)?;
-    Ok(())
+        CommandOutcome::Raw(content, exit_code) => {
+            render(stdout, context.format, Payload::Raw(content.as_str()))?;
+            Ok(ExitCode::from(exit_code.unwrap_or(0)))
+        }
+    }
+    .or_else(|err| {
+        let code = err.exit_code();
+        render(stderr, context.format, Payload::Error(&err))?;
+        Ok(code)
+    })
 }
-
 fn write_command_help(command: &mut clap::Command, stdout: &mut dyn Write) -> Result<()> {
     let mut buffer = Vec::new();
     command.write_long_help(&mut buffer)?;
     stdout.write_all(&buffer)?;
-    writeln!(stdout)?;
-    Ok(())
+    Ok(writeln!(stdout)?)
 }

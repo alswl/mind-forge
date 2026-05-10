@@ -236,10 +236,8 @@ pub fn repo_with_mixed_content() -> Dataset {
 /// 含 3 个标准骨架项目（alpha/beta/gamma），各项目已注册到 minds.yaml
 pub fn repo_008_empty_projects() -> Dataset {
     // 先建项目，再运行 index 注册到 minds.yaml
-    let ds = Dataset::empty()
-        .with_standard_project("alpha")
-        .with_standard_project("beta")
-        .with_standard_project("gamma");
+    let ds =
+        Dataset::empty().with_standard_project("alpha").with_standard_project("beta").with_standard_project("gamma");
     // 手动注册到 minds.yaml（模拟 mf project index 的效果）
     let manifest = "schema_version: '1'\nprojects:\n  - name: alpha\n    path: ./alpha\n    created_at: \"2026-04-30T08:00:00Z\"\n    archived_at: ~\n  - name: beta\n    path: ./beta\n    created_at: \"2026-04-30T09:00:00Z\"\n    archived_at: ~\n  - name: gamma\n    path: ./gamma\n    created_at: \"2026-04-30T10:00:00Z\"\n    archived_at: ~\n".to_string();
     fs::write(ds.dir.path().join("minds.yaml"), &manifest).expect("write manifest");
@@ -270,8 +268,7 @@ pub fn repo_008_with_lint_issues() -> Dataset {
 
 /// 项目含命名规范违规（用于 lint name_convention 验收）
 pub fn repo_008_with_name_violation() -> Dataset {
-    let ds =
-        Dataset::empty().with_standard_project("alpha").with_index("alpha", INDEX_NAME_VIOLATION);
+    let ds = Dataset::empty().with_standard_project("alpha").with_index("alpha", INDEX_NAME_VIOLATION);
     let manifest = "schema_version: '1'\nprojects:\n  - name: alpha\n    path: ./alpha\n    created_at: \"2026-04-30T08:00:00Z\"\n    archived_at: ~\n".to_string();
     fs::write(ds.dir.path().join("minds.yaml"), &manifest).expect("write manifest");
     ds

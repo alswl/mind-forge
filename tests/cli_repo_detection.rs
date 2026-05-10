@@ -62,10 +62,6 @@ fn test_config_flag_overrides_search() {
     let non_repo_sub = dir.path().join("sub");
     fs::create_dir_all(&non_repo_sub).unwrap();
     let mut cmd = Command::cargo_bin("mf").unwrap();
-    cmd.current_dir(&non_repo_sub)
-        .arg("--config")
-        .arg(repo_dir.path().join("mf.yaml"))
-        .arg("project")
-        .arg("list");
+    cmd.current_dir(&non_repo_sub).arg("--config").arg(repo_dir.path().join("mf.yaml")).arg("project").arg("list");
     cmd.assert().code(predicate::eq(0));
 }

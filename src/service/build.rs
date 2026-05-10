@@ -4,7 +4,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::error::{MfError, Result};
-use crate::service::{article as article_svc, config as config_svc, util};
+use crate::service::{config as config_svc, index, util};
 
 /// A single source file entry in a build plan.
 #[derive(Debug, Serialize)]
@@ -43,15 +43,12 @@ pub fn build_article(
 ) -> Result<BuildOutput> {
     // 1. Load project config (mind.yaml)
     let config = config_svc::load_project(project_path, Some(repo_root))?.ok_or_else(|| {
-        MfError::usage(
-            "project missing mind.yaml".to_string(),
-            Some("run `mf config init` to create one".to_string()),
-        )
+        MfError::usage("project missing mind.yaml".to_string(), Some("run `mf config init` to create one".to_string()))
     })?;
     let build_cfg = &config.build;
 
     // 2. Load index and find article
-    let index = article_svc::load_index(project_path)?;
+    let index = index::load(project_path)?;
     let article_entry = index
         .articles
         .iter()
@@ -80,9 +77,7 @@ pub fn build_article(
     // 4. Determine output path
     let output_path = match output_override {
         Some(path) => path.to_path_buf(),
-        None => project_path
-            .join(&build_cfg.output_dir)
-            .join(format!("{}.{}", article, build_cfg.format)),
+        None => project_path.join(&build_cfg.output_dir).join(format!("{}.{}", article, build_cfg.format)),
     };
 
     // 5. Gather file metadata
@@ -90,15 +85,11 @@ pub fn build_article(
     let size_bytes = metadata.len();
 
     // 6. Determine merge order (from config or fallback)
-    let merge_order = if build_cfg.merge_order.is_empty() {
-        vec![article.to_string()]
-    } else {
-        build_cfg.merge_order.clone()
-    };
+    let merge_order =
+        if build_cfg.merge_order.is_empty() { vec![article.to_string()] } else { build_cfg.merge_order.clone() };
 
     // 7. Build plan output (for dry-run)
-    let input_sources =
-        vec![SourceEntry { path: article_entry.source_path.clone(), size: size_bytes }];
+    let input_sources = vec![SourceEntry { path: article_entry.source_path.clone(), size: size_bytes }];
     let estimated_size = size_bytes; // single source, no separator overhead
 
     if dry_run {
@@ -124,10 +115,8 @@ pub fn build_article(
     }
 
     util::atomic_write(&output_path, &content)?;
-    let result = BuildResult {
-        output_path: output_path.to_string_lossy().to_string(),
-        size_bytes: content.len() as u64,
-    };
+    let result =
+        BuildResult { output_path: output_path.to_string_lossy().to_string(), size_bytes: content.len() as u64 };
     Ok(BuildOutput::Rendered(result))
 }
 

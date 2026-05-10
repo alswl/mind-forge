@@ -41,9 +41,7 @@ fn get_index_hash(project: &std::path::Path, name: &str) -> String {
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0;
     while i < lines.len() {
-        if lines[i].trim() == entry_prefix
-            || lines[i].trim().starts_with(&format!("- name: {name}"))
-        {
+        if lines[i].trim() == entry_prefix || lines[i].trim().starts_with(&format!("- name: {name}")) {
             // Look for hash in subsequent lines
             for line in lines.iter().skip(i + 1).take(10) {
                 if let Some(h) = line.strip_prefix("    hash: \"") {
@@ -71,15 +69,7 @@ fn update_single_size_hash() {
 
     let assert = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "update",
-            "assets/cover.png",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "update", "assets/cover.png", "--project", "alpha"])
         .assert();
 
     assert.success().stdout(predicate::str::contains("updated"));
@@ -99,15 +89,7 @@ fn update_path_resolution_basename() {
 
     let assert = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "update",
-            "cover.png",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "update", "cover.png", "--project", "alpha"])
         .assert();
 
     assert.success();
@@ -128,15 +110,7 @@ fn update_all_refresh() {
 
     let assert = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "update",
-            "--all",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "update", "--all", "--project", "alpha"])
         .assert();
 
     assert.success().stdout(predicate::str::contains("2 assets"));
@@ -151,16 +125,7 @@ fn update_path_and_all_mutually_exclusive() {
     let (repo, _project) = setup();
     let assert = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "update",
-            "cover.png",
-            "--all",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "update", "cover.png", "--all", "--project", "alpha"])
         .assert();
 
     assert.code(predicate::eq(2));
@@ -190,15 +155,7 @@ fn update_missing_file_single() {
     let (repo, _project) = setup();
     let assert = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "update",
-            "nonexistent.png",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "update", "nonexistent.png", "--project", "alpha"])
         .assert();
 
     assert.code(predicate::eq(2));
@@ -216,15 +173,7 @@ fn update_missing_file_all() {
 
     let assert = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "update",
-            "--all",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "update", "--all", "--project", "alpha"])
         .assert();
 
     assert.success().stdout(predicate::str::contains("missing"));
@@ -257,15 +206,7 @@ fn update_symlink_broken() {
     // Single mode
     let assert = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "update",
-            "assets/link.png",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "update", "assets/link.png", "--project", "alpha"])
         .assert();
 
     assert.code(predicate::eq(2));

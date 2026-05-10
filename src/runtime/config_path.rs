@@ -10,8 +10,8 @@ pub fn resolve(override_path: Option<&PathBuf>) -> Result<PathBuf> {
         return Ok(path.clone());
     }
 
-    let project_dirs = ProjectDirs::from("", "", "mf")
-        .context("unable to determine platform configuration directory for mf")?;
+    let project_dirs =
+        ProjectDirs::from("", "", "mf").context("unable to determine platform configuration directory for mf")?;
     Ok(default_config_path(project_dirs.config_dir()))
 }
 

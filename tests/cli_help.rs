@@ -2,8 +2,7 @@ use assert_cmd::Command;
 use insta::assert_snapshot;
 
 fn run(args: &[&str]) -> (String, String, i32) {
-    let output =
-        Command::cargo_bin("mf").expect("binary exists").args(args).output().expect("command runs");
+    let output = Command::cargo_bin("mf").expect("binary exists").args(args).output().expect("command runs");
     (
         String::from_utf8(output.stdout).expect("stdout utf8"),
         String::from_utf8(output.stderr).expect("stderr utf8"),

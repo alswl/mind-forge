@@ -1,5 +1,6 @@
 ---
 source: tests/cli_help.rs
+assertion_line: 153
 expression: stdout
 ---
 Create a term
@@ -11,14 +12,14 @@ Arguments:
 
 Options:
       --definition <DEFINITION>  
-      --root <PATH>              
+      --root <PATH>              Mind Repo root directory
       --alias <ALIAS>            
-      --config <PATH>            
+      --config <PATH>            Config file path
       --tag <TAG>                
-  -v, --verbose...               
+  -v, --verbose...               Verbose output
       --project <PROJECT>        
-  -q, --quiet                    
-      --format <FORMAT>          [default: text] [possible values: text, json]
-      --no-color                 
+  -q, --quiet                    Silence non-error output
+      --format <FORMAT>          Output format [default: text] [possible values: text, json]
+      --no-color                 Disable colored output
   -h, --help                     Print help
   -V, --version                  Print version

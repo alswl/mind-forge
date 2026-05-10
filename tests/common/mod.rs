@@ -30,12 +30,7 @@ pub fn write_index(repo: &TempDir, name: &str, yaml: &str) {
 
 /// 写入 `<project>/_build/<article>.<format>`，返回完整路径。
 #[allow(dead_code)]
-pub fn write_build_artifact(
-    project: &Path,
-    article: &str,
-    format: &str,
-    content: &[u8],
-) -> PathBuf {
+pub fn write_build_artifact(project: &Path, article: &str, format: &str, content: &[u8]) -> PathBuf {
     let build_dir = project.join("_build");
     fs::create_dir_all(&build_dir).unwrap();
     let path = build_dir.join(format!("{article}.{format}"));

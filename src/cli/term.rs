@@ -34,8 +34,6 @@ pub struct TermListArgs {
     pub filter: Option<String>,
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    pub format: Format,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -49,8 +47,6 @@ pub struct TermNewArgs {
     pub tag: Vec<String>,
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    pub format: Format,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -61,8 +57,6 @@ pub struct TermLintArgs {
     pub dry_run: bool,
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    pub format: Format,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -73,8 +67,6 @@ pub struct TermLearnArgs {
     pub correct: String,
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    pub format: Format,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -88,45 +80,27 @@ pub struct TermFixArgs {
     pub tag: Vec<String>,
     #[arg(long)]
     pub project: Option<String>,
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    pub format: Format,
 }
 
-pub fn dispatch(
-    command: TermCmd,
-    repo_root: Option<&std::path::PathBuf>,
-    global_format: Format,
-) -> Result<CommandOutcome> {
+pub fn dispatch(command: TermCmd, repo_root: Option<&std::path::PathBuf>, format: Format) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
 
     match command.command {
-        None => Ok(CommandOutcome::GroupHelp(super::HelpTarget::Term)),
-        Some(TermSubcommand::New(args)) => handle_new(args, root, &cwd, global_format),
-        Some(TermSubcommand::List(args)) => handle_list(args, root, &cwd, global_format),
-        Some(TermSubcommand::Lint(args)) => handle_lint(args, root, &cwd, global_format),
-        Some(TermSubcommand::Learn(args)) => handle_learn(args, root, &cwd, global_format),
-        Some(TermSubcommand::Fix(args)) => handle_fix(args, root, &cwd, global_format),
+        None => Ok(CommandOutcome::GroupHelp("term")),
+        Some(TermSubcommand::New(args)) => handle_new(args, root, &cwd, format),
+        Some(TermSubcommand::List(args)) => handle_list(args, root, &cwd, format),
+        Some(TermSubcommand::Lint(args)) => handle_lint(args, root, &cwd, format),
+        Some(TermSubcommand::Learn(args)) => handle_learn(args, root, &cwd, format),
+        Some(TermSubcommand::Fix(args)) => handle_fix(args, root, &cwd, format),
     }
 }
 
 // ── Handle: mf term new (US1 / T017) ─────────────────────────────────────────
 
-fn handle_new(
-    args: TermNewArgs,
-    root: &Path,
-    cwd: &Path,
-    global_format: Format,
-) -> Result<CommandOutcome> {
-    let format = if args.format == Format::Text { global_format } else { args.format };
+fn handle_new(args: TermNewArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
-    let term = term_svc::new_term(
-        &project_path,
-        &args.term,
-        args.definition.as_deref(),
-        &args.alias,
-        &args.tag,
-    )?;
+    let term = term_svc::new_term(&project_path, &args.term, args.definition.as_deref(), &args.alias, &args.tag)?;
 
     match format {
         Format::Json => {
@@ -151,13 +125,7 @@ fn handle_new(
 
 // ── Handle: mf term list (US2 / T021) ────────────────────────────────────────
 
-fn handle_list(
-    args: TermListArgs,
-    root: &Path,
-    cwd: &Path,
-    global_format: Format,
-) -> Result<CommandOutcome> {
-    let format = if args.format == Format::Text { global_format } else { args.format };
+fn handle_list(args: TermListArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
     let terms = term_svc::list_terms(&project_path, args.filter.as_deref())?;
 
@@ -168,10 +136,7 @@ fn handle_list(
         }
         Format::Text => {
             if terms.is_empty() {
-                return Ok(CommandOutcome::Success(
-                    serde_json::Value::String("No terms found.".to_string()),
-                    None,
-                ));
+                return Ok(CommandOutcome::Success(serde_json::Value::String("No terms found.".to_string()), None));
             }
             let mut lines = Vec::new();
             lines.push(format!(
@@ -180,14 +145,12 @@ fn handle_list(
             ));
             for t in &terms {
                 let def = t.definition.as_deref().unwrap_or("-");
-                let def_display =
-                    if def.len() > 60 { format!("{}…", &def[..60]) } else { def.to_string() };
+                let def_display = if def.len() > 60 { format!("{}…", &def[..60]) } else { def.to_string() };
                 let alias_display = if t.aliases.is_empty() {
                     "0".to_string()
                 } else {
                     let count = t.aliases.len();
-                    let first_few: Vec<&str> =
-                        t.aliases.iter().take(3).map(|s| s.as_str()).collect();
+                    let first_few: Vec<&str> = t.aliases.iter().take(3).map(|s| s.as_str()).collect();
                     let joined = first_few.join(", ");
                     if count > 3 {
                         format!("{count} ({joined}…)")
@@ -209,13 +172,7 @@ fn handle_list(
 
 // ── Handle: mf term lint (US3 / T027 + US4 / T033) ──────────────────────────
 
-fn handle_lint(
-    args: TermLintArgs,
-    root: &Path,
-    cwd: &Path,
-    global_format: Format,
-) -> Result<CommandOutcome> {
-    let format = if args.format == Format::Text { global_format } else { args.format };
+fn handle_lint(args: TermLintArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
 
     let effective_fix = args.fix;
@@ -238,11 +195,7 @@ fn handle_lint(
     }
 }
 
-fn compute_lint_exit_code(
-    report: &crate::model::term::TermLintReport,
-    fix: bool,
-    dry_run: bool,
-) -> u8 {
+fn compute_lint_exit_code(report: &crate::model::term::TermLintReport, fix: bool, dry_run: bool) -> u8 {
     if fix && dry_run {
         // dry-run: findings ≥1 → exit 1
         if report.findings.is_empty() {
@@ -267,11 +220,7 @@ fn compute_lint_exit_code(
     }
 }
 
-fn format_lint_text(
-    report: &crate::model::term::TermLintReport,
-    fix: bool,
-    dry_run: bool,
-) -> String {
+fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_run: bool) -> String {
     let mut lines = Vec::new();
 
     if fix {
@@ -280,8 +229,7 @@ fn format_lint_text(
         }
         if dry_run {
             // Group by path
-            let mut by_path: std::collections::BTreeMap<&str, u64> =
-                std::collections::BTreeMap::new();
+            let mut by_path: std::collections::BTreeMap<&str, u64> = std::collections::BTreeMap::new();
             for f in &report.findings {
                 *by_path.entry(f.path.as_str()).or_default() += 1;
             }
@@ -292,8 +240,7 @@ fn format_lint_text(
         } else {
             // Group by path for modified files
             for path in &report.modified_files {
-                let count =
-                    report.findings.iter().filter(|f| f.path.as_str() == path.as_str()).count();
+                let count = report.findings.iter().filter(|f| f.path.as_str() == path.as_str()).count();
                 let s = if count == 1 { "" } else { "s" };
                 lines.push(format!("✓ fixed: {path} ({count} replacement{s})"));
             }
@@ -324,8 +271,7 @@ fn format_lint_text(
 
     // Summary line
     let total_findings = report.findings.len();
-    let unique_files: std::collections::BTreeSet<&str> =
-        report.findings.iter().map(|f| f.path.as_str()).collect();
+    let unique_files: std::collections::BTreeSet<&str> = report.findings.iter().map(|f| f.path.as_str()).collect();
     let file_count = unique_files.len();
 
     if fix && dry_run {
@@ -351,17 +297,10 @@ fn format_lint_text(
 
 // ── Handle: mf term learn (US5 / T037) ───────────────────────────────────────
 
-fn handle_learn(
-    args: TermLearnArgs,
-    root: &Path,
-    cwd: &Path,
-    global_format: Format,
-) -> Result<CommandOutcome> {
-    let format = if args.format == Format::Text { global_format } else { args.format };
+fn handle_learn(args: TermLearnArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
 
-    let (term, appended) =
-        term_svc::learn_correction(&project_path, &args.original, &args.correct)?;
+    let (term, appended) = term_svc::learn_correction(&project_path, &args.original, &args.correct)?;
 
     match format {
         Format::Json => {
@@ -370,15 +309,9 @@ fn handle_learn(
         }
         Format::Text => {
             let msg = if appended {
-                format!(
-                    "✓ learned correction: \"{}\" → \"{}\" (term: {})",
-                    args.original, args.correct, term.term
-                )
+                format!("✓ learned correction: \"{}\" → \"{}\" (term: {})", args.original, args.correct, term.term)
             } else {
-                format!(
-                    "correction already exists: \"{}\" → \"{}\" (term: {})",
-                    args.original, args.correct, term.term
-                )
+                format!("correction already exists: \"{}\" → \"{}\" (term: {})", args.original, args.correct, term.term)
             };
             Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
         }
@@ -387,22 +320,10 @@ fn handle_learn(
 
 // ── Handle: mf term fix (US6 / T041) ─────────────────────────────────────────
 
-fn handle_fix(
-    args: TermFixArgs,
-    root: &Path,
-    cwd: &Path,
-    global_format: Format,
-) -> Result<CommandOutcome> {
-    let format = if args.format == Format::Text { global_format } else { args.format };
+fn handle_fix(args: TermFixArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
 
-    let term = term_svc::fix_term(
-        &project_path,
-        &args.term,
-        args.definition.as_deref(),
-        &args.alias,
-        &args.tag,
-    )?;
+    let term = term_svc::fix_term(&project_path, &args.term, args.definition.as_deref(), &args.alias, &args.tag)?;
 
     match format {
         Format::Json => {
@@ -412,11 +333,7 @@ fn handle_fix(
         Format::Text => {
             let alias_count = args.alias.len();
             let tag_count = args.tag.len();
-            let def_status = if args.definition.is_some() {
-                "definition changed"
-            } else {
-                "definition unchanged"
-            };
+            let def_status = if args.definition.is_some() { "definition changed" } else { "definition unchanged" };
             let msg = format!(
                 "✓ updated term: {} ({}, +{} alias{}, +{} tag{})",
                 term.term,

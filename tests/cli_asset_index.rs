@@ -96,15 +96,7 @@ fn index_dry_run() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "index",
-            "--project",
-            "alpha",
-            "--dry-run",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "index", "--project", "alpha", "--dry-run"])
         .output()
         .unwrap();
 
@@ -152,10 +144,7 @@ fn index_subdirectory() {
         .args(["--root", repo.path().to_str().unwrap(), "asset", "index", "--project", "alpha"])
         .assert();
 
-    assert
-        .success()
-        .stdout(predicate::str::contains("+ added"))
-        .stdout(predicate::str::contains("diagrams/flow.svg"));
+    assert.success().stdout(predicate::str::contains("+ added")).stdout(predicate::str::contains("diagrams/flow.svg"));
 }
 
 // ---------------------------------------------------------------------------
@@ -189,18 +178,14 @@ fn index_skips_hidden() {
 fn index_symlink_handling() {
     let (repo, project) = setup_with_assets();
     // Valid symlink
-    std::os::unix::fs::symlink(project.join("assets/cover.png"), project.join("assets/linked.png"))
-        .unwrap();
+    std::os::unix::fs::symlink(project.join("assets/cover.png"), project.join("assets/linked.png")).unwrap();
 
     let assert = Command::cargo_bin("mf")
         .unwrap()
         .args(["--root", repo.path().to_str().unwrap(), "asset", "index", "--project", "alpha"])
         .assert();
 
-    assert
-        .success()
-        .stdout(predicate::str::contains("+ added"))
-        .stdout(predicate::str::contains("linked.png"));
+    assert.success().stdout(predicate::str::contains("+ added")).stdout(predicate::str::contains("linked.png"));
 }
 
 // ---------------------------------------------------------------------------
@@ -226,15 +211,7 @@ fn index_refresh_metadata() {
     // Run with --refresh-metadata
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "asset",
-            "index",
-            "--project",
-            "alpha",
-            "--refresh-metadata",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "index", "--project", "alpha", "--refresh-metadata"])
         .output()
         .unwrap();
 
@@ -255,16 +232,7 @@ fn index_json_envelope() {
     let (repo, _project) = setup_with_assets();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "--format",
-            "json",
-            "asset",
-            "index",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "--format", "json", "asset", "index", "--project", "alpha"])
         .output()
         .unwrap();
 

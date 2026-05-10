@@ -56,15 +56,7 @@ fn remove_pdf_deletes_file_and_entry() {
     let (repo, project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "source",
-            "remove",
-            "paper",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "remove", "paper", "--project", "alpha"])
         .output()
         .unwrap();
 
@@ -119,15 +111,7 @@ fn remove_url_source_only_index() {
     let (repo, project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "source",
-            "remove",
-            "research-blog",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "remove", "research-blog", "--project", "alpha"])
         .output()
         .unwrap();
 
@@ -150,15 +134,7 @@ fn remove_dirty_entry_succeeds() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "source",
-            "remove",
-            "paper",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "remove", "paper", "--project", "alpha"])
         .output()
         .unwrap();
 
@@ -178,15 +154,7 @@ fn remove_unknown_name() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args([
-            "--root",
-            repo.path().to_str().unwrap(),
-            "source",
-            "remove",
-            "nonexistent",
-            "--project",
-            "alpha",
-        ])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "remove", "nonexistent", "--project", "alpha"])
         .output()
         .unwrap();
 

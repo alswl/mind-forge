@@ -67,8 +67,7 @@ fn quiet_flag_accepted() {
 fn config_not_found_error() {
     let outside = Dataset::outside();
 
-    let (_, stderr, code) =
-        run_in(outside.path(), &["--config", "/nonexistent/path/mf.yaml", "term", "list"]);
+    let (_, stderr, code) = run_in(outside.path(), &["--config", "/nonexistent/path/mf.yaml", "term", "list"]);
     assert_eq!(code, 1);
     assert!(
         stderr.contains("not in a mind repo"),
@@ -82,8 +81,7 @@ fn config_flag_with_directory() {
     let ds = Dataset::empty();
     let outside = Dataset::outside();
 
-    let (_, _, code) =
-        run_in(outside.path(), &["--config", &ds.root().to_string_lossy(), "project", "list"]);
+    let (_, _, code) = run_in(outside.path(), &["--config", &ds.root().to_string_lossy(), "project", "list"]);
     assert_eq!(code, 0, "--config pointing to repo dir should work");
 }
 

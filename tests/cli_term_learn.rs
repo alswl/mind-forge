@@ -41,16 +41,7 @@ fn mf(repo: &common::TempDir) -> Command {
 fn learn_basic_append() {
     let (repo, _project) = setup_with_term();
     let output = mf(&repo)
-        .args([
-            "term",
-            "learn",
-            "--original",
-            "old-mindrepo",
-            "--correct",
-            "Mind Repo",
-            "--project",
-            "alpha",
-        ])
+        .args(["term", "learn", "--original", "old-mindrepo", "--correct", "Mind Repo", "--project", "alpha"])
         .output()
         .unwrap();
 
@@ -72,31 +63,13 @@ fn learn_idempotent_when_pair_exists() {
     let (repo, _project) = setup_with_term();
     // First — should succeed
     mf(&repo)
-        .args([
-            "term",
-            "learn",
-            "--original",
-            "mr-old",
-            "--correct",
-            "Mind Repo",
-            "--project",
-            "alpha",
-        ])
+        .args(["term", "learn", "--original", "mr-old", "--correct", "Mind Repo", "--project", "alpha"])
         .assert()
         .code(0);
 
     // Second — should be idempotent
     let output = mf(&repo)
-        .args([
-            "term",
-            "learn",
-            "--original",
-            "mr-old",
-            "--correct",
-            "Mind Repo",
-            "--project",
-            "alpha",
-        ])
+        .args(["term", "learn", "--original", "mr-old", "--correct", "Mind Repo", "--project", "alpha"])
         .output()
         .unwrap();
 
@@ -113,16 +86,7 @@ fn learn_idempotent_when_pair_exists() {
 fn learn_correct_unknown_rejected() {
     let (repo, _project) = setup_with_term();
     let output = mf(&repo)
-        .args([
-            "term",
-            "learn",
-            "--original",
-            "foo",
-            "--correct",
-            "NonExistent",
-            "--project",
-            "alpha",
-        ])
+        .args(["term", "learn", "--original", "foo", "--correct", "NonExistent", "--project", "alpha"])
         .output()
         .unwrap();
 
@@ -174,16 +138,7 @@ fn learn_original_equals_term_or_alias_rejected() {
     let (repo, _project) = setup_with_term();
     // original equals term name
     let output = mf(&repo)
-        .args([
-            "term",
-            "learn",
-            "--original",
-            "Mind Repo",
-            "--correct",
-            "Mind Repo",
-            "--project",
-            "alpha",
-        ])
+        .args(["term", "learn", "--original", "Mind Repo", "--correct", "Mind Repo", "--project", "alpha"])
         .output()
         .unwrap();
 

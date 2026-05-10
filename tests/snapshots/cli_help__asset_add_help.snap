@@ -11,16 +11,16 @@ Arguments:
   <PATH>  
 
 Options:
-      --root <PATH>        
+      --root <PATH>        Mind Repo root directory
       --tag <TAG>          
-      --config <PATH>      
+      --config <PATH>      Config file path
       --copy               
       --link               
-  -v, --verbose...         
+  -v, --verbose...         Verbose output
       --force              
-  -q, --quiet              
+  -q, --quiet              Silence non-error output
+      --format <FORMAT>    Output format [default: text] [possible values: text, json]
       --project <PROJECT>  
-      --format <FORMAT>    [default: text] [possible values: text, json]
-      --no-color           
+      --no-color           Disable colored output
   -h, --help               Print help
   -V, --version            Print version

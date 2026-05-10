@@ -73,13 +73,9 @@ impl From<PublishStatusArg> for PublishStatus {
     }
 }
 
-pub fn dispatch(
-    command: PublishCmd,
-    repo_root: Option<&PathBuf>,
-    format: Format,
-) -> Result<CommandOutcome> {
+pub fn dispatch(command: PublishCmd, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
     match command.command {
-        None => Ok(CommandOutcome::GroupHelp(crate::cli::HelpTarget::Publish)),
+        None => Ok(CommandOutcome::GroupHelp("publish")),
         Some(PublishSubcommand::Run(args)) => {
             let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
             let cwd = std::env::current_dir().map_err(MfError::Io)?;
@@ -147,14 +143,8 @@ fn render_update_outcome(
                 PublishStatus::Archived => "archived",
             };
             lines.push(format!("status       {status}"));
-            lines.push(format!(
-                "target_url   {}",
-                outcome.record.target_url.as_deref().unwrap_or("null")
-            ));
-            lines.push(format!(
-                "published_at {}",
-                outcome.record.published_at.as_deref().unwrap_or("null")
-            ));
+            lines.push(format!("target_url   {}", outcome.record.target_url.as_deref().unwrap_or("null")));
+            lines.push(format!("published_at {}", outcome.record.published_at.as_deref().unwrap_or("null")));
             lines.push(format!("dry_run      {}", outcome.dry_run));
             Ok(CommandOutcome::Raw(lines.join("\n"), None))
         }
