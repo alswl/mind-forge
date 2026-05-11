@@ -14,11 +14,22 @@ pub struct ScaffoldReport {
     pub scaffolded: Vec<String>,
 }
 
-/// Create the standard project skeleton under `repo_root/<name>`.
+/// Create the standard project skeleton under `<repo_root>/<projects_dir>/<name>`.
 pub fn scaffold(repo_root: &Path, name: &str, force: bool) -> Result<ScaffoldReport> {
     util::validate_project_name(name)?;
 
-    let target = repo_root.join(name);
+    let projects_dir = repo::projects_dir_for(repo_root)?;
+    let trimmed = projects_dir.trim_matches('/');
+    let parent = if trimmed.is_empty() || trimmed == "." {
+        repo_root.to_path_buf()
+    } else {
+        let p = repo_root.join(trimmed);
+        if !p.exists() {
+            std::fs::create_dir_all(&p).map_err(MfError::Io)?;
+        }
+        p
+    };
+    let target = parent.join(name);
     let resolved = util::canonicalize_within(repo_root, &target)?;
 
     if resolved.exists() && !force {
@@ -52,7 +63,12 @@ pub fn scaffold(repo_root: &Path, name: &str, force: bool) -> Result<ScaffoldRep
         scaffolded.push("mind-index.yaml".to_string());
     }
 
-    Ok(ScaffoldReport { name: name.to_string(), project_path: format!("./{}", name), created_at, scaffolded })
+    Ok(ScaffoldReport {
+        name: name.to_string(),
+        project_path: repo::project_relpath(&projects_dir, name),
+        created_at,
+        scaffolded,
+    })
 }
 
 /// Upsert a project entry into `minds.yaml`.
@@ -64,7 +80,7 @@ pub fn upsert_project_entry(repo_root: &Path, name: &str, created_at: &str) -> R
         crate::model::manifest::MindsManifest::create_default()
     };
 
-    let entry_path = format!("./{}", name);
+    let entry_path = repo::project_relpath(&manifest.projects_dir, name);
     let existing = manifest.projects.iter_mut().find(|p| p.name == name);
     let entry = match existing {
         Some(existing_entry) => {

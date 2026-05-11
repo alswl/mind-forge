@@ -11,16 +11,46 @@ use chrono::Utc;
 use serde::Serialize;
 
 use crate::error::{MfError, Result};
-use crate::model::manifest::{MindsManifest, ProjectEntry};
+use crate::model::manifest::{default_projects_dir, MindsManifest, ProjectEntry};
 use crate::service::util;
+
+/// Build a repo-root-relative project path from a `projects_dir` and project name.
+///
+/// `projects_dir == "."` (or empty) yields `./<name>` (flat layout); otherwise
+/// `./<projects_dir>/<name>`. Trailing/leading slashes on `projects_dir` are tolerated.
+pub fn project_relpath(projects_dir: &str, name: &str) -> String {
+    let trimmed = projects_dir.trim_matches('/');
+    if trimmed.is_empty() || trimmed == "." {
+        format!("./{name}")
+    } else {
+        format!("./{trimmed}/{name}")
+    }
+}
+
+/// Read `projects_dir` from `<repo_root>/minds.yaml`, falling back to default
+/// when the file is missing or empty.
+pub fn projects_dir_for(repo_root: &Path) -> Result<String> {
+    let minds_path = repo_root.join("minds.yaml");
+    if !minds_path.exists() {
+        return Ok(default_projects_dir());
+    }
+    Ok(load_manifest(&minds_path)?.projects_dir)
+}
 
 // ---------------------------------------------------------------------------
 // MindsManifest management
 // ---------------------------------------------------------------------------
 
 /// Load `MindsManifest` from file with schema version validation.
+///
+/// An empty (or whitespace-only) file is treated as a fresh repo and yields
+/// the default manifest, matching the convention that `minds.yaml` only needs
+/// to exist to mark a repo root.
 pub fn load_manifest(path: &Path) -> Result<MindsManifest> {
     let content = fs::read_to_string(path).map_err(MfError::Io)?;
+    if content.trim().is_empty() {
+        return Ok(MindsManifest::create_default());
+    }
     let manifest: MindsManifest = serde_yaml::from_str(&content).map_err(|e| MfError::ParseError {
         kind: "yaml".to_string(),
         path: path.to_path_buf(),
@@ -47,13 +77,19 @@ pub struct ScannedProject {
     pub path: String,
 }
 
-/// Scan `repo_root`'s immediate subdirectories for those containing `mind.yaml`.
-pub fn scan_project_dirs(repo_root: &Path) -> Vec<ScannedProject> {
+/// Scan immediate subdirectories of `<repo_root>/<projects_dir>` for those containing
+/// `mind.yaml`. `projects_dir == "."` scans the repo root directly (flat layout).
+///
+/// Returned `ScannedProject.path` is repo-root-relative (e.g. `"./projects/foo"`).
+pub fn scan_project_dirs(repo_root: &Path, projects_dir: &str) -> Vec<ScannedProject> {
     let mut projects = Vec::new();
-    let entries = match fs::read_dir(repo_root) {
+    let trimmed = projects_dir.trim_matches('/');
+    let scan_root =
+        if trimmed.is_empty() || trimmed == "." { repo_root.to_path_buf() } else { repo_root.join(trimmed) };
+    let entries = match fs::read_dir(&scan_root) {
         Ok(e) => e,
         Err(e) => {
-            tracing::debug!("scan_project_dirs: cannot read {repo_root:?}: {e}");
+            tracing::debug!("scan_project_dirs: cannot read {scan_root:?}: {e}");
             return projects;
         }
     };
@@ -67,7 +103,7 @@ pub fn scan_project_dirs(repo_root: &Path) -> Vec<ScannedProject> {
         }
         if path.join("mind.yaml").exists() {
             let name = entry.file_name().to_string_lossy().to_string();
-            let rel_path = format!("./{}", name);
+            let rel_path = project_relpath(projects_dir, &name);
             projects.push(ScannedProject { name, path: rel_path });
         }
     }
@@ -217,6 +253,7 @@ mod tests {
         let path = dir.path().join("minds.yaml");
         let manifest = MindsManifest {
             schema_version: "1".to_string(),
+            projects_dir: default_projects_dir(),
             projects: vec![ProjectEntry {
                 name: "test".to_string(),
                 path: "./test".to_string(),
@@ -231,6 +268,26 @@ mod tests {
     }
 
     #[test]
+    fn test_load_manifest_empty_file_returns_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("minds.yaml");
+        fs::write(&path, "").unwrap();
+        let manifest = load_manifest(&path).unwrap();
+        assert_eq!(manifest.schema_version, "1");
+        assert!(manifest.projects.is_empty());
+    }
+
+    #[test]
+    fn test_load_manifest_whitespace_only_returns_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("minds.yaml");
+        fs::write(&path, "   \n\t\n").unwrap();
+        let manifest = load_manifest(&path).unwrap();
+        assert_eq!(manifest.schema_version, "1");
+        assert!(manifest.projects.is_empty());
+    }
+
+    #[test]
     fn test_load_manifest_parse_error() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("minds.yaml");
@@ -240,28 +297,74 @@ mod tests {
     }
 
     #[test]
-    fn test_scan_project_dirs() {
+    fn test_scan_project_dirs_default_projects_dir() {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("minds.yaml"), "").unwrap();
-        let p1 = dir.path().join("project-a");
+        let projects = dir.path().join("projects");
+        fs::create_dir_all(&projects).unwrap();
+        let p1 = projects.join("project-a");
         fs::create_dir_all(&p1).unwrap();
         fs::write(p1.join("mind.yaml"), "").unwrap();
-        let p2 = dir.path().join("not-a-project");
+        let p2 = projects.join("not-a-project");
         fs::create_dir_all(&p2).unwrap();
-        let p3 = dir.path().join("project-b");
+        let p3 = projects.join("project-b");
         fs::create_dir_all(&p3).unwrap();
         fs::write(p3.join("mind.yaml"), "").unwrap();
+        // A directory at the repo root that contains mind.yaml must be IGNORED
+        // because we're scanning under projects/.
+        let stray = dir.path().join("flat-project");
+        fs::create_dir_all(&stray).unwrap();
+        fs::write(stray.join("mind.yaml"), "").unwrap();
 
-        let scanned = scan_project_dirs(dir.path());
+        let scanned = scan_project_dirs(dir.path(), "projects");
         let mut names: Vec<&str> = scanned.iter().map(|s| s.name.as_str()).collect();
         names.sort();
         assert_eq!(names, vec!["project-a", "project-b"]);
+        let path_a = scanned.iter().find(|s| s.name == "project-a").unwrap();
+        assert_eq!(path_a.path, "./projects/project-a");
+    }
+
+    #[test]
+    fn test_scan_project_dirs_flat_layout() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("minds.yaml"), "").unwrap();
+        let p1 = dir.path().join("flat-project");
+        fs::create_dir_all(&p1).unwrap();
+        fs::write(p1.join("mind.yaml"), "").unwrap();
+
+        let scanned = scan_project_dirs(dir.path(), ".");
+        assert_eq!(scanned.len(), 1);
+        assert_eq!(scanned[0].name, "flat-project");
+        assert_eq!(scanned[0].path, "./flat-project");
+    }
+
+    #[test]
+    fn test_project_relpath_default() {
+        assert_eq!(project_relpath("projects", "foo"), "./projects/foo");
+        assert_eq!(project_relpath(".", "foo"), "./foo");
+        assert_eq!(project_relpath("", "foo"), "./foo");
+        assert_eq!(project_relpath("/projects/", "foo"), "./projects/foo");
+    }
+
+    #[test]
+    fn test_projects_dir_for_default_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        // No minds.yaml — falls back to default.
+        assert_eq!(projects_dir_for(dir.path()).unwrap(), "projects");
+    }
+
+    #[test]
+    fn test_projects_dir_for_reads_explicit_value() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("minds.yaml"), "schema_version: '1'\nprojects_dir: work\nprojects: []\n").unwrap();
+        assert_eq!(projects_dir_for(dir.path()).unwrap(), "work");
     }
 
     #[test]
     fn test_compute_diff_add_remove() {
         let manifest = MindsManifest {
             schema_version: "1".to_string(),
+            projects_dir: default_projects_dir(),
             projects: vec![ProjectEntry {
                 name: "old-project".to_string(),
                 path: "./old-project".to_string(),
@@ -281,6 +384,7 @@ mod tests {
     fn test_reconcile_add_remove() {
         let manifest = MindsManifest {
             schema_version: "1".to_string(),
+            projects_dir: default_projects_dir(),
             projects: vec![
                 ProjectEntry {
                     name: "keep".to_string(),

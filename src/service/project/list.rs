@@ -18,7 +18,7 @@ pub fn list_projects(repo_root: &Path) -> Result<Vec<ProjectListEntry>> {
         .projects
         .iter()
         .map(|p| {
-            let (count, last_activity) = read_index_counts(&repo_root.join(&p.name));
+            let (count, last_activity) = read_index_counts(&repo_root.join(&p.path));
             ProjectListEntry {
                 name: p.name.clone(),
                 path: p.path.clone(),

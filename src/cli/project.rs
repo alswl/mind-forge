@@ -149,7 +149,7 @@ fn handle_status(args: ProjectStatusArgs, repo_root: Option<&PathBuf>, _format: 
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
     let project_path = svc::project::resolve_project(root, args.project.as_deref(), &cwd)?;
-    let snapshot = svc::project::status_for(&project_path)?;
+    let snapshot = svc::project::status_for(root, &project_path)?;
 
     let data = serde_json::json!(snapshot);
     Ok(CommandOutcome::Success(data, None))
@@ -236,8 +236,6 @@ fn handle_index(args: ProjectIndexArgs, repo_root: Option<&PathBuf>, format: For
     // 无 repo_root 时使用 cwd（mf project index 可在 repo 外运行）
     let root = repo_root.cloned().or_else(|| std::env::current_dir().ok()).ok_or_else(MfError::not_in_mind_repo)?;
 
-    let scanned = repo::scan_project_dirs(&root);
-
     let minds_path = root.join("minds.yaml");
     let manifest = if minds_path.exists() {
         repo::load_manifest(&minds_path)?
@@ -245,6 +243,7 @@ fn handle_index(args: ProjectIndexArgs, repo_root: Option<&PathBuf>, format: For
         crate::model::manifest::MindsManifest::create_default()
     };
 
+    let scanned = repo::scan_project_dirs(&root, &manifest.projects_dir);
     let diff = repo::compute_diff(&manifest, &scanned);
 
     if args.dry_run {

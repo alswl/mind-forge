@@ -3,10 +3,10 @@ use std::path::{Path, PathBuf};
 
 pub use tempfile::TempDir;
 
-/// 创建一个临时 Mind Repo
+/// 创建一个临时 Mind Repo（扁平 layout：projects_dir: "."）
 pub fn setup_repo() -> TempDir {
     let dir = TempDir::new().unwrap();
-    fs::write(dir.path().join("minds.yaml"), "schema_version: '1'\nprojects: []\n").unwrap();
+    fs::write(dir.path().join("minds.yaml"), "schema_version: '1'\nprojects_dir: '.'\nprojects: []\n").unwrap();
     dir
 }
 

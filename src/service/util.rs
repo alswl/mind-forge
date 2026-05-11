@@ -126,11 +126,14 @@ pub fn dir_name(path: &Path) -> String {
 
 /// Resolve a project path within a repo root.
 ///
-/// If `project` is `Some(name)`, joins it under `repo_root`.
-/// If `None`, detects the current project from `cwd` by walking up for `mind.yaml`.
+/// If `project` is `Some(name)`, joins it under `repo_root/<projects_dir>/<name>`,
+/// where `projects_dir` is read from `minds.yaml` (default `"projects"`).
+/// If `None`, detects the current project from `cwd` by walking up for `mind.yaml`
+/// (returning the absolute project directory regardless of `projects_dir`).
 pub fn resolve_project(repo_root: &Path, project: Option<&str>, cwd: &Path) -> Result<PathBuf> {
+    let projects_dir = crate::service::repo::projects_dir_for(repo_root)?;
     match project {
-        Some(name) => Ok(repo_root.join(name)),
+        Some(name) => Ok(project_dir_for(repo_root, &projects_dir, name)),
         None => detect_current_project(repo_root, cwd)
             .ok_or_else(|| {
                 MfError::usage(
@@ -138,7 +141,18 @@ pub fn resolve_project(repo_root: &Path, project: Option<&str>, cwd: &Path) -> R
                     Some("use `mf project list` to see available projects".to_string()),
                 )
             })
-            .map(|name| repo_root.join(name)),
+            .map(|name| project_dir_for(repo_root, &projects_dir, &name)),
+    }
+}
+
+/// Compute the absolute project directory for a `name` under `projects_dir`.
+/// `projects_dir == "."` (or empty) is the flat layout (`<repo>/<name>`).
+pub fn project_dir_for(repo_root: &Path, projects_dir: &str, name: &str) -> PathBuf {
+    let trimmed = projects_dir.trim_matches('/');
+    if trimmed.is_empty() || trimmed == "." {
+        repo_root.join(name)
+    } else {
+        repo_root.join(trimmed).join(name)
     }
 }
 

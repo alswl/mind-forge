@@ -130,17 +130,17 @@ impl Dataset {
         Self { dir }
     }
 
-    /// 在 repo 根下创建一个含 mind.yaml 的项目目录
+    /// 在 repo 根下创建一个含 mind.yaml 的项目目录（位于默认 `projects/<name>` 下）
     pub fn with_project(self, name: &str) -> Self {
-        let dir = self.dir.path().join(name);
+        let dir = self.dir.path().join("projects").join(name);
         fs::create_dir_all(&dir).expect("create project dir");
         fs::write(dir.join("mind.yaml"), MIND_YAML).expect("write mind.yaml");
         self
     }
 
-    /// 在 repo 根下创建不含 mind.yaml 的普通目录
+    /// 在 `projects/` 下创建不含 mind.yaml 的普通目录（用于验证 index 跳过非项目目录）
     pub fn with_non_project_dir(self, name: &str) -> Self {
-        let dir = self.dir.path().join(name);
+        let dir = self.dir.path().join("projects").join(name);
         fs::create_dir_all(&dir).expect("create dir");
         self
     }
@@ -170,14 +170,14 @@ impl Dataset {
 
     /// 在 repo 下写入 mind-index.yaml 到项目
     pub fn with_index(self, name: &str, yaml: &str) -> Self {
-        let path = self.dir.path().join(name).join("mind-index.yaml");
+        let path = self.dir.path().join("projects").join(name).join("mind-index.yaml");
         fs::write(&path, yaml).expect("write mind-index.yaml");
         self
     }
 
     /// 创建完整骨架项目（含 docs/ sources/ assets/ mind.yaml mind-index.yaml）
     pub fn with_standard_project(self, name: &str) -> Self {
-        let dir = self.dir.path().join(name);
+        let dir = self.dir.path().join("projects").join(name);
         fs::create_dir_all(dir.join("docs")).expect("create docs");
         fs::create_dir_all(dir.join("docs/images")).expect("create docs/images");
         fs::create_dir_all(dir.join("sources")).expect("create sources");
@@ -189,7 +189,7 @@ impl Dataset {
 
     /// 删除项目的某个子目录（用于 lint missing_directory 验收）
     pub fn without_dir(self, name: &str, subpath: &str) -> Self {
-        let path = self.dir.path().join(name).join(subpath);
+        let path = self.dir.path().join("projects").join(name).join(subpath);
         if path.exists() {
             fs::remove_dir_all(&path).expect("remove dir");
         }
@@ -199,7 +199,7 @@ impl Dataset {
     /// 删除项目的 mind.yaml（用于 lint missing_manifest 验收）
     #[allow(dead_code)]
     pub fn without_manifest(self, name: &str) -> Self {
-        let path = self.dir.path().join(name).join("mind.yaml");
+        let path = self.dir.path().join("projects").join(name).join("mind.yaml");
         if path.exists() {
             fs::remove_file(&path).expect("remove mind.yaml");
         }
@@ -239,7 +239,7 @@ pub fn repo_008_empty_projects() -> Dataset {
     let ds =
         Dataset::empty().with_standard_project("alpha").with_standard_project("beta").with_standard_project("gamma");
     // 手动注册到 minds.yaml（模拟 mf project index 的效果）
-    let manifest = "schema_version: '1'\nprojects:\n  - name: alpha\n    path: ./alpha\n    created_at: \"2026-04-30T08:00:00Z\"\n    archived_at: ~\n  - name: beta\n    path: ./beta\n    created_at: \"2026-04-30T09:00:00Z\"\n    archived_at: ~\n  - name: gamma\n    path: ./gamma\n    created_at: \"2026-04-30T10:00:00Z\"\n    archived_at: ~\n".to_string();
+    let manifest = "schema_version: '1'\nprojects:\n  - name: alpha\n    path: ./projects/alpha\n    created_at: \"2026-04-30T08:00:00Z\"\n    archived_at: ~\n  - name: beta\n    path: ./projects/beta\n    created_at: \"2026-04-30T09:00:00Z\"\n    archived_at: ~\n  - name: gamma\n    path: ./projects/gamma\n    created_at: \"2026-04-30T10:00:00Z\"\n    archived_at: ~\n".to_string();
     fs::write(ds.dir.path().join("minds.yaml"), &manifest).expect("write manifest");
     ds
 }
@@ -250,7 +250,7 @@ pub fn repo_008_with_data() -> Dataset {
         .with_standard_project("alpha")
         .with_standard_project("beta")
         .with_index("alpha", INDEX_POPULATED);
-    let manifest = "schema_version: '1'\nprojects:\n  - name: alpha\n    path: ./alpha\n    created_at: \"2026-04-30T08:00:00Z\"\n    archived_at: ~\n  - name: beta\n    path: ./beta\n    created_at: \"2026-04-30T09:00:00Z\"\n    archived_at: ~\n".to_string();
+    let manifest = "schema_version: '1'\nprojects:\n  - name: alpha\n    path: ./projects/alpha\n    created_at: \"2026-04-30T08:00:00Z\"\n    archived_at: ~\n  - name: beta\n    path: ./projects/beta\n    created_at: \"2026-04-30T09:00:00Z\"\n    archived_at: ~\n".to_string();
     fs::write(ds.dir.path().join("minds.yaml"), &manifest).expect("write manifest");
     ds
 }
@@ -261,7 +261,7 @@ pub fn repo_008_with_lint_issues() -> Dataset {
         .with_standard_project("alpha")
         .with_index("alpha", INDEX_STALE_ENTRY) // 引用 ghost.md 但文件不存在
         .without_dir("alpha", "sources"); // 删掉 sources/
-    let manifest = "schema_version: '1'\nprojects:\n  - name: alpha\n    path: ./alpha\n    created_at: \"2026-04-30T08:00:00Z\"\n    archived_at: ~\n".to_string();
+    let manifest = "schema_version: '1'\nprojects:\n  - name: alpha\n    path: ./projects/alpha\n    created_at: \"2026-04-30T08:00:00Z\"\n    archived_at: ~\n".to_string();
     fs::write(ds.dir.path().join("minds.yaml"), &manifest).expect("write manifest");
     ds
 }
@@ -269,7 +269,7 @@ pub fn repo_008_with_lint_issues() -> Dataset {
 /// 项目含命名规范违规（用于 lint name_convention 验收）
 pub fn repo_008_with_name_violation() -> Dataset {
     let ds = Dataset::empty().with_standard_project("alpha").with_index("alpha", INDEX_NAME_VIOLATION);
-    let manifest = "schema_version: '1'\nprojects:\n  - name: alpha\n    path: ./alpha\n    created_at: \"2026-04-30T08:00:00Z\"\n    archived_at: ~\n".to_string();
+    let manifest = "schema_version: '1'\nprojects:\n  - name: alpha\n    path: ./projects/alpha\n    created_at: \"2026-04-30T08:00:00Z\"\n    archived_at: ~\n".to_string();
     fs::write(ds.dir.path().join("minds.yaml"), &manifest).expect("write manifest");
     ds
 }

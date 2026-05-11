@@ -3,22 +3,25 @@ use std::path::{Path, PathBuf};
 use crate::error::{MfError, Result};
 use crate::model::index::IndexFile;
 use crate::model::project::ProjectStatusSnapshot;
-use crate::service::util;
+use crate::service::{repo, util};
 
 /// Resolve a project path within the repo root, with boundary checking.
 pub fn resolve_project(repo_root: &Path, name: Option<&str>, cwd: &Path) -> Result<PathBuf> {
+    let projects_dir = repo::projects_dir_for(repo_root)?;
     match name {
         Some(name) => {
             util::validate_project_name(name)?;
-            let target = repo_root.join(name);
-            let resolved = util::canonicalize_within(repo_root, &target)?;
-            if !resolved.join("mind.yaml").exists() {
+            let target = util::project_dir_for(repo_root, &projects_dir, name);
+            // Check existence first so a missing project (or missing projects_dir
+            // entirely) yields a clean usage error rather than an IO error from
+            // canonicalize_within walking a non-existent parent.
+            if !target.join("mind.yaml").exists() {
                 return Err(MfError::usage(
                     format!("project '{name}' not found in Mind Repo"),
                     Some("use `mf project list` to see available projects".to_string()),
                 ));
             }
-            Ok(resolved)
+            util::canonicalize_within(repo_root, &target)
         }
         None => {
             let detected = util::detect_current_project(repo_root, cwd).ok_or_else(|| {
@@ -27,15 +30,20 @@ pub fn resolve_project(repo_root: &Path, name: Option<&str>, cwd: &Path) -> Resu
                     Some("use `mf project list` to see available projects".to_string()),
                 )
             })?;
-            let target = repo_root.join(&detected);
+            let target = util::project_dir_for(repo_root, &projects_dir, &detected);
             util::canonicalize_within(repo_root, &target)
         }
     }
 }
 
-/// Get status snapshot for a project path.
-pub fn status_for(project_path: &Path) -> Result<ProjectStatusSnapshot> {
+/// Get status snapshot for a project path. `repo_root` is used to compute the
+/// repo-root-relative `path` field on the snapshot.
+pub fn status_for(repo_root: &Path, project_path: &Path) -> Result<ProjectStatusSnapshot> {
     let name = project_path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let rel_path = match project_path.strip_prefix(repo_root) {
+        Ok(rel) => format!("./{}", rel.display()),
+        Err(_) => format!("./{}", name),
+    };
 
     let index_path = project_path.join("mind-index.yaml");
     let index = if index_path.exists() {
@@ -74,13 +82,5 @@ pub fn status_for(project_path: &Path) -> Result<ProjectStatusSnapshot> {
         }
     }
 
-    Ok(ProjectStatusSnapshot {
-        name: name.clone(),
-        path: format!("./{}", name.clone()),
-        articles,
-        assets,
-        sources,
-        terms,
-        updated_at: max_ts,
-    })
+    Ok(ProjectStatusSnapshot { name, path: rel_path, articles, assets, sources, terms, updated_at: max_ts })
 }
