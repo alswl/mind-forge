@@ -87,20 +87,19 @@ fn repo_boundary_detection() {
     assert!(stderr.contains("not in a mind repo"));
 }
 
-/// E2E: 空 minds.yaml 在未读取 manifest 的命令中不报错
+/// E2E: 空 minds.yaml 被当作默认 manifest 处理（标记 repo 根存在即可）
 #[test]
-fn empty_minds_yaml_still_in_repo() {
+fn empty_minds_yaml_treated_as_default() {
     let ds = Dataset::empty_manifest();
 
-    // project list 读取 manifest，空文件应报 parse error
-    let (_, stderr, code) = run_in(ds.root(), &["project", "list"]);
-    assert_eq!(code, 1, "parse error from empty manifest");
-    assert!(stderr.contains("parse error"), "stderr: {stderr}");
+    // project list 在空 manifest 上应输出 "(no projects)"，退出 0
+    let (stdout, _, code) = run_in(ds.root(), &["project", "list"]);
+    assert_eq!(code, 0, "empty manifest treated as default");
+    assert!(stdout.contains("no projects"), "stdout: {stdout}");
 
-    // project index 读取 manifest，应报 parse error
-    let (_, stderr, code) = run_in(ds.root(), &["project", "index"]);
-    assert_eq!(code, 1, "parse error");
-    assert!(stderr.contains("parse error"), "stderr: {stderr}");
+    // project index 同样应成功（对空 repo 是 no-op）
+    let (_, _, code) = run_in(ds.root(), &["project", "index"]);
+    assert_eq!(code, 0, "index succeeds on empty manifest");
 }
 
 /// E2E: 不兼容的 schema_version 在使用 manifest 的命令中报错

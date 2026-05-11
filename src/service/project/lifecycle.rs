@@ -61,10 +61,14 @@ pub fn lint_repo(
     rules: &[LintKind],
     fix: bool,
 ) -> Result<(Vec<serde_json::Value>, serde_json::Value)> {
-    let manifest = crate::model::manifest::MindsManifest::create_default();
+    let projects_dir = crate::service::repo::projects_dir_for(repo_root)?;
+    let scan_root = {
+        let trimmed = projects_dir.trim_matches('/');
+        if trimmed.is_empty() || trimmed == "." { repo_root.to_path_buf() } else { repo_root.join(trimmed) }
+    };
 
-    let mut project_names: Vec<String> = manifest.projects.iter().map(|p| p.name.clone()).collect();
-    if let Ok(entries) = std::fs::read_dir(repo_root) {
+    let mut project_names: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&scan_root) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() && path.join("mind.yaml").exists() {
@@ -83,7 +87,7 @@ pub fn lint_repo(
     let mut total_unfixed = 0u64;
 
     for name in &project_names {
-        let project_path = repo_root.join(name);
+        let project_path = util::project_dir_for(repo_root, &projects_dir, name);
         let (issues, summary) = lint_project(&project_path, rules, fix)?;
         for issue in &issues {
             let mut with_project = issue.clone();

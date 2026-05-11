@@ -30,7 +30,7 @@ fn index_removes_deleted_project() {
     assert!(ds.read_manifest().contains("to-go"));
 
     // 删除目录并重新 index
-    fs::remove_dir_all(ds.root().join("to-go")).unwrap();
+    fs::remove_dir_all(ds.root().join("projects").join("to-go")).unwrap();
     run_in(ds.root(), &["project", "index"]);
 
     let content = ds.read_manifest();
@@ -69,8 +69,8 @@ fn index_dry_run_does_not_modify() {
     let ds = Dataset::empty();
     let before = ds.read_manifest();
 
-    fs::create_dir_all(ds.root().join("new-project")).unwrap();
-    fs::write(ds.root().join("new-project/mind.yaml"), "schema_version: '1'\n").unwrap();
+    fs::create_dir_all(ds.root().join("projects/new-project")).unwrap();
+    fs::write(ds.root().join("projects/new-project/mind.yaml"), "schema_version: '1'\n").unwrap();
     run_in(ds.root(), &["project", "index", "--dry-run"]);
 
     let after = ds.read_manifest();
@@ -83,8 +83,8 @@ fn index_creates_minds_yaml_when_absent() {
     let dir = Dataset::outside();
     assert!(!dir.path().join("minds.yaml").exists());
 
-    fs::create_dir_all(dir.path().join("new-project")).unwrap();
-    fs::write(dir.path().join("new-project/mind.yaml"), "schema_version: '1'\n").unwrap();
+    fs::create_dir_all(dir.path().join("projects/new-project")).unwrap();
+    fs::write(dir.path().join("projects/new-project/mind.yaml"), "schema_version: '1'\n").unwrap();
 
     run_in(dir.path(), &["project", "index"]);
 
