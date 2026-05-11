@@ -19,12 +19,12 @@ fn e2e_new_creates_project_skeleton() {
     assert!(stdout.contains("created"), "stdout should have timestamp: {stdout}");
 
     // 骨架文件系统
-    assert!(ds.root().join("alpha/docs").exists(), "docs/");
-    assert!(ds.root().join("alpha/docs/images").exists(), "docs/images/");
-    assert!(ds.root().join("alpha/sources").exists(), "sources/");
-    assert!(ds.root().join("alpha/assets").exists(), "assets/");
-    assert!(ds.root().join("alpha/mind.yaml").exists(), "mind.yaml");
-    assert!(ds.root().join("alpha/mind-index.yaml").exists(), "mind-index.yaml");
+    assert!(ds.root().join("projects/alpha/docs").exists(), "docs/");
+    assert!(ds.root().join("projects/alpha/docs/images").exists(), "docs/images/");
+    assert!(ds.root().join("projects/alpha/sources").exists(), "sources/");
+    assert!(ds.root().join("projects/alpha/assets").exists(), "assets/");
+    assert!(ds.root().join("projects/alpha/mind.yaml").exists(), "mind.yaml");
+    assert!(ds.root().join("projects/alpha/mind-index.yaml").exists(), "mind-index.yaml");
 
     // minds.yaml 注册
     let manifest = ds.read_manifest();
@@ -45,7 +45,7 @@ fn e2e_new_force_is_idempotent() {
     let (_, stderr, code) = run_in(ds.root(), &["project", "new", "alpha", "--force"]);
 
     assert_eq!(code, 0, "stderr: {stderr}");
-    assert!(ds.root().join("alpha/docs").exists(), "docs still exist");
+    assert!(ds.root().join("projects/alpha/docs").exists(), "docs still exist");
 
     // created_at 不因 --force 改变
     let manifest_second = ds.read_manifest();
@@ -97,7 +97,7 @@ fn e2e_new_root_flag_overrides_cwd() {
 
     assert_eq!(code, 0, "stderr: {stderr}");
     assert!(stdout.contains("alpha"));
-    assert!(ds.root().join("alpha/docs").exists(), "project created in --root dir");
+    assert!(ds.root().join("projects/alpha/docs").exists(), "project created in --root dir");
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ fn e2e_list_missing_index_shows_zero() {
     let ds = repo_008_empty_projects();
 
     // 删除 alpha 的 mind-index.yaml
-    let index_path = ds.root().join("alpha/mind-index.yaml");
+    let index_path = ds.root().join("projects/alpha/mind-index.yaml");
     if index_path.exists() {
         fs::remove_file(&index_path).unwrap();
     }
@@ -199,7 +199,7 @@ fn e2e_status_shows_counts_for_named_project() {
 fn e2e_status_detects_project_from_cwd() {
     let ds = repo_008_with_data();
 
-    let (stdout, _, code) = run_in(ds.root().join("alpha/docs"), &["project", "status"]);
+    let (stdout, _, code) = run_in(ds.root().join("projects/alpha/docs"), &["project", "status"]);
 
     assert_eq!(code, 0, "should detect alpha from cwd: {stdout}");
     assert!(stdout.contains("alpha"), "should show project name");
@@ -265,14 +265,14 @@ fn e2e_lint_fix_creates_missing_directory() {
     let ds = repo_008_with_lint_issues();
 
     // 确认 sources 不存在
-    assert!(!ds.root().join("alpha/sources").exists());
+    assert!(!ds.root().join("projects/alpha/sources").exists());
 
     let (stdout, stderr, code) = run_in(ds.root(), &["project", "lint", "--project", "alpha", "--fix"]);
 
     assert_eq!(code, 0, "all issues should be fixed: stderr={stderr}, stdout={stdout}");
 
     // sources/ 被修复创建
-    assert!(ds.root().join("alpha/sources").exists(), "sources should be created by --fix");
+    assert!(ds.root().join("projects/alpha/sources").exists(), "sources should be created by --fix");
 }
 
 /// E2E: 检测命名规范违规（FR-303）
@@ -366,7 +366,7 @@ fn e2e_full_lifecycle_quickstart() {
     // new
     let (_, _, code) = run_in(ds.root(), &["project", "new", "my-project"]);
     assert_eq!(code, 0, "new failed");
-    assert!(ds.root().join("my-project/mind.yaml").exists());
+    assert!(ds.root().join("projects/my-project/mind.yaml").exists());
 
     // list
     let (stdout, _, code) = run_in(ds.root(), &["project", "list"]);
