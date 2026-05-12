@@ -7,7 +7,7 @@ pub(crate) use self::add::{classify_input, InputForm};
 pub use self::clean::clean;
 pub use self::index::reconcile;
 pub use self::list::list;
-pub use self::remove::remove;
+pub use self::remove::{remove, remove_by_path};
 pub use self::update::{update, UpdateArgs};
 
 // ── URL validation ───────────────────────────────────────────────────────────
@@ -49,11 +49,11 @@ pub(crate) fn derive_name_from_path(p: &Path) -> Result<String> {
 
 // ── Infer SourceKind from path ───────────────────────────────────────────────
 
-pub(crate) fn infer_kind_from_path(p: &Path) -> crate::model::source::SourceKind {
+pub(crate) fn infer_kind_from_path(p: &Path) -> crate::model::source::FileKind {
     let ext = p.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase());
     match ext.as_deref() {
-        Some("pdf") => crate::model::source::SourceKind::Pdf,
-        _ => crate::model::source::SourceKind::File,
+        Some("pdf") => crate::model::source::FileKind::Pdf,
+        _ => crate::model::source::FileKind::File,
     }
 }
 

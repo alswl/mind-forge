@@ -1,11 +1,11 @@
 use std::path::Path;
 
 use crate::error::Result;
-use crate::model::source::{Source, SourceKind};
+use crate::model::source::{FileKind, Source};
 use crate::service::index;
 
 /// List sources in a project, with optional name substring filter and type filter.
-pub fn list(project_path: &Path, filter: Option<&str>, kind: Option<SourceKind>) -> Result<Vec<Source>> {
+pub fn list(project_path: &Path, filter: Option<&str>, kind: Option<FileKind>) -> Result<Vec<Source>> {
     let index = index::load(project_path)?;
     let mut sources = index.sources.unwrap_or_default();
 

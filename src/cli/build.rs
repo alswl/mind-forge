@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::Args;
 use serde::Serialize;
 
+use crate::cli::deprecation::DeprecationContext;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::service::{build as build_svc, util as svc_util};
@@ -10,15 +11,20 @@ use crate::service::{build as build_svc, util as svc_util};
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct BuildArgs {
     pub article: String,
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
-    #[arg(long)]
+    #[arg(short = 'o', long)]
     pub output: Option<PathBuf>,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
 }
 
-pub fn dispatch(args: BuildArgs, repo_root: Option<&PathBuf>, format: crate::output::Format) -> Result<CommandOutcome> {
+pub fn dispatch(
+    args: BuildArgs,
+    repo_root: Option<&PathBuf>,
+    format: crate::output::Format,
+    _deprecation: &mut DeprecationContext,
+) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
 
     if args.article.is_empty() || args.article.contains('/') || args.article.contains('\\') {

@@ -11,6 +11,7 @@ use crate::service::index;
 /// Parameters for `add()`.
 pub struct AddArgs {
     pub source: PathBuf,
+    pub name: Option<String>,
     pub tags: Vec<String>,
     pub link_mode: bool,
     pub force: bool,
@@ -71,8 +72,9 @@ pub fn add(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<Asset> {
 
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
+    let asset_name = args.name.clone().unwrap_or_else(|| basename.clone());
     let asset =
-        Asset { name: basename, kind, path: rel_path.clone(), size, hash, tags: args.tags.clone(), added_at: now };
+        Asset { name: asset_name, kind, path: rel_path.clone(), size, hash, tags: args.tags.clone(), added_at: now };
 
     let mut index = index::load(project_path)?;
     let assets = index.assets.get_or_insert_with(Vec::new);

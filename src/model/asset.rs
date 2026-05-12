@@ -56,3 +56,18 @@ pub struct AssetIndexReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refreshed: Option<Vec<AssetUpdateResult>>,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct AssetCleanReport {
+    pub stale_entries: Vec<String>,
+    pub removed_count: u64,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct AssetRemoveReport {
+    pub removed: String,
+    pub was_referenced: bool,
+}

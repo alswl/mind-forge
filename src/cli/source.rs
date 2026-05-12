@@ -3,9 +3,10 @@ use std::path::{Path, PathBuf};
 use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 
+use crate::cli::deprecation::DeprecationContext;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
-use crate::model::source::SourceKind as ModelKind;
+use crate::model::source::{FileKind, SourceKind};
 use crate::output::Format;
 use crate::service::source::InputForm;
 use crate::service::{source as svc_source, util as svc_util};
@@ -18,13 +19,13 @@ pub struct SourceCmd {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum SourceSubcommand {
-    #[command(about = "List sources")]
+    #[command(about = "List sources", visible_alias = "ls")]
     List(SourceListArgs),
     #[command(about = "Add a source")]
     Add(SourceAddArgs),
-    #[command(about = "Update a source")]
+    #[command(about = "Update a source (mf extension)")]
     Update(SourceUpdateArgs),
-    #[command(about = "Index sources")]
+    #[command(about = "Index sources (mf extension)")]
     Index(SourceIndexArgs),
     #[command(about = "Remove a source")]
     Remove(SourceRemoveArgs),
@@ -33,7 +34,7 @@ pub enum SourceSubcommand {
 }
 
 // ---------------------------------------------------------------------------
-// T011: CliSourceKind — CLI-only enum (adds `Auto` + `Pdf`)
+// CliSourceKind — CLI enum mapping to FileKind (mf primary)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, ValueEnum, Serialize)]
@@ -47,16 +48,14 @@ pub enum CliSourceKind {
 }
 
 impl CliSourceKind {
-    /// Resolve `Auto` to a concrete `ModelKind` based on input form.
-    /// When not `Auto`, validates that the explicit kind is compatible with the input form.
-    pub fn resolve(self, form: &InputForm) -> Result<ModelKind> {
+    pub fn resolve(self, form: &InputForm) -> Result<FileKind> {
         use CliSourceKind::*;
         use InputForm::*;
         match (self, form) {
-            (Auto, Path) | (File, Path) => Ok(ModelKind::File),
-            (Auto, Url) | (Web, Url) => Ok(ModelKind::Web),
-            (Pdf, Path) => Ok(ModelKind::Pdf),
-            (Rss, Url) => Ok(ModelKind::Rss),
+            (Auto, Path) | (File, Path) => Ok(FileKind::File),
+            (Auto, Url) | (Web, Url) => Ok(FileKind::Web),
+            (Pdf, Path) => Ok(FileKind::Pdf),
+            (Rss, Url) => Ok(FileKind::Rss),
             (Pdf, Url) | (File, Url) => Err(MfError::usage(
                 "cannot use --type pdf or --type file with a URL input",
                 Some("download the file first, then add the local path".into()),
@@ -70,21 +69,52 @@ impl CliSourceKind {
 }
 
 // ---------------------------------------------------------------------------
+// CliSourceKindType — CLI enum mapping to SourceKind (mind primary)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, ValueEnum, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CliSourceKindType {
+    Yuque,
+    Dima,
+    Meeting,
+    Misc,
+}
+
+impl From<CliSourceKindType> for SourceKind {
+    fn from(k: CliSourceKindType) -> Self {
+        match k {
+            CliSourceKindType::Yuque => SourceKind::Yuque,
+            CliSourceKindType::Dima => SourceKind::Dima,
+            CliSourceKindType::Meeting => SourceKind::Meeting,
+            CliSourceKindType::Misc => SourceKind::Misc,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // T012: SourceAddArgs
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceAddArgs {
     pub input: String,
-    #[arg(long)]
+    #[arg(short = 'n', long)]
     pub name: Option<String>,
-    #[arg(long = "type", value_enum, default_value_t = CliSourceKind::Auto)]
-    pub kind: CliSourceKind,
+    /// File kind (mf primary). Use --source-kind for mind channel type.
+    #[arg(long = "file-kind", value_enum)]
+    pub file_kind: Option<CliSourceKind>,
+    /// Source channel type (mind primary).
+    #[arg(long = "source-kind", value_enum)]
+    pub source_kind: Option<CliSourceKindType>,
+    /// Deprecated: use --file-kind or --source-kind instead.
+    #[arg(short = 't', long = "type", value_enum)]
+    pub kind: Option<CliSourceKind>,
     #[arg(long)]
     pub link: bool,
-    #[arg(long)]
+    #[arg(short = 'f', long)]
     pub force: bool,
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
@@ -96,9 +126,9 @@ pub struct SourceAddArgs {
 pub struct SourceListArgs {
     #[arg(long)]
     pub filter: Option<String>,
-    #[arg(long = "type", value_enum)]
+    #[arg(short = 't', long = "type", value_enum)]
     pub kind: Option<CliSourceKind>,
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
@@ -113,7 +143,7 @@ pub struct SourceUpdateArgs {
     pub rename: Option<String>,
     #[arg(long)]
     pub url: Option<String>,
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
@@ -123,10 +153,11 @@ pub struct SourceUpdateArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceRemoveArgs {
-    pub name: String,
+    /// Source path (e.g. sources/yuque/foo.md) or source name (deprecated)
+    pub name_or_path: String,
     #[arg(long = "keep-file")]
     pub keep_file: bool,
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
@@ -138,7 +169,7 @@ pub struct SourceRemoveArgs {
 pub struct SourceIndexArgs {
     #[arg(long = "dry-run")]
     pub dry_run: bool,
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
@@ -146,7 +177,7 @@ pub struct SourceIndexArgs {
 pub struct SourceCleanArgs {
     #[arg(long = "dry-run")]
     pub dry_run: bool,
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
@@ -154,17 +185,35 @@ pub struct SourceCleanArgs {
 // T017: Dispatch — replaced by user story tasks
 // ---------------------------------------------------------------------------
 
-pub fn dispatch(command: SourceCmd, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
+pub fn dispatch(
+    command: SourceCmd,
+    repo_root: Option<&PathBuf>,
+    format: Format,
+    deprecation: &mut DeprecationContext,
+) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
 
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("source")),
-        Some(SourceSubcommand::Add(args)) => handle_add(args, root, &cwd, format),
+        Some(SourceSubcommand::Add(args)) => {
+            // Deprecation warning for --type
+            if args.kind.is_some() {
+                deprecation.warn_subject("--type", "--file-kind or --source-kind");
+            }
+            handle_add(args, root, &cwd, format)
+        }
         Some(SourceSubcommand::List(args)) => handle_list(args, root, &cwd, format),
         Some(SourceSubcommand::Update(args)) => handle_update(args, root, &cwd, format),
         Some(SourceSubcommand::Index(args)) => handle_index(args, root, &cwd, format),
-        Some(SourceSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format),
+        Some(SourceSubcommand::Remove(args)) => {
+            // Detect PATH vs NAME: if input contains '/' or starts with 'sources', treat as PATH
+            let is_path = args.name_or_path.contains('/') || args.name_or_path.starts_with("sources");
+            if !is_path {
+                deprecation.warn_subject("positional NAME", "full PATH (e.g., sources/yuque/foo.md)");
+            }
+            handle_remove(args, root, &cwd, format, is_path)
+        }
         Some(SourceSubcommand::Clean(args)) => handle_clean(args, root, &cwd, format),
     }
 }
@@ -172,7 +221,7 @@ pub fn dispatch(command: SourceCmd, repo_root: Option<&PathBuf>, format: Format)
 fn handle_list(args: SourceListArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
 
-    // Resolve type filter (CliSourceKind → model SourceKind; Auto is rejected)
+    // Resolve type filter (CliSourceKind → model FileKind; Auto is rejected)
     let type_filter = match args.kind {
         Some(CliSourceKind::Auto) => {
             return Err(MfError::usage(
@@ -180,10 +229,10 @@ fn handle_list(args: SourceListArgs, root: &Path, cwd: &Path, format: Format) ->
                 Some("use --type pdf, file, rss, or web".to_string()),
             ));
         }
-        Some(CliSourceKind::Pdf) => Some(ModelKind::Pdf),
-        Some(CliSourceKind::File) => Some(ModelKind::File),
-        Some(CliSourceKind::Rss) => Some(ModelKind::Rss),
-        Some(CliSourceKind::Web) => Some(ModelKind::Web),
+        Some(CliSourceKind::Pdf) => Some(FileKind::Pdf),
+        Some(CliSourceKind::File) => Some(FileKind::File),
+        Some(CliSourceKind::Rss) => Some(FileKind::Rss),
+        Some(CliSourceKind::Web) => Some(FileKind::Web),
         None => None,
     };
 
@@ -261,10 +310,20 @@ fn handle_index(args: SourceIndexArgs, root: &Path, cwd: &Path, format: Format) 
     }
 }
 
-fn handle_remove(args: SourceRemoveArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
+fn handle_remove(
+    args: SourceRemoveArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    is_path: bool,
+) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
 
-    let report = svc_source::remove(&project_path, &args.name, args.keep_file)?;
+    let report = if is_path {
+        svc_source::remove_by_path(&project_path, &args.name_or_path, args.keep_file)?
+    } else {
+        svc_source::remove(&project_path, &args.name_or_path, args.keep_file)?
+    };
 
     match format {
         Format::Json => {
@@ -279,7 +338,7 @@ fn handle_remove(args: SourceRemoveArgs, root: &Path, cwd: &Path, format: Format
                 if let Some(ref p) = report.source.path {
                     lines.push(format!("  deleted file: {p}"));
                 }
-            } else if matches!(report.source.kind, ModelKind::Pdf | ModelKind::File) {
+            } else if matches!(report.source.kind, FileKind::Pdf | FileKind::File) {
                 lines.push("  kept file (already missing or --keep-file)".to_string());
             } else {
                 lines.push("  (URL source, no file to delete)".to_string());
@@ -328,19 +387,34 @@ fn handle_add(args: SourceAddArgs, root: &Path, cwd: &Path, format: Format) -> R
 
     let input_form = svc_source::classify_input(&args.input);
 
-    // Resolve kind
-    let kind = match args.kind {
-        CliSourceKind::Auto => None,
-        explicit => {
-            let model_kind = explicit.resolve(&input_form)?;
-            Some(model_kind)
-        }
+    // Resolve kind: prefer --file-kind or --source-kind, fall back to deprecated --type
+    let kind = if let Some(fk) = args.file_kind {
+        let model_kind = fk.resolve(&input_form)?;
+        Some(model_kind)
+    } else if args.source_kind.is_some() {
+        // --source-kind resolves to an auto-inferred FileKind based on input form
+        // For URL inputs: Web; for Path inputs: File (store, not infer)
+        let model_kind = match &input_form {
+            svc_source::InputForm::Url => FileKind::Web,
+            svc_source::InputForm::Path => FileKind::File,
+        };
+        Some(model_kind)
+    } else if let Some(k) = args.kind {
+        // Deprecated --type fallback
+        let model_kind = k.resolve(&input_form)?;
+        Some(model_kind)
+    } else {
+        None
     };
+
+    // Resolve source_kind
+    let source_kind = args.source_kind.map(SourceKind::from);
 
     let add_args = svc_source::AddArgs {
         input: &args.input,
         name: args.name.as_deref(),
         kind,
+        source_kind,
         link: args.link,
         force: args.force,
     };

@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 18
 expression: stdout
 ---
 mind-forge command line interface
@@ -12,18 +11,33 @@ Commands:
   asset       Manage project assets
   project     Manage projects
   article     Manage articles
-  term        Manage terminology
+  term        Manage terminology [aliases: terms]
   completion  Generate shell completion scripts
+  version     Show version information
   build       Build articles
   publish     Publish articles
   config      Manage configuration
 
 Options:
-      --root <PATH>      Mind Repo root directory
-      --config <PATH>    Config file path
-  -v, --verbose...       Verbose output
-  -q, --quiet            Silence non-error output
-      --format <FORMAT>  Output format [default: text] [possible values: text, json]
-      --no-color         Disable colored output
-  -h, --help             Print help
-  -V, --version          Print version
+      --root <PATH>
+          Mind Repo root directory
+      --config <PATH>
+          Config file path
+  -v, --verbose...
+          Verbose output
+  -q, --quiet
+          Silence non-error output
+      --format <FORMAT>
+          Output format [default: text] [possible values: text, json]
+      --json
+          Shorthand for --format json
+      --no-color
+          Disable colored output
+      --install-completion <INSTALL_COMPLETION>
+          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+      --show-completion <SHOW_COMPLETION>
+          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+  -h, --help
+          Print help
+  -V, --version
+          Print version

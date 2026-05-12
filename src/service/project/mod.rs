@@ -2,10 +2,13 @@ use std::path::Path;
 
 use crate::model::index::IndexFile;
 
+pub use self::archive::archive_project;
+pub use self::import::import_project;
 pub use self::index::{resolve_project, status_for};
 pub use self::lifecycle::{lint_project, lint_repo};
 pub use self::list::list_projects;
 pub(crate) use self::new::{scaffold, upsert_project_entry};
+pub use self::show::show;
 
 /// Read a project's mind-index.yaml and return (document_count, last_activity_at).
 pub(crate) fn read_index_counts(project_path: &Path) -> (u64, Option<String>) {
@@ -52,7 +55,10 @@ pub(crate) fn read_index_counts(project_path: &Path) -> (u64, Option<String>) {
     (count, max_ts)
 }
 
+pub mod archive;
+pub mod import;
 pub mod index;
 pub mod lifecycle;
 pub mod list;
 pub mod new;
+pub mod show;

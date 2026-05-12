@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
+use crate::cli::deprecation::DeprecationContext;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::model::asset::AssetKind;
@@ -17,14 +18,18 @@ pub struct AssetCmd {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum AssetSubcommand {
-    #[command(about = "List assets")]
+    #[command(about = "List assets", visible_alias = "ls")]
     List(AssetListArgs),
     #[command(about = "Add an asset")]
     Add(AssetAddArgs),
     #[command(about = "Update assets")]
     Update(AssetUpdateArgs),
-    #[command(about = "Index assets")]
+    #[command(about = "Index assets (mf extension)")]
     Index(AssetIndexArgs),
+    #[command(about = "Clean stale asset index entries")]
+    Clean(AssetCleanArgs),
+    #[command(about = "Remove an asset")]
+    Remove(AssetRemoveArgs),
 }
 
 // ---------------------------------------------------------------------------
@@ -37,7 +42,7 @@ pub struct AssetListArgs {
     pub filter: Option<String>,
     #[arg(long = "type", value_enum)]
     pub asset_type: Option<AssetKind>,
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
@@ -48,15 +53,17 @@ pub struct AssetListArgs {
 #[derive(Debug, Clone, Args)]
 pub struct AssetAddArgs {
     pub path: PathBuf,
+    #[arg(long = "name")]
+    pub name: Option<String>,
     #[arg(long = "tag")]
     pub tag: Vec<String>,
     #[arg(long, conflicts_with = "link")]
     pub copy: bool,
     #[arg(long, conflicts_with = "copy")]
     pub link: bool,
-    #[arg(long)]
+    #[arg(short = 'f', long)]
     pub force: bool,
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
@@ -67,9 +74,13 @@ pub struct AssetAddArgs {
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct AssetUpdateArgs {
     pub path: Option<PathBuf>,
+    #[arg(long = "set-url")]
+    pub set_url: Option<String>,
+    #[arg(long)]
+    pub channel: Option<String>,
     #[arg(long)]
     pub all: bool,
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
@@ -83,7 +94,32 @@ pub struct AssetIndexArgs {
     pub dry_run: bool,
     #[arg(long = "refresh-metadata")]
     pub refresh_metadata: bool,
+    #[arg(short = 'p', long)]
+    pub project: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Asset clean args
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct AssetCleanArgs {
+    #[arg(long, short = 'p')]
+    pub project: Option<String>,
     #[arg(long)]
+    pub dry_run: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Asset remove args
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct AssetRemoveArgs {
+    pub file: String,
+    #[arg(short = 'f', long)]
+    pub force: bool,
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
@@ -91,7 +127,12 @@ pub struct AssetIndexArgs {
 // Dispatch
 // ---------------------------------------------------------------------------
 
-pub fn dispatch(command: AssetCmd, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
+pub fn dispatch(
+    command: AssetCmd,
+    repo_root: Option<&PathBuf>,
+    format: Format,
+    _deprecation: &mut DeprecationContext,
+) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
 
@@ -101,6 +142,8 @@ pub fn dispatch(command: AssetCmd, repo_root: Option<&PathBuf>, format: Format) 
         Some(AssetSubcommand::List(args)) => handle_list(args, root, &cwd, format),
         Some(AssetSubcommand::Update(args)) => handle_update(args, root, &cwd, format),
         Some(AssetSubcommand::Index(args)) => handle_index(args, root, &cwd, format),
+        Some(AssetSubcommand::Clean(args)) => handle_clean(args, root, format),
+        Some(AssetSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format),
     }
 }
 
@@ -110,7 +153,13 @@ pub fn dispatch(command: AssetCmd, repo_root: Option<&PathBuf>, format: Format) 
 
 fn handle_add(args: AssetAddArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
-    let add_args = asset_svc::AddArgs { source: args.path, tags: args.tag, link_mode: args.link, force: args.force };
+    let add_args = asset_svc::AddArgs {
+        source: args.path,
+        name: args.name,
+        tags: args.tag,
+        link_mode: args.link,
+        force: args.force,
+    };
     let asset = asset_svc::add(&project_path, cwd, &add_args)?;
     let mode = if add_args.link_mode { "link" } else { "copy" };
 
@@ -177,6 +226,26 @@ fn handle_list(args: AssetListArgs, root: &Path, cwd: &Path, format: Format) -> 
 
 fn handle_update(args: AssetUpdateArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+
+    // Mind form: --set-url + --channel (set publish URL)
+    if args.set_url.is_some() || args.channel.is_some() {
+        let url = args.set_url.as_deref().unwrap_or_default();
+        let channel = args.channel.as_deref().unwrap_or_default();
+        let result = asset_svc::set_publish_url(&project_path, url, channel)?;
+        return match format {
+            Format::Json => Ok(CommandOutcome::Success(
+                serde_json::json!({
+                    "url": result.url,
+                    "channel": result.channel,
+                }),
+                None,
+            )),
+            Format::Text => {
+                let msg = format!("Set publish URL: {} (channel: {})", result.url, result.channel);
+                Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
+            }
+        };
+    }
 
     // Validate mutual exclusivity
     let has_path = args.path.is_some();
@@ -306,6 +375,66 @@ fn handle_index(args: AssetIndexArgs, root: &Path, cwd: &Path, format: Format) -
             };
             lines.push(kept_msg);
             Ok(CommandOutcome::Raw(lines.join("\n"), None))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Handle: mf asset clean
+// ---------------------------------------------------------------------------
+
+fn handle_clean(args: AssetCleanArgs, root: &Path, format: Format) -> Result<CommandOutcome> {
+    let cwd = std::env::current_dir().map_err(MfError::Io)?;
+    let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
+    let report = asset_svc::clean(&project_path, args.dry_run)?;
+
+    match format {
+        Format::Json => {
+            let data = serde_json::json!({
+                "stale_entries": report.stale_entries,
+                "removed_count": report.removed_count,
+                "dry_run": report.dry_run,
+            });
+            Ok(CommandOutcome::Success(data, None))
+        }
+        Format::Text => {
+            let dry_msg = if args.dry_run { "[dry-run] " } else { "" };
+            if report.stale_entries.is_empty() {
+                Ok(CommandOutcome::Success(
+                    serde_json::Value::String(format!("{dry_msg}No stale entries found.")),
+                    None,
+                ))
+            } else {
+                let mut lines = Vec::new();
+                lines.push(format!("{dry_msg}Cleaned {} stale entries from index.", report.removed_count));
+                for e in &report.stale_entries {
+                    lines.push(format!("  removed: {}", e));
+                }
+                Ok(CommandOutcome::Raw(lines.join("\n"), None))
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Handle: mf asset remove
+// ---------------------------------------------------------------------------
+
+fn handle_remove(args: AssetRemoveArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+    let report = asset_svc::remove(&project_path, &args.file, args.force)?;
+
+    match format {
+        Format::Json => {
+            let data = serde_json::json!({
+                "removed": report.removed,
+                "was_referenced": report.was_referenced,
+            });
+            Ok(CommandOutcome::Success(data, None))
+        }
+        Format::Text => {
+            let msg = format!("Removed asset: {}\nwas_referenced: {}", report.removed, report.was_referenced);
+            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
         }
     }
 }

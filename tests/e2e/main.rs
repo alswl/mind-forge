@@ -3,6 +3,7 @@ mod datasets;
 mod error_envelope;
 mod global_flags;
 mod helpers;
+mod mind_migration;
 mod placeholders;
 mod project_index;
 mod project_lifecycle;

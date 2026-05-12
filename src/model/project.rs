@@ -39,6 +39,58 @@ pub struct ProjectLintIssue {
 }
 
 // ---------------------------------------------------------------------------
+// Project show view model
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct MindYamlSummary {
+    pub schema_version: String,
+    #[serde(default)]
+    pub types: Vec<String>,
+    #[serde(default)]
+    pub source_dirs: Vec<String>,
+    pub assets_dir: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ProjectDetails {
+    pub name: String,
+    pub path: String,
+    pub article_count: u64,
+    pub source_count: u64,
+    pub asset_count: u64,
+    pub last_active: Option<String>,
+    pub mind_yaml_summary: Option<MindYamlSummary>,
+}
+
+// ---------------------------------------------------------------------------
+// Project archive view model
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ProjectArchiveReport {
+    pub name: String,
+    pub from: String,
+    pub to: String,
+}
+
+// ---------------------------------------------------------------------------
+// Project import view model
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ProjectImportReport {
+    pub name: String,
+    pub path: String,
+    pub scaffolded: bool,
+    pub article_count: u64,
+}
+
+// ---------------------------------------------------------------------------
 // Lint enums
 // ---------------------------------------------------------------------------
 

@@ -6,9 +6,11 @@ use crate::error::{MfError, Result};
 use crate::model::asset::AssetKind;
 
 pub use self::add::{add, AddArgs};
+pub use self::clean::clean;
 pub use self::index::reconcile;
 pub use self::list::list;
-pub use self::update::{update_all, update_one};
+pub use self::remove::remove;
+pub use self::update::{set_publish_url, update_all, update_one};
 
 // ── SHA-256 file hashing ─────────────────────────────────────────────────────
 
@@ -191,6 +193,8 @@ fn create_symlink(_src: &Path, _dst: &Path) -> Result<()> {
 }
 
 pub mod add;
+pub mod clean;
 pub mod index;
 pub mod list;
+pub mod remove;
 pub mod update;

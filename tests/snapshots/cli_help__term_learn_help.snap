@@ -1,21 +1,41 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 174
 expression: stdout
 ---
 Learn a term correction
 
-Usage: mf term learn [OPTIONS] --original <ORIGINAL> --correct <CORRECT>
+Usage: mf term learn [OPTIONS]
 
 Options:
-      --original <ORIGINAL>  
-      --root <PATH>          Mind Repo root directory
-      --config <PATH>        Config file path
-      --correct <CORRECT>    
-      --project <PROJECT>    
-  -v, --verbose...           Verbose output
-  -q, --quiet                Silence non-error output
-      --format <FORMAT>      Output format [default: text] [possible values: text, json]
-      --no-color             Disable colored output
-  -h, --help                 Print help
-  -V, --version              Print version
+      --root <PATH>
+          Mind Repo root directory
+      --term <TERM>
+          Canonical term name (mind primary)
+      --alias <ALIAS>
+          Variant/alias for the term (mind primary)
+      --config <PATH>
+          Config file path
+      --original <ORIGINAL>
+          Deprecated: use --term (canonical) instead
+  -v, --verbose...
+          Verbose output
+      --correct <CORRECT>
+          Deprecated: use --alias (variant) instead
+  -q, --quiet
+          Silence non-error output
+      --format <FORMAT>
+          Output format [default: text] [possible values: text, json]
+  -p, --project <PROJECT>
+          
+      --json
+          Shorthand for --format json
+      --no-color
+          Disable colored output
+      --install-completion <INSTALL_COMPLETION>
+          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+      --show-completion <SHOW_COMPLETION>
+          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+  -h, --help
+          Print help
+  -V, --version
+          Print version

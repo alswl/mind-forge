@@ -5,7 +5,7 @@ use chrono::Utc;
 
 use super::infer_kind_from_path;
 use crate::error::{MfError, Result};
-use crate::model::source::{Source, SourceIndexEntry, SourceIndexReport, SourceKind};
+use crate::model::source::{FileKind, Source, SourceIndexEntry, SourceIndexReport};
 use crate::service::index;
 use crate::service::util;
 
@@ -100,13 +100,13 @@ pub fn reconcile(project_path: &Path, dry_run: bool) -> Result<SourceIndexReport
     let index_sources = index.sources.unwrap_or_default();
 
     let mut url_kept: Vec<Source> = Vec::new();
-    let mut indexed_files: Vec<(String, String, SourceKind)> = Vec::new();
+    let mut indexed_files: Vec<(String, String, FileKind)> = Vec::new();
     for s in &index_sources {
         match s.kind {
-            SourceKind::Rss | SourceKind::Web => {
+            FileKind::Auto | FileKind::Rss | FileKind::Web => {
                 url_kept.push(s.clone());
             }
-            SourceKind::Pdf | SourceKind::File => {
+            FileKind::Pdf | FileKind::File => {
                 let p = s.path.as_ref().ok_or_else(|| {
                     MfError::Internal(anyhow::anyhow!("file-type source '{}' has no path field", s.name))
                 })?;
@@ -164,6 +164,7 @@ pub fn reconcile(project_path: &Path, dry_run: bool) -> Result<SourceIndexReport
             new_sources.push(Source {
                 name: entry.name.clone(),
                 kind: entry.kind.clone(),
+                source_kind: None,
                 url: None,
                 path: Some(entry.path.clone()),
                 tags: vec![],

@@ -46,6 +46,14 @@ cargo run -- source list
 cargo run -- completion zsh
 ```
 
+## Migrating from mind
+
+If you're migrating from the `mind` CLI, see:
+
+- [Migration guide](docs/migration-from-mind.md) — command mapping table
+- [Deprecations](docs/deprecations.md) — deprecated usages and their replacements
+- [mf extensions](docs/mf-extensions.md) — mf-only commands
+
 ## Project Status
 
 See [ROADMAP](specs/002-mf-command-design/ROADMAP.md) for the feature

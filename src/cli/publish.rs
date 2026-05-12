@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 
+use crate::cli::deprecation::DeprecationContext;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::model::index::PublishStatus;
@@ -30,11 +31,11 @@ pub struct PublishRunArgs {
     pub article: String,
     #[arg(long)]
     pub target: Option<String>,
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
-    #[arg(long)]
+    #[arg(short = 'f', long)]
     pub force: bool,
 }
 
@@ -48,7 +49,9 @@ pub struct PublishUpdateArgs {
     pub status: Option<PublishStatusArg>,
     #[arg(long = "target-url")]
     pub target_url: Option<String>,
-    #[arg(long)]
+    #[arg(long = "set", value_name = "KEY=VALUE")]
+    pub set: Vec<String>,
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
@@ -73,7 +76,12 @@ impl From<PublishStatusArg> for PublishStatus {
     }
 }
 
-pub fn dispatch(command: PublishCmd, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
+pub fn dispatch(
+    command: PublishCmd,
+    repo_root: Option<&PathBuf>,
+    format: Format,
+    deprecation: &mut DeprecationContext,
+) -> Result<CommandOutcome> {
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("publish")),
         Some(PublishSubcommand::Run(args)) => {
@@ -83,12 +91,53 @@ pub fn dispatch(command: PublishCmd, repo_root: Option<&PathBuf>, format: Format
             render_run_outcome(outcome, format)
         }
         Some(PublishSubcommand::Update(args)) => {
+            // Emit deprecation warnings for --status and --target-url
+            if args.status.is_some() {
+                deprecation.warn_subject("--status", "--set status=<value>");
+            }
+            if args.target_url.is_some() {
+                deprecation.warn_subject("--target-url", "--set url=<value>");
+            }
+
+            // Merge --set values into the existing fields
+            let merged_args = merge_set_values(args);
+
             let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
             let cwd = std::env::current_dir().map_err(MfError::Io)?;
-            let outcome = publish_svc::update(&args, root, &cwd)?;
+            let outcome = publish_svc::update(&merged_args, root, &cwd)?;
             render_update_outcome(outcome, format)
         }
     }
+}
+
+/// Merge `--set key=val` pairs into status/target_url, with `--set` taking precedence.
+fn merge_set_values(args: PublishUpdateArgs) -> PublishUpdateArgs {
+    let mut merged = PublishUpdateArgs { ..args };
+
+    // Also parse --set values for convenience
+    for kv in &merged.set {
+        if let Some((key, val)) = kv.split_once('=') {
+            match key {
+                "status" => match val {
+                    "draft" => merged.status = Some(PublishStatusArg::Draft),
+                    "published" => merged.status = Some(PublishStatusArg::Published),
+                    "archived" => merged.status = Some(PublishStatusArg::Archived),
+                    _ => {
+                        // Unknown status value is silently ignored
+                    }
+                },
+                "url" => {
+                    merged.target_url = Some(val.to_string());
+                }
+                _ => {
+                    // Unknown keys are silently ignored at the CLI layer;
+                    // the service layer can process them if needed.
+                }
+            }
+        }
+    }
+
+    merged
 }
 
 fn render_run_outcome(outcome: PublishRunOutcome, format: Format) -> Result<CommandOutcome> {

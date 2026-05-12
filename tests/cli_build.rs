@@ -12,7 +12,7 @@ fn build_succeeds_with_article() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "Test Article"])
+        .args(["article", "new", "blog", "Test Article"])
         .assert()
         .success();
 
@@ -40,7 +40,7 @@ fn build_dry_run_shows_plan() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "Dry Run Test"])
+        .args(["article", "new", "blog", "Dry Run Test"])
         .assert()
         .success();
 

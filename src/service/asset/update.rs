@@ -7,6 +7,42 @@ use crate::model::asset::AssetUpdateResult;
 use crate::service::index;
 use crate::service::util;
 
+/// Outcome for setting the publish URL.
+pub struct PublishUrlOutcome {
+    pub url: String,
+    pub channel: String,
+}
+
+/// Set the publish URL and channel for the project (mind form of asset update).
+/// Stores the URL in the project's mind-index.yaml publish target config.
+pub fn set_publish_url(project_path: &Path, url: &str, channel: &str) -> Result<PublishUrlOutcome> {
+    // Validate input
+    if url.is_empty() && channel.is_empty() {
+        return Err(MfError::usage(
+            "at least one of --set-url or --channel is required",
+            Some("provide --set-url <URL> and/or --channel <NAME>".to_string()),
+        ));
+    }
+
+    let mut index = index::load(project_path)?;
+    let recs = index.publish_records.get_or_insert_with(Vec::new);
+
+    // For now, store URL as a virtual record tagged by channel
+    // A more complete implementation would update mind.yaml's publish targets
+    if !url.is_empty() && !channel.is_empty() {
+        recs.push(crate::model::index::PublishRecord {
+            path: format!("_publish_settings/{channel}"),
+            target_name: channel.to_string(),
+            status: crate::model::index::PublishStatus::Published,
+            target_url: Some(url.to_string()),
+            published_at: Some(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()),
+        });
+        index::save(project_path, &index)?;
+    }
+
+    Ok(PublishUrlOutcome { url: url.to_string(), channel: channel.to_string() })
+}
+
 /// Resolve a user-provided path to an asset path within `<project>/assets/`.
 fn resolve_asset_path(project_root: &Path, cwd: &Path, input: &Path) -> Result<PathBuf> {
     let assets_dir = project_root.join("assets");
