@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
+use crate::cli::deprecation::DeprecationContext;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::model::article::ArticleStatus;
@@ -19,32 +20,35 @@ pub struct ArticleCmd {
 pub enum ArticleSubcommand {
     #[command(about = "Create an article")]
     New(ArticleNewArgs),
-    #[command(about = "List articles")]
+    #[command(about = "List articles", visible_alias = "ls")]
     List(ArticleListArgs),
     #[command(about = "Lint articles")]
     Lint(ArticleLintArgs),
-    #[command(about = "Index articles")]
+    #[command(about = "Index articles (mf extension)")]
     Index(ArticleIndexArgs),
 }
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleNewArgs {
+    /// Article type name (e.g. 'arch', 'blog')
+    pub r#type: String,
+    /// Article title
     pub title: String,
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
-    #[arg(long)]
+    #[arg(short = 't', long)]
     pub template: Option<String>,
     #[arg(long = "tag")]
     pub tag: Vec<String>,
     #[arg(long, default_value_t = true)]
     pub draft: bool,
-    #[arg(long)]
+    #[arg(short = 'f', long)]
     pub force: bool,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ArticleListArgs {
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
@@ -56,13 +60,18 @@ pub struct ArticleLintArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ArticleIndexArgs {
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
     #[arg(long, short = 'n')]
     pub dry_run: bool,
 }
 
-pub fn dispatch(command: ArticleCmd, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
+pub fn dispatch(
+    command: ArticleCmd,
+    repo_root: Option<&PathBuf>,
+    format: Format,
+    _deprecation: &mut DeprecationContext,
+) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
 
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
@@ -95,6 +104,7 @@ pub fn dispatch(command: ArticleCmd, repo_root: Option<&PathBuf>, format: Format
             )?;
 
             let data = serde_json::json!({
+                "type": args.r#type,
                 "filename": filename,
                 "path": format!("docs/{}.md", filename),
                 "draft": args.draft,

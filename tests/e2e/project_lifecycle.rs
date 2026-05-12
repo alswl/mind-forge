@@ -305,18 +305,18 @@ fn e2e_lint_clean_project_no_issues() {
 // US5: mf project archive (P3) — SC-007, FR-401, FR-402
 // ---------------------------------------------------------------------------
 
-/// E2E: archive 返回 not-implemented（SC-007, FR-402）
+/// E2E: archive 现在已实现; 非 git repo 应报错 not a git repository
 #[test]
-fn e2e_archive_returns_not_implemented() {
+fn e2e_archive_in_non_git_repo() {
     let ds = Dataset::empty();
 
     let (stdout, stderr, code) = run_in(ds.root(), &["project", "archive", "alpha"]);
 
-    assert_eq!(code, 64, "should be not implemented");
+    assert_eq!(code, 2, "should error with useful message: {stderr}");
     let all = stdout + &stderr;
     assert!(
-        all.contains("not implemented") || all.contains("not yet implemented"),
-        "should say not implemented: {all}"
+        all.contains("not a git repository") || all.contains("not found"),
+        "should say not a git repo or project not found: {all}"
     );
 }
 
@@ -381,7 +381,7 @@ fn e2e_full_lifecycle_quickstart() {
     let (stdout, _, code) = run_in(ds.root(), &["project", "lint", "--project", "my-project"]);
     assert_eq!(code, 0, "lint of fresh project failed: {stdout}");
 
-    // archive → not implemented
-    let (_, _, code) = run_in(ds.root(), &["project", "archive", "my-project"]);
-    assert_eq!(code, 64);
+    // archive → works or errors (no longer not-implemented)
+    let (_, stderr, code) = run_in(ds.root(), &["project", "archive", "my-project"]);
+    assert!(code != 64, "should not be not-implemented: {stderr}");
 }

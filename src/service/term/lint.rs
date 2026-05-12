@@ -42,6 +42,144 @@ fn empty_report(fix: bool, dry_run: bool) -> TermLintReport {
     }
 }
 
+/// Lint a single file for term corrections (FR-027 mind primary form).
+pub fn lint_file(project_root: &Path, file_path: &str, fix: bool, dry_run: bool) -> Result<TermLintReport> {
+    let index = index::load(project_root)?;
+    if index.terms.as_ref().map_or(true, |t| t.is_empty()) {
+        return Ok(empty_report(fix, dry_run));
+    }
+
+    let target_path = project_root.join(file_path);
+    if !target_path.exists() {
+        return Err(MfError::usage(
+            format!("file not found: {file_path}"),
+            Some("provide a path relative to the project root".to_string()),
+        ));
+    }
+
+    let corrections = collect_corrections(&index);
+    let mut findings: Vec<TermFinding> = Vec::new();
+    let mut internal_findings: Vec<InternalFinding> = Vec::new();
+    let mut claimed: BTreeSet<(String, usize)> = BTreeSet::new();
+    let mut failures: Vec<TermLintFailure> = Vec::new();
+
+    let rel_path = match rel_posix_path(project_root, &target_path) {
+        Ok(r) => r,
+        Err(_) => file_path.to_string(),
+    };
+
+    let content = match fs::read_to_string(&target_path) {
+        Ok(c) => c,
+        Err(e) => {
+            failures.push(TermLintFailure { path: rel_path.clone(), reason: format!("io error: {e}") });
+            return Ok(TermLintReport {
+                findings,
+                scanned_files: 1,
+                skipped_files: vec![],
+                fixed_count: 0,
+                modified_files: vec![],
+                failures,
+                would_fix_count: if fix && dry_run { Some(0) } else { None },
+            });
+        }
+    };
+
+    scan_content(&content, None, &corrections, &rel_path, &mut findings, &mut internal_findings, &mut claimed);
+
+    let report = if fix && !dry_run {
+        let mut spans: Vec<FixSpan> = internal_findings
+            .iter()
+            .filter(|ifind| ifind.original != ifind.correct)
+            .map(|ifind| FixSpan {
+                start: ifind.byte_offset,
+                end: ifind.byte_offset + ifind.original_len,
+                replacement: ifind.correct.clone(),
+            })
+            .collect();
+        if spans.is_empty() {
+            TermLintReport {
+                findings,
+                scanned_files: 1,
+                skipped_files: vec![],
+                fixed_count: 0,
+                modified_files: vec![],
+                failures,
+                would_fix_count: None,
+            }
+        } else {
+            spans.sort_by_key(|s| s.start);
+            let new_bytes = apply_fixes(content.as_bytes(), &spans);
+            let new_content = match String::from_utf8(new_bytes) {
+                Ok(c) => c,
+                Err(_) => {
+                    failures.push(TermLintFailure {
+                        path: rel_path.clone(),
+                        reason: "non-utf8 content after replacement".to_string(),
+                    });
+                    return Ok(TermLintReport {
+                        findings,
+                        scanned_files: 1,
+                        skipped_files: vec![],
+                        fixed_count: 0,
+                        modified_files: vec![],
+                        failures,
+                        would_fix_count: None,
+                    });
+                }
+            };
+            match atomic_write(&target_path, &new_content) {
+                Ok(()) => {
+                    let modified_paths = vec![rel_path.clone()];
+                    TermLintReport {
+                        findings,
+                        scanned_files: 1,
+                        skipped_files: vec![],
+                        fixed_count: spans.len() as u64,
+                        modified_files: modified_paths,
+                        failures,
+                        would_fix_count: None,
+                    }
+                }
+                Err(e) => {
+                    failures.push(TermLintFailure { path: rel_path, reason: format!("io error: {e}") });
+                    TermLintReport {
+                        findings,
+                        scanned_files: 1,
+                        skipped_files: vec![],
+                        fixed_count: 0,
+                        modified_files: vec![],
+                        failures,
+                        would_fix_count: None,
+                    }
+                }
+            }
+        }
+    } else if fix && dry_run {
+        let wf = internal_findings.len() as u64;
+        TermLintReport {
+            findings,
+            scanned_files: 1,
+            skipped_files: vec![],
+            fixed_count: 0,
+            modified_files: vec![],
+            failures,
+            would_fix_count: Some(wf),
+        }
+    } else {
+        TermLintReport {
+            findings,
+            scanned_files: 1,
+            skipped_files: vec![],
+            fixed_count: 0,
+            modified_files: vec![],
+            failures,
+            would_fix_count: None,
+        }
+    };
+
+    Ok(report)
+}
+
 pub fn lint_terms(project_root: &Path, fix: bool, dry_run: bool) -> Result<TermLintReport> {
     let index = index::load(project_root)?;
     if index.terms.as_ref().map_or(true, |t| t.is_empty()) {

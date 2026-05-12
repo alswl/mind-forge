@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 74
 expression: stdout
 ---
 Add an asset
@@ -11,16 +10,37 @@ Arguments:
   <PATH>  
 
 Options:
-      --root <PATH>        Mind Repo root directory
-      --tag <TAG>          
-      --config <PATH>      Config file path
-      --copy               
-      --link               
-  -v, --verbose...         Verbose output
-      --force              
-  -q, --quiet              Silence non-error output
-      --format <FORMAT>    Output format [default: text] [possible values: text, json]
-      --project <PROJECT>  
-      --no-color           Disable colored output
-  -h, --help               Print help
-  -V, --version            Print version
+      --name <NAME>
+          
+      --root <PATH>
+          Mind Repo root directory
+      --config <PATH>
+          Config file path
+      --tag <TAG>
+          
+      --copy
+          
+  -v, --verbose...
+          Verbose output
+      --link
+          
+  -q, --quiet
+          Silence non-error output
+  -f, --force
+          
+      --format <FORMAT>
+          Output format [default: text] [possible values: text, json]
+      --json
+          Shorthand for --format json
+  -p, --project <PROJECT>
+          
+      --no-color
+          Disable colored output
+      --install-completion <INSTALL_COMPLETION>
+          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+      --show-completion <SHOW_COMPLETION>
+          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+  -h, --help
+          Print help
+  -V, --version
+          Print version

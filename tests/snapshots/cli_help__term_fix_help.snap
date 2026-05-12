@@ -1,9 +1,8 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 181
 expression: stdout
 ---
-Fix a term metadata
+Fix a term metadata (mf extension)
 
 Usage: mf term fix [OPTIONS] <TERM>
 
@@ -11,15 +10,33 @@ Arguments:
   <TERM>  
 
 Options:
-      --definition <DEFINITION>  
-      --root <PATH>              Mind Repo root directory
-      --alias <ALIAS>            
-      --config <PATH>            Config file path
-      --tag <TAG>                
-  -v, --verbose...               Verbose output
-      --project <PROJECT>        
-  -q, --quiet                    Silence non-error output
-      --format <FORMAT>          Output format [default: text] [possible values: text, json]
-      --no-color                 Disable colored output
-  -h, --help                     Print help
-  -V, --version                  Print version
+      --definition <DEFINITION>
+          
+      --root <PATH>
+          Mind Repo root directory
+      --alias <ALIAS>
+          
+      --config <PATH>
+          Config file path
+      --tag <TAG>
+          
+  -v, --verbose...
+          Verbose output
+  -p, --project <PROJECT>
+          
+  -q, --quiet
+          Silence non-error output
+      --format <FORMAT>
+          Output format [default: text] [possible values: text, json]
+      --json
+          Shorthand for --format json
+      --no-color
+          Disable colored output
+      --install-completion <INSTALL_COMPLETION>
+          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+      --show-completion <SHOW_COMPLETION>
+          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+  -h, --help
+          Print help
+  -V, --version
+          Print version

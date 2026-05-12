@@ -5,8 +5,7 @@ use chrono::Utc;
 
 use super::{derive_name_from_path, infer_kind_from_path, validate_url};
 use crate::error::{MfError, Result};
-use crate::model::source::Source;
-use crate::model::source::SourceKind;
+use crate::model::source::{FileKind, Source, SourceKind};
 use crate::service::index;
 use crate::service::util;
 
@@ -29,7 +28,8 @@ pub struct AddOutcome {
 pub struct AddArgs<'a> {
     pub input: &'a str,
     pub name: Option<&'a str>,
-    pub kind: Option<SourceKind>,
+    pub kind: Option<FileKind>,
+    pub source_kind: Option<SourceKind>,
     pub link: bool,
     pub force: bool,
 }
@@ -96,21 +96,23 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
 
     let model_kind = match args.kind.clone() {
         Some(k) => match k {
-            SourceKind::Rss | SourceKind::Web => k,
-            SourceKind::Pdf => {
+            FileKind::Auto => FileKind::Web,
+            FileKind::Rss => FileKind::Rss,
+            FileKind::Web => FileKind::Web,
+            FileKind::Pdf => {
                 return Err(MfError::usage(
                     "cannot use --type pdf with a URL input",
                     Some("download the file first, then add the local path".to_string()),
                 ))
             }
-            SourceKind::File => {
+            FileKind::File => {
                 return Err(MfError::usage(
                     "cannot use --type file with a URL input",
                     Some("download the file first, then add the local path".to_string()),
                 ))
             }
         },
-        None => SourceKind::Web,
+        None => FileKind::Web,
     };
 
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
@@ -124,6 +126,7 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
             let source = Source {
                 name: name.clone(),
                 kind: model_kind,
+                source_kind: args.source_kind.clone(),
                 url: Some(args.input.to_string()),
                 path: None,
                 tags: prior.tags.clone(),
@@ -137,6 +140,7 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
             let source = Source {
                 name: name.clone(),
                 kind: model_kind,
+                source_kind: args.source_kind.clone(),
                 url: Some(args.input.to_string()),
                 path: None,
                 tags: vec![],
@@ -175,8 +179,9 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
 
     let model_kind = match args.kind.clone() {
         Some(k) => match k {
-            SourceKind::Pdf | SourceKind::File => k,
-            SourceKind::Rss | SourceKind::Web => {
+            FileKind::Auto => infer_kind_from_path(&source_canonical),
+            FileKind::Pdf | FileKind::File => k,
+            FileKind::Rss | FileKind::Web => {
                 return Err(MfError::usage(
                     "cannot use --type rss or --type web with a local file input",
                     Some("pass an http(s):// URL".to_string()),
@@ -233,6 +238,7 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
             let source = Source {
                 name: name.clone(),
                 kind: model_kind,
+                source_kind: args.source_kind.clone(),
                 url: None,
                 path: Some(rel_path),
                 tags: prior.tags.clone(),
@@ -256,6 +262,7 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
             let source = Source {
                 name: name.clone(),
                 kind: model_kind,
+                source_kind: args.source_kind.clone(),
                 url: None,
                 path: Some(rel_path.clone()),
                 tags: vec![],

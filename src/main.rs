@@ -6,6 +6,7 @@ mod output;
 mod runtime;
 mod service;
 use clap::{error::ErrorKind, CommandFactory, Parser};
+use cli::deprecation::DeprecationContext;
 use cli::{CommandOutcome, RepoRequirement, RootCli};
 use error::{MfError, Result};
 use exit::ExitCode;
@@ -48,7 +49,13 @@ fn run(args: Vec<OsString>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> R
             return Ok(err.exit_code());
         }
     }
-    let outcome = match cli.dispatch(context.repo_root.as_ref(), context.format) {
+    // Handle --install-completion / --show-completion before dispatch
+    if let Some(shell) = cli.global.install_completion.or(cli.global.show_completion) {
+        return cli::completion::render_completion(shell.into_shell(), stdout);
+    }
+
+    let mut deprecation = DeprecationContext::new(stderr, cli.global.no_color);
+    let outcome = match cli.dispatch(context.repo_root.as_ref(), context.format, &mut deprecation) {
         Ok(o) => o,
         Err(err) => {
             render(stderr, context.format, Payload::Error(&err))?;
@@ -97,6 +104,18 @@ fn render_outcome(
             Ok(ExitCode::Ok)
         }
         CommandOutcome::Completion(shell) => cli::completion::render_completion(shell, stdout),
+        CommandOutcome::Version => {
+            let version = env!("CARGO_PKG_VERSION");
+            match context.format {
+                output::Format::Json => {
+                    render(stdout, context.format, Payload::Success(&serde_json::json!({"version": version})))?;
+                }
+                output::Format::Text => {
+                    writeln!(stdout, "mf {version}")?;
+                }
+            }
+            Ok(ExitCode::Ok)
+        }
         CommandOutcome::Success(data, exit_code) => {
             render(stdout, context.format, Payload::Success(&data))?;
             Ok(ExitCode::from(exit_code.unwrap_or(0)))

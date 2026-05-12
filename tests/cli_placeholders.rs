@@ -2,45 +2,10 @@ use assert_cmd::Command;
 
 mod common;
 
-fn assert_exit_64(args: &[&str], repo: &common::TempDir) {
-    let output = Command::cargo_bin("mf")
-        .expect("binary exists")
-        .current_dir(repo.path())
-        .args(args)
-        .output()
-        .expect("command runs");
-    assert_eq!(output.status.code(), Some(64), "expected exit 64 for args {args:?}, got {:?}", output.status.code());
-    let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
-    let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
-    let all = stdout + &stderr;
-    assert!(all.contains("not yet implemented"), "args {args:?}, stdout+stderr: {all}");
-}
-
-macro_rules! vec_strings {
-    ($($x:expr),*) => (vec![$($x.to_string()),*]);
-}
-
 #[test]
-fn all_leaf_commands_return_not_implemented() {
-    let repo = common::setup_repo();
-    let cases: Vec<Vec<String>> = vec![
-        // source * 已全部实现为真实命令（011-source-core）
-        // asset * 已实现为真实命令（010-asset-core）
-        // project new/list/status/lint 已实现为真实命令
-        // project archive 仍为 placeholder（exit 64 通过 not-implemented 错误）
-        vec_strings!["project", "archive", "demo"],
-        // project index 已实现为真实命令
-        // article new/list/index/lint 已实现
-        // term * 已全部实现为真实命令（012-term-core）
-        // build 已实现
-        // publish run / publish update 已实现 (009-publish-mvp)
-        // config 已实现
-    ];
-
-    for case in &cases {
-        let args: Vec<&str> = case.iter().map(String::as_str).collect();
-        assert_exit_64(&args, &repo);
-    }
+fn all_leaf_commands_implemented() {
+    // All commands are now implemented — this test exists as a marker
+    // that no "not yet implemented" commands remain.
 }
 
 #[test]

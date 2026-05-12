@@ -100,7 +100,7 @@ fn rejects_archived_creation_without_target_url() {
     let before = read_index_bytes(&repo);
     let out = run_update(
         &repo,
-        &["--format", "json", "publish", "update", ARTICLE, "--target", "local-blog", "--status", "archived"],
+        &["--format", "json", "publish", "update", ARTICLE, "--target", "local-blog", "--set", "status=archived"],
     );
     assert_eq!(out.status.code(), Some(2));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
@@ -272,7 +272,17 @@ fn rejects_when_article_not_in_index() {
     let repo = setup_repo_with_target();
     let out = run_update(
         &repo,
-        &["--format", "json", "publish", "update", "ghost-article", "--target", "local-blog", "--status", "published"],
+        &[
+            "--format",
+            "json",
+            "publish",
+            "update",
+            "ghost-article",
+            "--target",
+            "local-blog",
+            "--set",
+            "status=published",
+        ],
     );
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
@@ -284,7 +294,7 @@ fn rejects_when_target_not_in_config() {
     let repo = setup_repo_with_target();
     let out = run_update(
         &repo,
-        &["--format", "json", "publish", "update", ARTICLE, "--target", "ghost-target", "--status", "published"],
+        &["--format", "json", "publish", "update", ARTICLE, "--target", "ghost-target", "--set", "status=published"],
     );
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();

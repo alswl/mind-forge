@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 109
 expression: stdout
 ---
 List sources
@@ -8,14 +7,31 @@ List sources
 Usage: mf source list [OPTIONS]
 
 Options:
-      --filter <FILTER>    
-      --root <PATH>        Mind Repo root directory
-      --config <PATH>      Config file path
-      --type <KIND>        [possible values: auto, pdf, file, rss, web]
-      --project <PROJECT>  
-  -v, --verbose...         Verbose output
-  -q, --quiet              Silence non-error output
-      --format <FORMAT>    Output format [default: text] [possible values: text, json]
-      --no-color           Disable colored output
-  -h, --help               Print help
-  -V, --version            Print version
+      --filter <FILTER>
+          
+      --root <PATH>
+          Mind Repo root directory
+      --config <PATH>
+          Config file path
+  -t, --type <KIND>
+          [possible values: auto, pdf, file, rss, web]
+  -p, --project <PROJECT>
+          
+  -v, --verbose...
+          Verbose output
+  -q, --quiet
+          Silence non-error output
+      --format <FORMAT>
+          Output format [default: text] [possible values: text, json]
+      --json
+          Shorthand for --format json
+      --no-color
+          Disable colored output
+      --install-completion <INSTALL_COMPLETION>
+          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+      --show-completion <SHOW_COMPLETION>
+          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+  -h, --help
+          Print help
+  -V, --version
+          Print version

@@ -38,7 +38,7 @@ impl AppContext {
             std::env::current_dir().ok().and_then(|cwd| repo::detect_repo_root(&cwd, 50))
         };
 
-        Ok(Self { format: global.format, config_path, repo_root })
+        Ok(Self { format: global.effective_format(), config_path, repo_root })
     }
 
     /// 检查 repo_root，为 None 时返回 NotInMindRepo 错误

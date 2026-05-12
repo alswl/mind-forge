@@ -166,14 +166,12 @@ fn learn_empty_original_or_correct_rejected() {
     let (repo, _project) = setup_with_term();
     // Empty original is a clap error? No — it's a flag, so it passes clap.
     // The empty check is in the service.
-    let output = mf(&repo)
-        .args(["term", "learn", "--original", "", "--correct", "Mind Repo", "--project", "alpha"])
-        .output()
-        .unwrap();
+    let output =
+        mf(&repo).args(["term", "learn", "--alias", "", "--term", "Mind Repo", "--project", "alpha"]).output().unwrap();
 
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("empty"), "stderr: {stderr}");
+    assert!(stderr.contains("requires"), "stderr: {stderr}");
 }
 
 // ---------------------------------------------------------------------------

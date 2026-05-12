@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
+use crate::cli::deprecation::DeprecationContext;
 use crate::cli::CommandOutcome;
 use crate::error::Result;
 use crate::output::Format;
@@ -20,7 +21,13 @@ pub enum ConfigSubcommand {
     Schema(ConfigSchemaArgs),
     #[command(about = "Show effective config")]
     Show(ConfigShowArgs),
-    #[command(about = "Initialize config file")]
+    #[command(about = "Compile config (alias of show)")]
+    Compile(ConfigCompileArgs),
+    #[command(about = "Generate effective config file")]
+    Generate(ConfigGenerateArgs),
+    #[command(about = "Show default config values")]
+    Default(ConfigDefaultArgs),
+    #[command(about = "Initialize config file (mf extension)")]
     Init(ConfigInitArgs),
 }
 
@@ -46,11 +53,43 @@ pub struct ConfigInitArgs {
     pub force: bool,
 }
 
-pub fn dispatch(command: ConfigCmd, repo_root: Option<&PathBuf>, _format: Format) -> Result<CommandOutcome> {
+// ---------------------------------------------------------------------------
+// B2 thin alias args
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct ConfigCompileArgs {
+    #[arg(long = "output-format", default_value = "yaml")]
+    pub output_format: String,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct ConfigGenerateArgs {
+    #[arg(long = "output-format", default_value = "yaml")]
+    pub output_format: String,
+    #[arg(short = 'o', long)]
+    pub output: PathBuf,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct ConfigDefaultArgs {
+    #[arg(long = "output-format", default_value = "yaml")]
+    pub output_format: String,
+}
+
+pub fn dispatch(
+    command: ConfigCmd,
+    repo_root: Option<&PathBuf>,
+    _format: Format,
+    _deprecation: &mut DeprecationContext,
+) -> Result<CommandOutcome> {
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("config")),
         Some(ConfigSubcommand::Schema(args)) => handle_schema(args),
         Some(ConfigSubcommand::Show(args)) => handle_show(args, repo_root),
+        Some(ConfigSubcommand::Compile(args)) => handle_compile(args, repo_root),
+        Some(ConfigSubcommand::Generate(args)) => handle_generate(args, repo_root),
+        Some(ConfigSubcommand::Default(args)) => handle_default(args),
         Some(ConfigSubcommand::Init(args)) => handle_init(args),
     }
 }
@@ -64,6 +103,39 @@ fn handle_show(args: ConfigShowArgs, repo_root: Option<&PathBuf>) -> Result<Comm
     let cwd = std::env::current_dir()
         .map_err(|e| crate::error::MfError::usage(format!("failed to get current directory: {e}"), None))?;
     let output = service::config::show_effective(&cwd, repo_root.map(|p| p.as_path()), &args.output_format)?;
+    Ok(CommandOutcome::Raw(output, None))
+}
+
+// ── B2 thin alias: config compile (routes to same handler as show) ──────────
+
+fn handle_compile(args: ConfigCompileArgs, repo_root: Option<&PathBuf>) -> Result<CommandOutcome> {
+    let cwd = std::env::current_dir()
+        .map_err(|e| crate::error::MfError::usage(format!("failed to get current directory: {e}"), None))?;
+    let output = service::config::show_effective(&cwd, repo_root.map(|p| p.as_path()), &args.output_format)?;
+    Ok(CommandOutcome::Raw(output, None))
+}
+
+// ── B2 thin alias: config generate (show + write to file) ───────────────────
+
+fn handle_generate(args: ConfigGenerateArgs, repo_root: Option<&PathBuf>) -> Result<CommandOutcome> {
+    use std::io::Write;
+
+    let cwd = std::env::current_dir()
+        .map_err(|e| crate::error::MfError::usage(format!("failed to get current directory: {e}"), None))?;
+    let output = service::config::show_effective(&cwd, repo_root.map(|p| p.as_path()), &args.output_format)?;
+    let mut file = std::fs::File::create(&args.output).map_err(crate::error::MfError::Io)?;
+    file.write_all(output.as_bytes()).map_err(crate::error::MfError::Io)?;
+    Ok(CommandOutcome::Success(serde_json::json!({ "path": args.output.to_string_lossy().to_string() }), None))
+}
+
+// ── B2 thin alias: config default (show default config) ─────────────────────
+
+fn handle_default(args: ConfigDefaultArgs) -> Result<CommandOutcome> {
+    let default_config = crate::model::config::MindConfig::default();
+    let output = match args.output_format.as_str() {
+        "json" => service::config::to_json(&default_config)?,
+        _ => service::config::to_yaml(&default_config)?,
+    };
     Ok(CommandOutcome::Raw(output, None))
 }
 

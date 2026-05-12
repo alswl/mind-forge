@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 88
 expression: stdout
 ---
 Update assets
@@ -11,13 +10,33 @@ Arguments:
   [PATH]  
 
 Options:
-      --all                
-      --root <PATH>        Mind Repo root directory
-      --config <PATH>      Config file path
-      --project <PROJECT>  
-  -v, --verbose...         Verbose output
-  -q, --quiet              Silence non-error output
-      --format <FORMAT>    Output format [default: text] [possible values: text, json]
-      --no-color           Disable colored output
-  -h, --help               Print help
-  -V, --version            Print version
+      --root <PATH>
+          Mind Repo root directory
+      --set-url <SET_URL>
+          
+      --channel <CHANNEL>
+          
+      --config <PATH>
+          Config file path
+      --all
+          
+  -v, --verbose...
+          Verbose output
+  -p, --project <PROJECT>
+          
+  -q, --quiet
+          Silence non-error output
+      --format <FORMAT>
+          Output format [default: text] [possible values: text, json]
+      --json
+          Shorthand for --format json
+      --no-color
+          Disable colored output
+      --install-completion <INSTALL_COMPLETION>
+          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+      --show-completion <SHOW_COMPLETION>
+          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+  -h, --help
+          Print help
+  -V, --version
+          Print version

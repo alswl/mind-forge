@@ -10,7 +10,7 @@ fn article_new_creates_file_and_index() {
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "My First Article"])
+        .args(["article", "new", "blog", "My First Article"])
         .output()
         .expect("command runs");
     assert_eq!(output.status.code(), Some(0), "article new should succeed");
@@ -34,14 +34,14 @@ fn article_new_refuses_duplicate() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "Test"])
+        .args(["article", "new", "blog", "Test"])
         .assert()
         .success();
 
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "Test"])
+        .args(["article", "new", "blog", "Test"])
         .output()
         .expect("command runs");
     assert_eq!(output.status.code(), Some(1), "duplicate should fail");
@@ -54,7 +54,7 @@ fn article_new_needs_project() {
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path())
-        .args(["article", "new", "Hello"])
+        .args(["article", "new", "blog", "Hello"])
         .output()
         .expect("command runs");
     assert_eq!(output.status.code(), Some(2), "should fail without project context");
@@ -68,7 +68,7 @@ fn article_new_with_project_flag() {
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path())
-        .args(["article", "new", "Hello", "--project", "my-project"])
+        .args(["article", "new", "blog", "Hello", "--project", "my-project"])
         .output()
         .expect("command runs");
     assert_eq!(output.status.code(), Some(0), "should succeed with --project flag");
@@ -82,14 +82,14 @@ fn article_list_shows_articles() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "Article One"])
+        .args(["article", "new", "blog", "Article One"])
         .assert()
         .success();
 
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "Article Two"])
+        .args(["article", "new", "blog", "Article Two"])
         .assert()
         .success();
 
@@ -133,7 +133,7 @@ fn article_lint_no_issues() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "valid-article"])
+        .args(["article", "new", "blog", "valid-article"])
         .assert()
         .success();
 
@@ -262,7 +262,7 @@ fn article_index_dry_run_shows_changes() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "Indexed Article"])
+        .args(["article", "new", "blog", "Indexed Article"])
         .assert()
         .success();
 
@@ -309,7 +309,7 @@ fn article_index_removes_deleted_file() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "To Be Removed"])
+        .args(["article", "new", "blog", "To Be Removed"])
         .assert()
         .success();
 

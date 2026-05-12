@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 53
 expression: stdout
 ---
 Manage projects
@@ -9,18 +8,34 @@ Usage: mf project [OPTIONS] [COMMAND]
 
 Commands:
   new      Create a project
-  list     List projects
-  archive  Archive a project (not yet implemented)
-  status   Show project status
+  list     List projects [aliases: ls]
+  archive  Archive a project
+  status   Show project status [aliases: info]
   lint     Lint a project
-  index    Index projects
+  index    Index projects (mf extension)
+  show     Show project details
+  import   Import a directory as a project
 
 Options:
-      --root <PATH>      Mind Repo root directory
-      --config <PATH>    Config file path
-  -v, --verbose...       Verbose output
-  -q, --quiet            Silence non-error output
-      --format <FORMAT>  Output format [default: text] [possible values: text, json]
-      --no-color         Disable colored output
-  -h, --help             Print help
-  -V, --version          Print version
+      --root <PATH>
+          Mind Repo root directory
+      --config <PATH>
+          Config file path
+  -v, --verbose...
+          Verbose output
+  -q, --quiet
+          Silence non-error output
+      --format <FORMAT>
+          Output format [default: text] [possible values: text, json]
+      --json
+          Shorthand for --format json
+      --no-color
+          Disable colored output
+      --install-completion <INSTALL_COMPLETION>
+          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+      --show-completion <SHOW_COMPLETION>
+          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+  -h, --help
+          Print help
+  -V, --version
+          Print version

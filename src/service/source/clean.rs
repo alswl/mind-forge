@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::error::{MfError, Result};
-use crate::model::source::{Source, SourceIndexEntry, SourceIndexReport, SourceKind};
+use crate::model::source::{FileKind, Source, SourceIndexEntry, SourceIndexReport};
 use crate::service::index;
 
 /// Clean dirty entries from the index: removes pdf/file sources whose archive
@@ -23,10 +23,10 @@ pub fn clean(project_path: &Path, dry_run: bool) -> Result<SourceIndexReport> {
 
     for s in index_sources {
         match s.kind {
-            SourceKind::Rss | SourceKind::Web => {
+            FileKind::Auto | FileKind::Rss | FileKind::Web => {
                 kept.push(s);
             }
-            SourceKind::Pdf | SourceKind::File => {
+            FileKind::Pdf | FileKind::File => {
                 let path = s.path.as_ref().ok_or_else(|| {
                     MfError::Internal(anyhow::anyhow!("file-type source '{}' has no path field", s.name))
                 })?;

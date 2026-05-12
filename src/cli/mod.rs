@@ -3,7 +3,9 @@ pub mod asset;
 pub mod build;
 pub mod completion;
 pub mod config;
+pub mod deprecation;
 pub mod project;
+pub mod prompt;
 pub mod publish;
 pub mod source;
 pub mod term;
@@ -13,6 +15,8 @@ use std::path::PathBuf;
 use clap::{ArgAction, Args, Parser, Subcommand};
 use serde::Serialize;
 
+use crate::cli::completion::ShellKind;
+use crate::cli::deprecation::DeprecationContext;
 use crate::error::Result;
 use crate::output::Format;
 
@@ -49,8 +53,24 @@ pub struct GlobalOpts {
     pub quiet: bool,
     #[arg(long, global = true, value_enum, default_value_t = Format::Text, help = "Output format")]
     pub format: Format,
+    #[arg(long, global = true, help = "Shorthand for --format json")]
+    pub json: bool,
     #[arg(long = "no-color", global = true, help = "Disable colored output")]
     pub no_color: bool,
+    #[arg(long = "install-completion", global = true, value_enum, help = "Install shell completion script")]
+    pub install_completion: Option<ShellKind>,
+    #[arg(long = "show-completion", global = true, value_enum, help = "Show shell completion script")]
+    pub show_completion: Option<ShellKind>,
+}
+
+impl GlobalOpts {
+    pub fn effective_format(&self) -> Format {
+        if self.json {
+            Format::Json
+        } else {
+            self.format
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -63,10 +83,12 @@ pub enum TopLevelCommand {
     Project(project::ProjectCmd),
     #[command(about = "Manage articles")]
     Article(article::ArticleCmd),
-    #[command(about = "Manage terminology")]
+    #[command(about = "Manage terminology", visible_alias = "terms")]
     Term(term::TermCmd),
     #[command(about = "Generate shell completion scripts")]
     Completion(completion::CompletionArgs),
+    #[command(about = "Show version information")]
+    Version,
     #[command(about = "Build articles")]
     Build(build::BuildArgs),
     #[command(about = "Publish articles")]
@@ -80,6 +102,8 @@ pub enum CommandOutcome {
     RootHelp,
     GroupHelp(&'static str),
     Completion(clap_complete::Shell),
+    /// Show version information
+    Version,
     /// Successful command execution. The optional exit code overrides the default 0
     /// (used by commands like `lint` that signal issues via non-zero exit codes).
     Success(serde_json::Value, Option<u8>),
@@ -96,18 +120,24 @@ impl RootCli {
         self.command.as_ref().map(|c| c.requires_repo()).unwrap_or(RepoRequirement::NotRequired)
     }
 
-    pub fn dispatch(self, repo_root: Option<&std::path::PathBuf>, format: Format) -> Result<CommandOutcome> {
+    pub fn dispatch(
+        self,
+        repo_root: Option<&std::path::PathBuf>,
+        format: Format,
+        deprecation: &mut DeprecationContext,
+    ) -> Result<CommandOutcome> {
         match self.command {
             None => Ok(CommandOutcome::RootHelp),
-            Some(TopLevelCommand::Source(command)) => source::dispatch(command, repo_root, format),
-            Some(TopLevelCommand::Asset(command)) => asset::dispatch(command, repo_root, format),
-            Some(TopLevelCommand::Project(command)) => project::dispatch(command, repo_root, format),
-            Some(TopLevelCommand::Article(command)) => article::dispatch(command, repo_root, format),
-            Some(TopLevelCommand::Term(command)) => term::dispatch(command, repo_root, format),
+            Some(TopLevelCommand::Version) => Ok(CommandOutcome::Version),
+            Some(TopLevelCommand::Source(command)) => source::dispatch(command, repo_root, format, deprecation),
+            Some(TopLevelCommand::Asset(command)) => asset::dispatch(command, repo_root, format, deprecation),
+            Some(TopLevelCommand::Project(command)) => project::dispatch(command, repo_root, format, deprecation),
+            Some(TopLevelCommand::Article(command)) => article::dispatch(command, repo_root, format, deprecation),
+            Some(TopLevelCommand::Term(command)) => term::dispatch(command, repo_root, format, deprecation),
             Some(TopLevelCommand::Completion(command)) => completion::dispatch(command),
-            Some(TopLevelCommand::Build(args)) => build::dispatch(args, repo_root, format),
-            Some(TopLevelCommand::Publish(command)) => publish::dispatch(command, repo_root, format),
-            Some(TopLevelCommand::Config(command)) => config::dispatch(command, repo_root, format),
+            Some(TopLevelCommand::Build(args)) => build::dispatch(args, repo_root, format, deprecation),
+            Some(TopLevelCommand::Publish(command)) => publish::dispatch(command, repo_root, format, deprecation),
+            Some(TopLevelCommand::Config(command)) => config::dispatch(command, repo_root, format, deprecation),
         }
     }
 }
@@ -115,7 +145,7 @@ impl RootCli {
 impl TopLevelCommand {
     pub fn requires_repo(&self) -> RepoRequirement {
         match self {
-            Self::Completion(_) | Self::Config(_) => RepoRequirement::NotRequired,
+            Self::Completion(_) | Self::Config(_) | Self::Version => RepoRequirement::NotRequired,
             Self::Project(cmd) => cmd.requires_repo(),
             _ => RepoRequirement::Required,
         }

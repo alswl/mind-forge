@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 102
 expression: stdout
 ---
 Add a source
@@ -11,16 +10,41 @@ Arguments:
   <INPUT>  
 
 Options:
-      --name <NAME>        
-      --root <PATH>        Mind Repo root directory
-      --config <PATH>      Config file path
-      --type <KIND>        [default: auto] [possible values: auto, pdf, file, rss, web]
-      --link               
-  -v, --verbose...         Verbose output
-      --force              
-  -q, --quiet              Silence non-error output
-      --format <FORMAT>    Output format [default: text] [possible values: text, json]
-      --project <PROJECT>  
-      --no-color           Disable colored output
-  -h, --help               Print help
-  -V, --version            Print version
+  -n, --name <NAME>
+          
+      --root <PATH>
+          Mind Repo root directory
+      --config <PATH>
+          Config file path
+      --file-kind <FILE_KIND>
+          File kind (mf primary). Use --source-kind for mind channel type [possible values: auto,
+          pdf, file, rss, web]
+      --source-kind <SOURCE_KIND>
+          Source channel type (mind primary) [possible values: yuque, dima, meeting, misc]
+  -v, --verbose...
+          Verbose output
+  -q, --quiet
+          Silence non-error output
+  -t, --type <KIND>
+          Deprecated: use --file-kind or --source-kind instead [possible values: auto, pdf, file,
+          rss, web]
+      --format <FORMAT>
+          Output format [default: text] [possible values: text, json]
+      --link
+          
+  -f, --force
+          
+      --json
+          Shorthand for --format json
+      --no-color
+          Disable colored output
+  -p, --project <PROJECT>
+          
+      --install-completion <INSTALL_COMPLETION>
+          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+      --show-completion <SHOW_COMPLETION>
+          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+  -h, --help
+          Print help
+  -V, --version
+          Print version

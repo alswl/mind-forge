@@ -3,6 +3,7 @@ use std::path::Path;
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
+use crate::cli::deprecation::DeprecationContext;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::output::Format;
@@ -18,21 +19,26 @@ pub struct TermCmd {
 pub enum TermSubcommand {
     #[command(about = "List terms")]
     List(TermListArgs),
-    #[command(about = "Create a term")]
+    #[command(about = "Create a term (mf extension)")]
     New(TermNewArgs),
     #[command(about = "Lint term consistency in project docs")]
     Lint(TermLintArgs),
     #[command(about = "Learn a term correction")]
     Learn(TermLearnArgs),
-    #[command(about = "Fix a term metadata")]
+    #[command(about = "Fix a term metadata (mf extension)")]
     Fix(TermFixArgs),
+    #[command(about = "Show term details")]
+    Show(TermShowArgs),
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct TermListArgs {
     #[arg(long)]
     pub filter: Option<String>,
+    /// Look up a single term by name (deprecated: use `term show <NAME>`)
     #[arg(long)]
+    pub term: Option<String>,
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
@@ -45,27 +51,36 @@ pub struct TermNewArgs {
     pub alias: Vec<String>,
     #[arg(long = "tag")]
     pub tag: Vec<String>,
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct TermLintArgs {
+    pub path: Option<String>,
     #[arg(long)]
     pub fix: bool,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct TermLearnArgs {
+    /// Canonical term name (mind primary)
     #[arg(long)]
-    pub original: String,
+    pub term: Option<String>,
+    /// Variant/alias for the term (mind primary)
     #[arg(long)]
-    pub correct: String,
+    pub alias: Option<String>,
+    /// Deprecated: use --term (canonical) instead
     #[arg(long)]
+    pub original: Option<String>,
+    /// Deprecated: use --alias (variant) instead
+    #[arg(long)]
+    pub correct: Option<String>,
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
@@ -78,21 +93,47 @@ pub struct TermFixArgs {
     pub alias: Vec<String>,
     #[arg(long = "tag")]
     pub tag: Vec<String>,
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
-pub fn dispatch(command: TermCmd, repo_root: Option<&std::path::PathBuf>, format: Format) -> Result<CommandOutcome> {
+// ---------------------------------------------------------------------------
+// Term show args
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct TermShowArgs {
+    pub name: String,
+    #[arg(short = 'p', long)]
+    pub project: Option<String>,
+}
+
+pub fn dispatch(
+    command: TermCmd,
+    repo_root: Option<&std::path::PathBuf>,
+    format: Format,
+    deprecation: &mut DeprecationContext,
+) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
 
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("term")),
         Some(TermSubcommand::New(args)) => handle_new(args, root, &cwd, format),
-        Some(TermSubcommand::List(args)) => handle_list(args, root, &cwd, format),
+        Some(TermSubcommand::List(args)) => handle_list(args, root, &cwd, format, deprecation),
         Some(TermSubcommand::Lint(args)) => handle_lint(args, root, &cwd, format),
-        Some(TermSubcommand::Learn(args)) => handle_learn(args, root, &cwd, format),
+        Some(TermSubcommand::Learn(args)) => {
+            // Deprecation warning for --original/--correct
+            if args.original.is_some() {
+                deprecation.warn_subject("--original", "--alias <variant>");
+            }
+            if args.correct.is_some() {
+                deprecation.warn_subject("--correct", "--term <canonical>");
+            }
+            handle_learn(args, root, &cwd, format)
+        }
         Some(TermSubcommand::Fix(args)) => handle_fix(args, root, &cwd, format),
+        Some(TermSubcommand::Show(args)) => handle_show(args, root, &cwd, format),
     }
 }
 
@@ -125,7 +166,21 @@ fn handle_new(args: TermNewArgs, root: &Path, cwd: &Path, format: Format) -> Res
 
 // ── Handle: mf term list (US2 / T021) ────────────────────────────────────────
 
-fn handle_list(args: TermListArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
+fn handle_list(
+    args: TermListArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    deprecation: &mut DeprecationContext,
+) -> Result<CommandOutcome> {
+    // D5: --term <X> redirects to term show
+    if let Some(ref name) = args.term {
+        deprecation.warn_by_id(crate::cli::deprecation::DeprecationId::D5, None);
+        let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+        let term = term_svc::show_term(&project_path, name)?;
+        return render_term_show(&term, format);
+    }
+
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
     let terms = term_svc::list_terms(&project_path, args.filter.as_deref())?;
 
@@ -178,7 +233,12 @@ fn handle_lint(args: TermLintArgs, root: &Path, cwd: &Path, format: Format) -> R
     let effective_fix = args.fix;
     let effective_dry_run = args.fix && args.dry_run;
 
-    let report = term_svc::lint_terms(&project_path, effective_fix, effective_dry_run)?;
+    let report = if let Some(ref path) = args.path {
+        // Single file lint (mind primary form)
+        term_svc::lint_file(&project_path, path, effective_fix, effective_dry_run)?
+    } else {
+        term_svc::lint_terms(&project_path, effective_fix, effective_dry_run)?
+    };
 
     // Determine exit code per contracts/term-lint.md §Exit Codes
     let exit_code = compute_lint_exit_code(&report, effective_fix, effective_dry_run);
@@ -300,7 +360,25 @@ fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_
 fn handle_learn(args: TermLearnArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
 
-    let (term, appended) = term_svc::learn_correction(&project_path, &args.original, &args.correct)?;
+    // Resolve primary form (--term/--alias) vs deprecated form (--original/--correct)
+    let (original, correct) = if args.term.is_some() || args.alias.is_some() {
+        let t = args.term.as_deref().unwrap_or("");
+        let a = args.alias.as_deref().unwrap_or("");
+        (a, t)
+    } else {
+        let o = args.original.as_deref().unwrap_or("");
+        let c = args.correct.as_deref().unwrap_or("");
+        (o, c)
+    };
+
+    if original.is_empty() || correct.is_empty() {
+        return Err(MfError::usage(
+            "requires --term <canonical> and --alias <variant> (or deprecated --original/--correct)",
+            Some("use 'mf term learn --term <canonical> --alias <variant>'".to_string()),
+        ));
+    }
+
+    let (term, appended) = term_svc::learn_correction(&project_path, original, correct)?;
 
     match format {
         Format::Json => {
@@ -309,9 +387,9 @@ fn handle_learn(args: TermLearnArgs, root: &Path, cwd: &Path, format: Format) ->
         }
         Format::Text => {
             let msg = if appended {
-                format!("✓ learned correction: \"{}\" → \"{}\" (term: {})", args.original, args.correct, term.term)
+                format!("✓ learned correction: \"{original}\" → \"{correct}\" (term: {})", term.term)
             } else {
-                format!("correction already exists: \"{}\" → \"{}\" (term: {})", args.original, args.correct, term.term)
+                format!("correction already exists: \"{original}\" → \"{correct}\" (term: {})", term.term)
             };
             Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
         }
@@ -346,4 +424,41 @@ fn handle_fix(args: TermFixArgs, root: &Path, cwd: &Path, format: Format) -> Res
             Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
         }
     }
+}
+
+// ── Handle: mf term show (US3b / FR-019) ────────────────────────────────────
+
+fn render_term_show(term: &crate::model::term::Term, format: Format) -> Result<CommandOutcome> {
+    match format {
+        Format::Json => {
+            let data = serde_json::to_value(term).map_err(MfError::Json)?;
+            Ok(CommandOutcome::Success(data, None))
+        }
+        Format::Text => {
+            let mut lines = Vec::new();
+            lines.push(format!("Term:        {}", term.term));
+            if let Some(def) = &term.definition {
+                lines.push(format!("Definition:  {def}"));
+            }
+            if !term.aliases.is_empty() {
+                lines.push(format!("Aliases:     {}", term.aliases.join(", ")));
+            }
+            if !term.tags.is_empty() {
+                lines.push(format!("Tags:        {}", term.tags.join(", ")));
+            }
+            if !term.corrections.is_empty() {
+                lines.push("Corrections:".to_string());
+                for c in &term.corrections {
+                    lines.push(format!("  \"{}\" → \"{}\"", c.original, c.correct));
+                }
+            }
+            Ok(CommandOutcome::Raw(lines.join("\n"), None))
+        }
+    }
+}
+
+fn handle_show(args: TermShowArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+    let term = term_svc::show_term(&project_path, &args.name)?;
+    render_term_show(&term, format)
 }

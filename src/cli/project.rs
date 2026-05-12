@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use clap::ValueEnum;
 
+use crate::cli::deprecation::DeprecationContext;
 use crate::cli::{CommandOutcome, RepoRequirement};
 use crate::error::{MfError, Result};
 use crate::model::project::LintKind;
@@ -22,16 +23,20 @@ pub struct ProjectCmd {
 pub enum ProjectSubcommand {
     #[command(about = "Create a project")]
     New(ProjectNewArgs),
-    #[command(about = "List projects")]
+    #[command(about = "List projects", visible_alias = "ls")]
     List(ProjectListArgs),
-    #[command(about = "Archive a project (not yet implemented)")]
+    #[command(about = "Archive a project")]
     Archive(ProjectArchiveArgs),
-    #[command(about = "Show project status")]
+    #[command(about = "Show project status", visible_alias = "info")]
     Status(ProjectStatusArgs),
     #[command(about = "Lint a project")]
     Lint(ProjectLintArgs),
-    #[command(about = "Index projects")]
+    #[command(about = "Index projects (mf extension)")]
     Index(ProjectIndexArgs),
+    #[command(about = "Show project details")]
+    Show(ProjectShowArgs),
+    #[command(about = "Import a directory as a project")]
+    Import(ProjectImportArgs),
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -53,13 +58,13 @@ pub struct ProjectArchiveArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectStatusArgs {
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectLintArgs {
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub project: Option<String>,
     #[arg(long)]
     pub fix: bool,
@@ -73,6 +78,26 @@ pub struct ProjectIndexArgs {
     pub dry_run: bool,
 }
 
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct ProjectShowArgs {
+    pub project: String,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct ProjectImportArgs {
+    pub directory: String,
+    #[arg(long)]
+    pub r#type: Option<String>,
+    #[arg(long)]
+    pub source: Option<String>,
+    #[arg(long)]
+    pub assets: Option<String>,
+    #[arg(short = 'f', long)]
+    pub force: bool,
+    #[arg(short = 'y', long = "non-interactive")]
+    pub non_interactive: bool,
+}
+
 impl ProjectCmd {
     pub fn requires_repo(&self) -> RepoRequirement {
         match self.command {
@@ -83,15 +108,22 @@ impl ProjectCmd {
 }
 
 /// dispatch 现在接受 repo_root 参数用于需要文件系统操作的子命令
-pub fn dispatch(command: ProjectCmd, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
+pub fn dispatch(
+    command: ProjectCmd,
+    repo_root: Option<&PathBuf>,
+    format: Format,
+    _deprecation: &mut DeprecationContext,
+) -> Result<CommandOutcome> {
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("project")),
         Some(ProjectSubcommand::New(args)) => handle_new(args, repo_root, format),
         Some(ProjectSubcommand::List(args)) => handle_list(args, repo_root, format),
-        Some(ProjectSubcommand::Archive(_args)) => Err(MfError::not_implemented("mf project archive")),
+        Some(ProjectSubcommand::Archive(args)) => handle_archive(args, repo_root, format),
         Some(ProjectSubcommand::Status(args)) => handle_status(args, repo_root, format),
         Some(ProjectSubcommand::Lint(args)) => handle_lint(args, repo_root, format),
         Some(ProjectSubcommand::Index(args)) => handle_index(args, repo_root, format),
+        Some(ProjectSubcommand::Show(args)) => handle_show(args, repo_root, format),
+        Some(ProjectSubcommand::Import(args)) => handle_import(args, repo_root, format),
     }
 }
 
@@ -262,4 +294,98 @@ fn handle_index(args: ProjectIndexArgs, repo_root: Option<&PathBuf>, format: For
         "minds_path": minds_path.to_string_lossy().to_string(),
     });
     Ok(CommandOutcome::Success(payload, None))
+}
+
+// ---------------------------------------------------------------------------
+// Handle: mf project show
+// ---------------------------------------------------------------------------
+
+fn handle_show(
+    args: ProjectShowArgs,
+    repo_root: Option<&std::path::PathBuf>,
+    format: Format,
+) -> Result<CommandOutcome> {
+    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+    let cwd = std::env::current_dir().map_err(MfError::Io)?;
+    let project_path = svc::project::resolve_project(root, Some(&args.project), &cwd)?;
+    let details = svc::project::show(&project_path, &args.project)?;
+
+    match format {
+        Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&details).map_err(MfError::Json)?, None)),
+        Format::Text => {
+            let mut lines = Vec::new();
+            lines.push(format!("Name:           {}", details.name));
+            lines.push(format!("Path:           {}", details.path));
+            lines.push(format!("Articles:       {}", details.article_count));
+            lines.push(format!("Sources:        {}", details.source_count));
+            lines.push(format!("Assets:         {}", details.asset_count));
+            lines.push(format!("Last active:    {}", details.last_active.as_deref().unwrap_or("-")));
+            if let Some(summary) = details.mind_yaml_summary {
+                lines.push(format!(
+                    "Schema:         v{} (types: {})",
+                    summary.schema_version,
+                    summary.types.join(", "),
+                ));
+                lines.push(format!("Source dirs:    {}", summary.source_dirs.join(", ")));
+                lines.push(format!("Assets dir:     {}", summary.assets_dir));
+            }
+            Ok(CommandOutcome::Raw(lines.join("\n"), None))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Handle: mf project archive
+// ---------------------------------------------------------------------------
+
+fn handle_archive(
+    args: ProjectArchiveArgs,
+    repo_root: Option<&std::path::PathBuf>,
+    format: Format,
+) -> Result<CommandOutcome> {
+    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+    let report = svc::project::archive_project(root, &args.name_or_path)?;
+
+    match format {
+        Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&report).map_err(MfError::Json)?, None)),
+        Format::Text => {
+            let msg = format!("Archived {}\nfrom: {}\nto: {}", report.name, report.from, report.to);
+            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Handle: mf project import
+// ---------------------------------------------------------------------------
+
+fn handle_import(
+    args: ProjectImportArgs,
+    repo_root: Option<&std::path::PathBuf>,
+    format: Format,
+) -> Result<CommandOutcome> {
+    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+    let report = svc::project::import_project(
+        root,
+        &args.directory,
+        args.r#type.as_deref(),
+        args.source.as_deref(),
+        args.assets.as_deref(),
+        args.force,
+        args.non_interactive,
+    )?;
+
+    match format {
+        Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&report).map_err(MfError::Json)?, None)),
+        Format::Text => {
+            let mut lines = Vec::new();
+            lines.push(format!("Imported project: {}", report.name));
+            lines.push(format!("  path: {}", report.path));
+            if report.scaffolded {
+                lines.push("  mind.yaml: created".to_string());
+            }
+            lines.push(format!("  articles: {}", report.article_count));
+            Ok(CommandOutcome::Raw(lines.join("\n"), None))
+        }
+    }
 }
