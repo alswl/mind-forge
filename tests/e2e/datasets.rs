@@ -213,6 +213,82 @@ impl Dataset {
 }
 
 // ---------------------------------------------------------------------------
+// Publisher fixture 常量
+// ---------------------------------------------------------------------------
+
+/// 标准的 docs/my-article.md 源文件内容
+pub const ARTICLE_SOURCE: &str = "# My Article\n\nContent for e2e testing.";
+
+/// 预构建的 _build/my-article.md 产物内容
+pub const ARTICLE_BUILD: &str = "<h1>My Article</h1>\n<p>Content for e2e testing.</p>";
+
+/// 含有 my-article 条目的 mind-index.yaml（供 publish 命令查找）
+pub const PUBLISHER_INDEX: &str = r#"schema_version: '1'
+articles:
+  - title: "My Article"
+    project: "my-project"
+    type: blog
+    source_path: "docs/my-article.md"
+    status: published
+    created_at: "2026-05-14T00:00:00Z"
+    updated_at: "2026-05-14T00:00:00Z"
+"#;
+
+/// 有效的 repo-wide 博客发布者 blog.yaml
+pub const PUBLISHER_BLOG_YAML: &str = r#"type: local
+config:
+  path: ./publisher-output
+"#;
+
+/// 格式错误的发布者定义 bad.yaml（非法 YAML，用于诊断测试）
+pub const PUBLISHER_BAD_YAML: &str = "<<<not yaml>>>";
+
+/// 含有 project-local publish target 的 mind.yaml（用于 fallback 测试）
+/// 注意：resolve_local_path 将相对路径从 repo_root 解析，因此使用 repo 相对路径
+pub const MIND_YAML_WITH_TARGETS: &str = r#"schema_version: '1'
+publish:
+  targets:
+    - name: local-blog
+      type: local
+      config:
+        path: ./publisher-output
+"#;
+
+impl Dataset {
+    /// 在 repo 根下创建 .mind-forge/publisher/<name>.yaml 发布者定义
+    pub fn with_publisher(self, name: &str, yaml: &str) -> Self {
+        let dir = self.dir.path().join(".mind-forge").join("publisher");
+        fs::create_dir_all(&dir).expect("create publisher dir");
+        fs::write(dir.join(format!("{name}.yaml")), yaml).expect("write publisher yaml");
+        self
+    }
+
+    /// 在项目下创建 source 文章 docs/<article>.md
+    pub fn with_source_article(self, project: &str, article: &str, content: &str) -> Self {
+        let dir = self.dir.path().join("projects").join(project).join("docs");
+        fs::create_dir_all(&dir).expect("create docs dir");
+        fs::write(dir.join(format!("{article}.md")), content).expect("write article");
+        self
+    }
+
+    /// 在项目下创建 build 产物 _build/<article>.md
+    pub fn with_build_artifact(self, project: &str, article: &str, content: &str) -> Self {
+        let dir = self.dir.path().join("projects").join(project).join("_build");
+        fs::create_dir_all(&dir).expect("create _build dir");
+        fs::write(dir.join(format!("{article}.md")), content).expect("write build artifact");
+        self
+    }
+
+    /// 创建含有完整 mind.yaml（含 publish targets）的项目
+    pub fn with_project_and_targets(self, name: &str, mind_yaml: &str) -> Self {
+        let dir = self.dir.path().join("projects").join(name);
+        fs::create_dir_all(&dir).expect("create project dir");
+        fs::write(dir.join("mind.yaml"), mind_yaml).expect("write mind.yaml");
+        self
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 预定义场景
 // ---------------------------------------------------------------------------
 
@@ -272,4 +348,28 @@ pub fn repo_008_with_name_violation() -> Dataset {
     let manifest = "schema_version: '1'\nprojects:\n  - name: alpha\n    path: ./projects/alpha\n    created_at: \"2026-04-30T08:00:00Z\"\n    archived_at: ~\n".to_string();
     fs::write(ds.dir.path().join("minds.yaml"), &manifest).expect("write manifest");
     ds
+}
+
+// ---------------------------------------------------------------------------
+// 016 Publisher E2E 预定义验收场景
+// ---------------------------------------------------------------------------
+
+/// 包含完整 publisher 场景的 repo（有效发布者 + 无效发布者诊断 + 可发布内容）
+pub fn repo_with_publishers() -> Dataset {
+    Dataset::empty()
+        .with_project("my-project")
+        .with_publisher("blog", PUBLISHER_BLOG_YAML)
+        .with_publisher("bad", PUBLISHER_BAD_YAML)
+        .with_source_article("my-project", "my-article", ARTICLE_SOURCE)
+        .with_build_artifact("my-project", "my-article", ARTICLE_BUILD)
+        .with_index("my-project", PUBLISHER_INDEX)
+}
+
+/// 包含 project-local publish target 的 repo（用于 fallback 场景）
+pub fn repo_with_project_local_target() -> Dataset {
+    Dataset::empty()
+        .with_project_and_targets("my-project", MIND_YAML_WITH_TARGETS)
+        .with_source_article("my-project", "my-article", ARTICLE_SOURCE)
+        .with_build_artifact("my-project", "my-article", ARTICLE_BUILD)
+        .with_index("my-project", PUBLISHER_INDEX)
 }

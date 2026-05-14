@@ -14,6 +14,7 @@ jobs:
         with:
           components: rustfmt, clippy
       - run: cargo test --locked
+      - run: cargo test --locked --test e2e
       - run: cargo clippy --locked -- -D warnings
       - run: cargo fmt --check
 
