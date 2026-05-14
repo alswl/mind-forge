@@ -9,3 +9,4 @@ pub mod source;
 pub mod term;
 
 pub mod manifest;
+pub mod publisher;

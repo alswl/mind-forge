@@ -1,24 +1,14 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 17
+assertion_line: 189
 expression: stdout
 ---
-mind-forge command line interface
+Manage repo-wide publishers
 
-Usage: mf [OPTIONS] [COMMAND]
+Usage: mf publisher [OPTIONS] [COMMAND]
 
 Commands:
-  source      Manage content sources
-  asset       Manage project assets
-  project     Manage projects
-  article     Manage articles
-  term        Manage terminology [aliases: terms]
-  completion  Generate shell completion scripts
-  version     Show version information
-  build       Build articles
-  publish     Publish articles
-  config      Manage configuration
-  publisher   Manage repo-wide publishers
+  list  List publishers and diagnostics
 
 Options:
       --root <PATH>

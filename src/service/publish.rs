@@ -13,6 +13,7 @@ use crate::model::publish::{
     LocalRunOutcome, PublishRunOutcome, PublishUpdateOutcome, UpdateAction, YuquePromptRunOutcome,
 };
 use crate::service::index;
+use crate::service::publisher as publisher_svc;
 use crate::service::{config as config_svc, util};
 
 pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path) -> Result<PublishRunOutcome> {
@@ -41,19 +42,20 @@ pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path) -> Result<Publis
             )
         })?;
 
-    let target = resolve_target(args, &config)?;
+    let target = resolve_target(args, &config, repo_root)?;
 
     match target.target_type {
         PublishTargetType::Local => {
-            let outcome = run_local(args, target, repo_root, &project_path, &config, &article_entry.source_path)?;
+            let outcome = run_local(args, &target, repo_root, &project_path, &config, &article_entry.source_path)?;
             Ok(PublishRunOutcome::Local(outcome))
         }
         PublishTargetType::YuquePrompt => {
-            let outcome = run_yuque_prompt(args, target, &project_path, &config, &article_entry.source_path)?;
+            let outcome = run_yuque_prompt(args, &target, &project_path, &config, &article_entry.source_path)?;
             Ok(PublishRunOutcome::YuquePrompt(outcome))
         }
         PublishTargetType::Yuque | PublishTargetType::GithubPages | PublishTargetType::Custom => {
             let type_name = target_type_kebab(&target.target_type);
+            drop(target);
             Err(MfError::not_implemented_with_hint(
                 format!("publish target type '{type_name}'"),
                 "tracked in upcoming ROADMAP-004; use type 'local' or 'yuque-prompt' instead",
@@ -207,8 +209,7 @@ pub fn render_prompt_text(o: &YuquePromptRunOutcome) -> String {
 // Helpers (T023–T026)
 // ---------------------------------------------------------------------------
 
-fn resolve_target<'a>(args: &PublishRunArgs, config: &'a MindConfig) -> Result<&'a PublishTarget> {
-    let targets = config.publish.targets.as_deref().unwrap_or(&[]);
+fn resolve_target(args: &PublishRunArgs, config: &MindConfig, repo_root: &Path) -> Result<PublishTarget> {
     let name = match args.target.as_deref() {
         Some(n) => n,
         None => config.publish.default_target.as_deref().ok_or_else(|| {
@@ -219,11 +220,30 @@ fn resolve_target<'a>(args: &PublishRunArgs, config: &'a MindConfig) -> Result<&
         })?,
     };
 
+    if args.target.is_some() {
+        // When --target is explicitly specified, try file-based publisher first.
+        // Only fall back to mind.yaml on NotFound (unknown target), not on
+        // configuration errors (invalid/disabled/duplicate/secret-field).
+        match publisher_svc::resolve_target(repo_root, name, config) {
+            Ok(resolved) => return Ok(resolved.target),
+            Err(e) => {
+                if !matches!(&e, MfError::NotFound { .. }) {
+                    return Err(e);
+                }
+                // NotFound — fall through to mind.yaml check
+            }
+        }
+    }
+
+    // Fall back to mind.yaml targets
+    let targets = config.publish.targets.as_deref().unwrap_or(&[]);
     let target = targets.iter().find(|t| t.name == name).ok_or_else(|| {
-        MfError::not_found(
-            format!("publish target '{name}' not found in mind.yaml"),
-            Some("check `publish.targets[].name` in mind.yaml".to_string()),
-        )
+        let msg = if args.target.is_some() {
+            format!("publish target '{name}' not found in mind.yaml or .mind-forge/publisher/")
+        } else {
+            format!("publish default target '{name}' not found in mind.yaml")
+        };
+        MfError::not_found(msg, Some("check the publisher name or `publish.targets[].name` in mind.yaml".to_string()))
     })?;
 
     if !target.enabled {
@@ -233,7 +253,7 @@ fn resolve_target<'a>(args: &PublishRunArgs, config: &'a MindConfig) -> Result<&
         ));
     }
 
-    Ok(target)
+    Ok(target.clone())
 }
 
 fn resolve_local_path(repo_root: &Path, target: &PublishTarget) -> Result<PathBuf> {

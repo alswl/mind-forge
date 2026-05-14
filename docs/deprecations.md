@@ -26,7 +26,7 @@ scripts using these forms will continue to work but will emit a stderr warning.
 | | |
 |---|---|
 | **Old form** | `mf source add <INPUT> --type auto\|pdf\|rss\|web\|file` |
-| **New form** | `mf source add <INPUT> --source-kind yuque\|dima\|meeting\|misc` or `--file-kind auto\|pdf\|file\|rss\|web` |
+| **New form** | `mf source add <INPUT> --source-kind yuque\|meeting\|misc` or `--file-kind auto\|pdf\|file\|rss\|web` |
 | **Warning** | `[deprecated] --type is deprecated, use --file-kind or --source-kind instead` |
 
 ### D3: `source remove <NAME>` (positional NAME)

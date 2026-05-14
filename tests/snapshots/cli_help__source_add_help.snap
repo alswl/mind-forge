@@ -20,7 +20,7 @@ Options:
           File kind (mf primary). Use --source-kind for mind channel type [possible values: auto,
           pdf, file, rss, web]
       --source-kind <SOURCE_KIND>
-          Source channel type (mind primary) [possible values: yuque, dima, meeting, misc]
+          Source channel type (mind primary) [possible values: yuque, meeting, misc]
   -v, --verbose...
           Verbose output
   -q, --quiet

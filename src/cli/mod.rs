@@ -7,6 +7,7 @@ pub mod deprecation;
 pub mod project;
 pub mod prompt;
 pub mod publish;
+pub mod publisher;
 pub mod source;
 pub mod term;
 
@@ -95,6 +96,8 @@ pub enum TopLevelCommand {
     Publish(publish::PublishCmd),
     #[command(about = "Manage configuration")]
     Config(config::ConfigCmd),
+    #[command(about = "Manage repo-wide publishers")]
+    Publisher(publisher::PublisherCmd),
 }
 
 #[derive(Debug)]
@@ -138,6 +141,7 @@ impl RootCli {
             Some(TopLevelCommand::Build(args)) => build::dispatch(args, repo_root, format, deprecation),
             Some(TopLevelCommand::Publish(command)) => publish::dispatch(command, repo_root, format, deprecation),
             Some(TopLevelCommand::Config(command)) => config::dispatch(command, repo_root, format, deprecation),
+            Some(TopLevelCommand::Publisher(command)) => publisher::dispatch(command, repo_root, format, deprecation),
         }
     }
 }

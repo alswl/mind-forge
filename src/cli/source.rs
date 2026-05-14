@@ -76,7 +76,6 @@ impl CliSourceKind {
 #[serde(rename_all = "snake_case")]
 pub enum CliSourceKindType {
     Yuque,
-    Dima,
     Meeting,
     Misc,
 }
@@ -85,7 +84,6 @@ impl From<CliSourceKindType> for SourceKind {
     fn from(k: CliSourceKindType) -> Self {
         match k {
             CliSourceKindType::Yuque => SourceKind::Yuque,
-            CliSourceKindType::Dima => SourceKind::Dima,
             CliSourceKindType::Meeting => SourceKind::Meeting,
             CliSourceKindType::Misc => SourceKind::Misc,
         }

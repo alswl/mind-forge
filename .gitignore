@@ -19,6 +19,7 @@ Thumbs.db
 .agents/
 .claude/
 .specify/
+.mind-forge/
 specs
 specs/
 AGENTS.md

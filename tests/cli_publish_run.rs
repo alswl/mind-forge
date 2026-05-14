@@ -11,7 +11,7 @@
 //!          `local_dry_run_does_not_write`, `yuque_prompt_does_not_modify_index`
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use assert_cmd::Command;
 
@@ -67,6 +67,233 @@ fn run_publish(repo: &common::TempDir, args: &[&str]) -> std::process::Output {
 
 fn read_index_bytes(repo: &common::TempDir) -> Vec<u8> {
     fs::read(repo.path().join("my-project/mind-index.yaml")).unwrap()
+}
+
+// ---------------------------------------------------------------------------
+// US2 — file-based publisher from .mind-forge/publisher/*.yaml
+// ---------------------------------------------------------------------------
+
+#[test]
+fn file_based_local_publisher_text_output() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets(""); // no mind.yaml targets
+    common::write_publisher_yaml(
+        &repo,
+        "blog",
+        &format!("type: local\nenabled: true\nconfig:\n  path: {}\n", dest_root.path().display()),
+    );
+
+    let out = run_publish(&repo, &["publish", "run", ARTICLE, "--target", "blog"]);
+    assert_eq!(out.status.code(), Some(0), "exit 0 expected; stderr={}", String::from_utf8_lossy(&out.stderr));
+    let stdout = String::from_utf8(out.stdout).unwrap();
+
+    assert!(stdout.contains("target      blog"), "stdout missing target: {stdout}");
+    assert!(stdout.contains("type        local"), "stdout missing type: {stdout}");
+    assert!(stdout.contains(&format!("size        {} bytes", ARTICLE_BODY.len())), "stdout missing size: {stdout}");
+
+    let dest_file = dest_root.path().join("my-article.md");
+    assert!(dest_file.exists(), "destination file must exist");
+    assert_eq!(fs::read(&dest_file).unwrap(), ARTICLE_BODY, "destination file content mismatch");
+}
+
+#[test]
+fn file_based_local_publisher_json_output() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets("");
+    common::write_publisher_yaml(
+        &repo,
+        "blog",
+        &format!("type: local\nenabled: true\nconfig:\n  path: {}\n", dest_root.path().display()),
+    );
+
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "blog"]);
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["status"], "ok");
+    let data = &v["data"];
+    assert_eq!(data["target_name"], "blog");
+    assert_eq!(data["target_type"], "local");
+    assert_eq!(data["dry_run"], false);
+    assert!(data["destination"].is_string());
+}
+
+#[test]
+fn file_based_publisher_dry_run() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets("");
+    common::write_publisher_yaml(
+        &repo,
+        "blog",
+        &format!("type: local\nenabled: true\nconfig:\n  path: {}\n", dest_root.path().display()),
+    );
+
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "blog", "--dry-run"]);
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"]["dry_run"], true);
+    assert!(!dest_root.path().join("my-article.md").exists(), "destination must NOT exist after dry-run");
+}
+
+#[test]
+fn mind_yaml_fallback_when_no_publisher_dir() {
+    // T027: No .mind-forge/publisher/ dir, existing mind.yaml targets still work
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets(&local_target_yaml("local-blog", dest_root.path()));
+
+    let out = run_publish(&repo, &["publish", "run", ARTICLE, "--target", "local-blog"]);
+    assert_eq!(out.status.code(), Some(0), "mind.yaml fallback must still work");
+    assert!(dest_root.path().join("my-article.md").exists(), "destination written via mind.yaml target");
+}
+
+#[test]
+fn unknown_publisher_returns_not_found() {
+    // T028: Unknown publisher is rejected before any publish attempt
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets(&local_target_yaml("existing-target", dest_root.path()));
+
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "does-not-exist"]);
+    assert_eq!(out.status.code(), Some(1));
+    let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
+    assert_eq!(v["error"]["kind"], "not-found");
+    assert!(
+        v["error"]["message"].as_str().unwrap_or("").contains("does-not-exist"),
+        "message should mention the requested name"
+    );
+
+    let mut entries = fs::read_dir(dest_root.path()).unwrap();
+    assert!(entries.next().is_none(), "no files written on unknown target");
+}
+
+#[test]
+fn repo_wide_publisher_wins_over_mind_yaml_same_name() {
+    // T029: When a repo-wide publisher and mind.yaml target share a name,
+    // the repo-wide publisher is used for explicit --target
+    let dest_root = tempfile::tempdir().unwrap();
+    let other_dest = tempfile::tempdir().unwrap();
+
+    // Create a mind.yaml target with the same name but different destination
+    let repo = setup_repo_with_targets(&local_target_yaml("blog", other_dest.path()));
+
+    // Create a repo-wide publisher with the same name
+    common::write_publisher_yaml(
+        &repo,
+        "blog",
+        &format!("type: local\nenabled: true\nconfig:\n  path: {}\n", dest_root.path().display()),
+    );
+
+    let out = run_publish(&repo, &["publish", "run", ARTICLE, "--target", "blog"]);
+    assert_eq!(out.status.code(), Some(0));
+
+    // Repo-wide publisher's destination should be used
+    assert!(dest_root.path().join("my-article.md").exists(), "repo-wide publisher destination should be used");
+    assert!(!other_dest.path().join("my-article.md").exists(), "mind.yaml target destination should NOT be used");
+}
+
+#[test]
+fn relative_path_resolves_from_repo_root() {
+    // T030: relative config.path in publisher file resolves from repo root (minds.yaml sibling)
+    let repo = setup_repo_with_targets("");
+
+    // Use a relative path: should resolve from repo root
+    let relative_dest = "publisher-output";
+    common::write_publisher_yaml(
+        &repo,
+        "blog",
+        &format!("type: local\nenabled: true\nconfig:\n  path: {relative_dest}\n"),
+    );
+
+    // Build artifact is in project-path/_build, but command runs from project dir
+    let out = run_publish(&repo, &["publish", "run", ARTICLE, "--target", "blog"]);
+    assert_eq!(out.status.code(), Some(0));
+
+    // The destination should be at repo-root/publisher-output/my-article.md
+    let dest_file = repo.path().join(relative_dest).join("my-article.md");
+    assert!(dest_file.exists(), "relative path should resolve from repo root: {dest_file:?}");
+    assert_eq!(fs::read(&dest_file).unwrap(), ARTICLE_BODY);
+}
+
+// ---------------------------------------------------------------------------
+// T041: Publish-time rejection for invalid file-based publishers
+// ---------------------------------------------------------------------------
+
+#[test]
+fn disabled_file_based_publisher_rejected_at_publish_time() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets("");
+    common::write_publisher_yaml(
+        &repo,
+        "offline",
+        &format!("type: local\nenabled: false\nconfig:\n  path: {}\n", dest_root.path().display()),
+    );
+
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "offline"]);
+    assert_eq!(out.status.code(), Some(2));
+    let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
+    assert_eq!(v["error"]["kind"], "usage");
+    assert!(
+        v["error"]["message"].as_str().unwrap_or("").contains("disabled"),
+        "message should mention disabled: {}",
+        v["error"]["message"]
+    );
+    assert!(!dest_root.path().join("my-article.md").exists(), "no file written on disabled publisher");
+}
+
+#[test]
+fn duplicate_file_based_publisher_rejected_at_publish_time() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets("");
+    // Both files define a publisher named "blog" — different filename stems but same resolved name
+    common::write_publishers(
+        &repo,
+        &[
+            (
+                "blog-a",
+                &format!("name: blog\ntype: local\nenabled: true\nconfig:\n  path: {}\n", dest_root.path().display()),
+            ),
+            (
+                "blog-b",
+                &format!("name: blog\ntype: local\nenabled: true\nconfig:\n  path: {}\n", dest_root.path().display()),
+            ),
+        ],
+    );
+
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "blog"]);
+    assert_eq!(out.status.code(), Some(2));
+    let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
+    assert_eq!(v["error"]["kind"], "usage");
+}
+
+#[test]
+fn secret_field_publisher_rejected_at_publish_time() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets("");
+    common::write_publisher_yaml(
+        &repo,
+        "leaky",
+        &format!("type: local\nenabled: true\nconfig:\n  path: {}\n  token: sk-123\n", dest_root.path().display()),
+    );
+
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "leaky"]);
+    assert_eq!(out.status.code(), Some(2));
+    let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
+    assert_eq!(v["error"]["kind"], "usage");
+    assert!(!dest_root.path().join("my-article.md").exists(), "no file written on secret-field publisher");
+}
+
+#[test]
+fn invalid_name_publisher_rejected_at_publish_time() {
+    let _dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets("");
+    common::write_publisher_yaml(
+        &repo,
+        "BadName",
+        "name: BadName\ntype: local\nenabled: true\nconfig:\n  path: ./out\n",
+    );
+
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "BadName"]);
+    assert_eq!(out.status.code(), Some(2));
+    let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
+    assert_eq!(v["error"]["kind"], "usage");
 }
 
 // ---------------------------------------------------------------------------
@@ -257,8 +484,6 @@ fn default_target_used_when_flag_omitted() {
 
 #[test]
 fn no_target_no_default_returns_usage() {
-    let dest_root = tempfile::tempdir().unwrap();
-    let _unused: PathBuf = dest_root.path().to_path_buf();
     let repo = common::setup_repo();
     let project_path = repo.path().join("my-project");
     fs::create_dir_all(&project_path).unwrap();

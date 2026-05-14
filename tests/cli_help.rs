@@ -179,3 +179,19 @@ fn term_fix_help_snapshot() {
     assert_eq!(code, 0);
     assert_snapshot!("term_fix_help", stdout);
 }
+
+// ── Publisher help snapshots (015-add-publisher-channels) ─────────────────
+
+#[test]
+fn publisher_help_snapshot() {
+    let (stdout, _, code) = run(&["publisher", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("publisher_help", stdout);
+}
+
+#[test]
+fn publisher_list_help_snapshot() {
+    let (stdout, _, code) = run(&["publisher", "list", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("publisher_list_help", stdout);
+}

@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum SourceKind {
     Yuque,
-    Dima,
     Meeting,
     Misc,
 }
@@ -17,7 +16,6 @@ impl SourceKind {
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Yuque => "yuque",
-            Self::Dima => "dima",
             Self::Meeting => "meeting",
             Self::Misc => "misc",
         }

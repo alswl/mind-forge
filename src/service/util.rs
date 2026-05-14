@@ -124,6 +124,14 @@ pub fn dir_name(path: &Path) -> String {
     path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default()
 }
 
+/// Compute a repo-relative path string from an absolute path.
+///
+/// If `file_path` is under `repo_root`, returns the relative portion;
+/// otherwise returns the path as-is.
+pub fn repo_relative_path(repo_root: &Path, file_path: &Path) -> String {
+    file_path.strip_prefix(repo_root).unwrap_or(file_path).to_string_lossy().to_string()
+}
+
 /// Resolve a project path within a repo root.
 ///
 /// If `project` is `Some(name)`, joins it under `repo_root/<projects_dir>/<name>`,

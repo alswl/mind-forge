@@ -63,7 +63,22 @@ pub fn write_doc(repo: &TempDir, project_name: &str, name: &str, content: &str) 
     fs::write(doc_dir.join(format!("{name}.md")), content).unwrap();
 }
 
-/// 在 mind-index.yaml 中写入一个或多个术语条目。
+/// 在 Mind Repo 根目录（`minds.yaml` 同级）写入 `.mind-forge/publisher/<name>.yaml`。
+#[allow(dead_code)]
+pub fn write_publisher_yaml(repo: &TempDir, name: &str, yaml_content: &str) {
+    let publisher_dir = repo.path().join(".mind-forge").join("publisher");
+    fs::create_dir_all(&publisher_dir).unwrap();
+    let path = publisher_dir.join(format!("{name}.yaml"));
+    fs::write(&path, yaml_content).unwrap();
+}
+
+/// 写入多个 publisher 定义，`publishers` 是 `(name, content)` 的 slice。
+#[allow(dead_code)]
+pub fn write_publishers(repo: &TempDir, publishers: &[(&str, &str)]) {
+    for (name, content) in publishers {
+        write_publisher_yaml(repo, name, content);
+    }
+}
 /// `terms_yaml` 应为 `terms:` 段内容（不含前导空格），例如：
 /// `"term: Mind Repo\n  definition: desc\n  corrections:\n    - original: mindrepo\n      correct: Mind Repo"`
 #[allow(dead_code)]
