@@ -11,7 +11,7 @@ use schemars::schema_for;
 use serde::Serialize;
 
 use crate::error::{MfError, Result};
-use crate::model::config::MindConfig;
+use crate::model::config::{MindConfig, ProjectMeta};
 use crate::service::util;
 
 // ---------------------------------------------------------------------------
@@ -35,6 +35,13 @@ pub fn merge(base: MindConfig, overlay: MindConfig) -> MindConfig {
         source: overlay.source,
         term: overlay.term,
         paths: overlay.paths,
+        // Compatibility fields: overlay wins, fall back to base
+        name: overlay.name.or(base.name),
+        description: overlay.description.or(base.description),
+        created: overlay.created.or(base.created),
+        updated: overlay.updated.or(base.updated),
+        articles: overlay.articles.or(base.articles),
+        templates: overlay.templates.or(base.templates),
     }
 }
 
@@ -56,6 +63,11 @@ fn merge_publish(
 ///
 /// Returns `Ok(None)` when no `mind.yaml` is found (layer absent).
 /// Returns parse errors for malformed YAML or incompatible schema_version.
+///
+/// **Compatibility**: Empty files return default config. Top-level `name`,
+/// `description`, `articles`, `created`, `updated` fields are accepted and
+/// normalized into the canonical nested structure. Project name is inferred
+/// from the containing directory when absent.
 pub fn load_project(cwd: &Path, repo_root: Option<&Path>) -> Result<Option<MindConfig>> {
     let mind_path = find_mind_yaml(cwd, repo_root)?;
     match mind_path {
@@ -63,7 +75,8 @@ pub fn load_project(cwd: &Path, repo_root: Option<&Path>) -> Result<Option<MindC
         Some(path) => {
             let content = fs::read_to_string(&path).map_err(MfError::Io)?;
             if content.trim().is_empty() {
-                return Ok(None);
+                // Empty file returns default config
+                return Ok(Some(MindConfig { schema_version: "1".to_string(), ..MindConfig::default() }));
             }
             let mut config: MindConfig = serde_yaml::from_str(&content).map_err(|e| MfError::ParseError {
                 kind: "yaml".to_string(),
@@ -75,6 +88,59 @@ pub fn load_project(cwd: &Path, repo_root: Option<&Path>) -> Result<Option<MindC
                 config.schema_version = "1".to_string();
             }
             util::validate_schema_version(&config.schema_version, &path)?;
+
+            // Normalize publish targets: move compatible top-level `path`/`prefix`
+            // into `config.path`/`config.prefix` when config is absent.
+            if let Some(ref mut targets) = config.publish.targets {
+                for target in targets.iter_mut() {
+                    if target.config.is_none() {
+                        let mut cfg = serde_json::Map::new();
+                        if let Some(ref p) = target.path {
+                            cfg.insert("path".to_string(), serde_json::Value::String(p.clone()));
+                        }
+                        if let Some(ref p) = target.prefix {
+                            cfg.insert("prefix".to_string(), serde_json::Value::String(p.clone()));
+                        }
+                        if let Some(ref bs) = target.book_slug {
+                            cfg.insert("book_slug".to_string(), serde_json::Value::String(bs.clone()));
+                        }
+                        if let Some(ref ns) = target.namespace {
+                            cfg.insert("namespace".to_string(), serde_json::Value::String(ns.clone()));
+                        }
+                        if !cfg.is_empty() {
+                            target.config = Some(serde_json::Value::Object(cfg));
+                        }
+                    }
+                }
+            }
+
+            // Normalize top-level compatibility fields into canonical project metadata
+            if config.project.is_none() {
+                let inferred_name = path
+                    .parent()
+                    .and_then(|p| p.file_name())
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let meta = ProjectMeta {
+                    name: config.name.clone().unwrap_or(inferred_name),
+                    description: config.description.clone(),
+                    created_at: config.created.clone(),
+                };
+                config.project = Some(meta);
+            } else if let Some(ref mut meta) = config.project {
+                if meta.name.is_empty() {
+                    let inferred_name = path
+                        .parent()
+                        .and_then(|p| p.file_name())
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    meta.name = config.name.clone().unwrap_or(inferred_name);
+                }
+                if meta.description.is_none() {
+                    meta.description = config.description.clone();
+                }
+            }
+
             Ok(Some(config))
         }
     }
@@ -120,7 +186,7 @@ fn find_mind_yaml(start: &Path, repo_root: Option<&Path>) -> Result<Option<PathB
 // Init template
 // ---------------------------------------------------------------------------
 
-const INIT_PROJECT_TEMPLATE: &str = r#"schema_version: "1"
+const INIT_PROJECT_TEMPLATE: &str = r#"schema: "1"
 project:
   name: "{name}"
   created_at: "{created_at}"
@@ -324,6 +390,7 @@ mod tests {
         let overlay = MindConfig {
             project: Some(ProjectMeta {
                 name: "my-project".to_string(),
+                description: None,
                 created_at: Some("2026-01-01T00:00:00Z".to_string()),
             }),
             ..Default::default()
@@ -376,7 +443,7 @@ mod tests {
         let result = init_template("test-proj", "2026-04-29T12:00:00Z");
         assert!(result.contains("test-proj"));
         assert!(result.contains("2026-04-29T12:00:00Z"));
-        assert!(result.contains("schema_version: \"1\""));
+        assert!(result.contains("schema: \"1\""));
     }
 
     // --- serde helpers ---

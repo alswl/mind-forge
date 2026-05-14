@@ -1,16 +1,18 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ArticleType {
     Arch,
     Prd,
+    #[default]
     Blog,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ArticleStatus {
+    #[default]
     Draft,
     Published,
 }
@@ -18,12 +20,17 @@ pub enum ArticleStatus {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Article {
     pub title: String,
+    #[serde(default)]
     pub project: String,
-    #[serde(rename = "type")]
+    #[serde(rename = "type", default)]
     pub article_type: ArticleType,
+    #[serde(default)]
     pub source_path: String,
+    #[serde(default)]
     pub status: ArticleStatus,
+    #[serde(default)]
     pub created_at: String,
+    #[serde(default)]
     pub updated_at: String,
 }
 

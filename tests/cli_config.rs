@@ -84,7 +84,7 @@ fn test_init_creates_mind_yaml() {
     mf().current_dir(dir.path()).arg("config").arg("init").assert().success();
     assert!(dir.path().join("mind.yaml").exists());
     let content = fs::read_to_string(dir.path().join("mind.yaml")).unwrap();
-    assert!(content.contains("schema_version: \"1\""));
+    assert!(content.contains("schema: \"1\""));
 }
 
 #[test]
@@ -175,5 +175,5 @@ fn test_schema_bidirectional_consistency() {
     // Verify init output contains valid YAML
     let content = fs::read_to_string(dir.path().join("mind.yaml")).unwrap();
     let init_val: serde_json::Value = serde_yaml::from_str(&content).unwrap();
-    assert_eq!(init_val.get("schema_version").and_then(|v| v.as_str()), Some("1"));
+    assert_eq!(init_val.get("schema").and_then(|v| v.as_str()), Some("1"));
 }

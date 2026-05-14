@@ -53,7 +53,10 @@ pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path) -> Result<Publis
             let outcome = run_yuque_prompt(args, &target, &project_path, &config, &article_entry.source_path)?;
             Ok(PublishRunOutcome::YuquePrompt(outcome))
         }
-        PublishTargetType::Yuque | PublishTargetType::GithubPages | PublishTargetType::Custom => {
+        PublishTargetType::Yuque
+        | PublishTargetType::GithubPages
+        | PublishTargetType::Custom
+        | PublishTargetType::YuqueCc => {
             let type_name = target_type_kebab(&target.target_type);
             drop(target);
             Err(MfError::not_implemented_with_hint(
@@ -388,5 +391,6 @@ fn target_type_kebab(t: &PublishTargetType) -> &'static str {
         PublishTargetType::Yuque => "yuque",
         PublishTargetType::GithubPages => "github_pages",
         PublishTargetType::Custom => "custom",
+        PublishTargetType::YuqueCc => "yuque_cc",
     }
 }

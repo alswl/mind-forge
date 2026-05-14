@@ -104,7 +104,7 @@ fn init_creates_mind_yaml() {
     let path = ds.root().join("mind.yaml");
     assert!(path.exists(), "mind.yaml should exist");
     let content = fs::read_to_string(&path).unwrap();
-    assert!(content.contains("schema_version:"));
+    assert!(content.contains("schema:"));
     assert!(content.contains("name:"));
 }
 

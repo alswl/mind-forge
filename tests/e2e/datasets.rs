@@ -373,3 +373,41 @@ pub fn repo_with_project_local_target() -> Dataset {
         .with_build_artifact("my-project", "my-article", ARTICLE_BUILD)
         .with_index("my-project", PUBLISHER_INDEX)
 }
+
+// ---------------------------------------------------------------------------
+// 017 Mind YAML compatibility fixtures
+// ---------------------------------------------------------------------------
+
+/// Path to the compatibility testdata directory, relative to the repo root.
+pub const MIND_YAML_COMPAT_TESTDATA: &str = "tests/e2e/testdata/mind-yaml-compat";
+
+/// Copy the Mind YAML compatibility fixture directory into a temp directory.
+///
+/// Returns a `Dataset` pointing at the copied fixture repo. All 12 projects,
+/// variant `mind.yaml` files, and dictionary `mind-index.yaml` files are
+/// included from the version-controlled testdata.
+pub fn mind_yaml_compat_repo() -> Dataset {
+    let dir = TempDir::new().expect("temp dir");
+    copy_dir_recursively(Path::new(MIND_YAML_COMPAT_TESTDATA), dir.path());
+    Dataset { dir }
+}
+
+/// Recursively copy a directory tree (shallow copy, symlinks not handled).
+fn copy_dir_recursively(src: &Path, dst: &Path) {
+    if !src.exists() {
+        panic!("source directory does not exist: {}", src.display());
+    }
+    for entry in std::fs::read_dir(src).expect("read source dir") {
+        let entry = entry.expect("entry");
+        let entry_type = entry.file_type().expect("file type");
+        let src_path = entry.path();
+        let rel = src_path.strip_prefix(src).expect("strip prefix");
+        let dst_path = dst.join(rel);
+        if entry_type.is_dir() {
+            std::fs::create_dir_all(&dst_path).expect("create dir");
+            copy_dir_recursively(&src_path, &dst_path);
+        } else {
+            std::fs::copy(&src_path, &dst_path).expect("copy file");
+        }
+    }
+}

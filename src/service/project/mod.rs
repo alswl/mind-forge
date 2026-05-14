@@ -1,7 +1,5 @@
 use std::path::Path;
 
-use crate::model::index::IndexFile;
-
 pub use self::archive::archive_project;
 pub use self::import::import_project;
 pub use self::index::{resolve_project, status_for};
@@ -12,21 +10,12 @@ pub use self::show::show;
 
 /// Read a project's mind-index.yaml and return (document_count, last_activity_at).
 pub(crate) fn read_index_counts(project_path: &Path) -> (u64, Option<String>) {
-    let index_path = project_path.join("mind-index.yaml");
-    let index = if index_path.exists() {
-        match std::fs::read_to_string(&index_path) {
-            Ok(content) if !content.trim().is_empty() => match serde_yaml::from_str::<IndexFile>(&content) {
-                Ok(idx) => idx,
-                Err(_) => {
-                    tracing::warn!("failed to parse {}", index_path.display());
-                    IndexFile::create_default()
-                }
-            },
-            _ => IndexFile::create_default(),
+    let index = match crate::service::index::load(project_path) {
+        Ok(idx) => idx,
+        Err(_) => {
+            tracing::warn!("failed to load index for {}", project_path.display());
+            crate::model::index::IndexFile::create_default()
         }
-    } else {
-        tracing::warn!("missing index file: {}", index_path.display());
-        IndexFile::create_default()
     };
 
     let articles = index.articles.as_ref().map(|v| v.len() as u64).unwrap_or(0);

@@ -1,0 +1,44 @@
+schema_version: '1'
+sources:
+  docs/api-spec.md:
+    name: API Specification
+    type: file
+    path: docs/api-spec.md
+    tags: [api, spec]
+    added_at: 2026-02-15T00:00:00Z
+    updated_at: 2026-04-10T00:00:00Z
+  docs/architecture.md:
+    name: Architecture Overview
+    type: file
+    path: docs/architecture.md
+    tags: [arch]
+    added_at: 2026-01-20T00:00:00Z
+    updated_at: 2026-03-01T00:00:00Z
+  sources/external-research.pdf:
+    name: External Research
+    type: pdf
+    url: ~
+    path: ~
+    tags: []
+    added_at: 2026-03-01T00:00:00Z
+    updated_at: 2026-03-01T00:00:00Z
+  null-source:
+assets:
+  diagram.png:
+    name: diagram.png
+    type: image
+    path: assets/diagram.png
+    size: 204800
+    hash: a1b2c3d4
+    tags: [diagram]
+    added_at: 2026-02-20T00:00:00Z
+  report.pdf:
+    name: report.pdf
+    type: other
+    path: assets/report.pdf
+    size: 512000
+    hash: e5f6g7h8
+    tags: []
+    added_at: 2026-03-05T00:00:00Z
+project: 2026-ai-sites-build
+updated: 2026-05-01

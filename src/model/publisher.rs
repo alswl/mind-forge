@@ -84,6 +84,7 @@ fn target_type_str(t: &crate::model::config::PublishTargetType) -> String {
         crate::model::config::PublishTargetType::Yuque => "yuque".to_string(),
         crate::model::config::PublishTargetType::GithubPages => "github_pages".to_string(),
         crate::model::config::PublishTargetType::Custom => "custom".to_string(),
+        crate::model::config::PublishTargetType::YuqueCc => "yuque_cc".to_string(),
     }
 }
 

@@ -172,6 +172,10 @@ pub fn process_definition(
             target_type,
             enabled: def.enabled,
             config: def.config.clone(),
+            path: None,
+            prefix: None,
+            book_slug: None,
+            namespace: None,
         };
 
         publishers.push(Publisher {

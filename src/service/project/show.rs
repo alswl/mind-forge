@@ -9,19 +9,12 @@ pub fn show(project_path: &Path, project_name: &str) -> Result<ProjectDetails> {
     let rel_path = format!("./{}", project_name);
 
     // Read mind-index.yaml for counts
-    let index_path = project_path.join("mind-index.yaml");
-    let index = if index_path.exists() {
-        match std::fs::read_to_string(&index_path) {
-            Ok(content) if !content.trim().is_empty() => {
-                serde_yaml::from_str::<IndexFile>(&content).unwrap_or_else(|_| {
-                    tracing::warn!("failed to parse {}", index_path.display());
-                    IndexFile::create_default()
-                })
-            }
-            _ => IndexFile::create_default(),
+    let index = match crate::service::index::load(project_path) {
+        Ok(idx) => idx,
+        Err(_) => {
+            tracing::warn!("failed to load index for {}", project_path.display());
+            IndexFile::create_default()
         }
-    } else {
-        IndexFile::create_default()
     };
 
     let article_count = index.articles.as_ref().map(|v| v.len() as u64).unwrap_or(0);

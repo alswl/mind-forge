@@ -141,15 +141,26 @@ pub fn repo_relative_path(repo_root: &Path, file_path: &Path) -> String {
 pub fn resolve_project(repo_root: &Path, project: Option<&str>, cwd: &Path) -> Result<PathBuf> {
     let projects_dir = crate::service::repo::projects_dir_for(repo_root)?;
     match project {
-        Some(name) => Ok(project_dir_for(repo_root, &projects_dir, name)),
-        None => detect_current_project(repo_root, cwd)
-            .ok_or_else(|| {
+        Some(name) => {
+            if let Some(path) = crate::service::repo::project_path_for(repo_root, name)? {
+                Ok(path)
+            } else {
+                Ok(project_dir_for(repo_root, &projects_dir, name))
+            }
+        }
+        None => {
+            let name = detect_current_project(repo_root, cwd).ok_or_else(|| {
                 MfError::usage(
                     "could not detect current project; run from a project directory or specify --project",
                     Some("use `mf project list` to see available projects".to_string()),
                 )
-            })
-            .map(|name| project_dir_for(repo_root, &projects_dir, &name)),
+            })?;
+            if let Some(path) = crate::service::repo::project_path_for(repo_root, &name)? {
+                Ok(path)
+            } else {
+                Ok(project_dir_for(repo_root, &projects_dir, &name))
+            }
+        }
     }
 }
 
@@ -244,6 +255,23 @@ pub fn canonicalize_within(root: &Path, target: &Path) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- validate_schema_version & schema alias ---
+
+    #[test]
+    fn test_validate_schema_version_1_is_compatible() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.yaml");
+        assert!(validate_schema_version("1", &path).is_ok());
+    }
+
+    #[test]
+    fn test_validate_schema_version_unknown_is_incompatible() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.yaml");
+        let err = validate_schema_version("2", &path).unwrap_err();
+        assert!(matches!(err, MfError::IncompatibleSchema { .. }));
+    }
 
     // --- validate_project_name ---
 

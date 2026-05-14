@@ -32,7 +32,7 @@ assets:
     type: other
     path: assets/notes.pdf
     size: 4096
-    hash: 77889900
+    hash: '77889900'
     tags: []
     added_at: '2026-05-07T21:00:00Z'
 "#;

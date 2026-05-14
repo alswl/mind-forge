@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use serde::Serialize;
@@ -46,24 +46,98 @@ pub fn projects_dir_for(repo_root: &Path) -> Result<String> {
 /// An empty (or whitespace-only) file is treated as a fresh repo and yields
 /// the default manifest, matching the convention that `minds.yaml` only needs
 /// to exist to mark a repo root.
+///
+/// **Compatibility**: When `projects` entries are plain path strings (the
+/// Python `mind` 0.3.0 shape), they are resolved into `ProjectEntry` values
+/// using the manifest's `projects_dir`.
 pub fn load_manifest(path: &Path) -> Result<MindsManifest> {
     let content = fs::read_to_string(path).map_err(MfError::Io)?;
     if content.trim().is_empty() {
         return Ok(MindsManifest::create_default());
     }
-    let manifest: MindsManifest = serde_yaml::from_str(&content).map_err(|e| MfError::ParseError {
+    let mut manifest: MindsManifest = serde_yaml::from_str(&content).map_err(|e| MfError::ParseError {
         kind: "yaml".to_string(),
         path: path.to_path_buf(),
         detail: e.to_string(),
     })?;
     util::validate_schema_version(&manifest.schema_version, path)?;
+
+    // Resolve path-string project entries. Bare names stay compatible with the
+    // legacy projects_dir default; path strings remain repo-relative paths.
+    let pd = &manifest.projects_dir;
+    for entry in &mut manifest.projects {
+        if entry.created_at.is_empty() {
+            let raw_path = entry.path.clone();
+            entry.name = project_name_from_relpath(&raw_path);
+            entry.path = if raw_path.contains('/') || raw_path.starts_with('.') {
+                normalize_manifest_path(&raw_path)
+            } else {
+                project_relpath(pd, &raw_path)
+            };
+        }
+    }
+
     Ok(manifest)
 }
 
 /// Atomically write `MindsManifest` to a file (write-then-rename).
 pub fn save_manifest(manifest: &MindsManifest, path: &Path) -> Result<()> {
-    let content = serde_yaml::to_string(manifest).map_err(|e| MfError::Internal(e.into()))?;
+    let content = serialize_mind_manifest(manifest).map_err(|e| MfError::Internal(e.into()))?;
     util::atomic_write(path, &content)
+}
+
+fn serialize_mind_manifest(manifest: &MindsManifest) -> std::result::Result<String, serde_yaml::Error> {
+    let mut map = serde_yaml::Mapping::new();
+    map.insert(
+        serde_yaml::Value::String("schema".to_string()),
+        serde_yaml::Value::String(manifest.schema_version.clone()),
+    );
+    let projects = manifest
+        .projects
+        .iter()
+        .map(|project| serde_yaml::Value::String(project_path_for_mind_manifest(&project.path)))
+        .collect();
+    map.insert(serde_yaml::Value::String("projects".to_string()), serde_yaml::Value::Sequence(projects));
+    serde_yaml::to_string(&serde_yaml::Value::Mapping(map))
+}
+
+pub fn project_path_for(repo_root: &Path, name: &str) -> Result<Option<PathBuf>> {
+    let minds_path = repo_root.join("minds.yaml");
+    if !minds_path.exists() {
+        return Ok(None);
+    }
+    let manifest = load_manifest(&minds_path)?;
+    for project in &manifest.projects {
+        if project.name == name || project_name_from_relpath(&project.path) == name {
+            return Ok(Some(repo_root.join(strip_dot_prefix(&project.path))));
+        }
+    }
+    Ok(None)
+}
+
+fn normalize_manifest_path(path: &str) -> String {
+    let stripped = strip_dot_prefix(path).trim_matches('/');
+    format!("./{stripped}")
+}
+
+fn strip_dot_prefix(path: &str) -> &str {
+    path.strip_prefix("./").unwrap_or(path)
+}
+
+fn project_path_for_mind_manifest(path: &str) -> String {
+    let stripped = strip_dot_prefix(path);
+    if path.starts_with("./") && !stripped.contains('/') {
+        path.to_string()
+    } else {
+        stripped.to_string()
+    }
+}
+
+fn project_name_from_relpath(path: &str) -> String {
+    Path::new(strip_dot_prefix(path))
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +418,50 @@ mod tests {
         assert_eq!(project_relpath(".", "foo"), "./foo");
         assert_eq!(project_relpath("", "foo"), "./foo");
         assert_eq!(project_relpath("/projects/", "foo"), "./projects/foo");
+    }
+
+    #[test]
+    fn test_load_manifest_string_project_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("minds.yaml");
+        fs::write(&path, "schema_version: '1'\nprojects:\n  - alpha\n  - beta\n  - gamma\n").unwrap();
+        let manifest = load_manifest(&path).unwrap();
+        assert_eq!(manifest.projects.len(), 3);
+        // Path strings should be resolved to ./projects/<name>
+        assert_eq!(manifest.projects[0].path, "./projects/alpha");
+        assert_eq!(manifest.projects[1].path, "./projects/beta");
+        assert_eq!(manifest.projects[2].path, "./projects/gamma");
+    }
+
+    #[test]
+    fn test_load_manifest_mixed_project_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("minds.yaml");
+        fs::write(
+            &path,
+            r#"schema_version: '1'
+projects:
+  - alpha
+  - name: beta
+    path: ./projects/beta
+    created_at: "2026-01-01T00:00:00Z"
+"#,
+        )
+        .unwrap();
+        let manifest = load_manifest(&path).unwrap();
+        assert_eq!(manifest.projects.len(), 2);
+        // String entry gets resolved, object entry is kept as-is
+        assert_eq!(manifest.projects[0].path, "./projects/alpha");
+        assert_eq!(manifest.projects[1].path, "./projects/beta");
+    }
+
+    #[test]
+    fn test_load_manifest_schema_alias() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("minds.yaml");
+        fs::write(&path, "schema: '1'\nprojects: []\n").unwrap();
+        let manifest = load_manifest(&path).unwrap();
+        assert_eq!(manifest.schema_version, "1");
     }
 
     #[test]

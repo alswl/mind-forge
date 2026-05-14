@@ -32,13 +32,14 @@ impl std::fmt::Display for SourceKind {
 // FileKind — file format type (prev. SourceKind in mf)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileKind {
     Auto,
     Pdf,
     Rss,
     Web,
+    #[default]
     File,
 }
 
@@ -63,7 +64,7 @@ impl std::fmt::Display for FileKind {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Source {
     pub name: String,
-    #[serde(rename = "type", alias = "file_kind")]
+    #[serde(rename = "type", alias = "file_kind", default)]
     pub kind: FileKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_kind: Option<SourceKind>,
@@ -71,7 +72,9 @@ pub struct Source {
     pub path: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
     pub added_at: String,
+    #[serde(default)]
     pub updated_at: String,
 }
 

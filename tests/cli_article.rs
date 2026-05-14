@@ -75,6 +75,39 @@ fn article_new_with_project_flag() {
 }
 
 #[test]
+fn article_new_preserves_mind_index_dictionary_shape() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_index(
+        &repo,
+        "my-project",
+        r#"schema: '1'
+project: my-project
+updated: 2026-05-01
+articles:
+  existing:
+    title: Existing
+    source_path: docs/existing
+"#,
+    );
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "new", "blog", "New Article"])
+        .assert()
+        .success();
+
+    let content = std::fs::read_to_string(repo.path().join("my-project/mind-index.yaml")).unwrap();
+    assert!(content.contains("schema:"), "schema alias should be preserved:\n{content}");
+    assert!(!content.contains("schema_version:"), "schema_version should not be introduced:\n{content}");
+    assert!(content.contains("project: my-project"), "unknown top-level fields should remain:\n{content}");
+    assert!(content.contains("articles:\n  existing:"), "articles should remain a mapping:\n{content}");
+    assert!(content.contains("  new-article:"), "new article should be inserted as a mapping entry:\n{content}");
+    assert!(!content.contains("extra:"), "unknown fields should not be nested under extra:\n{content}");
+}
+
+#[test]
 fn article_list_shows_articles() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");

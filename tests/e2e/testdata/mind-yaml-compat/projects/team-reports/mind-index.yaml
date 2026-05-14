@@ -1,0 +1,28 @@
+schema_version: '1'
+articles:
+  weekly-summary:
+    title: Weekly Summary
+    type: blog
+    source_path: reports/weekly-2026-w19.md
+    status: published
+    created_at: 2026-05-11T00:00:00Z
+    updated_at: 2026-05-13T00:00:00Z
+  monthly-review:
+    title: Monthly Review
+    type: blog
+    source_path: reports/monthly-2026-04.md
+    status: published
+    created_at: 2026-05-01T00:00:00Z
+    updated_at: 2026-05-02T00:00:00Z
+sources:
+  reports/weekly-2026-w19.md:
+    name: Week 19 Report
+    type: file
+    path: reports/weekly-2026-w19.md
+    tags: [weekly]
+    added_at: 2026-05-11T00:00:00Z
+    updated_at: 2026-05-13T00:00:00Z
+project: team-reports
+updated: 2026-05-13
+docs: active
+prompts: active

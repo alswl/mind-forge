@@ -1,0 +1,36 @@
+schema_version: '1'
+articles:
+  getting-started-with-rust:
+    title: Getting Started with Rust
+    type: blog
+    source_path: docs/getting-started-with-rust.md
+    status: published
+    created_at: 2026-02-01T10:00:00Z
+    updated_at: 2026-03-15T14:30:00Z
+  advanced-patterns:
+    title: Advanced Patterns
+    type: blog
+    source_path: docs/advanced-patterns.md
+    status: draft
+    created_at: 2026-03-10T08:00:00Z
+    updated_at: 2026-04-20T09:00:00Z
+  null-entry:
+sources:
+  rss-feed-tech:
+    name: Tech RSS
+    type: rss
+    url: https://tech.example.com/rss
+    tags: [tech]
+    added_at: 2026-01-10T00:00:00Z
+    updated_at: 2026-04-01T00:00:00Z
+files:
+  docs/getting-started-with-rust.md:
+    type: markdown
+    description: Main article file
+    summary: A comprehensive guide
+  docs/advanced-patterns.md:
+    type: markdown
+extra:
+  project: 2026-blogs
+  updated: 2026-05-01
+  docs: maintained

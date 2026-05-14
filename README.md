@@ -30,12 +30,14 @@ to you, readable by any text editor, extensible via CLI pipelines.
 
 ## Current Scope
 
-The framework stage of `mf` is implemented:
+`mf` covers the full knowledge management lifecycle:
 
-- multi-level command tree for `source`, `asset`, `project`, `article`, `term`
-- shared global flags such as `--config`, `--verbose`, `--quiet`, `--format`, `--no-color`
-- consistent placeholder responses for leaf commands
-- shell completion generation via `mf completion <shell>`
+- **Project lifecycle**: init, list, status, lint, index, archive
+- **Content**: article, source, asset management with CRUD and indexing
+- **Glossary**: term lookup, list, lint, fix, learn
+- **Build & Publish**: config-driven build, local and yuque-prompt publishing, repo-wide publisher management
+- **Compatibility**: reads and writes mind 0.3.0-compatible YAML (`minds.yaml`, `mind.yaml`, `mind-index.yaml`)
+- **Output**: text/JSON envelope (`{ status, command, data }`) with shell completion (`mf completion <shell>`)
 
 ## Quickstart
 

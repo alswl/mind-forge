@@ -54,7 +54,7 @@ pub fn import_project(
     let inferred_type = project_type.unwrap_or("arch");
 
     // Build mind.yaml content
-    let mut doc = vec![format!("schema_version: '1'")];
+    let mut doc = vec![format!("schema: '1'")];
     doc.push(format!("type: {}", inferred_type));
     doc.push(format!("source_dirs: [{}]", sources_dir));
     doc.push(format!("assets_dir: {}", assets));
@@ -83,20 +83,25 @@ pub fn import_project(
     let index_path = canonical_dir.join("mind-index.yaml");
     if !index_path.exists() || force {
         let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-        let index_content = format!(
-            r#"schema_version: '1'
-articles:
-  - title: "Welcome"
-    project: "{}"
-    type: {}
-    source_path: ""
-    status: draft
-    created_at: "{}"
-    updated_at: "{}"
-"#,
-            project_name, inferred_type, now, now,
-        );
-        util::atomic_write(&index_path, &index_content)?;
+        let article_type = serde_yaml::from_str(inferred_type).unwrap_or_default();
+        let index = crate::model::index::IndexFile {
+            schema_version: "1".to_string(),
+            sources: None,
+            assets: None,
+            articles: Some(vec![crate::model::article::Article {
+                title: "Welcome".to_string(),
+                project: project_name.clone(),
+                article_type,
+                source_path: String::new(),
+                status: crate::model::article::ArticleStatus::Draft,
+                created_at: now.clone(),
+                updated_at: now,
+            }]),
+            terms: None,
+            publish_records: None,
+            extra: None,
+        };
+        crate::service::index::save(&canonical_dir, &index)?;
     }
 
     // Register in minds.yaml

@@ -1,0 +1,46 @@
+schema_version: '1'
+assets:
+  logo.png:
+    name: logo.png
+    type: image
+    path: assets/logo.png
+    size: 102400
+    hash: d3adbeef
+    tags: []
+    added_at: 2026-04-29T10:00:00Z
+  banner.jpg:
+    name: banner.jpg
+    type: image
+    path: assets/banner.jpg
+    size: 2048000
+    hash: cafe1234
+    tags: [banner]
+    added_at: 2026-04-30T08:00:00Z
+  data.csv:
+    name: data.csv
+    type: other
+    path: assets/data.csv
+    size: 50000
+    hash: dead5678
+    tags: [data]
+    added_at: 2026-04-28T12:00:00Z
+articles:
+  prd-overview:
+    title: PRD Overview
+    type: prd
+    source_path: docs/prd-overview.md
+    status: published
+    created_at: 2026-03-01T00:00:00Z
+    updated_at: 2026-04-15T00:00:00Z
+  null-article:
+sources:
+  docs/prd-overview.md:
+    name: PRD Overview
+    type: file
+    path: docs/prd-overview.md
+    tags: [prd]
+    added_at: 2026-03-01T00:00:00Z
+    updated_at: 2026-04-15T00:00:00Z
+project: 2026-03-hid-prd
+updated: 2026-05-10
+prompts: active

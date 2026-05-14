@@ -1,0 +1,13 @@
+schema_version: '1'
+build:
+  output_dir: _build
+  merge_order:
+    - weekly
+    - monthly
+  format: md
+publish:
+  targets:
+    - name: yuque-tech
+      type: yuque_cc
+      book_slug: tech-blog
+      namespace: engineering

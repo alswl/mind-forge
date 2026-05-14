@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use predicates::str;
+use std::fs;
 
 mod common;
 
@@ -55,6 +56,58 @@ fn build_dry_run_shows_plan() {
     // Verify no output file was created
     let output_path = repo.path().join("my-project").join("_build").join("dry-run-test.md");
     assert!(!output_path.exists(), "dry-run should not create output file");
+}
+
+#[test]
+fn build_accepts_repo_relative_directory_article_path() {
+    let repo = tempfile::TempDir::new().unwrap();
+    fs::write(repo.path().join("minds.yaml"), "schema: '1'\nprojects:\n  - projects/2026-blogs\n").unwrap();
+    let project = repo.path().join("projects/2026-blogs");
+    fs::create_dir_all(project.join("docs/2026-03-review")).unwrap();
+    fs::write(project.join("mind.yaml"), "schema: '1'\n").unwrap();
+    fs::write(project.join("docs/2026-03-review/02-body.md"), "Body\n").unwrap();
+    fs::write(project.join("docs/2026-03-review/01-opening.md"), "Opening\n").unwrap();
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path())
+        .args(["build", "@projects/2026-blogs/docs/2026-03-review/"])
+        .assert()
+        .success()
+        .stdout(str::contains("Article built: 2026-03-review"));
+
+    let output_path = project.join("_build/2026-03-review.md");
+    let content = fs::read_to_string(output_path).unwrap();
+    assert_eq!(content, "Opening\nBody\n");
+}
+
+#[test]
+fn build_falls_back_to_directory_matching_article_argument_when_index_source_is_stale() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_index(
+        &repo,
+        "my-project",
+        r#"schema: '1'
+articles:
+  stale-entry:
+    title: Review
+    source_path: docs/stale-entry
+"#,
+    );
+    let article_dir = repo.path().join("my-project/docs/review");
+    fs::create_dir_all(&article_dir).unwrap();
+    fs::write(article_dir.join("01-opening.md"), "Opening\n").unwrap();
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "review"])
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(repo.path().join("my-project/_build/review.md")).unwrap();
+    assert_eq!(content, "Opening\n");
 }
 
 #[test]

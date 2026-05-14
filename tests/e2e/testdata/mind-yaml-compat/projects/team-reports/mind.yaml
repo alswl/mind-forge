@@ -1,0 +1,25 @@
+schema_version: '1'
+templates:
+  weekly:
+    pattern: reports/weekly-{date}.md
+    cadence: weekly
+    mode: generated
+  monthly:
+    pattern: reports/monthly-{date}.md
+    cadence: monthly
+    mode: generated
+articles:
+  weekly-summary:
+    type: blog
+  monthly-review:
+    type: blog
+    source_dir: reports
+publish:
+  targets:
+    - name: local-pdf
+      type: local
+      path: ./output/reports
+      prefix: reports-
+    - name: yuque-reports
+      type: yuque_cc
+      book_slug: reports-book

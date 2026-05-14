@@ -1,0 +1,16 @@
+schema_version: '1'
+# schema and schema_version are equivalent; this file uses schema_version.
+# projects as path strings (the compatible Python mind 0.3.0 shape).
+projects:
+  - 2026-hcs-tickets
+  - 2026-meetings
+  - 2026-blogs
+  - team-reports
+  - 2026-ai-sites-build
+  - 2026-03-hid-prd
+  - alpha
+  - beta
+  - gamma
+  - delta
+  - epsilon
+  - zeta

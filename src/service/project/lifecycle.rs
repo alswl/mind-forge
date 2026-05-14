@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::error::{MfError, Result};
+use crate::error::Result;
 use crate::model::index::IndexFile;
 use crate::model::project::{LintKind, LintSeverity, ProjectLintIssue};
 use crate::service::util;
@@ -156,11 +156,7 @@ fn check_stale_index_entry(
     if !index_path.exists() {
         return Ok(());
     }
-    let content = match std::fs::read_to_string(&index_path) {
-        Ok(c) => c,
-        Err(_) => return Ok(()),
-    };
-    let index: IndexFile = match serde_yaml::from_str(&content) {
+    let index = match crate::service::index::load(project_path) {
         Ok(idx) => idx,
         Err(_) => return Ok(()),
     };
@@ -221,10 +217,10 @@ fn check_stale_index_entry(
             articles: Some(articles),
             terms,
             publish_records: None,
+            extra: None,
         };
 
-        let yaml = serde_yaml::to_string(&new_index).map_err(|e| MfError::Internal(e.into()))?;
-        util::atomic_write(&index_path, &yaml)?;
+        crate::service::index::save(project_path, &new_index)?;
 
         for issue in issues.iter_mut().rev().take(stale_entries.len()) {
             issue.fixed = true;
@@ -240,11 +236,7 @@ fn check_name_convention(project_path: &Path, issues: &mut Vec<ProjectLintIssue>
     if !index_path.exists() {
         return;
     }
-    let content = match std::fs::read_to_string(&index_path) {
-        Ok(c) => c,
-        Err(_) => return,
-    };
-    let index: IndexFile = match serde_yaml::from_str(&content) {
+    let index = match crate::service::index::load(project_path) {
         Ok(idx) => idx,
         Err(_) => return,
     };
@@ -275,7 +267,7 @@ fn check_missing_manifest(
     let mind_yaml = project_path.join("mind.yaml");
     if !mind_yaml.exists() {
         let fixed = if fix {
-            let content = "schema_version: '1'\n".to_string();
+            let content = "schema: '1'\n".to_string();
             util::atomic_write(&mind_yaml, &content).is_ok()
         } else {
             false

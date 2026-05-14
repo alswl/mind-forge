@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::error::{MfError, Result};
 use crate::model::index::IndexFile;
 use crate::model::project::ProjectStatusSnapshot;
-use crate::service::{repo, util};
+use crate::service::{config, repo, util};
 
 /// Resolve a project path within the repo root, with boundary checking.
 pub fn resolve_project(repo_root: &Path, name: Option<&str>, cwd: &Path) -> Result<PathBuf> {
@@ -11,7 +11,8 @@ pub fn resolve_project(repo_root: &Path, name: Option<&str>, cwd: &Path) -> Resu
     match name {
         Some(name) => {
             util::validate_project_name(name)?;
-            let target = util::project_dir_for(repo_root, &projects_dir, name);
+            let target = repo::project_path_for(repo_root, name)?
+                .unwrap_or_else(|| util::project_dir_for(repo_root, &projects_dir, name));
             // Check existence first so a missing project (or missing projects_dir
             // entirely) yields a clean usage error rather than an IO error from
             // canonicalize_within walking a non-existent parent.
@@ -30,7 +31,8 @@ pub fn resolve_project(repo_root: &Path, name: Option<&str>, cwd: &Path) -> Resu
                     Some("use `mf project list` to see available projects".to_string()),
                 )
             })?;
-            let target = util::project_dir_for(repo_root, &projects_dir, &detected);
+            let target = repo::project_path_for(repo_root, &detected)?
+                .unwrap_or_else(|| util::project_dir_for(repo_root, &projects_dir, &detected));
             util::canonicalize_within(repo_root, &target)
         }
     }
@@ -39,25 +41,22 @@ pub fn resolve_project(repo_root: &Path, name: Option<&str>, cwd: &Path) -> Resu
 /// Get status snapshot for a project path. `repo_root` is used to compute the
 /// repo-root-relative `path` field on the snapshot.
 pub fn status_for(repo_root: &Path, project_path: &Path) -> Result<ProjectStatusSnapshot> {
-    let name = project_path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let dir_name = project_path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let name = config::load_project(project_path, Some(repo_root))?
+        .and_then(|cfg| cfg.project.map(|project| project.name))
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| dir_name.clone());
     let rel_path = match project_path.strip_prefix(repo_root) {
         Ok(rel) => format!("./{}", rel.display()),
-        Err(_) => format!("./{}", name),
+        Err(_) => format!("./{}", dir_name),
     };
 
-    let index_path = project_path.join("mind-index.yaml");
-    let index = if index_path.exists() {
-        match std::fs::read_to_string(&index_path) {
-            Ok(content) if !content.trim().is_empty() => {
-                serde_yaml::from_str::<IndexFile>(&content).unwrap_or_else(|_| {
-                    tracing::warn!("failed to parse {}", index_path.display());
-                    IndexFile::create_default()
-                })
-            }
-            _ => IndexFile::create_default(),
+    let index = match crate::service::index::load(project_path) {
+        Ok(idx) => idx,
+        Err(_) => {
+            tracing::warn!("failed to load index for {}", project_path.display());
+            IndexFile::create_default()
         }
-    } else {
-        IndexFile::create_default()
     };
 
     let articles = index.articles.as_ref().map(|v| v.len() as u64).unwrap_or(0);

@@ -1,25 +1,30 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "snake_case")]
 #[clap(rename_all = "lowercase")]
 pub enum AssetKind {
     Image,
     Video,
     Audio,
+    #[default]
     Other,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Asset {
     pub name: String,
-    #[serde(rename = "type")]
+    #[serde(rename = "type", default)]
     pub kind: AssetKind,
+    #[serde(default)]
     pub path: String,
+    #[serde(default)]
     pub size: u64,
+    #[serde(default)]
     pub hash: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
     pub added_at: String,
 }
 
