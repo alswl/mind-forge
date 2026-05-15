@@ -79,7 +79,29 @@ pub fn new_article(
 
 /// List articles in a project.
 pub fn list_articles(project_path: &Path) -> Result<Vec<Article>> {
-    let index = index::load(project_path)?;
+    let mut index = index::load(project_path)?;
+    let scanned = scan_docs(project_path)?;
+    let project_name = util::dir_name(project_path);
+    let articles = index.articles.get_or_insert_with(Vec::new);
+    let existing_paths: std::collections::HashSet<String> = articles.iter().map(|a| a.source_path.clone()).collect();
+
+    for scanned_article in scanned {
+        let source_path = source_path_for_scanned(&scanned_article);
+        if existing_paths.contains(&source_path) {
+            continue;
+        }
+        let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        articles.push(Article {
+            title: scanned_article.title,
+            project: project_name.clone(),
+            article_type: ArticleType::Blog,
+            source_path,
+            status: ArticleStatus::Draft,
+            created_at: now.clone(),
+            updated_at: now,
+        });
+    }
+
     Ok(index.articles.unwrap_or_default())
 }
 
@@ -99,10 +121,20 @@ fn article_key_from_source_path(source_path: &str) -> String {
 /// - Otherwise `docs/<article-name>` as the default
 pub fn effective_source_dir(config: &MindConfig, article: &Article) -> String {
     let article_key = article_key_from_source_path(&article.source_path);
-    config.build.articles.get(&article_key).and_then(|a| a.source_dir.clone()).unwrap_or_else(|| {
-        let paths = crate::defaults::DOCS_DIR;
-        format!("{}/{}", paths, article_key)
-    })
+    if let Some(source_dir) = config.build.articles.get(&article_key).and_then(|a| a.source_dir.clone()) {
+        return source_dir;
+    }
+    if let Some(source_dir) = config
+        .build
+        .articles
+        .values()
+        .filter_map(|a| a.source_dir.as_ref())
+        .find(|source_dir| source_dir.as_str() == article.source_path)
+    {
+        return source_dir.clone();
+    }
+    let paths = crate::defaults::DOCS_DIR;
+    format!("{}/{}", paths, article_key)
 }
 
 /// Scan the docs directory for markdown files and return discovered articles.
@@ -119,13 +151,21 @@ pub fn scan_docs(project_path: &Path) -> Result<Vec<ScannedArticle>> {
         scan_md_dir(&docs_dir, &paths.docs, &mut scanned)?;
     }
 
-    // Scan configured source_dir directories from mind.yaml
+    // Scan configured source_dir directories from mind.yaml. Each
+    // build.articles.<name>.source_dir entry represents one configured article
+    // source, even when that directory contains several Markdown parts.
     if let Ok(Some(config)) = config_svc::load_project(project_path, None) {
-        for article_cfg in config.build.articles.values() {
+        for (article_name, article_cfg) in &config.build.articles {
             if let Some(ref source_dir) = article_cfg.source_dir {
                 let dir_path = project_path.join(source_dir);
                 if dir_path.exists() && dir_path.is_dir() {
-                    scan_md_dir(&dir_path, source_dir, &mut scanned)?;
+                    let source_path = configured_article_source_path(article_name, &dir_path, source_dir);
+                    scanned.push(ScannedArticle {
+                        title: article_name.replace('-', " "),
+                        filename: article_name.clone(),
+                        source_dir: Some(source_dir.clone()),
+                        source_path: Some(source_path),
+                    });
                 }
             }
         }
@@ -141,6 +181,15 @@ pub fn scan_docs(project_path: &Path) -> Result<Vec<ScannedArticle>> {
     Ok(scanned)
 }
 
+fn configured_article_source_path(article_name: &str, dir_path: &Path, source_dir: &str) -> String {
+    let file_name = format!("{article_name}.{}", defaults::MARKDOWN_EXTENSION);
+    if dir_path.join(&file_name).is_file() {
+        format!("{source_dir}/{file_name}")
+    } else {
+        source_dir.to_string()
+    }
+}
+
 /// Scan a single directory for markdown files, appending to `scanned`.
 fn scan_md_dir(dir_path: &Path, rel_dir: &str, scanned: &mut Vec<ScannedArticle>) -> Result<()> {
     let entries = fs::read_dir(dir_path).map_err(MfError::Io)?;
@@ -153,6 +202,7 @@ fn scan_md_dir(dir_path: &Path, rel_dir: &str, scanned: &mut Vec<ScannedArticle>
                     title,
                     filename: stem.to_string(),
                     source_dir: Some(rel_dir.to_string()),
+                    source_path: None,
                 });
             }
         }
@@ -162,6 +212,9 @@ fn scan_md_dir(dir_path: &Path, rel_dir: &str, scanned: &mut Vec<ScannedArticle>
 
 /// Build the project-relative source path for a scanned article.
 fn source_path_for_scanned(a: &ScannedArticle) -> String {
+    if let Some(ref source_path) = a.source_path {
+        return source_path.clone();
+    }
     match a.source_dir {
         Some(ref dir) => format!("{}/{}.{}", dir, a.filename, defaults::MARKDOWN_EXTENSION),
         None => format!("{}/{}.{}", crate::defaults::DOCS_DIR, a.filename, defaults::MARKDOWN_EXTENSION),

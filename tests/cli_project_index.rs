@@ -114,6 +114,8 @@ articles:
     source_path: docs/second.md
 "#,
     );
+    common::write_doc(&dir, "dup-project", "first", "# First\n");
+    common::write_doc(&dir, "dup-project", "second", "# Second\n");
 
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
@@ -147,6 +149,8 @@ articles:
     source_path: docs/second.md
 "#,
     );
+    common::write_doc(&dir, "dup-project", "first", "# First\n");
+    common::write_doc(&dir, "dup-project", "second", "# Second\n");
 
     Command::cargo_bin("mf")
         .expect("binary exists")
@@ -164,4 +168,54 @@ articles:
     // but there must be no duplicate key error
     let articles_keys: Vec<_> = map.keys().filter(|k| k.as_str() == Some("articles")).collect();
     assert!(articles_keys.len() <= 1, "articles key should appear at most once after fix: {content}");
+    assert!(content.contains("first"), "fix should preserve entries from the first duplicate block: {content}");
+    assert!(content.contains("second"), "fix should preserve entries from the second duplicate block: {content}");
+}
+
+#[test]
+fn test_lint_fix_resolves_all_duplicate_keys_in_one_run() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "dup-project");
+    common::write_index(
+        &dir,
+        "dup-project",
+        r#"schema: '1'
+articles:
+  first:
+    title: First
+    source_path: docs/first.md
+articles:
+  second:
+    title: Second
+    source_path: docs/second.md
+terms:
+  - name: Alpha
+    definition: A
+terms:
+  - name: Beta
+    definition: B
+"#,
+    );
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(dir.path())
+        .args(["project", "lint", "--project", "dup-project", "--fix"])
+        .assert()
+        .code(0);
+
+    let second = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(dir.path())
+        .args(["project", "lint", "--project", "dup-project"])
+        .output()
+        .expect("command runs");
+    let stdout = String::from_utf8(second.stdout).unwrap();
+    assert!(!stdout.contains("duplicate_key"), "all duplicate keys should be fixed in one run: {stdout}");
+
+    let content = fs::read_to_string(dir.path().join("dup-project/mind-index.yaml")).unwrap();
+    assert!(content.contains("first"), "article from first block should remain: {content}");
+    assert!(content.contains("second"), "article from second block should remain: {content}");
+    assert!(content.contains("Alpha"), "term from first block should remain: {content}");
+    assert!(content.contains("Beta"), "term from second block should remain: {content}");
 }

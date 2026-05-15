@@ -214,7 +214,7 @@ fn handle_lint(args: ProjectLintArgs, repo_root: Option<&PathBuf>, format: Forma
                     MfError::usage(
                         format!("unknown lint rule '{r}': {e}"),
                         Some(
-                            "available rules: missing_directory, stale_index_entry, name_convention, missing_manifest"
+                            "available rules: missing_directory, stale_index_entry, name_convention, missing_manifest, duplicate_key"
                                 .to_string(),
                         ),
                     )

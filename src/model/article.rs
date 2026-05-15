@@ -43,6 +43,10 @@ pub struct ScannedArticle {
     /// `None` means the default docs directory.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_dir: Option<String>,
+    /// Explicit project-relative source path when the scan result represents a
+    /// configured article source directory rather than a single Markdown file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
 }
 
 /// Result of comparing the index against a filesystem scan.

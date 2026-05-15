@@ -578,3 +578,33 @@ fn build_auto_indexes_article_in_mind_index_yaml() {
     let auto_indexed = articles.iter().find(|a| a["source_path"].as_str().unwrap_or("").contains("auto-index-me"));
     assert!(auto_indexed.is_some(), "built article should appear in index after build: {stdout}");
 }
+
+#[test]
+fn build_auto_indexes_configured_source_dir_as_article_directory() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  articles:\n    quarterly-review:\n      source_dir: specs/quarterly\n",
+    );
+    let source_dir = repo.path().join("my-project/specs/quarterly");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    std::fs::write(source_dir.join("01-intro.md"), "Intro\n").unwrap();
+    std::fs::write(source_dir.join("02-body.md"), "Body\n").unwrap();
+    common::write_index(&repo, "my-project", "schema: '1'\n");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "quarterly-review"])
+        .assert()
+        .success();
+
+    let index = std::fs::read_to_string(repo.path().join("my-project/mind-index.yaml")).unwrap();
+    assert!(index.contains("source_path: specs/quarterly"), "index should store the configured source dir: {index}");
+    assert!(
+        !index.contains("source_path: specs/quarterly/quarterly-review.md"),
+        "index should not invent a Markdown file inside the configured source dir: {index}"
+    );
+}

@@ -351,9 +351,23 @@ fn auto_index_article(project_path: &Path, article: &str, source_path: &Path) ->
 
     // Determine the relative source_path from the project root
     let rel_source = if source_path.is_dir() {
-        // source_path is a directory (configured source_dir), so the file is inside it
-        let rel_dir = source_path.strip_prefix(project_path).ok().and_then(|p| p.to_str()).unwrap_or(article);
-        format!("{}/{}.{}", rel_dir, article, defaults::MARKDOWN_EXTENSION)
+        let file_name = format!("{}.{}", article, defaults::MARKDOWN_EXTENSION);
+        if source_path.join(&file_name).is_file() {
+            source_path
+                .join(file_name)
+                .strip_prefix(project_path)
+                .ok()
+                .and_then(|p| p.to_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("{}/{}.{}", paths.docs, article, defaults::MARKDOWN_EXTENSION))
+        } else {
+            source_path
+                .strip_prefix(project_path)
+                .ok()
+                .and_then(|p| p.to_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("{}/{}", paths.docs, article))
+        }
     } else {
         // source_path is a file — strip project prefix to get the relative path
         source_path

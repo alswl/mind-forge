@@ -16,10 +16,10 @@ pub fn lint_project(
     let active_rules: Vec<LintKind> = if rules.is_empty() {
         vec![
             LintKind::MissingDirectory,
+            LintKind::DuplicateKey,
             LintKind::StaleIndexEntry,
             LintKind::NameConvention,
             LintKind::MissingManifest,
-            LintKind::DuplicateKey,
         ]
     } else {
         rules.to_vec()
@@ -328,8 +328,9 @@ fn check_duplicate_key(
         if let Some(ref key) = key_name {
             // Try to fix first (so we know the final `fixed` state for the issue)
             let fixed = if fix {
-                let cleaned = crate::service::index::deduplicate_top_level_keys(&content);
-                util::atomic_write(&index_path, &cleaned).is_ok()
+                crate::service::index::merge_duplicate_top_level_keys(&content)
+                    .and_then(|cleaned| util::atomic_write(&index_path, &cleaned))
+                    .is_ok()
             } else {
                 false
             };

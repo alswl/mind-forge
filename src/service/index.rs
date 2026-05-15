@@ -49,7 +49,7 @@ fn try_recover_duplicate_key(content: &str, path: &Path, err: MfError) -> Result
         None => return Err(err),
     };
 
-    let cleaned = deduplicate_top_level_keys(content);
+    let cleaned = deduplicate_duplicate_keys_last_wins(content);
     match load_from_str(&cleaned, path) {
         Ok(index) => {
             let line = extract_error_line(&detail).map(|l| l.to_string()).unwrap_or_default();
@@ -120,8 +120,84 @@ fn is_top_level_key(line: &str) -> bool {
     }
 }
 
+fn yaml_key_at_indent(line: &str) -> Option<(usize, String)> {
+    if line.trim().is_empty() || line.trim_start().starts_with('#') || line.trim_start().starts_with('-') {
+        return None;
+    }
+    let indent = line.len() - line.trim_start().len();
+    let trimmed = line.trim_start();
+    let pos = trimmed.find(':')?;
+    let key = &trimmed[..pos];
+    if key.is_empty()
+        || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        || !key.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+    {
+        return None;
+    }
+    Some((indent, key.to_string()))
+}
+
+/// Remove duplicate mapping keys at any indentation level, keeping the last
+/// occurrence within the same parent mapping.
+pub fn deduplicate_duplicate_keys_last_wins(content: &str) -> String {
+    #[derive(Clone)]
+    struct Entry {
+        line: usize,
+        indent: usize,
+        key: String,
+        parent: Vec<String>,
+    }
+
+    let lines: Vec<&str> = content.lines().collect();
+    let mut entries: Vec<Entry> = Vec::new();
+    let mut stack: Vec<(usize, String)> = Vec::new();
+
+    for (line_idx, line) in lines.iter().enumerate() {
+        let Some((indent, key)) = yaml_key_at_indent(line) else {
+            continue;
+        };
+        while stack.last().is_some_and(|(stack_indent, _)| *stack_indent >= indent) {
+            stack.pop();
+        }
+        let parent = stack.iter().map(|(_, key)| key.clone()).collect::<Vec<_>>();
+        entries.push(Entry { line: line_idx, indent, key: key.clone(), parent });
+        stack.push((indent, key));
+    }
+
+    let mut to_skip = std::collections::HashSet::new();
+    let mut seen = std::collections::HashSet::new();
+    for (entry_idx, entry) in entries.iter().enumerate().rev() {
+        let group = (entry.indent, entry.parent.join("\u{1f}"), entry.key.clone());
+        if seen.insert(group) {
+            continue;
+        }
+        let end = entries
+            .iter()
+            .skip(entry_idx + 1)
+            .find(|candidate| candidate.indent <= entry.indent)
+            .map(|candidate| candidate.line)
+            .unwrap_or(lines.len());
+        for line_idx in entry.line..end {
+            to_skip.insert(line_idx);
+        }
+    }
+
+    let mut result = lines
+        .iter()
+        .enumerate()
+        .filter(|(idx, _)| !to_skip.contains(idx))
+        .map(|(_, line)| *line)
+        .collect::<Vec<_>>()
+        .join("\n");
+    if content.ends_with('\n') && !result.ends_with('\n') {
+        result.push('\n');
+    }
+    result
+}
+
 /// Pre-process YAML content to remove duplicate top-level keys (keeping the last occurrence).
 /// Returns the deduplicated content.
+#[cfg(test)]
 pub fn deduplicate_top_level_keys(content: &str) -> String {
     let lines: Vec<&str> = content.lines().collect();
     let n = lines.len();
@@ -165,6 +241,76 @@ pub fn deduplicate_top_level_keys(content: &str) -> String {
         result.push('\n');
     }
     result
+}
+
+pub fn merge_duplicate_top_level_keys(content: &str) -> Result<String> {
+    let lines: Vec<&str> = content.lines().collect();
+    let n = lines.len();
+    let top_indices: Vec<usize> =
+        lines.iter().enumerate().filter(|(_, l)| is_top_level_key(l)).map(|(i, _)| i).collect();
+
+    let mut order: Vec<String> = Vec::new();
+    let mut merged = serde_yaml::Mapping::new();
+
+    for (idx, &start) in top_indices.iter().enumerate() {
+        let end = top_indices.get(idx + 1).copied().unwrap_or(n);
+        let key = lines[start].split(':').next().unwrap_or("").to_string();
+        if !order.contains(&key) {
+            order.push(key.clone());
+        }
+        let block = lines[start..end].join("\n");
+        let cleaned_block = deduplicate_duplicate_keys_last_wins(&block);
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&cleaned_block).map_err(|e| MfError::ParseError {
+            kind: "yaml".to_string(),
+            path: Path::new(INDEX_FILENAME).to_path_buf(),
+            detail: e.to_string(),
+        })?;
+        let serde_yaml::Value::Mapping(block_map) = parsed else {
+            continue;
+        };
+        let key_value = yaml_key(&key);
+        let incoming = block_map.get(&key_value).cloned().unwrap_or(serde_yaml::Value::Null);
+        match merged.get_mut(&key_value) {
+            Some(existing) => merge_top_level_value(&key, existing, incoming),
+            None => {
+                merged.insert(key_value, incoming);
+            }
+        }
+    }
+
+    let mut ordered = serde_yaml::Mapping::new();
+    for key in order {
+        let key_value = yaml_key(&key);
+        if let Some(value) = merged.remove(&key_value) {
+            ordered.insert(key_value, value);
+        }
+    }
+    serde_yaml::to_string(&serde_yaml::Value::Mapping(ordered))
+        .map_err(|e| MfError::Internal(anyhow::anyhow!("serialize cleaned mind-index.yaml: {e}")))
+}
+
+fn merge_top_level_value(key: &str, existing: &mut serde_yaml::Value, incoming: serde_yaml::Value) {
+    match (key, existing, incoming) {
+        (
+            "articles" | "sources" | "assets",
+            serde_yaml::Value::Mapping(existing),
+            serde_yaml::Value::Mapping(incoming),
+        ) => {
+            for (key, value) in incoming {
+                existing.insert(key, value);
+            }
+        }
+        (
+            "terms" | "publish_records",
+            serde_yaml::Value::Sequence(existing),
+            serde_yaml::Value::Sequence(mut incoming),
+        ) => {
+            existing.append(&mut incoming);
+        }
+        (_, existing, incoming) => {
+            *existing = incoming;
+        }
+    }
 }
 
 /// Atomically write `index` to `project_root/mind-index.yaml`.
@@ -355,6 +501,43 @@ articles:
         // After dedup, only the last occurrence's articles should survive
         assert_eq!(articles.len(), 1, "should load with 1 article (last occurrence)");
         assert_eq!(articles[0].title, "Second");
+    }
+
+    #[test]
+    fn load_succeeds_with_nested_duplicate_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = r#"schema: '1'
+articles:
+  first:
+    title: Old
+    title: New
+    source_path: docs/first.md
+"#;
+        std::fs::write(dir.path().join("mind-index.yaml"), content).unwrap();
+        let index = load(dir.path()).unwrap();
+        let articles = index.articles.unwrap();
+        assert_eq!(articles.len(), 1);
+        assert_eq!(articles[0].title, "New");
+    }
+
+    #[test]
+    fn merge_duplicate_top_level_keys_combines_article_mappings() {
+        let input = r#"schema: '1'
+articles:
+  first:
+    title: First
+    source_path: docs/first.md
+articles:
+  second:
+    title: Second
+    source_path: docs/second.md
+"#;
+        let merged = merge_duplicate_top_level_keys(input).unwrap();
+        let index: IndexFile = serde_yaml::from_str(&merged).unwrap();
+        let articles = index.articles.unwrap();
+        assert_eq!(articles.len(), 2, "merged index should keep both article entries: {merged}");
+        assert!(articles.iter().any(|a| a.title == "First"));
+        assert!(articles.iter().any(|a| a.title == "Second"));
     }
 
     #[test]

@@ -544,6 +544,66 @@ fn article_list_shows_articles_after_indexing_no_preexisting_index() {
     assert!(stdout.contains("indexed-article"), "should list indexed article: {stdout}");
 }
 
+#[test]
+fn article_list_shows_mind_yaml_articles_without_manual_indexing() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  articles:\n    configured-article:\n      source_dir: specs\n",
+    );
+    common::write_source_file(&repo, "my-project", "specs", "configured-article", "# Configured\n");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+
+    assert_eq!(output.status.code(), Some(0), "article list should succeed without manual index");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("configured-article"), "should list configured article from mind.yaml: {stdout}");
+    assert!(stdout.contains("specs/configured-article.md"), "should show configured source file: {stdout}");
+}
+
+#[test]
+fn article_index_uses_configured_article_key_for_directory_source_dir() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  articles:\n    quarterly-review:\n      source_dir: specs/quarterly\n",
+    );
+    let source_dir = repo.path().join("my-project/specs/quarterly");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    std::fs::write(source_dir.join("01-intro.md"), "Intro\n").unwrap();
+    std::fs::write(source_dir.join("02-body.md"), "Body\n").unwrap();
+
+    let (_, output) = json_index(&[], &repo.path().join("my-project"));
+    assert_eq!(output.status.code(), Some(0), "article index should succeed");
+
+    let list_output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["--format", "json", "article", "list"])
+        .output()
+        .expect("command runs");
+    let stdout = String::from_utf8(list_output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let articles = parsed["data"].as_array().unwrap();
+    let article = articles.iter().find(|a| a["source_path"] == "specs/quarterly").expect("configured article");
+
+    assert_eq!(article["title"], "quarterly review");
+    assert_eq!(article["source_dir"], "specs/quarterly");
+    assert!(
+        !articles.iter().any(|a| a["source_path"] == "specs/quarterly/01-intro.md"),
+        "directory source_dir should be indexed as the configured article, not each part: {stdout}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // US3: Informative warning detail tests
 // ---------------------------------------------------------------------------
