@@ -39,10 +39,10 @@ File kinds: `auto`, `pdf`, `file`, `rss`, `web`
 Subcommands: `list`/`ls`, `add`, `update`, `index`, `clean`, `remove`
 
 ### `mf project` — Manage projects
-Subcommands: `new`, `list`/`ls`, `archive`, `status`/`info`, `lint`, `index`, `show`, `import`
+Subcommands: `new`, `list`/`ls`, `archive`, `status`/`info`, `lint`, `index`, `show`, `import`, `rename`
 
 ### `mf article` — Manage articles
-Subcommands: `new`, `list`/`ls`, `lint`, `index`
+Subcommands: `new`, `list`/`ls`, `lint`, `index`, `rename`
 
 ### `mf term` / `mf terms` — Manage terminology
 Subcommands: `list`, `new`, `lint`, `learn`, `fix`, `show`
@@ -95,6 +95,10 @@ mf term lint --project my-project --fix
 # Config & diagnostics
 mf config show
 mf publisher list --json
+
+# Rename
+mf project rename my-old-project my-new-project
+mf article rename "旧标题" "新标题" --project my-project
 ```
 
 ## Notes
