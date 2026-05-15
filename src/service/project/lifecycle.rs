@@ -127,8 +127,7 @@ fn check_missing_directory(
     unfixed_count: &mut u64,
 ) -> Result<()> {
     let paths = config_svc::project_paths(project_path)?;
-    let images_dir = format!("{}/images", paths.docs);
-    let required_dirs = [&paths.docs, &images_dir, &paths.sources, &paths.assets];
+    let required_dirs = [&paths.docs, &paths.sources, &paths.assets];
     for dir in required_dirs {
         let dir_path = project_path.join(dir);
         if !dir_path.exists() {

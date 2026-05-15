@@ -20,7 +20,6 @@ fn e2e_new_creates_project_skeleton() {
 
     // 骨架文件系统
     assert!(ds.root().join("projects/alpha/docs").exists(), "docs/");
-    assert!(ds.root().join("projects/alpha/docs/images").exists(), "docs/images/");
     assert!(ds.root().join("projects/alpha/sources").exists(), "sources/");
     assert!(ds.root().join("projects/alpha/assets").exists(), "assets/");
     assert!(ds.root().join("projects/alpha/mind.yaml").exists(), "mind.yaml");

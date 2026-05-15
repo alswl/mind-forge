@@ -639,7 +639,6 @@ fn quickstart_scenario_a_e2e() {
 
     // --- Setup: project skeleton (simulates `mf project new` + `mf article new`) ---
     fs::create_dir_all(project_path.join("docs")).unwrap();
-    fs::create_dir_all(project_path.join("docs/images")).unwrap();
     fs::write(project_path.join("docs").join(format!("{article}.md")), article_body).unwrap();
     fs::write(
         project_path.join("mind.yaml"),

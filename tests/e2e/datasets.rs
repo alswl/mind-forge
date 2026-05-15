@@ -179,7 +179,6 @@ impl Dataset {
     pub fn with_standard_project(self, name: &str) -> Self {
         let dir = self.dir.path().join("projects").join(name);
         fs::create_dir_all(dir.join("docs")).expect("create docs");
-        fs::create_dir_all(dir.join("docs/images")).expect("create docs/images");
         fs::create_dir_all(dir.join("sources")).expect("create sources");
         fs::create_dir_all(dir.join("assets")).expect("create assets");
         fs::write(dir.join("mind.yaml"), MIND_YAML).expect("write mind.yaml");

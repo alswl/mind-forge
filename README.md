@@ -6,9 +6,9 @@
 composable Blocks, every piece of state lives in plain files on disk, and the
 CLI is shaped so both humans and Agents can drive it.
 
-## Philosophy — Diffusion + DaC
+## Philosophy
 
-Two ideas guide every decision in `mf`:
+Three ideas guide every decision in `mf`:
 
 ### Diffusion
 
@@ -46,17 +46,24 @@ flowchart LR
 
 Your writing follows the same discipline as your infrastructure:
 
-- **Document as Code**: declarative YAML configs (`minds.yaml`, `mind.yaml`,
-  `mind-index.yaml`), schema validation, deterministic builds, and full git
-  auditability. If you can review a PR, you can review a chapter.
-- **AI Native CLI**: every command speaks a JSON envelope
-  (`{ status, command, data }`), exits with stable codes, and ships
-  prompt-emitting subcommands like `mf render` that produce Agent-facing
-  instructions instead of guessing at output. Build a pipeline with shell,
-  Make, or an LLM — the contract is the same.
+declarative YAML configs (`minds.yaml`, `mind.yaml`, `mind-index.yaml`),
+schema validation, deterministic builds, and full git auditability.
+If you can review a PR, you can review a chapter.
 
-Local-first underpins both: no cloud, no lock-in, plain markdown and YAML
-you can edit in any editor.
+### AI Native CLI
+
+`mf` is designed first for AI Agents, not for human terminal sessions.
+Every command speaks a JSON envelope (`{ status, command, data }`), exits
+with stable codes, and ships prompt-emitting subcommands like `mf render`
+that produce Agent-facing instructions instead of guessing at output.
+Build a pipeline with shell, Make, or an LLM — the contract is the same.
+
+This is an independent philosophy, not a subset of DaC: AI Native CLI
+rejects interactive prompts, colored output designed for human eyes, and
+inconsistent exit codes. The tool is a reliable API for an LLM to call.
+
+Local-first underpins all three: no cloud, no lock-in, plain markdown and
+YAML you can edit in any editor.
 
 ## Install
 
