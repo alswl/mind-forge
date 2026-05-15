@@ -6,7 +6,10 @@ pub use self::index::{resolve_project, status_for};
 pub use self::lifecycle::{lint_project, lint_repo};
 pub use self::list::list_projects;
 pub(crate) use self::new::{scaffold, upsert_project_entry};
+pub use self::rename::rename_project;
 pub use self::show::show;
+
+pub mod rename;
 
 /// Read a project's mind-index.yaml and return (document_count, last_activity_at).
 pub(crate) fn read_index_counts(project_path: &Path) -> (u64, Option<String>) {
