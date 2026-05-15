@@ -195,3 +195,19 @@ fn publisher_list_help_snapshot() {
     assert_eq!(code, 0);
     assert_snapshot!("publisher_list_help", stdout);
 }
+
+// ── Render help snapshots (020-render-output) ─────────────────
+
+#[test]
+fn render_help_snapshot() {
+    let (stdout, _, code) = run(&["render", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("render_help", stdout);
+}
+
+#[test]
+fn render_template_list_help_snapshot() {
+    let (stdout, _, code) = run(&["render", "template", "list", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("render_template_list_help", stdout);
+}

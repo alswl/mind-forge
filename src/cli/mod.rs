@@ -8,6 +8,7 @@ pub mod project;
 pub mod prompt;
 pub mod publish;
 pub mod publisher;
+pub mod render;
 pub mod source;
 pub mod term;
 
@@ -94,6 +95,8 @@ pub enum TopLevelCommand {
     Build(build::BuildArgs),
     #[command(about = "Publish articles")]
     Publish(publish::PublishCmd),
+    #[command(about = "Generate render prompts")]
+    Render(render::RenderCmd),
     #[command(about = "Manage configuration")]
     Config(config::ConfigCmd),
     #[command(about = "Manage repo-wide publishers")]
@@ -142,6 +145,7 @@ impl RootCli {
             Some(TopLevelCommand::Publish(command)) => publish::dispatch(command, repo_root, format, deprecation),
             Some(TopLevelCommand::Config(command)) => config::dispatch(command, repo_root, format, deprecation),
             Some(TopLevelCommand::Publisher(command)) => publisher::dispatch(command, repo_root, format, deprecation),
+            Some(TopLevelCommand::Render(command)) => render::dispatch(command, repo_root, format),
         }
     }
 }

@@ -80,6 +80,16 @@ pub fn write_publishers(repo: &TempDir, publishers: &[(&str, &str)]) {
         write_publisher_yaml(repo, name, content);
     }
 }
+/// 在 Mind Repo 根目录写入 `.mind-forge/renders/<name>.md`。
+#[allow(dead_code)]
+pub fn write_render_template(repo: &TempDir, name: &str, content: &str) -> PathBuf {
+    let templates_dir = repo.path().join(".mind-forge").join("renders");
+    fs::create_dir_all(&templates_dir).unwrap();
+    let path = templates_dir.join(format!("{name}.md"));
+    fs::write(&path, content).unwrap();
+    path
+}
+
 /// `terms_yaml` 应为 `terms:` 段内容（不含前导空格），例如：
 /// `"term: Mind Repo\n  definition: desc\n  corrections:\n    - original: mindrepo\n      correct: Mind Repo"`
 #[allow(dead_code)]

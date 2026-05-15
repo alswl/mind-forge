@@ -36,6 +36,7 @@ to you, readable by any text editor, extensible via CLI pipelines.
 - **Content**: article, source, asset management with CRUD and indexing
 - **Glossary**: term lookup, list, lint, fix, learn
 - **Build & Publish**: config-driven build, local and yuque-prompt publishing, repo-wide publisher management
+- **Render Prompt**: `mf render <article>` generates an Agent-facing HTML rendering prompt from existing built output, with built-in (`report`, `paper`) and custom Markdown templates under `.mind-forge/renders/`
 - **Compatibility**: reads and writes mind 0.3.0-compatible YAML (`minds.yaml`, `mind.yaml`, `mind-index.yaml`)
 - **Output**: text/JSON envelope (`{ status, command, data }`) with shell completion (`mf completion <shell>`)
 

@@ -471,3 +471,61 @@ fn envelope_terms_alias_json_matches_term() {
 
     assert_eq!(stdout_terms, stdout_term, "terms alias should match term output");
 }
+
+// ==========================================================================
+// Render: JSON envelope shape
+// ==========================================================================
+
+#[test]
+fn envelope_render_article_json() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "env-project");
+    common::write_mind_yaml(
+        &repo,
+        "env-project",
+        "schema_version: '1'\nbuild:\n  output_dir: 'outputs'\n  format: 'md'\n",
+    );
+    let project_dir = repo.path().join("env-project");
+    std::fs::create_dir_all(project_dir.join("outputs")).unwrap();
+    std::fs::write(project_dir.join("outputs/test-a.md"), b"# Envelope test").unwrap();
+
+    let (stdout, stderr, code) =
+        run_json(&["--root", &repo.path().to_string_lossy(), "render", "test-a", "-p", "env-project"]);
+    assert_eq!(code, 0, "stderr: {stderr:?}");
+    assert_envelope_ok(&stdout);
+
+    let data = extract_data(&stdout);
+    assert!(data["prompt"].is_string(), "prompt should be a string");
+    assert_eq!(data["template"], "report");
+    assert_eq!(data["template_source"], "built_in");
+    assert_eq!(data["scope"], "article");
+    assert!(data["outputs"].is_array(), "outputs should be an array");
+}
+
+#[test]
+fn envelope_render_template_list_json() {
+    let repo = common::setup_repo();
+
+    let (stdout, stderr, code) = run_json(&["--root", &repo.path().to_string_lossy(), "render", "template", "list"]);
+    assert_eq!(code, 0, "stderr: {stderr:?}");
+    assert_envelope_ok(&stdout);
+
+    let data = extract_data(&stdout);
+    let templates = data["templates"].as_array().expect("templates should be an array");
+    assert!(!templates.is_empty(), "should have at least one template");
+    assert!(templates.iter().any(|t| t["name"] == "report"), "should include report");
+    assert!(templates.iter().any(|t| t["name"] == "paper"), "should include paper");
+}
+
+#[test]
+fn envelope_render_article_error_usage() {
+    let repo = common::setup_repo();
+
+    let (stdout, stderr, code) = run_json(&["--root", &repo.path().to_string_lossy(), "render", "nonexistent-article"]);
+    assert_eq!(code, 2, "usage error should exit code 2, stderr: {stderr:?}");
+    if stdout.trim().is_empty() {
+        assert!(!stderr.is_empty(), "stderr should have error");
+    } else {
+        assert_envelope_err(&stdout);
+    }
+}

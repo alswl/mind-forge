@@ -2,23 +2,9 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-mind-forge command line interface
+List available render templates
 
-Usage: mf [OPTIONS] [COMMAND]
-
-Commands:
-  source      Manage content sources
-  asset       Manage project assets
-  project     Manage projects
-  article     Manage articles
-  term        Manage terminology [aliases: terms]
-  completion  Generate shell completion scripts
-  version     Show version information
-  build       Build articles
-  publish     Publish articles
-  render      Generate render prompts
-  config      Manage configuration
-  publisher   Manage repo-wide publishers
+Usage: mf render template list [OPTIONS]
 
 Options:
       --root <PATH>

@@ -6,6 +6,7 @@ pub mod index;
 pub mod project;
 pub mod publish;
 pub mod publisher;
+pub mod render;
 pub mod repo;
 pub mod source;
 pub mod term;
