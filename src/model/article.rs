@@ -39,6 +39,10 @@ pub struct Article {
 pub struct ScannedArticle {
     pub title: String,
     pub filename: String,
+    /// The project-relative source directory this article was found in (e.g. "docs", "specs").
+    /// `None` means the default docs directory.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_dir: Option<String>,
 }
 
 /// Result of comparing the index against a filesystem scan.

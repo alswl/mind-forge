@@ -226,6 +226,9 @@ pub fn assemble_prompt(template_body: &str, outputs: &[OutputContent], html_form
     prompt.push_str(
         "mf is NOT rendering the final HTML. You, the Agent, are responsible for producing the HTML output.\n",
     );
+    prompt.push_str(
+        "Preserve the source meaning, including existing HTML, code blocks, tables, image references, and links; convert structure only when it improves the HTML presentation without losing semantics.\n",
+    );
 
     for output in outputs {
         prompt.push_str(&format!("\n--- BEGIN MF OUTPUT: {} ---\n", output.path));
@@ -315,7 +318,11 @@ pub fn discover_custom_templates(repo_root: &Path) -> Result<Vec<(RenderTemplate
         // Read content
         let content = fs::read_to_string(&path).map_err(MfError::Io)?;
         if content.trim().is_empty() {
-            continue;
+            let rel_path = path.strip_prefix(repo_root).unwrap_or(&path).to_string_lossy().to_string();
+            return Err(MfError::usage(
+                format!("custom render template '{name}' is empty: {rel_path}"),
+                Some("add Markdown guidance to the template file or remove it".to_string()),
+            ));
         }
 
         // Try to parse optional YAML frontmatter (between --- delimiters)

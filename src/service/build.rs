@@ -320,6 +320,12 @@ fn build_source(
     util::atomic_write(&output_path, &content)?;
     let result =
         BuildResult { output_path: output_path.to_string_lossy().to_string(), size_bytes: content.len() as u64 };
+
+    // Auto-index: ensure the built article exists in mind-index.yaml
+    if let Err(e) = auto_index_article(project_path, article, source_path) {
+        tracing::warn!("failed to auto-index article '{}': {}", article, e);
+    }
+
     Ok(BuildOutput::Rendered(result))
 }
 
@@ -335,4 +341,48 @@ pub struct BuildResult {
 pub enum BuildOutput {
     Rendered(BuildResult),
     Plan(BuildPlan),
+}
+
+/// After a successful build, ensure the article is present in mind-index.yaml.
+fn auto_index_article(project_path: &Path, article: &str, source_path: &Path) -> Result<()> {
+    let mut index =
+        crate::service::index::load(project_path).unwrap_or_else(|_| crate::model::index::IndexFile::create_default());
+    let paths = config_svc::project_paths(project_path)?;
+
+    // Determine the relative source_path from the project root
+    let rel_source = if source_path.is_dir() {
+        // source_path is a directory (configured source_dir), so the file is inside it
+        let rel_dir = source_path.strip_prefix(project_path).ok().and_then(|p| p.to_str()).unwrap_or(article);
+        format!("{}/{}.{}", rel_dir, article, defaults::MARKDOWN_EXTENSION)
+    } else {
+        // source_path is a file — strip project prefix to get the relative path
+        source_path
+            .strip_prefix(project_path)
+            .ok()
+            .and_then(|p| p.to_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("{}/{}.{}", paths.docs, article, defaults::MARKDOWN_EXTENSION))
+    };
+
+    // Check if article is already in the index
+    let already_indexed =
+        index.articles.as_ref().is_some_and(|articles| articles.iter().any(|a| a.source_path == rel_source));
+
+    if !already_indexed {
+        let project_name = util::dir_name(project_path);
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let articles = index.articles.get_or_insert_with(Vec::new);
+        articles.push(crate::model::article::Article {
+            title: article.replace('-', " "),
+            project: project_name,
+            article_type: crate::model::article::ArticleType::Blog,
+            source_path: rel_source,
+            status: crate::model::article::ArticleStatus::Published,
+            created_at: now.clone(),
+            updated_at: now,
+        });
+        crate::service::index::save(project_path, &index)?;
+    }
+
+    Ok(())
 }

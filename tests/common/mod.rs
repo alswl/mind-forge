@@ -64,6 +64,14 @@ pub fn write_doc(repo: &TempDir, project_name: &str, name: &str, content: &str) 
     fs::write(doc_dir.join(format!("{name}.md")), content).unwrap();
 }
 
+/// 在项目的指定相对路径（如自定义 source_dir）中写入 Markdown 文件。
+#[allow(dead_code)]
+pub fn write_source_file(repo: &TempDir, project_name: &str, rel_dir: &str, name: &str, content: &str) {
+    let dst_dir = repo.path().join(project_name).join(rel_dir);
+    fs::create_dir_all(&dst_dir).unwrap();
+    fs::write(dst_dir.join(format!("{name}.md")), content).unwrap();
+}
+
 /// 在 Mind Repo 根目录（`minds.yaml` 同级）写入 `.mind-forge/publisher/<name>.yaml`。
 #[allow(dead_code)]
 pub fn write_publisher_yaml(repo: &TempDir, name: &str, yaml_content: &str) {

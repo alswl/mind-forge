@@ -301,6 +301,23 @@ fn test_render_builtin_name_conflict_error() {
 }
 
 #[test]
+fn test_render_empty_custom_template_error_identifies_file() {
+    let (_repo, root) = setup_with_article_output();
+
+    let templates_dir = std::path::Path::new(&root).join(".mind-forge").join("renders");
+    fs::create_dir_all(&templates_dir).unwrap();
+    fs::write(templates_dir.join("team-review.md"), "   \n").unwrap();
+
+    let (stdout, stderr, code) = run(&["--root", &root, "render", "template", "list"]);
+
+    assert_eq!(code, 2, "should exit with code 2 for empty custom template");
+    assert!(
+        stdout.contains(".mind-forge/renders/team-review.md") || stderr.contains(".mind-forge/renders/team-review.md"),
+        "error should identify empty template file: stderr={stderr:?}"
+    );
+}
+
+#[test]
 fn test_render_invalid_template_name_error() {
     let (_repo, root) = setup_with_article_output();
 

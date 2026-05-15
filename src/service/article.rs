@@ -106,62 +106,107 @@ pub fn effective_source_dir(config: &MindConfig, article: &Article) -> String {
 }
 
 /// Scan the docs directory for markdown files and return discovered articles.
+///
+/// Scans the default docs directory and any configured `source_dir` directories
+/// from `mind.yaml`'s `build.articles.*.source_dir`.
 pub fn scan_docs(project_path: &Path) -> Result<Vec<ScannedArticle>> {
     let paths = config_svc::project_paths(project_path)?;
+    let mut scanned = Vec::new();
+
+    // Scan default docs directory
     let docs_dir = project_path.join(&paths.docs);
-    if !docs_dir.exists() {
-        return Ok(Vec::new());
+    if docs_dir.exists() {
+        scan_md_dir(&docs_dir, &paths.docs, &mut scanned)?;
     }
 
-    let mut scanned = Vec::new();
-    let entries = fs::read_dir(&docs_dir).map_err(MfError::Io)?;
+    // Scan configured source_dir directories from mind.yaml
+    if let Ok(Some(config)) = config_svc::load_project(project_path, None) {
+        for article_cfg in config.build.articles.values() {
+            if let Some(ref source_dir) = article_cfg.source_dir {
+                let dir_path = project_path.join(source_dir);
+                if dir_path.exists() && dir_path.is_dir() {
+                    scan_md_dir(&dir_path, source_dir, &mut scanned)?;
+                }
+            }
+        }
+    }
+
+    // Deduplicate by source path (keep first occurrence)
+    let mut seen = std::collections::HashSet::new();
+    scanned.retain(|a| {
+        let key = source_path_for_scanned(a);
+        seen.insert(key)
+    });
+
+    Ok(scanned)
+}
+
+/// Scan a single directory for markdown files, appending to `scanned`.
+fn scan_md_dir(dir_path: &Path, rel_dir: &str, scanned: &mut Vec<ScannedArticle>) -> Result<()> {
+    let entries = fs::read_dir(dir_path).map_err(MfError::Io)?;
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) == Some(defaults::MARKDOWN_EXTENSION) {
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                 let title = stem.replace('-', " ");
-                scanned.push(ScannedArticle { title, filename: stem.to_string() });
+                scanned.push(ScannedArticle {
+                    title,
+                    filename: stem.to_string(),
+                    source_dir: Some(rel_dir.to_string()),
+                });
             }
         }
     }
-    Ok(scanned)
+    Ok(())
+}
+
+/// Build the project-relative source path for a scanned article.
+fn source_path_for_scanned(a: &ScannedArticle) -> String {
+    match a.source_dir {
+        Some(ref dir) => format!("{}/{}.{}", dir, a.filename, defaults::MARKDOWN_EXTENSION),
+        None => format!("{}/{}.{}", crate::defaults::DOCS_DIR, a.filename, defaults::MARKDOWN_EXTENSION),
+    }
 }
 
 /// Compare the index against a filesystem scan to find added/removed articles.
+///
+/// `docs_dir` is the configured docs directory name (e.g. "docs").
 pub fn compute_article_diff(index: &IndexFile, scanned: &[ScannedArticle], docs_dir: &str) -> ArticleDiff {
     let mut added = Vec::new();
     let mut removed = Vec::new();
 
-    let index_names: std::collections::HashSet<&str> = index
-        .articles
-        .as_ref()
-        .map(|a| {
-            a.iter()
-                .filter_map(|a| {
-                    a.source_path
-                        .strip_prefix(&format!("{docs_dir}/"))
-                        .and_then(|s| s.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)))
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    // Build set of scanned source_paths (project-relative)
+    let scanned_paths: std::collections::HashSet<String> = scanned.iter().map(source_path_for_scanned).collect();
 
-    let scanned_names: std::collections::HashSet<&str> = scanned.iter().map(|s| s.filename.as_str()).collect();
+    // Build set of scanned filenames for the legacy fallback check
+    let scanned_filenames: std::collections::HashSet<&str> = scanned.iter().map(|s| s.filename.as_str()).collect();
 
+    // Removed: articles in index whose source_path no longer has a matching file
     for a in index.articles.iter().flat_map(|a| a.iter()) {
-        if let Some(name) = a
-            .source_path
-            .strip_prefix(&format!("{docs_dir}/"))
-            .and_then(|s| s.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)))
-        {
-            if !scanned_names.contains(name) {
+        if !scanned_paths.contains(&a.source_path) {
+            // For articles in the default docs dir, also check via the old
+            // filename-based method (strip docs/ prefix + .md extension)
+            let docs_prefix = format!("{docs_dir}/");
+            let in_docs = a.source_path.starts_with(&docs_prefix);
+            let matched = if in_docs {
+                a.source_path
+                    .strip_prefix(&docs_prefix)
+                    .and_then(|s| s.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)))
+                    .is_some_and(|name| scanned_filenames.contains(name))
+            } else {
+                false
+            };
+            if !matched {
                 removed.push(a.clone());
             }
         }
     }
 
+    // Added: scanned articles not yet in index
     for s in scanned {
-        if !index_names.contains(s.filename.as_str()) {
+        let sp = source_path_for_scanned(s);
+        let exists = index.articles.as_ref().is_some_and(|articles| articles.iter().any(|a| a.source_path == sp));
+        if !exists {
             added.push(s.clone());
         }
     }
@@ -185,11 +230,21 @@ pub fn reconcile_articles(project_path: &Path, mut index: IndexFile, diff: Artic
     let articles = index.articles.get_or_insert_with(Vec::new);
     for a in &diff.added {
         let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let source_path = if a.source_dir.is_some() {
+            source_path_for_scanned(a)
+        } else {
+            // Defensive: source_path_for_scanned falls back to defaults::DOCS_DIR,
+            // but we use paths.docs from config which may differ. This branch is
+            // currently unreachable (scan_md_dir always sets source_dir), kept
+            // for correctness if a future caller produces ScannedArticle without
+            // a source_dir.
+            format!("{}/{}.{}", paths.docs, a.filename, defaults::MARKDOWN_EXTENSION)
+        };
         articles.push(Article {
             title: a.title.clone(),
             project: project_name.clone(),
             article_type: ArticleType::Blog,
-            source_path: format!("{}/{}.{}", paths.docs, a.filename, defaults::MARKDOWN_EXTENSION),
+            source_path,
             status: ArticleStatus::Draft,
             created_at: now.clone(),
             updated_at: now,

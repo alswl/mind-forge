@@ -53,8 +53,12 @@ pub fn status_for(repo_root: &Path, project_path: &Path) -> Result<ProjectStatus
 
     let index = match crate::service::index::load(project_path) {
         Ok(idx) => idx,
-        Err(_) => {
-            tracing::warn!("failed to load index for {}", project_path.display());
+        Err(e) => {
+            let detail = match &e {
+                crate::error::MfError::ParseError { detail, .. } => format!(": {detail}"),
+                _ => String::new(),
+            };
+            tracing::warn!("failed to load index for {}{detail}", project_path.display());
             IndexFile::create_default()
         }
     };

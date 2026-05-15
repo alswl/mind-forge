@@ -489,3 +489,169 @@ fn article_list_json_with_configured_source_dir() {
     let source_dir = article.unwrap()["source_dir"].as_str().unwrap_or("");
     assert_eq!(source_dir, "specs", "source_dir should reflect configured value: {source_dir}");
 }
+
+// ---------------------------------------------------------------------------
+// US2: Article discovery consistency tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn article_index_scans_configured_source_dir() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  articles:\n    my-article:\n      source_dir: specs\n",
+    );
+    common::write_source_file(&repo, "my-project", "specs", "my-article", "# Custom article\n");
+    common::write_doc(&repo, "my-project", "docs-article", "# Docs article\n");
+
+    let (parsed, output) = json_index(&[], &repo.path().join("my-project"));
+    assert_eq!(output.status.code(), Some(0), "index should succeed");
+    assert!(
+        parsed["data"]["articles_count"].as_u64().unwrap_or(0) >= 2,
+        "should index articles from both docs/ and specs/"
+    );
+
+    let list_output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+    let stdout = String::from_utf8(list_output.stdout).unwrap();
+    assert!(stdout.contains("my-article"), "should list article from source_dir: {stdout}");
+    assert!(stdout.contains("docs-article"), "should list article from docs: {stdout}");
+}
+
+#[test]
+fn article_list_shows_articles_after_indexing_no_preexisting_index() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    common::write_doc(&repo, "my-project", "indexed-article", "# Indexed\n");
+
+    let (_, output) = json_index(&[], &repo.path().join("my-project"));
+    assert_eq!(output.status.code(), Some(0), "index should succeed");
+
+    let list_output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+    let stdout = String::from_utf8(list_output.stdout).unwrap();
+    assert!(stdout.contains("indexed-article"), "should list indexed article: {stdout}");
+}
+
+// ---------------------------------------------------------------------------
+// US3: Informative warning detail tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn article_list_duplicate_key_warning_includes_detail() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_index(
+        &repo,
+        "my-project",
+        r#"schema: '1'
+articles:
+  first:
+    title: First
+    source_path: docs/first.md
+articles:
+  second:
+    title: Second
+    source_path: docs/second.md
+"#,
+    );
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Warning should include duplicate key detail
+    let full_output = format!("{stderr}{stdout}");
+    assert!(
+        full_output.contains("duplicate top-level key"),
+        "warning should mention 'duplicate top-level key': {full_output}"
+    );
+}
+
+#[test]
+fn article_index_duplicate_key_warning_includes_key_name() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_index(
+        &repo,
+        "my-project",
+        r#"schema: '1'
+articles:
+  first:
+    title: First
+    source_path: docs/first.md
+articles:
+  second:
+    title: Second
+    source_path: docs/second.md
+"#,
+    );
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let full_output = format!("{stderr}{stdout}");
+    // Warning should mention the specific key name
+    assert!(
+        full_output.contains("articles") || full_output.contains("'articles'"),
+        "warning should include key name 'articles': {full_output}"
+    );
+}
+
+#[test]
+fn article_index_same_article_in_docs_and_source_dir_dedup() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    // Configure a source_dir that matches the default docs name
+    // This tests the dedup when the same article appears in both places
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  articles:\n    dedup-test:\n      source_dir: docs\n",
+    );
+    // Create the file in docs/ (which is also the configured source_dir)
+    common::write_doc(&repo, "my-project", "dedup-test", "# Dedup\n");
+
+    let (parsed, output) = json_index(&[], &repo.path().join("my-project"));
+    assert_eq!(output.status.code(), Some(0));
+    let articles_count = parsed["data"]["articles_count"].as_u64().unwrap_or(0);
+    assert_eq!(articles_count, 1, "should index article exactly once despite duplicate source_dir config: {parsed}");
+}
+
+#[test]
+fn article_index_skips_missing_source_dir() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  articles:\n    ghost:\n      source_dir: non-existent\n",
+    );
+    common::write_doc(&repo, "my-project", "real-article", "# Real\n");
+
+    let (parsed, output) = json_index(&[], &repo.path().join("my-project"));
+    assert_eq!(output.status.code(), Some(0), "index should succeed even with missing source_dir");
+    assert!(parsed["data"]["articles_count"].as_u64().unwrap_or(0) >= 1);
+}

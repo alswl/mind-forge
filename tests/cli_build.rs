@@ -1,6 +1,5 @@
 use assert_cmd::Command;
 use predicates::str;
-use serde_json;
 use std::fs;
 
 mod common;
@@ -532,4 +531,50 @@ fn build_default_source_dir_unchanged_without_config() {
     assert!(output_path.exists(), "output should exist");
     let content = std::fs::read_to_string(&output_path).unwrap();
     assert!(content.contains("Default content"), "should build from default docs/ directory");
+}
+
+// ---------------------------------------------------------------------------
+// US2: Build auto-indexing (via configured source_dir)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn build_auto_indexes_article_in_mind_index_yaml() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Configure a source_dir for the article so build can find it without the index
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  articles:\n    auto-index-me:\n      source_dir: specs\n",
+    );
+    // Create article file in the configured source_dir
+    common::write_source_file(&repo, "my-project", "specs", "auto-index-me", "# Auto index\n");
+    // Write a minimal index (empty, article not in it)
+    common::write_index(&repo, "my-project", "schema: '1'\n");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "auto-index-me"])
+        .assert()
+        .success();
+
+    // After build, the article should be in the index
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["--format", "json", "article", "list"])
+        .output()
+        .expect("command runs");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    // Skip any tracing output before JSON
+    let json_start = stdout.find('{').unwrap_or(0);
+    let stripped = &stdout[json_start..];
+    let parsed: serde_json::Value = serde_json::from_str(stripped).unwrap_or_else(|e| {
+        panic!("JSON parse error: {e}\nstdout: {stdout:?}");
+    });
+    let articles = parsed["data"].as_array().unwrap();
+    let auto_indexed = articles.iter().find(|a| a["source_path"].as_str().unwrap_or("").contains("auto-index-me"));
+    assert!(auto_indexed.is_some(), "built article should appear in index after build: {stdout}");
 }

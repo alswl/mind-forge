@@ -109,6 +109,7 @@ pub enum LintKind {
     StaleIndexEntry,
     NameConvention,
     MissingManifest,
+    DuplicateKey,
 }
 
 // ---------------------------------------------------------------------------

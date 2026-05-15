@@ -14,7 +14,13 @@ pub fn lint_project(
     fix: bool,
 ) -> Result<(Vec<serde_json::Value>, serde_json::Value)> {
     let active_rules: Vec<LintKind> = if rules.is_empty() {
-        vec![LintKind::MissingDirectory, LintKind::StaleIndexEntry, LintKind::NameConvention, LintKind::MissingManifest]
+        vec![
+            LintKind::MissingDirectory,
+            LintKind::StaleIndexEntry,
+            LintKind::NameConvention,
+            LintKind::MissingManifest,
+            LintKind::DuplicateKey,
+        ]
     } else {
         rules.to_vec()
     };
@@ -36,6 +42,9 @@ pub fn lint_project(
             }
             LintKind::MissingManifest => {
                 check_missing_manifest(project_path, fix, &mut issues, &mut fixable_count, &mut unfixed_count)?;
+            }
+            LintKind::DuplicateKey => {
+                check_duplicate_key(project_path, fix, &mut issues, &mut fixable_count, &mut unfixed_count)?;
             }
         }
     }
@@ -294,7 +303,57 @@ fn check_missing_manifest(
     Ok(())
 }
 
-/// Check that configured article source directories exist.
+/// Check for duplicate top-level keys in mind-index.yaml.
+fn check_duplicate_key(
+    project_path: &Path,
+    fix: bool,
+    issues: &mut Vec<ProjectLintIssue>,
+    fixable_count: &mut u64,
+    _unfixed_count: &mut u64,
+) -> Result<()> {
+    let index_path = project_path.join("mind-index.yaml");
+    if !index_path.exists() {
+        return Ok(());
+    }
+    let content = match std::fs::read_to_string(&index_path) {
+        Ok(c) => c,
+        Err(_) => return Ok(()),
+    };
+
+    // Try to parse — if it fails with a duplicate key error, report it
+    if let Err(e) = serde_yaml::from_str::<serde_yaml::Value>(&content) {
+        let err_str = e.to_string();
+        let key_name = crate::service::index::extract_duplicate_key(&err_str);
+        let line = crate::service::index::extract_error_line(&err_str);
+        if let Some(ref key) = key_name {
+            // Try to fix first (so we know the final `fixed` state for the issue)
+            let fixed = if fix {
+                let cleaned = crate::service::index::deduplicate_top_level_keys(&content);
+                util::atomic_write(&index_path, &cleaned).is_ok()
+            } else {
+                false
+            };
+
+            let msg = match line {
+                Some(l) => format!("duplicate key '{}' at line {}", key, l),
+                None => format!("duplicate key '{}'", key),
+            };
+            issues.push(ProjectLintIssue {
+                severity: LintSeverity::Warning,
+                kind: LintKind::DuplicateKey,
+                message: msg,
+                path: "mind-index.yaml".to_string(),
+                fixable: true,
+                fixed,
+            });
+            if fixed {
+                *fixable_count += 1;
+            }
+        }
+    }
+
+    Ok(())
+}
 fn check_article_source_dirs(
     project_path: &Path,
     issues: &mut Vec<ProjectLintIssue>,
