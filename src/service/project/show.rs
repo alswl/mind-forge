@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::defaults;
 use crate::error::Result;
 use crate::model::index::IndexFile;
 use crate::model::project::{MindYamlSummary, ProjectDetails};
@@ -45,7 +46,11 @@ pub fn show(project_path: &Path, project_name: &str) -> Result<ProjectDetails> {
         match std::fs::read_to_string(&mind_yaml_path) {
             Ok(content) => {
                 let parsed: serde_json::Value = serde_yaml::from_str(&content).unwrap_or_default();
-                let schema_version = parsed.get("schema_version").and_then(|v| v.as_str()).unwrap_or("1").to_string();
+                let schema_version = parsed
+                    .get("schema_version")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(defaults::SCHEMA_VERSION)
+                    .to_string();
                 let types: Vec<String> = parsed
                     .get("types")
                     .and_then(|v| v.as_array())
@@ -56,7 +61,8 @@ pub fn show(project_path: &Path, project_name: &str) -> Result<ProjectDetails> {
                     .and_then(|v| v.as_array())
                     .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
                     .unwrap_or_default();
-                let assets_dir = parsed.get("assets_dir").and_then(|v| v.as_str()).unwrap_or("assets").to_string();
+                let assets_dir =
+                    parsed.get("assets_dir").and_then(|v| v.as_str()).unwrap_or(defaults::ASSETS_DIR).to_string();
                 Some(MindYamlSummary { schema_version, types, source_dirs, assets_dir })
             }
             Err(_) => None,

@@ -2,9 +2,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
+use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::index::IndexFile;
 use crate::model::term::{TermFinding, TermLintFailure, TermLintReport};
+use crate::service::config as config_svc;
 use crate::service::index;
 use crate::service::util::{atomic_write, canonicalize_within, rel_posix_path};
 
@@ -186,7 +188,8 @@ pub fn lint_terms(project_root: &Path, fix: bool, dry_run: bool) -> Result<TermL
         return Ok(empty_report(fix, dry_run));
     }
 
-    let docs_dir = project_root.join("docs");
+    let paths = config_svc::project_paths(project_root)?;
+    let docs_dir = project_root.join(&paths.docs);
     if !docs_dir.exists() {
         return Ok(empty_report(fix, dry_run));
     }
@@ -213,7 +216,7 @@ pub fn lint_terms(project_root: &Path, fix: bool, dry_run: bool) -> Result<TermL
             continue;
         }
         let path = entry.path();
-        if path.extension().map(|e| e != "md").unwrap_or(true) {
+        if path.extension().map(|e| e != defaults::MARKDOWN_EXTENSION).unwrap_or(true) {
             continue;
         }
 
@@ -302,6 +305,7 @@ fn apply_term_fixes(
     let mut fixed_count: u64 = 0;
     let mut modified_files: Vec<String> = Vec::new();
     let mut would_fix_count: u64 = 0;
+    let paths = config_svc::project_paths(project_root)?;
 
     let mut by_path: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     for (idx, ifind) in internal_findings.iter().enumerate() {
@@ -310,8 +314,11 @@ fn apply_term_fixes(
 
     for (path_rel, indices) in &by_path {
         let full_path = project_root.join(path_rel);
-        if canonicalize_within(&project_root.join("docs"), &full_path).is_err() {
-            failures.push(TermLintFailure { path: path_rel.clone(), reason: "path escapes project docs/".to_string() });
+        if canonicalize_within(&project_root.join(&paths.docs), &full_path).is_err() {
+            failures.push(TermLintFailure {
+                path: path_rel.clone(),
+                reason: format!("path escapes project {}/", paths.docs),
+            });
             continue;
         }
 

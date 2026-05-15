@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use crate::cli::deprecation::DeprecationContext;
 use crate::cli::CommandOutcome;
+use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::source::{FileKind, SourceKind};
 use crate::output::Format;
@@ -206,7 +207,7 @@ pub fn dispatch(
         Some(SourceSubcommand::Index(args)) => handle_index(args, root, &cwd, format),
         Some(SourceSubcommand::Remove(args)) => {
             // Detect PATH vs NAME: if input contains '/' or starts with 'sources', treat as PATH
-            let is_path = args.name_or_path.contains('/') || args.name_or_path.starts_with("sources");
+            let is_path = args.name_or_path.contains('/') || args.name_or_path.starts_with(defaults::SOURCES_DIR);
             if !is_path {
                 deprecation.warn_subject("positional NAME", "full PATH (e.g., sources/yuque/foo.md)");
             }

@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use chrono::{SecondsFormat, Utc};
 
 use crate::cli::publish::{PublishRunArgs, PublishUpdateArgs};
+use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::config::{MindConfig, PublishTarget, PublishTargetType};
 use crate::model::index::{PublishRecord, PublishStatus};
@@ -281,7 +282,8 @@ fn resolve_local_path(repo_root: &Path, target: &PublishTarget) -> Result<PathBu
 }
 
 fn locate_build_artifact(project_path: &Path, config: &MindConfig, article: &str) -> Result<(PathBuf, u64)> {
-    let format = if config.build.format.is_empty() { "md" } else { config.build.format.as_str() };
+    let format =
+        if config.build.format.is_empty() { defaults::DEFAULT_BUILD_FORMAT } else { config.build.format.as_str() };
     let path = project_path.join(&config.build.output_dir).join(format!("{article}.{format}"));
     let metadata = fs::metadata(&path).map_err(|_| {
         MfError::not_found(
@@ -303,7 +305,8 @@ fn run_local(
     let (artifact_path, size_bytes) = locate_build_artifact(project_path, config, &args.article)?;
 
     let dest_dir = resolve_local_path(repo_root, target)?;
-    let format = if config.build.format.is_empty() { "md" } else { config.build.format.as_str() };
+    let format =
+        if config.build.format.is_empty() { defaults::DEFAULT_BUILD_FORMAT } else { config.build.format.as_str() };
     let dest_file = dest_dir.join(format!("{}.{format}", args.article));
 
     if size_bytes == 0 {

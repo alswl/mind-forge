@@ -1,4 +1,5 @@
 mod cli;
+mod defaults;
 mod error;
 mod exit;
 mod model;

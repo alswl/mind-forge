@@ -21,7 +21,7 @@ fn test_show_no_mind_yaml_returns_defaults() {
         .assert()
         .success()
         .stdout(predicate::str::contains("schema_version:"))
-        .stdout(predicate::str::contains("output_dir: _build"));
+        .stdout(predicate::str::contains("output_dir: outputs"));
 }
 
 #[test]

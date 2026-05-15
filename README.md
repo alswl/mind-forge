@@ -48,6 +48,21 @@ cargo run -- source list
 cargo run -- completion zsh
 ```
 
+## Defaults
+
+`mf build <ARTICLE>` writes to `outputs/<ARTICLE>.md` by default. Projects can
+override this in `mind.yaml`:
+
+```yaml
+build:
+  output_dir: custom-output
+  format: md
+```
+
+Other project layout defaults are `docs/`, `sources/`, `assets/`, and
+`_archived/`; these defaults are centralized in code and exposed through
+`mf config show`.
+
 ## Migrating from mind
 
 If you're migrating from the `mind` CLI, see:

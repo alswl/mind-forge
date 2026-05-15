@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::defaults;
 use crate::error::{MfError, Result};
 
 /// Atomically write content to a file using write-then-rename.
@@ -28,7 +29,7 @@ pub fn atomic_write(path: &Path, content: &str) -> Result<()> {
 ///
 /// The compatible set is `["1"]` for the current generation.
 pub fn validate_schema_version(version: &str, path: &Path) -> Result<()> {
-    let compatible = ["1"];
+    let compatible = [defaults::SCHEMA_VERSION];
     if !compatible.contains(&version) {
         return Err(MfError::IncompatibleSchema {
             path: path.to_path_buf(),

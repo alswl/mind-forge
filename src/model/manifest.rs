@@ -1,12 +1,14 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::defaults;
+
 /// Default value for `MindsManifest.projects_dir` when missing.
 pub fn default_projects_dir() -> String {
-    "projects".to_string()
+    defaults::PROJECTS_DIR.to_string()
 }
 
 fn default_schema_version() -> String {
-    "1".to_string()
+    defaults::SCHEMA_VERSION.to_string()
 }
 
 /// A project entry in `minds.yaml`.
@@ -62,7 +64,11 @@ pub struct MindsManifest {
 impl MindsManifest {
     /// Returns a default manifest: `schema_version: "1"`, `projects_dir: "projects"`, empty projects.
     pub fn create_default() -> Self {
-        Self { schema_version: "1".to_string(), projects_dir: default_projects_dir(), projects: Vec::new() }
+        Self {
+            schema_version: defaults::SCHEMA_VERSION.to_string(),
+            projects_dir: default_projects_dir(),
+            projects: Vec::new(),
+        }
     }
 }
 

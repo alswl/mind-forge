@@ -6,6 +6,7 @@ use chrono::Utc;
 use super::{create_symlink, infer_kind, sha256_file};
 use crate::error::{MfError, Result};
 use crate::model::asset::Asset;
+use crate::service::config as config_svc;
 use crate::service::index;
 
 /// Parameters for `add()`.
@@ -29,7 +30,8 @@ pub fn add(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<Asset> {
         ));
     }
 
-    let assets_dir = project_path.join("assets");
+    let paths = config_svc::project_paths(project_path)?;
+    let assets_dir = project_path.join(&paths.assets);
     fs::create_dir_all(&assets_dir).map_err(MfError::Io)?;
 
     let basename = args.source.file_name().map(|s| s.to_string_lossy().to_string()).ok_or_else(|| {
@@ -40,7 +42,7 @@ pub fn add(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<Asset> {
     let assets_canonical = assets_dir.canonicalize().map_err(MfError::Io)?;
     if source_canonical.starts_with(&assets_canonical) {
         return Err(MfError::usage(
-            "source file is already inside the project's assets/ directory",
+            format!("source file is already inside the project's {}/ directory", paths.assets),
             Some("use 'mf asset update <PATH>' to refresh metadata".to_string()),
         ));
     }

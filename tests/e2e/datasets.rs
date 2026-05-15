@@ -219,7 +219,7 @@ impl Dataset {
 /// 标准的 docs/my-article.md 源文件内容
 pub const ARTICLE_SOURCE: &str = "# My Article\n\nContent for e2e testing.";
 
-/// 预构建的 _build/my-article.md 产物内容
+/// 预构建的 outputs/my-article.md 产物内容
 pub const ARTICLE_BUILD: &str = "<h1>My Article</h1>\n<p>Content for e2e testing.</p>";
 
 /// 含有 my-article 条目的 mind-index.yaml（供 publish 命令查找）
@@ -271,10 +271,10 @@ impl Dataset {
         self
     }
 
-    /// 在项目下创建 build 产物 _build/<article>.md
+    /// 在项目下创建 build 产物 outputs/<article>.md
     pub fn with_build_artifact(self, project: &str, article: &str, content: &str) -> Self {
-        let dir = self.dir.path().join("projects").join(project).join("_build");
-        fs::create_dir_all(&dir).expect("create _build dir");
+        let dir = self.dir.path().join("projects").join(project).join("outputs");
+        fs::create_dir_all(&dir).expect("create outputs dir");
         fs::write(dir.join(format!("{article}.md")), content).expect("write build artifact");
         self
     }

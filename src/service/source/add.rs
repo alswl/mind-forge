@@ -6,6 +6,7 @@ use chrono::Utc;
 use super::{derive_name_from_path, infer_kind_from_path, validate_url};
 use crate::error::{MfError, Result};
 use crate::model::source::{FileKind, Source, SourceKind};
+use crate::service::config as config_svc;
 use crate::service::index;
 use crate::service::util;
 
@@ -169,10 +170,11 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
         ));
     }
 
-    let sources_dir = project_path.join("sources");
+    let paths = config_svc::project_paths(project_path)?;
+    let sources_dir = project_path.join(&paths.sources);
     if util::canonicalize_within(&sources_dir, &source_canonical).is_ok() {
         return Err(MfError::usage(
-            "source file is already inside the project's sources/ directory",
+            format!("source file is already inside the project's {}/ directory", paths.sources),
             Some("use 'mf source update <NAME>' to modify metadata".to_string()),
         ));
     }

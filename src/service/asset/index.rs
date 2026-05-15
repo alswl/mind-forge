@@ -9,9 +9,10 @@ use walkdir::WalkDir;
 use super::{infer_kind, sha256_file, update_all};
 use crate::error::{MfError, Result};
 use crate::model::asset::{Asset, AssetIndexEntry, AssetIndexReport};
+use crate::service::config as config_svc;
 use crate::service::index;
 
-/// Recursively scan `<project>/assets/` for regular files.
+/// Recursively scan the project assets directory for regular files.
 fn scan_assets_dir(assets_dir: &Path) -> Result<Vec<PathBuf>> {
     if !assets_dir.exists() {
         return Ok(Vec::new());
@@ -40,7 +41,8 @@ fn scan_assets_dir(assets_dir: &Path) -> Result<Vec<PathBuf>> {
 
 /// Reconcile the filesystem assets directory with the index.
 pub fn reconcile(project_path: &Path, dry_run: bool, refresh_metadata: bool) -> Result<AssetIndexReport> {
-    let assets_dir = project_path.join("assets");
+    let paths = config_svc::project_paths(project_path)?;
+    let assets_dir = project_path.join(&paths.assets);
     if !assets_dir.exists() {
         return Err(MfError::usage(
             format!("assets directory not found at '{}'", assets_dir.display()),

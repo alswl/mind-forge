@@ -8,7 +8,7 @@ use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::model::article::ArticleStatus;
 use crate::output::Format;
-use crate::service::{article as article_svc, util as svc_util};
+use crate::service::{article as article_svc, config as config_svc, util as svc_util};
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleCmd {
@@ -155,7 +155,8 @@ pub fn dispatch(
             let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
             let scanned = article_svc::scan_docs(&project_path)?;
             let index = crate::service::index::load(&project_path)?;
-            let diff = article_svc::compute_article_diff(&index, &scanned);
+            let paths = config_svc::project_paths(&project_path)?;
+            let diff = article_svc::compute_article_diff(&index, &scanned, &paths.docs);
 
             if args.dry_run {
                 let data = serde_json::json!({

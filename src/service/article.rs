@@ -3,9 +3,11 @@ use std::path::Path;
 
 use chrono::Utc;
 
+use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::article::{Article, ArticleDiff, ArticleStatus, ArticleType, LintIssue, ScannedArticle};
 use crate::model::index::IndexFile;
+use crate::service::config as config_svc;
 use crate::service::index;
 use crate::service::util;
 
@@ -28,10 +30,11 @@ pub fn new_article(
     force: bool,
 ) -> Result<String> {
     let filename = util::to_filename(title);
-    let docs_dir = project_path.join("docs");
+    let paths = config_svc::project_paths(project_path)?;
+    let docs_dir = project_path.join(&paths.docs);
     fs::create_dir_all(&docs_dir).map_err(MfError::Io)?;
 
-    let article_path = docs_dir.join(format!("{filename}.md"));
+    let article_path = docs_dir.join(format!("{filename}.{}", defaults::MARKDOWN_EXTENSION));
     if article_path.exists() {
         if force {
             fs::remove_file(&article_path).map_err(MfError::Io)?;
@@ -53,7 +56,7 @@ pub fn new_article(
     let status = if draft { ArticleStatus::Draft } else { ArticleStatus::Published };
 
     // When force, replace existing index entry instead of duplicating
-    let source_path = format!("docs/{filename}.md");
+    let source_path = format!("{}/{filename}.{}", paths.docs, defaults::MARKDOWN_EXTENSION);
     if force {
         articles.retain(|a| a.source_path != source_path);
     }
@@ -78,9 +81,10 @@ pub fn list_articles(project_path: &Path) -> Result<Vec<Article>> {
     Ok(index.articles.unwrap_or_default())
 }
 
-/// Scan `docs/` directory for markdown files and return discovered articles.
+/// Scan the docs directory for markdown files and return discovered articles.
 pub fn scan_docs(project_path: &Path) -> Result<Vec<ScannedArticle>> {
-    let docs_dir = project_path.join("docs");
+    let paths = config_svc::project_paths(project_path)?;
+    let docs_dir = project_path.join(&paths.docs);
     if !docs_dir.exists() {
         return Ok(Vec::new());
     }
@@ -89,7 +93,7 @@ pub fn scan_docs(project_path: &Path) -> Result<Vec<ScannedArticle>> {
     let entries = fs::read_dir(&docs_dir).map_err(MfError::Io)?;
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("md") {
+        if path.extension().and_then(|e| e.to_str()) == Some(defaults::MARKDOWN_EXTENSION) {
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                 let title = stem.replace('-', " ");
                 scanned.push(ScannedArticle { title, filename: stem.to_string() });
@@ -100,7 +104,7 @@ pub fn scan_docs(project_path: &Path) -> Result<Vec<ScannedArticle>> {
 }
 
 /// Compare the index against a filesystem scan to find added/removed articles.
-pub fn compute_article_diff(index: &IndexFile, scanned: &[ScannedArticle]) -> ArticleDiff {
+pub fn compute_article_diff(index: &IndexFile, scanned: &[ScannedArticle], docs_dir: &str) -> ArticleDiff {
     let mut added = Vec::new();
     let mut removed = Vec::new();
 
@@ -108,14 +112,24 @@ pub fn compute_article_diff(index: &IndexFile, scanned: &[ScannedArticle]) -> Ar
         .articles
         .as_ref()
         .map(|a| {
-            a.iter().filter_map(|a| a.source_path.strip_prefix("docs/").and_then(|s| s.strip_suffix(".md"))).collect()
+            a.iter()
+                .filter_map(|a| {
+                    a.source_path
+                        .strip_prefix(&format!("{docs_dir}/"))
+                        .and_then(|s| s.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)))
+                })
+                .collect()
         })
         .unwrap_or_default();
 
     let scanned_names: std::collections::HashSet<&str> = scanned.iter().map(|s| s.filename.as_str()).collect();
 
     for a in index.articles.iter().flat_map(|a| a.iter()) {
-        if let Some(name) = a.source_path.strip_prefix("docs/").and_then(|s| s.strip_suffix(".md")) {
+        if let Some(name) = a
+            .source_path
+            .strip_prefix(&format!("{docs_dir}/"))
+            .and_then(|s| s.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)))
+        {
             if !scanned_names.contains(name) {
                 removed.push(a.clone());
             }
@@ -134,6 +148,7 @@ pub fn compute_article_diff(index: &IndexFile, scanned: &[ScannedArticle]) -> Ar
 /// Apply a diff to the index: add new articles, remove deleted ones.
 pub fn reconcile_articles(project_path: &Path, mut index: IndexFile, diff: ArticleDiff) -> Result<IndexFile> {
     let project_name = util::dir_name(project_path);
+    let paths = config_svc::project_paths(project_path)?;
 
     // Remove deleted articles
     if let Some(ref mut articles) = index.articles {
@@ -150,7 +165,7 @@ pub fn reconcile_articles(project_path: &Path, mut index: IndexFile, diff: Artic
             title: a.title.clone(),
             project: project_name.clone(),
             article_type: ArticleType::Blog,
-            source_path: format!("docs/{}.md", a.filename),
+            source_path: format!("{}/{}.{}", paths.docs, a.filename, defaults::MARKDOWN_EXTENSION),
             status: ArticleStatus::Draft,
             created_at: now.clone(),
             updated_at: now,
@@ -163,7 +178,8 @@ pub fn reconcile_articles(project_path: &Path, mut index: IndexFile, diff: Artic
 /// Lint articles in the project: check filenames and content quality.
 /// When `fix` is true, auto-fix fixable issues.
 pub fn lint_articles(project_path: &Path, fix: bool) -> Result<Vec<LintIssue>> {
-    let docs_dir = project_path.join("docs");
+    let paths = config_svc::project_paths(project_path)?;
+    let docs_dir = project_path.join(&paths.docs);
     if !docs_dir.exists() {
         return Ok(Vec::new());
     }
@@ -173,11 +189,11 @@ pub fn lint_articles(project_path: &Path, fix: bool) -> Result<Vec<LintIssue>> {
     let entries = fs::read_dir(&docs_dir).map_err(MfError::Io)?;
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+        if path.extension().and_then(|e| e.to_str()) != Some(defaults::MARKDOWN_EXTENSION) {
             continue;
         }
         if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-            let rel_path = format!("docs/{}.md", stem);
+            let rel_path = format!("{}/{}.{}", paths.docs, stem, defaults::MARKDOWN_EXTENSION);
 
             // Check content before filename (filename may rename the file)
             check_content(&mut issues, &path, &rel_path)?;

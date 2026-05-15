@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::defaults;
+
 use super::article::Article;
 use super::asset::Asset;
 use super::source::Source;
@@ -47,7 +49,7 @@ pub struct IndexFile {
 impl IndexFile {
     pub fn create_default() -> Self {
         Self {
-            schema_version: "1".to_string(),
+            schema_version: defaults::SCHEMA_VERSION.to_string(),
             sources: None,
             assets: None,
             articles: None,
@@ -240,7 +242,7 @@ impl IndexFile {
         let get_string =
             |key: &str| -> Option<String> { map.get(yaml_key(key)).and_then(|v| v.as_str().map(|s| s.to_string())) };
 
-        let schema_version = get_string("schema_version").unwrap_or_else(|| "1".to_string());
+        let schema_version = get_string("schema_version").unwrap_or_else(|| defaults::SCHEMA_VERSION.to_string());
 
         let vec_from_field = |key: &str| -> Option<Vec<serde_yaml::Value>> {
             map.get(yaml_key(key)).and_then(|v| v.as_sequence().cloned())

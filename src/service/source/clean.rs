@@ -2,15 +2,17 @@ use std::path::Path;
 
 use crate::error::{MfError, Result};
 use crate::model::source::{FileKind, Source, SourceIndexEntry, SourceIndexReport};
+use crate::service::config as config_svc;
 use crate::service::index;
 
 /// Clean dirty entries from the index: removes pdf/file sources whose archive
 /// files no longer exist on disk. URL sources are always kept.
 pub fn clean(project_path: &Path, dry_run: bool) -> Result<SourceIndexReport> {
-    let sources_dir = project_path.join("sources");
+    let paths = config_svc::project_paths(project_path)?;
+    let sources_dir = project_path.join(&paths.sources);
     if !sources_dir.exists() {
         return Err(MfError::usage(
-            format!("project has no sources/ directory at '{}'", sources_dir.display()),
+            format!("project has no {}/ directory at '{}'", paths.sources, sources_dir.display()),
             Some("use 'mf project lint --fix' to create missing directories".to_string()),
         ));
     }

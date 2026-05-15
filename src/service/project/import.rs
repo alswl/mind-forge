@@ -2,6 +2,7 @@ use std::path::Path;
 
 use chrono::Utc;
 
+use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::project::ProjectImportReport;
 use crate::service::{repo, util};
@@ -47,14 +48,14 @@ pub fn import_project(
     util::validate_project_name(&project_name)?;
 
     // Determine source and assets dirs
-    let sources_dir = source_dir.unwrap_or("sources").to_string();
-    let assets = assets_dir.unwrap_or("assets").to_string();
+    let sources_dir = source_dir.unwrap_or(defaults::SOURCES_DIR).to_string();
+    let assets = assets_dir.unwrap_or(defaults::ASSETS_DIR).to_string();
 
     // Infer type from project_name or explicit --type
     let inferred_type = project_type.unwrap_or("arch");
 
     // Build mind.yaml content
-    let mut doc = vec![format!("schema: '1'")];
+    let mut doc = vec![format!("schema: '{}'", defaults::SCHEMA_VERSION)];
     doc.push(format!("type: {}", inferred_type));
     doc.push(format!("source_dirs: [{}]", sources_dir));
     doc.push(format!("assets_dir: {}", assets));
@@ -85,7 +86,7 @@ pub fn import_project(
         let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
         let article_type = serde_yaml::from_str(inferred_type).unwrap_or_default();
         let index = crate::model::index::IndexFile {
-            schema_version: "1".to_string(),
+            schema_version: defaults::SCHEMA_VERSION.to_string(),
             sources: None,
             assets: None,
             articles: Some(vec![crate::model::article::Article {

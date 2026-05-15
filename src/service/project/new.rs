@@ -2,6 +2,7 @@ use std::path::Path;
 
 use chrono::Utc;
 
+use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::manifest::ProjectEntry;
 use crate::service::{repo, util};
@@ -40,8 +41,7 @@ pub fn scaffold(repo_root: &Path, name: &str, force: bool) -> Result<ScaffoldRep
     let created_at = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let mut scaffolded: Vec<String> = Vec::new();
 
-    let dirs = ["docs", "docs/images", "sources", "assets"];
-    for dir in &dirs {
+    for dir in defaults::REQUIRED_PROJECT_DIRS {
         let dir_path = resolved.join(dir);
         if !dir_path.exists() {
             std::fs::create_dir_all(&dir_path).map_err(MfError::Io)?;
@@ -51,14 +51,14 @@ pub fn scaffold(repo_root: &Path, name: &str, force: bool) -> Result<ScaffoldRep
 
     let mind_path = resolved.join("mind.yaml");
     if !mind_path.exists() {
-        let mind_yaml = "schema: '1'\n".to_string();
+        let mind_yaml = format!("schema: '{}'\n", defaults::SCHEMA_VERSION);
         util::atomic_write(&mind_path, &mind_yaml)?;
         scaffolded.push("mind.yaml".to_string());
     }
 
     let mind_index_path = resolved.join("mind-index.yaml");
     if !mind_index_path.exists() {
-        let mind_index_yaml = "schema: '1'\n".to_string();
+        let mind_index_yaml = format!("schema: '{}'\n", defaults::SCHEMA_VERSION);
         util::atomic_write(&mind_index_path, &mind_index_yaml)?;
         scaffolded.push("mind-index.yaml".to_string());
     }

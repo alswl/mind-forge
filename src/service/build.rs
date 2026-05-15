@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::service::{config as config_svc, index, util};
 
@@ -63,20 +64,21 @@ pub fn build_article_path(
 fn resolve_indexed_article_source(project_path: &Path, article: &str) -> Result<PathBuf> {
     // Load index and find article
     let index = index::load(project_path)?;
+    let paths = config_svc::project_paths(project_path)?;
     let article_entry = index
         .articles
         .iter()
         .flat_map(|a| a.iter())
         .find(|a| {
             // Priority 1: exact path match
-            let exact = format!("docs/{}", article);
-            let exact_md = format!("docs/{}.md", article);
+            let exact = format!("{}/{}", paths.docs, article);
+            let exact_md = format!("{}/{}.{}", paths.docs, article, defaults::MARKDOWN_EXTENSION);
             if a.source_path == exact || a.source_path == exact_md {
                 return true;
             }
             // Priority 2: slug match — strip docs/ and optional .md
-            if let Some(stripped) = a.source_path.strip_prefix("docs/") {
-                let slug = stripped.strip_suffix(".md").unwrap_or(stripped);
+            if let Some(stripped) = a.source_path.strip_prefix(&format!("{}/", paths.docs)) {
+                let slug = stripped.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)).unwrap_or(stripped);
                 if slug == article {
                     return true;
                 }
@@ -102,10 +104,10 @@ fn resolve_indexed_article_source(project_path: &Path, article: &str) -> Result<
 
     let title_slug = util::to_filename(&article_entry.title);
     let candidates = [
-        project_path.join("docs").join(article),
-        project_path.join("docs").join(format!("{article}.md")),
-        project_path.join("docs").join(&title_slug),
-        project_path.join("docs").join(format!("{title_slug}.md")),
+        project_path.join(&paths.docs).join(article),
+        project_path.join(&paths.docs).join(format!("{article}.{}", defaults::MARKDOWN_EXTENSION)),
+        project_path.join(&paths.docs).join(&title_slug),
+        project_path.join(&paths.docs).join(format!("{title_slug}.{}", defaults::MARKDOWN_EXTENSION)),
     ];
     candidates.into_iter().find(|path| path.exists()).ok_or_else(|| {
         MfError::usage(
@@ -147,7 +149,7 @@ fn build_source(
         let mut files: Vec<_> = fs::read_dir(source_path)
             .map_err(MfError::Io)?
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == defaults::MARKDOWN_EXTENSION))
             .map(|e| e.path())
             .collect();
         files.sort();

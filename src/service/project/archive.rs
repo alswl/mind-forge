@@ -2,6 +2,7 @@ use std::path::Path;
 
 use chrono::Utc;
 
+use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::project::ProjectArchiveReport;
 use crate::service::repo;
@@ -40,17 +41,17 @@ pub fn archive_project(repo_root: &Path, project_name: &str) -> Result<ProjectAr
         ));
     }
 
-    let archived_parent = repo_root.join("_archived");
+    let archived_parent = repo_root.join(defaults::ARCHIVE_DIR);
     let to_path = archived_parent.join(project_name);
 
     if to_path.exists() {
         return Err(MfError::usage(
-            format!("_archived/{project_name} already exists"),
+            format!("{}/{project_name} already exists", defaults::ARCHIVE_DIR),
             Some("remove or rename the existing archived project first".to_string()),
         ));
     }
 
-    // Ensure _archived dir exists
+    // Ensure archive dir exists
     std::fs::create_dir_all(&archived_parent).map_err(MfError::Io)?;
 
     // Run git mv

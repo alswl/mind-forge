@@ -34,7 +34,7 @@ fn show_defaults_when_no_mind_yaml() {
     let (stdout, _, code) = run_in(dir.path(), &["config", "show"]);
     assert_eq!(code, 0);
     assert!(stdout.contains("schema_version:"), "stdout: {stdout}");
-    assert!(stdout.contains("output_dir: _build"), "stdout: {stdout}");
+    assert!(stdout.contains("output_dir: outputs"), "stdout: {stdout}");
 }
 
 /// E2E: `mf config show` 在 repo 内子目录向上找到 mind.yaml

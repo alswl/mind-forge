@@ -1,5 +1,7 @@
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+use crate::defaults;
 
 /// Project metadata for a mind-forge project.
 #[derive(Debug, Clone, Default, JsonSchema, Serialize, Deserialize)]
@@ -62,7 +64,7 @@ pub struct PublishConfig {
 /// Build configuration for the project.
 #[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
 pub struct BuildConfig {
-    #[serde(default = "default_output_dir")]
+    #[serde(default = "default_output_dir", deserialize_with = "deserialize_output_dir")]
     pub output_dir: String,
     #[serde(default)]
     pub merge_order: Vec<String>,
@@ -77,11 +79,18 @@ impl Default for BuildConfig {
 }
 
 fn default_output_dir() -> String {
-    "_build".to_string()
+    defaults::BUILD_OUTPUT_DIR.to_string()
 }
 
 fn default_build_format() -> String {
-    "md".to_string()
+    defaults::DEFAULT_BUILD_FORMAT.to_string()
+}
+
+fn deserialize_output_dir<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_else(default_output_dir))
 }
 
 /// Source scanning configuration.
@@ -132,20 +141,20 @@ impl Default for PathsConfig {
 }
 
 fn default_docs() -> String {
-    "docs".to_string()
+    defaults::DOCS_DIR.to_string()
 }
 fn default_sources() -> String {
-    "sources".to_string()
+    defaults::SOURCES_DIR.to_string()
 }
 fn default_assets() -> String {
-    "assets".to_string()
+    defaults::ASSETS_DIR.to_string()
 }
 fn default_archive() -> String {
-    "_archived".to_string()
+    defaults::ARCHIVE_DIR.to_string()
 }
 
 fn default_schema_version() -> String {
-    "1".to_string()
+    defaults::SCHEMA_VERSION.to_string()
 }
 
 /// Top-level configuration for a mind-forge project (mind.yaml schema).
@@ -163,7 +172,7 @@ pub struct MindConfig {
     pub source: SourceConfig,
     #[serde(default)]
     pub term: TermConfig,
-    #[serde(default)]
+    #[serde(default, alias = "layout")]
     pub paths: PathsConfig,
     // -- Compatibility top-level fields (Python mind 0.3.0) --
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -183,7 +192,7 @@ pub struct MindConfig {
 impl Default for MindConfig {
     fn default() -> Self {
         Self {
-            schema_version: "1".to_string(),
+            schema_version: defaults::SCHEMA_VERSION.to_string(),
             project: None,
             build: BuildConfig::default(),
             publish: PublishConfig::default(),
@@ -270,6 +279,21 @@ mod tests {
     fn test_missing_schema_version_defaults_to_1() {
         let config: MindConfig = serde_yaml::from_str("name: test\n").unwrap();
         assert_eq!(config.schema_version, "1");
+    }
+
+    #[test]
+    fn test_null_build_output_dir_defaults_to_outputs() {
+        let config: MindConfig = serde_yaml::from_str("build:\n  output_dir:\n").unwrap();
+        assert_eq!(config.build.output_dir, "outputs");
+    }
+
+    #[test]
+    fn test_layout_alias_populates_paths() {
+        let config: MindConfig =
+            serde_yaml::from_str("layout:\n  docs: notes\n  sources: refs\n  assets: media\n").unwrap();
+        assert_eq!(config.paths.docs, "notes");
+        assert_eq!(config.paths.sources, "refs");
+        assert_eq!(config.paths.assets, "media");
     }
 
     #[test]

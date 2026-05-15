@@ -1,11 +1,11 @@
 use std::path::Path;
 
+use crate::defaults;
 use crate::error::Result;
 use crate::model::index::IndexFile;
 use crate::model::project::{LintKind, LintSeverity, ProjectLintIssue};
+use crate::service::config as config_svc;
 use crate::service::util;
-
-const REQUIRED_DIRS: &[&str] = &["docs", "docs/images", "sources", "assets"];
 
 /// Lint a single project, returning issues and summary.
 pub fn lint_project(
@@ -123,7 +123,10 @@ fn check_missing_directory(
     fixable_count: &mut u64,
     unfixed_count: &mut u64,
 ) -> Result<()> {
-    for dir in REQUIRED_DIRS {
+    let paths = config_svc::project_paths(project_path)?;
+    let images_dir = format!("{}/images", paths.docs);
+    let required_dirs = [&paths.docs, &images_dir, &paths.sources, &paths.assets];
+    for dir in required_dirs {
         let dir_path = project_path.join(dir);
         if !dir_path.exists() {
             let fixed = fix && std::fs::create_dir_all(&dir_path).is_ok();
@@ -211,7 +214,7 @@ fn check_stale_index_entry(
         let terms = index.terms;
 
         let new_index = IndexFile {
-            schema_version: "1".to_string(),
+            schema_version: defaults::SCHEMA_VERSION.to_string(),
             sources: Some(filtered_sources),
             assets: Some(filtered_assets),
             articles: Some(articles),

@@ -10,8 +10,9 @@ use chrono::Utc;
 use schemars::schema_for;
 use serde::Serialize;
 
+use crate::defaults;
 use crate::error::{MfError, Result};
-use crate::model::config::{MindConfig, ProjectMeta};
+use crate::model::config::{MindConfig, PathsConfig, ProjectMeta};
 use crate::service::util;
 
 // ---------------------------------------------------------------------------
@@ -76,7 +77,10 @@ pub fn load_project(cwd: &Path, repo_root: Option<&Path>) -> Result<Option<MindC
             let content = fs::read_to_string(&path).map_err(MfError::Io)?;
             if content.trim().is_empty() {
                 // Empty file returns default config
-                return Ok(Some(MindConfig { schema_version: "1".to_string(), ..MindConfig::default() }));
+                return Ok(Some(MindConfig {
+                    schema_version: defaults::SCHEMA_VERSION.to_string(),
+                    ..MindConfig::default()
+                }));
             }
             let mut config: MindConfig = serde_yaml::from_str(&content).map_err(|e| MfError::ParseError {
                 kind: "yaml".to_string(),
@@ -85,7 +89,7 @@ pub fn load_project(cwd: &Path, repo_root: Option<&Path>) -> Result<Option<MindC
             })?;
             // Schema version fallback: missing → default "1"
             if config.schema_version.is_empty() {
-                config.schema_version = "1".to_string();
+                config.schema_version = defaults::SCHEMA_VERSION.to_string();
             }
             util::validate_schema_version(&config.schema_version, &path)?;
 
@@ -146,6 +150,10 @@ pub fn load_project(cwd: &Path, repo_root: Option<&Path>) -> Result<Option<MindC
     }
 }
 
+pub fn project_paths(project_path: &Path) -> Result<PathsConfig> {
+    Ok(load_project(project_path, Some(project_path))?.map(|config| config.paths).unwrap_or_default())
+}
+
 fn find_mind_yaml(start: &Path, repo_root: Option<&Path>) -> Result<Option<PathBuf>> {
     let mut current = util::try_canonicalize(start);
 
@@ -186,13 +194,13 @@ fn find_mind_yaml(start: &Path, repo_root: Option<&Path>) -> Result<Option<PathB
 // Init template
 // ---------------------------------------------------------------------------
 
-const INIT_PROJECT_TEMPLATE: &str = r#"schema: "1"
+const INIT_PROJECT_TEMPLATE: &str = r#"schema: "{schema_version}"
 project:
   name: "{name}"
   created_at: "{created_at}"
 
 # build:
-#   output_dir: "_build"       # 默认构建输出目录
+#   output_dir: "{build_output_dir}"      # 默认构建输出目录
 #   merge_order: []            # 合并优先级（按文件名模式）
 
 # publish:
@@ -208,15 +216,23 @@ project:
 #   case_sensitive: false      # 术语大小写敏感
 
 # paths:
-#   docs: "docs"               # 文档目录
-#   sources: "sources"         # 源文件目录
-#   assets: "assets"           # 资源目录
-#   archive: "_archived"       # 归档目录
+#   docs: "{docs_dir}"               # 文档目录
+#   sources: "{sources_dir}"         # 源文件目录
+#   assets: "{assets_dir}"           # 资源目录
+#   archive: "{archive_dir}"       # 归档目录
 "#;
 
 /// Generate the default `mind.yaml` content for `mf config init`.
 pub fn init_template(name: &str, created_at: &str) -> String {
-    INIT_PROJECT_TEMPLATE.replace("{name}", name).replace("{created_at}", created_at)
+    INIT_PROJECT_TEMPLATE
+        .replace("{schema_version}", defaults::SCHEMA_VERSION)
+        .replace("{name}", name)
+        .replace("{created_at}", created_at)
+        .replace("{build_output_dir}", defaults::BUILD_OUTPUT_DIR)
+        .replace("{docs_dir}", defaults::DOCS_DIR)
+        .replace("{sources_dir}", defaults::SOURCES_DIR)
+        .replace("{assets_dir}", defaults::ASSETS_DIR)
+        .replace("{archive_dir}", defaults::ARCHIVE_DIR)
 }
 
 /// Sanitize a directory name to kebab-case for use as project name.
