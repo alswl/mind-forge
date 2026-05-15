@@ -401,3 +401,91 @@ fn article_index_with_project_flag() {
     assert_eq!(output.status.code(), Some(0), "should succeed with --project flag");
     assert!(parsed["data"]["articles_count"].as_u64().unwrap_or(0) >= 1);
 }
+
+// ---------------------------------------------------------------------------
+// US2: Article source directory tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn article_list_shows_default_source_dir() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "new", "blog", "Default Dir"])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    // Should show the default source_dir: docs/default-dir
+    assert!(stdout.contains("docs/default-dir"), "default source_dir should be docs/<article-name>: {stdout}");
+}
+
+#[test]
+fn article_list_json_shows_source_dir_field() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "new", "blog", "JSON Article"])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["--format", "json", "article", "list"])
+        .output()
+        .expect("command runs");
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(parsed["status"], "ok");
+    let articles = parsed["data"].as_array().unwrap();
+    assert!(!articles.is_empty());
+    let first = &articles[0];
+    // The JSON should include a source_dir field per contract
+    assert!(first.get("source_dir").is_some(), "article JSON should include source_dir field");
+    let source_dir = first["source_dir"].as_str().unwrap_or("");
+    assert!(source_dir.contains("docs/"), "default source_dir should contain docs/: {source_dir}");
+}
+
+#[test]
+fn article_list_json_with_configured_source_dir() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "custom-article");
+    common::write_doc(&repo, "my-project", "custom-article", "content\n");
+    // Configure a custom source_dir for the article
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  articles:\n    custom-article:\n      source_dir: specs\n",
+    );
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["--format", "json", "article", "list"])
+        .output()
+        .expect("command runs");
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let articles = parsed["data"].as_array().unwrap();
+    let article = articles.iter().find(|a| a["source_path"].as_str().unwrap_or("").contains("custom-article"));
+    assert!(article.is_some(), "custom-article should appear in listing");
+    let source_dir = article.unwrap()["source_dir"].as_str().unwrap_or("");
+    assert_eq!(source_dir, "specs", "source_dir should reflect configured value: {source_dir}");
+}

@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use crate::defaults;
 use crate::error::{MfError, Result};
+use crate::model::config::{BannerConfig, BannerLevel};
 use crate::service::{config as config_svc, index, util};
 
 /// A single source file entry in a build plan.
@@ -12,6 +13,16 @@ use crate::service::{config as config_svc, index, util};
 pub struct SourceEntry {
     pub path: String,
     pub size: u64,
+}
+
+/// Information about the configured build banner, included in dry-run output.
+#[derive(Debug, Serialize)]
+pub struct BannerInfo {
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub level: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
 }
 
 /// A build plan describing what would happen during a build.
@@ -26,6 +37,52 @@ pub struct BuildPlan {
     pub size_bytes: u64,
     pub estimated_size: u64,
     pub dry_run: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub banner: Option<BannerInfo>,
+}
+
+/// Render banner config into the Markdown text to insert into generated output.
+pub fn render_banner(banner: &BannerConfig) -> String {
+    match &banner.level {
+        Some(level) => {
+            let level_str = match level {
+                BannerLevel::Note => "note",
+                BannerLevel::Tip => "tip",
+                BannerLevel::Warning => "warning",
+                BannerLevel::Danger => "danger",
+            };
+            let text = banner.text.trim();
+            format!(":::{level_str}\n{text}\n:::\n\n")
+        }
+        None => {
+            let text = banner.text.trim();
+            format!("{text}\n\n")
+        }
+    }
+}
+
+/// Insert banner text into generated content after a frontmatter header if present,
+/// otherwise at the very beginning.
+fn insert_banner_into_content(content: &str, banner_text: &str) -> String {
+    // Check for YAML frontmatter delimited by `---`
+    if let Some(rest) = content.strip_prefix("---") {
+        // Find the closing `---` marker
+        if let Some(end) = rest.find("\n---") {
+            let split = 3 + end + 4; // position after closing `---`
+                                     // Check if there's a newline after the closing `---`
+            let after_split =
+                if split < content.len() && content[split..].starts_with('\n') { split + 1 } else { split };
+            let mut result = content[..after_split].to_string();
+            result.push('\n');
+            result.push_str(banner_text);
+            result.push_str(&content[after_split..]);
+            return result;
+        }
+    }
+    // No frontmatter: prepend banner
+    let mut result = banner_text.to_string();
+    result.push_str(content);
+    result
 }
 
 /// Build an article: load config, resolve sources, render to output.
@@ -42,7 +99,31 @@ pub fn build_article(
     dry_run: bool,
     output_override: Option<&Path>,
 ) -> Result<BuildOutput> {
-    let source_path = resolve_indexed_article_source(project_path, article)?;
+    // Check for configured source_dir in build.articles.<article>.source_dir
+    let source_path = match config_svc::load_project(project_path, Some(repo_root)) {
+        Ok(Some(config)) => config
+            .build
+            .articles
+            .get(article)
+            .and_then(|a| a.source_dir.as_ref())
+            .map(|dir| {
+                let p = project_path.join(dir);
+                if !p.exists() || !p.is_dir() {
+                    return Err(MfError::usage(
+                        format!("configured source_dir '{dir}' for article '{article}' does not exist or is not a directory"),
+                        Some("check the path or create the directory".to_string()),
+                    ));
+                }
+                Ok(p)
+            })
+            .transpose()?,
+        _ => None,
+    };
+
+    let source_path = match source_path {
+        Some(path) => path,
+        None => resolve_indexed_article_source(project_path, article)?,
+    };
     build_source(project_path, repo_root, article, &source_path, dry_run, output_override)
 }
 
@@ -131,6 +212,27 @@ fn build_source(
     })?;
     let build_cfg = &config.build;
 
+    // 1b. Validate new config fields (e.g. empty banner text)
+    config_svc::validate_new_fields(&config)?;
+
+    // 2. Render banner if configured
+    let banner_text: Option<String> = build_cfg.banner.as_ref().map(render_banner);
+    let banner_size: u64 = banner_text.as_ref().map(|t| t.len() as u64).unwrap_or(0);
+
+    // 3. Build banner info for dry-run output
+    let banner_info: Option<BannerInfo> = build_cfg.banner.as_ref().map(|b| {
+        let level_str = b.level.as_ref().map(|l| {
+            match l {
+                BannerLevel::Note => "note",
+                BannerLevel::Tip => "tip",
+                BannerLevel::Warning => "warning",
+                BannerLevel::Danger => "danger",
+            }
+            .to_string()
+        });
+        BannerInfo { enabled: true, level: level_str, text: Some(b.text.clone()) }
+    });
+
     if !source_path.exists() {
         return Err(MfError::usage(
             format!("source not found: {}", source_path.display()),
@@ -189,8 +291,9 @@ fn build_source(
             merge_order,
             output_path: output_path.to_string_lossy().to_string(),
             size_bytes: total_size,
-            estimated_size: total_size,
+            estimated_size: total_size + banner_size,
             dry_run: true,
+            banner: banner_info,
         }));
     }
 
@@ -202,6 +305,11 @@ fn build_source(
         if !content.ends_with('\n') {
             content.push('\n');
         }
+    }
+
+    // 9. Inject banner into content if configured
+    if let Some(ref banner) = banner_text {
+        content = insert_banner_into_content(&content, banner);
     }
 
     // Ensure output directory exists

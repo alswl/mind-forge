@@ -6,7 +6,6 @@ use serde::Serialize;
 use crate::cli::deprecation::DeprecationContext;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
-use crate::model::article::ArticleStatus;
 use crate::output::Format;
 use crate::service::{article as article_svc, config as config_svc, util as svc_util};
 
@@ -114,20 +113,34 @@ pub fn dispatch(
         Some(ArticleSubcommand::List(args)) => {
             let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
             let articles = article_svc::list_articles(&project_path)?;
+            let config = config_svc::load_project(&project_path, Some(root))?;
+
+            // Compute source_dir for each article based on config
+            let enriched: Vec<serde_json::Value> = articles
+                .iter()
+                .map(|a| {
+                    let source_dir = config.as_ref().map(|cfg| article_svc::effective_source_dir(cfg, a));
+                    let mut v = serde_json::to_value(a).unwrap_or_default();
+                    if let Some(dir) = source_dir {
+                        v["source_dir"] = serde_json::Value::String(dir);
+                    }
+                    v
+                })
+                .collect();
 
             match format {
-                Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&articles)?, None)),
+                Format::Json => Ok(CommandOutcome::Success(serde_json::Value::Array(enriched), None)),
                 Format::Text => {
-                    if articles.is_empty() {
+                    if enriched.is_empty() {
                         return Ok(CommandOutcome::Success(serde_json::json!("No articles found."), None));
                     }
                     let mut lines = Vec::new();
-                    for a in &articles {
-                        let status = match a.status {
-                            ArticleStatus::Draft => "draft",
-                            ArticleStatus::Published => "published",
-                        };
-                        lines.push(format!("{}  {}  {}", a.title, a.source_path, status));
+                    for v in &enriched {
+                        let title = v["title"].as_str().unwrap_or("");
+                        let source_path = v["source_path"].as_str().unwrap_or("");
+                        let source_dir = v["source_dir"].as_str().unwrap_or("");
+                        let status = v["status"].as_str().unwrap_or("draft");
+                        lines.push(format!("{title}  {source_path}  {source_dir}  {status}"));
                     }
                     Ok(CommandOutcome::Raw(lines.join("\n"), None))
                 }

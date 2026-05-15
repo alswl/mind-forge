@@ -77,6 +77,7 @@ pub fn dispatch(
                 "size_bytes": plan.size_bytes,
                 "estimated_size": plan.estimated_size,
                 "dry_run": true,
+                "banner": plan.banner,
             });
 
             match format {
@@ -92,6 +93,11 @@ pub fn dispatch(
                     lines.push(format!("  Output path: {}", plan.output_path));
                     let size_kb = format!("{:.1}", plan.estimated_size as f64 / 1024.0);
                     lines.push(format!("  Estimated size: {} KB", size_kb));
+                    // Add banner info to text output if configured
+                    if let Some(ref banner) = plan.banner {
+                        let level_str = banner.level.as_deref().unwrap_or("raw");
+                        lines.push(format!("  Banner: enabled, level={}", level_str));
+                    }
                     Ok(CommandOutcome::Raw(lines.join("\n"), None))
                 }
             }

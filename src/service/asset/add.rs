@@ -67,7 +67,7 @@ pub fn add(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<Asset> {
     let size = dest_metadata.len();
     let hash = sha256_file(&dest)?;
 
-    let rel_path = format!("assets/{basename}");
+    let rel_path = format!("{}/{}", paths.assets, basename);
 
     let ext = dest.extension();
     let kind = infer_kind(ext);

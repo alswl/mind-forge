@@ -6,6 +6,7 @@ use chrono::Utc;
 use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::article::{Article, ArticleDiff, ArticleStatus, ArticleType, LintIssue, ScannedArticle};
+use crate::model::config::MindConfig;
 use crate::model::index::IndexFile;
 use crate::service::config as config_svc;
 use crate::service::index;
@@ -79,6 +80,28 @@ pub fn new_article(
 pub fn list_articles(project_path: &Path) -> Result<Vec<Article>> {
     let index = index::load(project_path)?;
     Ok(index.articles.unwrap_or_default())
+}
+
+/// Derive the article key (slug) from its source_path.
+///
+/// For a source_path like `"docs/my-article.md"`, returns `"my-article"`.
+fn article_key_from_source_path(source_path: &str) -> String {
+    let without_ext = source_path.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)).unwrap_or(source_path);
+    let (_docs_prefix, key) = without_ext.rsplit_once('/').unwrap_or(("", without_ext));
+    key.to_string()
+}
+
+/// Compute the effective source directory for an article based on project config.
+///
+/// Returns the project-root-relative directory path:
+/// - Article's configured `source_dir` in `build.articles[article_key]` if present
+/// - Otherwise `docs/<article-name>` as the default
+pub fn effective_source_dir(config: &MindConfig, article: &Article) -> String {
+    let article_key = article_key_from_source_path(&article.source_path);
+    config.build.articles.get(&article_key).and_then(|a| a.source_dir.clone()).unwrap_or_else(|| {
+        let paths = crate::defaults::DOCS_DIR;
+        format!("{}/{}", paths, article_key)
+    })
 }
 
 /// Scan the docs directory for markdown files and return discovered articles.

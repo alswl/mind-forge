@@ -278,3 +278,91 @@ fn add_self_reference_rejected() {
 
     assert.code(predicate::eq(2));
 }
+
+// ---------------------------------------------------------------------------
+// US3: Asset Layout tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn add_uses_configured_asset_dir() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "custom-assets");
+    common::write_mind_yaml(&repo, "custom-assets", "schema: '1'\nlayout:\n  assets: media\n");
+
+    let source_dir = TempDir::new().unwrap();
+    let source_file = source_dir.path().join("cover.png");
+    std::fs::write(&source_file, b"png content").unwrap();
+
+    let _cwd = std::env::current_dir().unwrap();
+    let project_path = repo.path().join("custom-assets");
+
+    Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "asset",
+            "add",
+            source_file.to_str().unwrap(),
+            "--project",
+            "custom-assets",
+        ])
+        .assert()
+        .success();
+
+    // File should be in media/ not assets/
+    assert!(!project_path.join("assets/cover.png").exists(), "should not use default assets/");
+    assert!(project_path.join("media/cover.png").exists(), "should use configured media/ dir");
+
+    // Index should use the configured prefix
+    let index_path = project_path.join("mind-index.yaml");
+    let index_content = std::fs::read_to_string(&index_path).unwrap();
+    assert!(
+        index_content.contains("media/cover.png"),
+        "index entry should use configured asset dir prefix: {index_content}"
+    );
+}
+
+#[test]
+fn add_self_reference_rejected_with_configured_asset_dir() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "custom-assets");
+    common::write_mind_yaml(&repo, "custom-assets", "schema: '1'\nlayout:\n  assets: images\n");
+
+    let source_dir = TempDir::new().unwrap();
+    let source_file = source_dir.path().join("logo.png");
+    std::fs::write(&source_file, b"logo").unwrap();
+
+    Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "asset",
+            "add",
+            source_file.to_str().unwrap(),
+            "--project",
+            "custom-assets",
+        ])
+        .assert()
+        .success();
+
+    // Now try to add a file already inside images/
+    let inside = repo.path().join("custom-assets/images/self.png");
+    std::fs::write(&inside, b"content").unwrap();
+
+    let assert = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "asset",
+            "add",
+            inside.to_str().unwrap(),
+            "--project",
+            "custom-assets",
+        ])
+        .assert();
+
+    assert.code(predicate::eq(2));
+}

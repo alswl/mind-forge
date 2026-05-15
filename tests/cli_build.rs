@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use predicates::str;
+use serde_json;
 use std::fs;
 
 mod common;
@@ -205,4 +206,330 @@ fn build_needs_project_context() {
         .output()
         .expect("command runs");
     assert_eq!(output.status.code(), Some(2), "should fail without project");
+}
+
+// ---------------------------------------------------------------------------
+// US1: Build Banner tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn build_banner_with_level_wraps_in_admonition() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  banner:\n    text: Do not edit\n    level: warning\n",
+    );
+    common::write_article_index(&repo, "my-project", "test-article");
+    common::write_doc(&repo, "my-project", "test-article", "Article content\n");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "test-article"])
+        .assert()
+        .success();
+
+    let output_path = repo.path().join("my-project/outputs/test-article.md");
+    let content = fs::read_to_string(&output_path).unwrap();
+    assert!(content.contains(":::warning"), "banner with level should wrap in admonition");
+    assert!(content.contains("Do not edit"), "banner text should appear in output");
+    assert!(content.contains(":::"), "admonition closing marker should be present");
+    assert!(content.contains("Article content"), "article content should remain");
+}
+
+#[test]
+fn build_banner_without_level_inserts_raw_text() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(&repo, "my-project", "schema: '1'\nbuild:\n  banner:\n    text: Do not edit\n");
+    common::write_article_index(&repo, "my-project", "test-article");
+    common::write_doc(&repo, "my-project", "test-article", "Article content\n");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "test-article"])
+        .assert()
+        .success();
+
+    let output_path = repo.path().join("my-project/outputs/test-article.md");
+    let content = fs::read_to_string(&output_path).unwrap();
+    assert!(content.contains("Do not edit"), "banner text should appear");
+    assert!(!content.contains(":::"), "no admonition wrapper when level is absent");
+    assert!(content.contains("Article content"), "article content should remain");
+}
+
+#[test]
+fn build_banner_no_config_produces_unchanged_output() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "test-article");
+    common::write_doc(&repo, "my-project", "test-article", "Article content\n");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "test-article"])
+        .assert()
+        .success();
+
+    let output_path = repo.path().join("my-project/outputs/test-article.md");
+    let content = fs::read_to_string(&output_path).unwrap();
+    assert_eq!(content.trim(), "Article content", "no banner text should be added");
+}
+
+#[test]
+fn build_banner_dry_run_shows_banner_info() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  banner:\n    text: Do not edit\n    level: note\n",
+    );
+    common::write_article_index(&repo, "my-project", "test-article");
+    common::write_doc(&repo, "my-project", "test-article", "Article content\n");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "test-article", "--dry-run"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Banner: enabled"), "dry-run text should show banner info");
+
+    // Verify no output file created
+    let output_path = repo.path().join("my-project/outputs/test-article.md");
+    assert!(!output_path.exists(), "dry-run should not create output file");
+}
+
+#[test]
+fn build_banner_dry_run_json_includes_banner_field() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  banner:\n    text: Do not edit\n    level: tip\n",
+    );
+    common::write_article_index(&repo, "my-project", "test-article");
+    common::write_doc(&repo, "my-project", "test-article", "Article content\n");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "test-article", "--dry-run", "--json"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["status"], "ok");
+    let banner = &json["data"]["banner"];
+    assert!(banner.is_object(), "banner should be an object in JSON dry-run");
+    assert_eq!(banner["enabled"], true);
+    assert_eq!(banner["level"], "tip");
+}
+
+// Edge cases
+
+#[test]
+fn build_banner_with_self_managed_admonition_no_level() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        r#"schema: '1'
+build:
+  banner:
+    text: |
+      :::warning
+      Self-managed banner.
+      :::
+"#,
+    );
+    common::write_article_index(&repo, "my-project", "test-article");
+    common::write_doc(&repo, "my-project", "test-article", "Article content\n");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "test-article"])
+        .assert()
+        .success();
+
+    let output_path = repo.path().join("my-project/outputs/test-article.md");
+    let content = fs::read_to_string(&output_path).unwrap();
+    // Should contain exactly one admonition (self-managed, no double-wrapping)
+    assert_eq!(content.matches(":::").count(), 2, "self-managed banner should not be double-wrapped");
+    assert!(content.contains("Self-managed banner."));
+}
+
+#[test]
+fn build_banner_inserted_after_frontmatter() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  banner:\n    text: Banner text\n    level: warning\n",
+    );
+    common::write_article_index(&repo, "my-project", "test-article");
+    // Article with YAML frontmatter
+    common::write_doc(&repo, "my-project", "test-article", "---\ntitle: Test\n---\n\nArticle content\n");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "test-article"])
+        .assert()
+        .success();
+
+    let output_path = repo.path().join("my-project/outputs/test-article.md");
+    let content = fs::read_to_string(&output_path).unwrap();
+    // Frontmatter should be first
+    assert!(content.starts_with("---"), "frontmatter should remain first");
+    let banner_pos = content.find("Banner text").unwrap();
+    let frontmatter_end = content.find("---\n\n").map(|i| i + 5).unwrap();
+    assert!(banner_pos >= frontmatter_end, "banner should appear after frontmatter");
+    assert!(content.contains("Article content"), "article content should remain after banner");
+}
+
+#[test]
+fn build_banner_empty_text_rejected_on_config() {
+    // This test verifies that empty banner text is rejected during build
+    // (the actual validation happens at config load time)
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(&repo, "my-project", "schema: '1'\nbuild:\n  banner:\n    text: ''\n    level: warning\n");
+    common::write_article_index(&repo, "my-project", "test-article");
+    common::write_doc(&repo, "my-project", "test-article", "Article content\n");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "test-article"])
+        .output()
+        .expect("command runs");
+    // Should fail (exit 2 = usage error) due to empty banner text
+    assert_eq!(output.status.code(), Some(2), "empty banner text should be rejected");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("banner.text") || stderr.contains("non-empty"), "error should mention empty banner text");
+}
+
+// ---------------------------------------------------------------------------
+// US2: Build with source directory tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn build_from_configured_source_dir_under_docs() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  articles:\n    my-article:\n      source_dir: docs/custom-src\n",
+    );
+    // Create the custom source directory
+    let src_dir = repo.path().join("my-project/docs/custom-src");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("01-intro.md"), "Intro\n").unwrap();
+    std::fs::write(src_dir.join("02-body.md"), "Body\n").unwrap();
+    // Write article index pointing to my-article
+    common::write_article_index(&repo, "my-project", "my-article");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "my-article"])
+        .assert()
+        .success();
+
+    let output_path = repo.path().join("my-project/outputs/my-article.md");
+    assert!(output_path.exists(), "output should exist");
+    let content = std::fs::read_to_string(&output_path).unwrap();
+    assert!(content.contains("Intro"), "should include content from configured source dir");
+    assert!(content.contains("Body"), "should include all files from configured source dir");
+}
+
+#[test]
+fn build_from_configured_source_dir_outside_docs() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  articles:\n    my-article:\n      source_dir: specs\n",
+    );
+    // Create source directory outside docs/
+    let src_dir = repo.path().join("my-project/specs");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("01-spec.md"), "Spec content\n").unwrap();
+    common::write_article_index(&repo, "my-project", "my-article");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "my-article"])
+        .assert()
+        .success();
+
+    let output_path = repo.path().join("my-project/outputs/my-article.md");
+    assert!(output_path.exists(), "output should exist");
+    let content = std::fs::read_to_string(&output_path).unwrap();
+    assert!(content.contains("Spec content"), "should include content from outside docs/");
+}
+
+#[test]
+fn build_with_missing_source_dir_fails() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  articles:\n    my-article:\n      source_dir: non-existent-dir\n",
+    );
+    common::write_article_index(&repo, "my-project", "my-article");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "my-article"])
+        .output()
+        .expect("command runs");
+    assert_eq!(output.status.code(), Some(2), "missing source_dir should be usage error");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("non-existent-dir") || stderr.contains("does not exist"),
+        "error should name the missing dir"
+    );
+    assert!(stderr.contains("my-article"), "error should name the article");
+}
+
+#[test]
+fn build_default_source_dir_unchanged_without_config() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    // No source_dir config — uses default behavior
+    common::write_article_index(&repo, "my-project", "default-article");
+    common::write_doc(&repo, "my-project", "default-article", "Default content\n");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "default-article"])
+        .assert()
+        .success();
+
+    let output_path = repo.path().join("my-project/outputs/default-article.md");
+    assert!(output_path.exists(), "output should exist");
+    let content = std::fs::read_to_string(&output_path).unwrap();
+    assert!(content.contains("Default content"), "should build from default docs/ directory");
 }

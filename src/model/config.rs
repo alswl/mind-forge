@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -61,6 +63,31 @@ pub struct PublishConfig {
     pub targets: Option<Vec<PublishTarget>>,
 }
 
+/// Banner presentation level for generated article output.
+#[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BannerLevel {
+    Note,
+    Tip,
+    Warning,
+    Danger,
+}
+
+/// Optional banner injected into generated article output.
+#[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
+pub struct BannerConfig {
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level: Option<BannerLevel>,
+}
+
+/// Per-article build settings.
+#[derive(Debug, Clone, Default, JsonSchema, Serialize, Deserialize)]
+pub struct ArticleBuildConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_dir: Option<String>,
+}
+
 /// Build configuration for the project.
 #[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
 pub struct BuildConfig {
@@ -70,11 +97,21 @@ pub struct BuildConfig {
     pub merge_order: Vec<String>,
     #[serde(default = "default_build_format")]
     pub format: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub banner: Option<BannerConfig>,
+    #[serde(default)]
+    pub articles: HashMap<String, ArticleBuildConfig>,
 }
 
 impl Default for BuildConfig {
     fn default() -> Self {
-        Self { output_dir: default_output_dir(), merge_order: Vec::new(), format: default_build_format() }
+        Self {
+            output_dir: default_output_dir(),
+            merge_order: Vec::new(),
+            format: default_build_format(),
+            banner: None,
+            articles: HashMap::new(),
+        }
     }
 }
 

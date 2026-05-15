@@ -40,6 +40,9 @@ pub fn lint_project(
         }
     }
 
+    // Check configured article source directories exist
+    check_article_source_dirs(project_path, &mut issues, &mut unfixed_count, &mut fixable_count)?;
+
     let errors = issues.iter().filter(|i| matches!(i.severity, LintSeverity::Error) && !i.fixed).count() as u64;
     let warnings = issues.iter().filter(|i| matches!(i.severity, LintSeverity::Warning) && !i.fixed).count() as u64;
 
@@ -287,6 +290,39 @@ fn check_missing_manifest(
             *fixable_count += 1;
         } else {
             *unfixed_count += 1;
+        }
+    }
+    Ok(())
+}
+
+/// Check that configured article source directories exist.
+fn check_article_source_dirs(
+    project_path: &Path,
+    issues: &mut Vec<ProjectLintIssue>,
+    unfixed_count: &mut u64,
+    _fixable_count: &mut u64,
+) -> Result<()> {
+    let config = match config_svc::load_project(project_path, Some(project_path))? {
+        Some(cfg) => cfg,
+        None => return Ok(()),
+    };
+
+    for (article_name, article_cfg) in &config.build.articles {
+        if let Some(ref source_dir) = article_cfg.source_dir {
+            let dir_path = project_path.join(source_dir);
+            if !dir_path.exists() || !dir_path.is_dir() {
+                issues.push(ProjectLintIssue {
+                    severity: crate::model::project::LintSeverity::Error,
+                    kind: crate::model::project::LintKind::MissingDirectory,
+                    message: format!(
+                        "configured source directory '{source_dir}' for article '{article_name}' does not exist"
+                    ),
+                    path: format!("{source_dir}/"),
+                    fixable: true,
+                    fixed: false,
+                });
+                *unfixed_count += 1;
+            }
         }
     }
     Ok(())

@@ -154,6 +154,22 @@ pub fn project_paths(project_path: &Path) -> Result<PathsConfig> {
     Ok(load_project(project_path, Some(project_path))?.map(|config| config.paths).unwrap_or_default())
 }
 
+/// Validate new config fields after loading.
+///
+/// Returns an error for invalid configurations such as:
+/// - Banner present but text is empty
+pub fn validate_new_fields(config: &MindConfig) -> Result<()> {
+    if let Some(banner) = &config.build.banner {
+        if banner.text.trim().is_empty() {
+            return Err(crate::error::MfError::usage(
+                "build.banner.text must be non-empty when banner is configured".to_string(),
+                Some("provide banner text or remove the banner section".to_string()),
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn find_mind_yaml(start: &Path, repo_root: Option<&Path>) -> Result<Option<PathBuf>> {
     let mut current = util::try_canonicalize(start);
 
