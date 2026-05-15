@@ -37,6 +37,8 @@ pub enum ProjectSubcommand {
     Show(ProjectShowArgs),
     #[command(about = "Import a directory as a project")]
     Import(ProjectImportArgs),
+    #[command(about = "Rename a project")]
+    Rename(ProjectRenameArgs),
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -98,6 +100,12 @@ pub struct ProjectImportArgs {
     pub non_interactive: bool,
 }
 
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct ProjectRenameArgs {
+    pub old_name: String,
+    pub new_name: String,
+}
+
 impl ProjectCmd {
     pub fn requires_repo(&self) -> RepoRequirement {
         match self.command {
@@ -124,6 +132,7 @@ pub fn dispatch(
         Some(ProjectSubcommand::Index(args)) => handle_index(args, repo_root, format),
         Some(ProjectSubcommand::Show(args)) => handle_show(args, repo_root, format),
         Some(ProjectSubcommand::Import(args)) => handle_import(args, repo_root, format),
+        Some(ProjectSubcommand::Rename(args)) => handle_rename(args, repo_root, format),
     }
 }
 
@@ -386,6 +395,27 @@ fn handle_import(
             }
             lines.push(format!("  articles: {}", report.article_count));
             Ok(CommandOutcome::Raw(lines.join("\n"), None))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Handle: mf project rename
+// ---------------------------------------------------------------------------
+
+fn handle_rename(
+    args: ProjectRenameArgs,
+    repo_root: Option<&std::path::PathBuf>,
+    format: Format,
+) -> Result<CommandOutcome> {
+    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+    let report = svc::project::rename_project(root, &args.old_name, &args.new_name)?;
+
+    match format {
+        Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&report).map_err(MfError::Json)?, None)),
+        Format::Text => {
+            let msg = format!("Renamed {} → {}\n  from: {}\n  to: {}", report.old_name, report.new_name, report.from, report.to);
+            Ok(CommandOutcome::Raw(msg, None))
         }
     }
 }

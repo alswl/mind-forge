@@ -25,6 +25,8 @@ pub enum ArticleSubcommand {
     Lint(ArticleLintArgs),
     #[command(about = "Index articles (mf extension)")]
     Index(ArticleIndexArgs),
+    #[command(about = "Rename an article")]
+    Rename(ArticleRenameArgs),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -63,6 +65,18 @@ pub struct ArticleIndexArgs {
     pub project: Option<String>,
     #[arg(long, short = 'n')]
     pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ArticleRenameArgs {
+    /// Current article title
+    pub old_title: String,
+    /// New article title
+    pub new_title: String,
+    #[arg(short = 'p', long)]
+    pub project: Option<String>,
+    #[arg(short = 'f', long)]
+    pub force: bool,
 }
 
 pub fn dispatch(
@@ -189,6 +203,19 @@ pub fn dispatch(
                 "project_path": project_path.to_string_lossy().to_string(),
             });
             Ok(CommandOutcome::Success(data, None))
+        }
+        Some(ArticleSubcommand::Rename(args)) => {
+            let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
+            let report = article_svc::rename_article(&project_path, &args.old_title, &args.new_title, args.force)?;
+
+            match format {
+                Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&report).map_err(MfError::Json)?, None)),
+                Format::Text => {
+                    let msg = format!("Renamed article\n  title: {} → {}\n  file: {} → {}",
+                        report.old_title, report.new_title, report.old_source_path, report.new_source_path);
+                    Ok(CommandOutcome::Raw(msg, None))
+                }
+            }
         }
     }
 }

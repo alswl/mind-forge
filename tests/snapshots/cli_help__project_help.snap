@@ -15,6 +15,7 @@ Commands:
   index    Index projects (mf extension)
   show     Show project details
   import   Import a directory as a project
+  rename   Rename a project
 
 Options:
       --root <PATH>

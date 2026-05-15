@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use chrono::Utc;
+use serde::Serialize;
 
 use crate::defaults;
 use crate::error::{MfError, Result};
@@ -226,6 +227,87 @@ pub fn lint_articles(project_path: &Path, fix: bool) -> Result<Vec<LintIssue>> {
     }
 
     Ok(issues)
+}
+
+/// Report from a successful article rename.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ArticleRenameReport {
+    pub old_title: String,
+    pub new_title: String,
+    pub old_source_path: String,
+    pub new_source_path: String,
+}
+
+/// Rename an article: renames the file on disk and updates the index.
+///
+/// `old_title` is matched against article titles in the index. `new_title`
+/// is the desired display title; the filename is derived from it via
+/// [`util::to_filename`].
+pub fn rename_article(
+    project_path: &Path,
+    old_title: &str,
+    new_title: &str,
+    force: bool,
+) -> Result<ArticleRenameReport> {
+    let new_filename = util::to_filename(new_title);
+    let paths = config_svc::project_paths(project_path)?;
+
+    // Load the index and find the article by title
+    let mut index = index::load(project_path)?;
+    let articles = index.articles.as_mut().ok_or_else(|| {
+        MfError::not_found(
+            format!("article '{old_title}' not found"),
+            Some("use 'mf article list --project <project>' to see available articles".to_string()),
+        )
+    })?;
+
+    let article = articles.iter_mut().find(|a| a.title == old_title).ok_or_else(|| {
+        MfError::not_found(
+            format!("article '{old_title}' not found"),
+            Some("use 'mf article list --project <project>' to see available articles".to_string()),
+        )
+    })?;
+
+    let old_source_path = article.source_path.clone();
+    let new_source_path = format!("{}/{}.{}", paths.docs, new_filename, defaults::MARKDOWN_EXTENSION);
+
+    // Rename the file on disk (only if the path actually differs)
+    if old_source_path != new_source_path {
+        let old_full = project_path.join(&old_source_path);
+        let new_full = project_path.join(&new_source_path);
+
+        if !old_full.exists() {
+            return Err(MfError::not_found(
+                format!("article file not found at {}", old_full.display()),
+                Some("the index may be out of date; try 'mf article index'".to_string()),
+            ));
+        }
+
+        if new_full.exists() {
+            if force {
+                fs::remove_file(&new_full).map_err(MfError::Io)?;
+            } else {
+                return Err(MfError::file_exists(new_full));
+            }
+        }
+
+        fs::rename(&old_full, &new_full).map_err(MfError::Io)?;
+    }
+
+    // Update the index entry
+    let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    article.title = new_title.to_string();
+    article.source_path = new_source_path.clone();
+    article.updated_at = now;
+    index::save(project_path, &index)?;
+
+    Ok(ArticleRenameReport {
+        old_title: old_title.to_string(),
+        new_title: new_title.to_string(),
+        old_source_path,
+        new_source_path,
+    })
 }
 
 fn check_filename(issues: &mut Vec<LintIssue>, stem: &str, rel_path: &str, fix: bool, full_path: &Path) -> Result<()> {
