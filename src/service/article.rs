@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -6,12 +7,15 @@ use serde::Serialize;
 
 use crate::defaults;
 use crate::error::{MfError, Result};
-use crate::model::article::{Article, ArticleDiff, ArticleStatus, ArticleType, LintIssue, ScannedArticle};
-use crate::model::config::MindConfig;
+use crate::model::article::{
+    Article, ArticleDiff, ArticleStatus, ArticleType, LintIssue, ScannedArticle, TemplateOrigin,
+};
+use crate::model::config::{MindConfig, TemplateMode};
 use crate::model::index::IndexFile;
 use crate::service::config as config_svc;
 use crate::service::index;
 use crate::service::util;
+use crate::service::util::path_template::PathTemplate;
 
 const ARTICLE_TEMPLATE: &str = r#"# {title}
 
@@ -71,37 +75,103 @@ pub fn new_article(
         status,
         created_at: now.clone(),
         updated_at: now,
+        template_origin: None,
     });
     index::save(project_path, &index)?;
 
     Ok(filename)
 }
 
-/// List articles in a project.
-pub fn list_articles(project_path: &Path) -> Result<Vec<Article>> {
-    let mut index = index::load(project_path)?;
-    let scanned = scan_docs(project_path)?;
-    let project_name = util::dir_name(project_path);
-    let articles = index.articles.get_or_insert_with(Vec::new);
-    let existing_paths: std::collections::HashSet<String> = articles.iter().map(|a| a.source_path.clone()).collect();
+/// Build an in-memory index by scanning docs/ and template patterns.
+///
+/// Loads the existing index (tolerating missing), scans the filesystem for
+/// docs-declared articles and template-generated articles, merges results
+/// (preserving metadata for articles that still exist). Unlike
+/// [`refresh_index`], this does **not** persist the result.
+pub fn build_index(project_root: &Path, config: &MindConfig) -> Result<IndexFile> {
+    let existing = index::load(project_root)?;
+    let existing_map: HashMap<&str, &Article> =
+        existing.articles.as_ref().map(|a| a.iter().map(|a| (a.source_path.as_str(), a)).collect()).unwrap_or_default();
 
-    for scanned_article in scanned {
-        let source_path = source_path_for_scanned(&scanned_article);
-        if existing_paths.contains(&source_path) {
-            continue;
+    let mut articles: Vec<Article> = Vec::new();
+    let mut covered: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let project_name = util::dir_name(project_root);
+
+    // Scan docs/ for markdown files
+    let scanned = scan_docs(project_root)?;
+    for s in scanned {
+        let sp = source_path_for_scanned(&s);
+        covered.insert(sp.clone());
+        if let Some(existing_article) = existing_map.get(sp.as_str()) {
+            let mut article = (*existing_article).clone();
+            article.source_path = sp;
+            articles.push(article);
+        } else {
+            articles.push(Article {
+                title: s.title,
+                project: project_name.clone(),
+                article_type: ArticleType::Blog,
+                source_path: sp,
+                status: ArticleStatus::Draft,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                template_origin: None,
+            });
         }
-        let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-        articles.push(Article {
-            title: scanned_article.title,
-            project: project_name.clone(),
-            article_type: ArticleType::Blog,
-            source_path,
-            status: ArticleStatus::Draft,
-            created_at: now.clone(),
-            updated_at: now,
-        });
     }
 
+    // Scan template-generated files
+    let template_articles = scan_templates(project_root, config)?;
+    for ta in template_articles {
+        covered.insert(ta.source_path.clone());
+        if let Some(existing_article) = existing_map.get(ta.source_path.as_str()) {
+            let mut article = (*existing_article).clone();
+            article.template_origin = ta.template_origin;
+            articles.push(article);
+        } else {
+            articles.push(ta);
+        }
+    }
+
+    // Preserve existing articles not found by scanning (defined only in index)
+    for (sp, article) in &existing_map {
+        if !covered.contains(*sp) {
+            articles.push((*article).clone());
+        }
+    }
+
+    // Sort for deterministic output
+    articles.sort_by(|a, b| a.source_path.cmp(&b.source_path));
+
+    let index = IndexFile {
+        schema_version: defaults::SCHEMA_VERSION.to_string(),
+        articles: Some(articles),
+        publish_records: existing.publish_records,
+        sources: existing.sources,
+        assets: existing.assets,
+        terms: existing.terms,
+        extra: existing.extra,
+    };
+
+    Ok(index)
+}
+
+/// Rebuild the index by scanning docs/ and template patterns, then persist.
+///
+/// See [`build_index`] for the computation logic. This function additionally
+/// writes the result to `mind-index.yaml`.
+pub fn refresh_index(project_root: &Path, config: &MindConfig) -> Result<IndexFile> {
+    let index = build_index(project_root, config)?;
+    index::save(project_root, &index)?;
+    Ok(index)
+}
+
+/// List articles in a project, rebuilding the index first.
+pub fn list_articles(project_path: &Path) -> Result<Vec<Article>> {
+    let config = config_svc::load_project(project_path, None)?
+        .ok_or_else(|| MfError::not_found("mind.yaml not found".to_string(), None))?;
+    let index = build_index(project_path, &config)?;
     Ok(index.articles.unwrap_or_default())
 }
 
@@ -179,6 +249,75 @@ pub fn scan_docs(project_path: &Path) -> Result<Vec<ScannedArticle>> {
     });
 
     Ok(scanned)
+}
+
+/// Scan filesystem for files matching template patterns (US2).
+///
+/// Iterates `config.templates`, builds a `PathTemplate` + `PatternMatcher` for
+/// each `Generated` mode template, walks the project root, and returns an
+/// `Article` for every matched file.
+pub fn scan_templates(project_root: &Path, config: &MindConfig) -> Result<Vec<Article>> {
+    let templates = match config.templates.as_ref() {
+        Some(t) => &t.items,
+        None => return Ok(Vec::new()),
+    };
+
+    let mut articles = Vec::new();
+
+    for (name, template) in templates {
+        if !matches!(template.mode, TemplateMode::Generated) {
+            continue;
+        }
+
+        let path_tmpl = PathTemplate::parse(&template.pattern)?;
+        path_tmpl.validate_slot_redundancy().map_err(|e| {
+            if let MfError::MultiSlotTemplate { .. } = &e {
+                MfError::MultiSlotTemplate { template_name: name.clone() }
+            } else {
+                e
+            }
+        })?;
+        let matcher = path_tmpl.compile_matcher();
+        let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let project_name = util::dir_name(project_root);
+
+        for entry in walkdir::WalkDir::new(project_root)
+            .into_iter()
+            .filter_entry(|e| {
+                let name = e.file_name().to_string_lossy();
+                !name.starts_with('.')
+            })
+            .filter_map(|e| e.ok())
+        {
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some(defaults::MARKDOWN_EXTENSION) {
+                continue;
+            }
+            let rel_path = path.strip_prefix(project_root).unwrap_or(path);
+            if let Some(pm) = matcher.try_match(rel_path) {
+                let slot_value = pm.most_specific_slot_value;
+                let article_id = format!("{}/{}", name, slot_value);
+                articles.push(Article {
+                    title: article_id.clone(),
+                    project: project_name.clone(),
+                    article_type: ArticleType::Blog,
+                    source_path: rel_path.to_string_lossy().to_string(),
+                    status: ArticleStatus::Draft,
+                    created_at: now.clone(),
+                    updated_at: now.clone(),
+                    template_origin: Some(TemplateOrigin { template_name: name.clone(), slot_value }),
+                });
+            }
+        }
+    }
+
+    // Sort for deterministic order
+    articles.sort_by(|a, b| a.source_path.cmp(&b.source_path));
+
+    Ok(articles)
 }
 
 fn configured_article_source_path(article_name: &str, dir_path: &Path, source_dir: &str) -> String {
@@ -301,6 +440,7 @@ pub fn reconcile_articles(project_path: &Path, mut index: IndexFile, diff: Artic
             status: ArticleStatus::Draft,
             created_at: now.clone(),
             updated_at: now,
+            template_origin: None,
         });
     }
 

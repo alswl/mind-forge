@@ -5,6 +5,12 @@ use serde::Serialize;
 use crate::model::index::PublishRecord;
 
 #[derive(Debug, Clone, Serialize)]
+pub struct EffectiveDateOut {
+    pub date: String,
+    pub origin: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "target_type", rename_all = "kebab-case")]
 pub enum PublishRunOutcome {
     Local(LocalRunOutcome),
@@ -20,6 +26,8 @@ pub struct LocalRunOutcome {
     pub destination: String,
     pub size_bytes: u64,
     pub dry_run: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective_date: Option<EffectiveDateOut>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -65,6 +73,7 @@ mod tests {
             destination: "/b".to_string(),
             size_bytes: 12,
             dry_run: false,
+            effective_date: None,
         });
         let v = serde_json::to_value(&outcome).unwrap();
         assert_eq!(v["target_type"], "local");

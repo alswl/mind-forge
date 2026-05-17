@@ -97,6 +97,7 @@ pub fn import_project(
                 status: crate::model::article::ArticleStatus::Draft,
                 created_at: now.clone(),
                 updated_at: now,
+                template_origin: None,
             }]),
             terms: None,
             publish_records: None,

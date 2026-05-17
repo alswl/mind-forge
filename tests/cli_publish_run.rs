@@ -805,3 +805,121 @@ fn not_implemented_target_returns_exit_64_custom() {
     let repo = setup_repo_with_targets(&not_implemented_target_yaml("custom-out", "custom"));
     assert_not_implemented(&repo, "custom-out", "custom");
 }
+
+// ---------------------------------------------------------------------------
+// US1 — publish path expansion and prefix (023 fix-bugs-2 / T008)
+// ---------------------------------------------------------------------------
+
+/// Fixture: project with a date-prefixed article and a local target using `path` + `prefix`.
+fn setup_us1_project(target_path: &str, prefix: &str, article_name: &str) -> common::TempDir {
+    let repo = common::setup_repo();
+    let project_name = "my-project";
+    let project_path = repo.path().join(project_name);
+    fs::create_dir_all(&project_path).unwrap();
+
+    let targets_yaml = format!(
+        "    - name: local-out\n      type: local\n      enabled: true\n      path: \"{target_path}\"\n      prefix: \"{prefix}\"\n",
+    );
+    let mind_yaml = format!(
+        "schema_version: '1'\n\
+project:\n  name: {project_name}\n\
+build:\n  output_dir: _build\n  format: md\n\
+publish:\n  targets:\n{targets_yaml}",
+    );
+    fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
+
+    let source_path = format!("docs/{article_name}.md");
+    let index_yaml = format!(
+        "schema_version: '1'\n\
+articles:\n  - title: '{article_name}'\n    project: {project_name}\n    type: blog\n    source_path: {source_path}\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n",
+    );
+    fs::write(project_path.join("mind-index.yaml"), index_yaml).unwrap();
+
+    fs::create_dir_all(project_path.join("docs")).unwrap();
+    fs::write(project_path.join(&source_path), ARTICLE_BODY).unwrap();
+
+    let build_artifact = format!("{article_name}.md");
+    fs::create_dir_all(project_path.join("_build")).unwrap();
+    fs::write(project_path.join("_build").join(&build_artifact), ARTICLE_BODY).unwrap();
+
+    repo
+}
+
+const DATED_ARTICLE: &str = "2026-05-15-my-article";
+
+#[test]
+fn dry_run_expands_date_placeholder() {
+    let repo = setup_us1_project("/tmp/mf-test/{date:YYYY-MM}/daily/", "", DATED_ARTICLE);
+
+    let out = run_publish(
+        &repo,
+        &["--format", "json", "publish", "run", DATED_ARTICLE, "--target", "local-out", "--dry-run"],
+    );
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let dest = v["data"]["destination"].as_str().unwrap_or("");
+    assert!(dest.contains("/2026-05/daily/"), "destination should contain expanded date '2026-05', got: {dest}");
+    assert!(!dest.contains('{'), "destination should not contain literal '{{'");
+}
+
+#[test]
+fn prefix_applied_to_file_name() {
+    let repo = setup_us1_project("/tmp/mf-test/out/", "cie-", DATED_ARTICLE);
+
+    let out = run_publish(
+        &repo,
+        &["--format", "json", "publish", "run", DATED_ARTICLE, "--target", "local-out", "--dry-run"],
+    );
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let dest = v["data"]["destination"].as_str().unwrap_or("");
+    assert!(dest.contains("cie-2026-05-15-my-article.md"), "destination should contain prefixed filename, got: {dest}");
+}
+
+#[test]
+fn combined_date_and_prefix() {
+    let repo = setup_us1_project("/tmp/mf-test/{date:YYYY-MM}/daily/", "cie-", DATED_ARTICLE);
+
+    let out = run_publish(
+        &repo,
+        &["--format", "json", "publish", "run", DATED_ARTICLE, "--target", "local-out", "--dry-run"],
+    );
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let dest = v["data"]["destination"].as_str().unwrap_or("");
+    assert!(
+        dest.contains("/2026-05/daily/cie-2026-05-15-my-article.md"),
+        "destination should have date expansion and prefix, got: {dest}"
+    );
+}
+
+#[test]
+fn unknown_placeholder_errors() {
+    let repo = setup_us1_project("/tmp/mf-test/{quarter:QQ}/daily/", "", DATED_ARTICLE);
+
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", DATED_ARTICLE, "--target", "local-out"]);
+    assert_eq!(out.status.code(), Some(1));
+    let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
+    assert_eq!(v["error"]["kind"], "unknown_placeholder");
+    assert!(
+        v["error"]["hint"].as_str().unwrap_or("").contains("supported placeholders"),
+        "hint should list supported placeholders, got: {:?}",
+        v["error"]["hint"]
+    );
+}
+
+#[test]
+fn no_effective_date_errors() {
+    // Article with no date prefix in filename
+    let repo = setup_us1_project("/tmp/mf-test/{date:YYYY-MM}/daily/", "", "plain-article");
+
+    let out = run_publish(&repo, &["--format", "json", "publish", "run", "plain-article", "--target", "local-out"]);
+    assert_eq!(out.status.code(), Some(1));
+    let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
+    assert_eq!(v["error"]["kind"], "no_effective_date");
+    assert!(
+        v["error"]["hint"].as_str().unwrap_or("").contains("YYYY-MM-DD"),
+        "hint should mention adding YYYY-MM-DD prefix, got: {:?}",
+        v["error"]["hint"]
+    );
+}

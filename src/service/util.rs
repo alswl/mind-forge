@@ -1,5 +1,8 @@
 //! Shared utilities: atomic write, schema version validation.
 
+pub mod filename_date;
+pub mod path_template;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};

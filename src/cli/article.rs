@@ -6,6 +6,7 @@ use serde::Serialize;
 use crate::cli::deprecation::DeprecationContext;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
+use crate::model::config::TemplateMode;
 use crate::output::Format;
 use crate::service::{article as article_svc, config as config_svc, util as svc_util};
 
@@ -180,6 +181,15 @@ pub fn dispatch(
         }
         Some(ArticleSubcommand::Index(args)) => {
             let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
+            let config = config_svc::load_project(&project_path, Some(root))?;
+
+            let templates_scanned = config
+                .as_ref()
+                .and_then(|c| c.templates.as_ref())
+                .map(|t| t.items.iter().filter(|(_, tmpl)| matches!(tmpl.mode, TemplateMode::Generated)).count())
+                .unwrap_or(0);
+
+            // Phase 1: Docs scan + diff + reconcile (existing behavior)
             let scanned = article_svc::scan_docs(&project_path)?;
             let index = crate::service::index::load(&project_path)?;
             let paths = config_svc::project_paths(&project_path)?;
@@ -190,17 +200,37 @@ pub fn dispatch(
                     "added": diff.added,
                     "removed": diff.removed,
                     "dry_run": true,
+                    "templates_scanned": templates_scanned,
                 });
                 return Ok(CommandOutcome::Success(data, None));
             }
 
-            let updated = article_svc::reconcile_articles(&project_path, index, diff)?;
+            let mut updated = article_svc::reconcile_articles(&project_path, index, diff)?;
+
+            // Phase 2: Merge template-discovered articles (US2)
+            if let Some(ref config) = config {
+                let template_articles = article_svc::scan_templates(&project_path, config)?;
+                for ta in template_articles {
+                    let articles = updated.articles.get_or_insert_with(Vec::new);
+                    let pos = articles.iter().position(|a| a.source_path == ta.source_path);
+                    if let Some(pos) = pos {
+                        articles[pos].template_origin = ta.template_origin;
+                    } else {
+                        articles.push(ta);
+                    }
+                }
+                if let Some(ref mut articles) = updated.articles {
+                    articles.sort_by(|a, b| a.source_path.cmp(&b.source_path));
+                }
+            }
+
             crate::service::index::save(&project_path, &updated)?;
             let article_count = updated.articles.as_ref().map(|a| a.len()).unwrap_or(0);
 
             let data = serde_json::json!({
                 "articles_count": article_count,
                 "project_path": project_path.to_string_lossy().to_string(),
+                "templates_scanned": templates_scanned,
             });
             Ok(CommandOutcome::Success(data, None))
         }

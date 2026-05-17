@@ -394,6 +394,7 @@ fn auto_index_article(project_path: &Path, article: &str, source_path: &Path) ->
             status: crate::model::article::ArticleStatus::Published,
             created_at: now.clone(),
             updated_at: now,
+            template_origin: None,
         });
         crate::service::index::save(project_path, &index)?;
     }

@@ -98,6 +98,42 @@ pub fn write_render_template(repo: &TempDir, name: &str, content: &str) -> PathB
     path
 }
 
+/// Scaffold a project with a single `templates.<template_name>` entry and create the listed files.
+#[allow(dead_code)]
+pub fn scaffold_project_with_template(
+    name: &str,
+    template_name: &str,
+    pattern: &str,
+    mode: &str,
+    files: &[&str],
+) -> TempDir {
+    let repo = setup_repo();
+    let project_path = repo.path().join(name);
+    fs::create_dir_all(&project_path).unwrap();
+
+    let mind_yaml = format!(
+        "schema_version: '1'\n\
+project:\n  name: {name}\n\
+build:\n  output_dir: _build\n  format: md\n\
+publish:\n  targets: []\n\
+templates:\n  {template_name}:\n    pattern: \"{pattern}\"\n    mode: {mode}\n",
+    );
+    let index_yaml = "schema_version: '1'\narticles: []\n";
+    fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
+    fs::write(project_path.join("mind-index.yaml"), index_yaml).unwrap();
+
+    // Create each file relative to the project root
+    for file in files {
+        let full_path = project_path.join(file);
+        if let Some(parent) = full_path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(&full_path, b"# generated\n").unwrap();
+    }
+
+    repo
+}
+
 /// `terms_yaml` 应为 `terms:` 段内容（不含前导空格），例如：
 /// `"term: Mind Repo\n  definition: desc\n  corrections:\n    - original: mindrepo\n      correct: Mind Repo"`
 #[allow(dead_code)]

@@ -8,20 +8,23 @@ use chrono::{SecondsFormat, Utc};
 use crate::cli::publish::{PublishRunArgs, PublishUpdateArgs};
 use crate::defaults;
 use crate::error::{MfError, Result};
+use crate::model::article::Article;
 use crate::model::config::{MindConfig, PublishTarget, PublishTargetType};
-use crate::model::index::{PublishRecord, PublishStatus};
+use crate::model::index::{IndexFile, PublishRecord, PublishStatus};
 use crate::model::publish::{
-    LocalRunOutcome, PublishRunOutcome, PublishUpdateOutcome, UpdateAction, YuquePromptRunOutcome,
+    EffectiveDateOut, LocalRunOutcome, PublishRunOutcome, PublishUpdateOutcome, UpdateAction, YuquePromptRunOutcome,
 };
+use crate::service::effective_date as effective_date_svc;
 use crate::service::index;
 use crate::service::publisher as publisher_svc;
+use crate::service::util::path_template::PathTemplate;
 use crate::service::{config as config_svc, util};
 
 pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path) -> Result<PublishRunOutcome> {
-    if args.article.is_empty() || args.article.contains('/') || args.article.contains('\\') {
+    if args.article.is_empty() || args.article.contains('\\') {
         return Err(MfError::usage(
             format!("invalid article name: '{}'", args.article),
-            Some("article must be kebab-case with no path separators".to_string()),
+            Some("article must be kebab-case or template-name/slot-value".to_string()),
         ));
     }
 
@@ -30,24 +33,27 @@ pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path) -> Result<Publis
         MfError::usage("project missing mind.yaml".to_string(), Some("run `mf config init` to create one".to_string()))
     })?;
 
-    let index = index::load(&project_path)?;
-    let article_entry = index
-        .articles
-        .iter()
-        .flat_map(|a| a.iter())
-        .find(|a| a.source_path == format!("docs/{}.md", args.article))
-        .ok_or_else(|| {
-            MfError::not_found(
-                format!("article '{}' not found in mind-index.yaml", args.article),
-                Some("run `mf article index` to refresh the index".to_string()),
-            )
-        })?;
+    let mut index = index::load(&project_path)?;
+    let article_entry = match find_article_in_index(&index, &args.article) {
+        Some(a) => a.clone(),
+        None => {
+            // Auto-reindex on cache miss (US2)
+            let refreshed = crate::service::article::refresh_index(&project_path, &config)?;
+            index = refreshed;
+            find_article_in_index(&index, &args.article).cloned().ok_or_else(|| {
+                MfError::not_found(
+                    format!("article '{}' not found in mind-index.yaml", args.article),
+                    Some("run `mf article index` to refresh the index".to_string()),
+                )
+            })?
+        }
+    };
 
     let target = resolve_target(args, &config, repo_root)?;
 
     match target.target_type {
         PublishTargetType::Local => {
-            let outcome = run_local(args, &target, repo_root, &project_path, &config, &article_entry.source_path)?;
+            let outcome = run_local(args, &target, repo_root, &project_path, &config, &article_entry)?;
             Ok(PublishRunOutcome::Local(outcome))
         }
         PublishTargetType::YuquePrompt => {
@@ -260,24 +266,56 @@ fn resolve_target(args: &PublishRunArgs, config: &MindConfig, repo_root: &Path) 
     Ok(target.clone())
 }
 
-fn resolve_local_path(repo_root: &Path, target: &PublishTarget) -> Result<PathBuf> {
-    let config = target.config.as_ref().ok_or_else(|| {
-        MfError::usage(
-            format!("local target '{}' missing config.path", target.name),
-            Some("set `config.path: <directory>` on the target".to_string()),
-        )
-    })?;
-    let path_str = config.get("path").and_then(|v| v.as_str()).ok_or_else(|| {
-        MfError::usage(
-            format!("local target '{}' missing config.path", target.name),
-            Some("set `config.path: <directory>` on the target".to_string()),
-        )
-    })?;
-    let path = PathBuf::from(path_str);
-    if path.is_absolute() {
-        Ok(path)
+fn resolve_local_path(
+    repo_root: &Path,
+    target: &PublishTarget,
+    article: &Article,
+) -> Result<(PathBuf, Option<EffectiveDateOut>)> {
+    // Determine the path string: prefer target.path, fall back to target.config.path
+    let path_str = match target.path.as_deref() {
+        Some(p) => p.to_string(),
+        None => {
+            let config = target.config.as_ref().ok_or_else(|| {
+                MfError::usage(
+                    format!("local target '{}' missing path", target.name),
+                    Some("set `path: <directory>` or `config.path: <directory>` on the target".to_string()),
+                )
+            })?;
+            config
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    MfError::usage(
+                        format!("local target '{}' missing config.path", target.name),
+                        Some("set `path: <directory>` or `config.path: <directory>` on the target".to_string()),
+                    )
+                })?
+                .to_string()
+        }
+    };
+
+    // Parse as PathTemplate and conditionally compute effective date
+    let tmpl = PathTemplate::parse(&path_str)?;
+
+    let (expanded, effective_out) = if tmpl.has_date_placeholders() {
+        let effective = effective_date_svc::for_article(article)?;
+        let origin_str = match effective.origin {
+            effective_date_svc::EffectiveDateOrigin::TemplateSlot => "template_slot",
+            effective_date_svc::EffectiveDateOrigin::FilenamePrefix => "filename_prefix",
+        };
+        let expanded = tmpl.expand(effective.date);
+        let out = EffectiveDateOut { date: effective.date.to_string(), origin: origin_str.to_string() };
+        (expanded, Some(out))
     } else {
-        Ok(repo_root.join(path))
+        // No date placeholders — expand with a dummy date (unused)
+        (tmpl.expand(chrono::Utc::now().date_naive()), None)
+    };
+
+    let path = PathBuf::from(&expanded);
+    if path.is_absolute() {
+        Ok((path, effective_out))
+    } else {
+        Ok((repo_root.join(path), effective_out))
     }
 }
 
@@ -300,14 +338,16 @@ fn run_local(
     repo_root: &Path,
     project_path: &Path,
     config: &MindConfig,
-    _source_path: &str,
+    article_entry: &Article,
 ) -> Result<LocalRunOutcome> {
     let (artifact_path, size_bytes) = locate_build_artifact(project_path, config, &args.article)?;
 
-    let dest_dir = resolve_local_path(repo_root, target)?;
+    let (dest_dir, effective_out) = resolve_local_path(repo_root, target, article_entry)?;
     let format =
         if config.build.format.is_empty() { defaults::DEFAULT_BUILD_FORMAT } else { config.build.format.as_str() };
-    let dest_file = dest_dir.join(format!("{}.{format}", args.article));
+    let prefix = target.prefix.as_deref().unwrap_or("");
+    let article_stem = args.article.rsplit_once('/').map(|(_, stem)| stem).unwrap_or(&args.article);
+    let dest_file = dest_dir.join(format!("{prefix}{article_stem}.{format}"));
 
     if size_bytes == 0 {
         eprintln!("warning: build artifact is empty");
@@ -321,6 +361,7 @@ fn run_local(
             destination: dest_file.to_string_lossy().to_string(),
             size_bytes,
             dry_run: true,
+            effective_date: effective_out,
         });
     }
 
@@ -342,6 +383,7 @@ fn run_local(
         destination: dest_file.to_string_lossy().to_string(),
         size_bytes,
         dry_run: false,
+        effective_date: effective_out,
     })
 }
 
@@ -384,6 +426,15 @@ After publishing, run:\n\
         envelope,
         suggested_update_command,
         dry_run: args.dry_run,
+    })
+}
+
+/// Look up an article by CLI argument: supports both `docs/{name}.md` and
+/// `{template_name}/{slot_value}` patterns.
+fn find_article_in_index<'a>(index: &'a IndexFile, article: &str) -> Option<&'a Article> {
+    index.articles.as_ref()?.iter().find(|a| {
+        a.source_path == format!("docs/{}.md", article)
+            || a.template_origin.as_ref().is_some_and(|to| format!("{}/{}", to.template_name, to.slot_value) == article)
     })
 }
 

@@ -715,3 +715,123 @@ fn article_index_skips_missing_source_dir() {
     assert_eq!(output.status.code(), Some(0), "index should succeed even with missing source_dir");
     assert!(parsed["data"]["articles_count"].as_u64().unwrap_or(0) >= 1);
 }
+
+// ---------------------------------------------------------------------------
+// US2: Generated article discovery tests (T015)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn list_discovers_generated_articles() {
+    let repo = common::scaffold_project_with_template(
+        "my-project",
+        "daily_report",
+        "outputs/{date:YYYY-MM}/{date:YYYY-MM-DD}.md",
+        "generated",
+        &["outputs/2026-05/2026-05-15.md"],
+    );
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["--format", "json", "article", "list"])
+        .output()
+        .expect("command runs");
+    assert_eq!(output.status.code(), Some(0), "list should succeed");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(parsed["status"], "ok");
+
+    let articles = parsed["data"].as_array().unwrap();
+    let gen = articles.iter().find(|a| a["title"] == "daily_report/2026-05-15");
+    assert!(gen.is_some(), "should find generated article: {stdout}");
+
+    let gen = gen.unwrap();
+    assert_eq!(gen["source_path"], "outputs/2026-05/2026-05-15.md");
+    assert_eq!(gen["template_origin"]["template_name"], "daily_report");
+    assert_eq!(gen["template_origin"]["slot_value"], "2026-05-15");
+}
+
+#[test]
+fn list_persists_index_after_index_command() {
+    let repo = common::scaffold_project_with_template(
+        "my-project",
+        "daily_report",
+        "outputs/{date:YYYY-MM}/{date:YYYY-MM-DD}.md",
+        "generated",
+        &["outputs/2026-05/2026-05-15.md"],
+    );
+
+    // Run article index to persist the generated article
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "index"])
+        .assert()
+        .success();
+
+    // Verify mind-index.yaml contains the generated article
+    let index_path = repo.path().join("my-project/mind-index.yaml");
+    let content = std::fs::read_to_string(&index_path).unwrap();
+    assert!(content.contains("daily_report/2026-05-15"), "index should contain template article id: {content}");
+    assert!(content.contains("outputs/2026-05/2026-05-15.md"), "index should contain template source path: {content}");
+}
+
+#[test]
+fn list_is_byte_idempotent() {
+    let repo = common::scaffold_project_with_template(
+        "my-project",
+        "daily_report",
+        "outputs/{date:YYYY-MM}/{date:YYYY-MM-DD}.md",
+        "generated",
+        &["outputs/2026-05/2026-05-15.md"],
+    );
+
+    let run = |name: &str| -> String {
+        let output = Command::cargo_bin("mf")
+            .expect("binary exists")
+            .current_dir(repo.path().join("my-project"))
+            .args(["--format", "json", "article", "list"])
+            .output()
+            .expect("command runs");
+        assert_eq!(output.status.code(), Some(0), "{name} should succeed");
+        String::from_utf8(output.stdout).unwrap()
+    };
+
+    let first = run("first call");
+    let second = run("second call");
+    assert_eq!(first, second, "consecutive list calls should produce identical JSON");
+}
+
+#[test]
+fn list_works_without_prior_index() {
+    let repo = common::scaffold_project_with_template(
+        "my-project",
+        "daily_report",
+        "outputs/{date:YYYY-MM}/{date:YYYY-MM-DD}.md",
+        "generated",
+        &["outputs/2026-05/2026-05-15.md"],
+    );
+
+    // Delete mind-index.yaml
+    let index_path = repo.path().join("my-project/mind-index.yaml");
+    if index_path.exists() {
+        std::fs::remove_file(&index_path).unwrap();
+    }
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["--format", "json", "article", "list"])
+        .output()
+        .expect("command runs");
+    assert_eq!(output.status.code(), Some(0), "list should succeed without prior index");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(parsed["status"], "ok");
+
+    let articles = parsed["data"].as_array().unwrap();
+    assert!(
+        articles.iter().any(|a| a["title"] == "daily_report/2026-05-15"),
+        "should still discover generated article without index: {stdout}"
+    );
+}

@@ -59,6 +59,23 @@ pub enum MfError {
     /// Construct with [`MfError::not_found`].
     #[error("{message}")]
     NotFound { message: String, hint: Option<String> },
+
+    // ── 023 fix-bugs-2 error kinds ──
+    /// A placeholder token in a path template or pattern was not recognised.
+    #[error("unknown placeholder '{token}'")]
+    UnknownPlaceholder { token: String },
+
+    /// An article has no effective date and cannot be published to a date-templated target.
+    #[error("article has no effective date")]
+    NoEffectiveDate,
+
+    /// A template pattern contains multiple non-redundant slots (e.g. `{lang}/{date}`).
+    #[error("template '{template_name}' has multiple non-redundant slots")]
+    MultiSlotTemplate { template_name: String },
+
+    /// A template key does not match `^[a-z][a-z0-9_]*$`.
+    #[error("invalid template name '{name}'")]
+    InvalidTemplateName { name: String },
 }
 
 impl MfError {
@@ -95,7 +112,11 @@ impl MfError {
             | Self::IncompatibleSchema { .. }
             | Self::ParseError { .. }
             | Self::FileExists { .. }
-            | Self::NotFound { .. } => ExitCode::Failure,
+            | Self::NotFound { .. }
+            | Self::UnknownPlaceholder { .. }
+            | Self::NoEffectiveDate
+            | Self::MultiSlotTemplate { .. }
+            | Self::InvalidTemplateName { .. } => ExitCode::Failure,
             Self::NotImplemented { .. } => ExitCode::NotImplemented,
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => ExitCode::Failure,
         }
@@ -110,6 +131,10 @@ impl MfError {
             Self::FileExists { .. } => "file-exists",
             Self::NotImplemented { .. } => "not-implemented",
             Self::NotFound { .. } => "not-found",
+            Self::UnknownPlaceholder { .. } => "unknown_placeholder",
+            Self::NoEffectiveDate => "no_effective_date",
+            Self::MultiSlotTemplate { .. } => "multi_slot_template",
+            Self::InvalidTemplateName { .. } => "invalid_template_name",
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => "internal",
         }
     }
@@ -122,7 +147,11 @@ impl MfError {
             | Self::ParseError { .. }
             | Self::FileExists { .. }
             | Self::NotImplemented { .. }
-            | Self::NotFound { .. } => self.to_string(),
+            | Self::NotFound { .. }
+            | Self::UnknownPlaceholder { .. }
+            | Self::MultiSlotTemplate { .. }
+            | Self::InvalidTemplateName { .. } => self.to_string(),
+            Self::NoEffectiveDate => "article has no effective date".to_string(),
             Self::Internal(error) => error.to_string(),
             Self::Io(error) => error.to_string(),
             Self::Json(error) => error.to_string(),
@@ -138,6 +167,16 @@ impl MfError {
             Self::FileExists { .. } => Some("pass --force to overwrite"),
             Self::NotImplemented { hint, .. } => hint.as_deref().or(Some("tracked for future ROADMAP iteration")),
             Self::NotFound { hint, .. } => hint.as_deref(),
+            Self::UnknownPlaceholder { .. } => {
+                Some("supported placeholders: {date:YYYY}, {date:YYYY-MM}, {date:YYYY-MM-DD}")
+            }
+            Self::NoEffectiveDate => {
+                Some("add a YYYY-MM-DD prefix to the filename, e.g. 'docs/blog/2026-05-15-launch.md'")
+            }
+            Self::MultiSlotTemplate { .. } => {
+                Some("rewrite template to use a single distinguishing slot; coarse-then-fine date nests are accepted")
+            }
+            Self::InvalidTemplateName { .. } => Some("rename template key to match ^[a-z][a-z0-9_]*$"),
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => Some("this is an internal error; please report it"),
         }
     }
@@ -206,6 +245,35 @@ mod tests {
     }
 
     #[test]
+    fn unknown_placeholder_kind_and_hint() {
+        let err = MfError::UnknownPlaceholder { token: "{foo}".to_string() };
+        assert_eq!(err.kind(), "unknown_placeholder");
+        assert!(err.hint().unwrap_or("").contains("supported placeholders"));
+    }
+
+    #[test]
+    fn no_effective_date_kind_and_hint() {
+        let err = MfError::NoEffectiveDate;
+        assert_eq!(err.kind(), "no_effective_date");
+        assert!(err.hint().unwrap_or("").contains("YYYY-MM-DD"));
+    }
+
+    #[test]
+    fn multi_slot_template_kind_and_hint() {
+        let err = MfError::MultiSlotTemplate { template_name: "test".to_string() };
+        assert_eq!(err.kind(), "multi_slot_template");
+        assert_eq!(err.exit_code(), ExitCode::Failure);
+        assert!(err.hint().unwrap_or("").contains("single distinguishing slot"));
+    }
+
+    #[test]
+    fn invalid_template_name_kind_and_hint() {
+        let err = MfError::InvalidTemplateName { name: "BadName".to_string() };
+        assert_eq!(err.kind(), "invalid_template_name");
+        assert!(err.hint().unwrap_or("").contains("^[a-z][a-z0-9_]*$"));
+    }
+
+    #[test]
     fn incompatible_schema_kind_is_incompatible_schema() {
         let err = MfError::IncompatibleSchema {
             path: PathBuf::from("/tmp/index.yaml"),
@@ -256,6 +324,10 @@ mod tests {
             MfError::file_exists(PathBuf::from("/tmp/x")),
             MfError::not_implemented("x"),
             MfError::not_found("x", Some("hint".to_string())),
+            MfError::UnknownPlaceholder { token: "{x}".to_string() },
+            MfError::NoEffectiveDate,
+            MfError::MultiSlotTemplate { template_name: "t".to_string() },
+            MfError::InvalidTemplateName { name: "Bad".to_string() },
         ];
         for err in &cases {
             assert!(err.hint().is_some(), "hint is None for variant: {}", err.kind());

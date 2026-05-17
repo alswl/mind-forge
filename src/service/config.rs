@@ -118,6 +118,9 @@ pub fn load_project(cwd: &Path, repo_root: Option<&Path>) -> Result<Option<MindC
                 }
             }
 
+            // Validate template names (US2, T025)
+            validate_template_names(&config)?;
+
             // Normalize top-level compatibility fields into canonical project metadata
             if config.project.is_none() {
                 let inferred_name = path
@@ -165,6 +168,23 @@ pub fn validate_new_fields(config: &MindConfig) -> Result<()> {
                 "build.banner.text must be non-empty when banner is configured".to_string(),
                 Some("provide banner text or remove the banner section".to_string()),
             ));
+        }
+    }
+    Ok(())
+}
+
+/// Validate that all template names match `^[a-z][a-z0-9_]*$` (T025).
+fn validate_template_names(config: &MindConfig) -> Result<()> {
+    let templates = match config.templates.as_ref() {
+        Some(t) => &t.items,
+        None => return Ok(()),
+    };
+    for name in templates.keys() {
+        if name.is_empty()
+            || !name.starts_with(|c: char| c.is_ascii_lowercase())
+            || !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        {
+            return Err(MfError::InvalidTemplateName { name: name.clone() });
         }
     }
     Ok(())

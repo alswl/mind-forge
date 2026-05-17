@@ -2,6 +2,7 @@ pub mod article;
 pub mod asset;
 pub mod build;
 pub mod config;
+pub mod effective_date;
 pub mod index;
 pub mod project;
 pub mod publish;

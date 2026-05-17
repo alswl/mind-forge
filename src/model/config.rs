@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -194,6 +194,32 @@ fn default_schema_version() -> String {
     defaults::SCHEMA_VERSION.to_string()
 }
 
+/// Template mode: how the template pattern is interpreted.
+#[derive(Debug, Clone, PartialEq, JsonSchema, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TemplateMode {
+    Generated,
+    #[serde(untagged)]
+    Other(String),
+}
+
+/// A single template definition in mind.yaml.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Template {
+    pub pattern: String,
+    pub mode: TemplateMode,
+    /// Extra unknown fields preserved verbatim (e.g. `cadence: daily`).
+    #[serde(flatten)]
+    pub extra: serde_yaml::Mapping,
+}
+
+/// Typed templates collection from mind.yaml.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Templates {
+    #[serde(flatten)]
+    pub items: BTreeMap<String, Template>,
+}
+
 /// Top-level configuration for a mind-forge project (mind.yaml schema).
 #[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
 pub struct MindConfig {
@@ -223,7 +249,8 @@ pub struct MindConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub articles: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub templates: Option<serde_json::Value>,
+    #[schemars(skip)]
+    pub templates: Option<Templates>,
 }
 
 impl Default for MindConfig {
@@ -418,5 +445,80 @@ another_unknown: 42
         let yaml = "name: x\ntype: github_pages\nenabled: true\n";
         let target: PublishTarget = serde_yaml::from_str(yaml).unwrap();
         assert!(matches!(target.target_type, PublishTargetType::GithubPages));
+    }
+
+    // ── Typed Templates tests (T002) ──
+
+    #[test]
+    fn templates_round_trip_generated_mode() {
+        let yaml = r#"
+schema_version: '1'
+templates:
+  daily_report:
+    pattern: "outputs/{date:YYYY-MM}/{date:YYYY-MM-DD}.md"
+    mode: generated
+"#;
+        let config: MindConfig = serde_yaml::from_str(yaml).unwrap();
+        let templates_ref = config.templates.as_ref().unwrap();
+        let tmpl = templates_ref.items.get("daily_report").unwrap();
+        assert_eq!(tmpl.pattern, "outputs/{date:YYYY-MM}/{date:YYYY-MM-DD}.md");
+        assert!(matches!(tmpl.mode, TemplateMode::Generated));
+
+        // Round-trip: reserialize and parse back
+        let serialized = serde_yaml::to_string(&config).unwrap();
+        let config2: MindConfig = serde_yaml::from_str(&serialized).unwrap();
+        let templates_ref2 = config2.templates.as_ref().unwrap();
+        let tmpl2 = templates_ref2.items.get("daily_report").unwrap();
+        assert_eq!(tmpl2.pattern, tmpl.pattern);
+        assert!(matches!(tmpl2.mode, TemplateMode::Generated));
+    }
+
+    #[test]
+    fn templates_preserve_unknown_mode_as_other() {
+        let yaml = r#"
+schema_version: '1'
+templates:
+  custom:
+    pattern: "outputs/{date:YYYY-MM-DD}.md"
+    mode: custom_mode
+"#;
+        let config: MindConfig = serde_yaml::from_str(yaml).unwrap();
+        let templates_ref = config.templates.as_ref().unwrap();
+        let tmpl = templates_ref.items.get("custom").unwrap();
+        assert!(matches!(tmpl.mode, TemplateMode::Other(_)));
+        if let TemplateMode::Other(ref mode) = tmpl.mode {
+            assert_eq!(mode, "custom_mode");
+        }
+    }
+
+    #[test]
+    fn templates_preserve_extra_fields_like_cadence() {
+        let yaml = r#"
+schema_version: '1'
+templates:
+  weekly:
+    pattern: "outputs/{date:YYYY-MM-DD}.md"
+    mode: generated
+    cadence: weekly
+"#;
+        let config: MindConfig = serde_yaml::from_str(yaml).unwrap();
+        let templates_ref = config.templates.as_ref().unwrap();
+        let tmpl = templates_ref.items.get("weekly").unwrap();
+        assert!(tmpl.extra.contains_key(serde_yaml::Value::String("cadence".to_string())));
+
+        // Round-trip preserves cadence
+        let serialized = serde_yaml::to_string(&config).unwrap();
+        assert!(serialized.contains("cadence:"));
+    }
+
+    #[test]
+    fn templates_absent_deserializes_as_none() {
+        let yaml = r#"
+schema_version: '1'
+project:
+  name: test
+"#;
+        let config: MindConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.templates.is_none());
     }
 }
