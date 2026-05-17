@@ -18,6 +18,7 @@ Thumbs.db
 # Internal planning and local agent workflow files
 .agents/
 .claude/
+.specify
 .specify/
 .mind-forge/
 specs
