@@ -3,6 +3,7 @@ use std::io;
 use std::path::Path;
 
 use crate::error::{MfError, Result};
+use crate::model::article::Article;
 use crate::model::index::IndexFile;
 use crate::service::util::{atomic_write, validate_schema_version};
 
@@ -413,6 +414,88 @@ fn json_to_yaml(value: &serde_json::Value) -> serde_yaml::Value {
     }
 }
 
+/// A resolved article reference with its canonical key.
+#[derive(Debug)]
+pub struct ResolvedArticle<'a> {
+    pub article: &'a Article,
+    #[allow(dead_code)]
+    pub canonical_key: String,
+}
+
+/// Resolve an article argument to its canonical index entry.
+///
+/// Resolution order:
+/// 1. Exact canonical article key (covers declared + generated identities)
+/// 2. Exact indexed source_path
+/// 3. Optional unambiguous short name / basename
+///
+/// Display title is intentionally NOT used for resolution — it is
+/// presentation-only and must not determine filesystem paths.
+pub fn resolve_article<'a>(index: &'a IndexFile, article_arg: &str) -> Result<ResolvedArticle<'a>> {
+    let articles = match index.articles.as_ref() {
+        Some(a) if !a.is_empty() => a,
+        _ => {
+            return Err(MfError::not_found(
+                format!("no articles indexed; article '{}' not found", article_arg),
+                Some("run `mf article index` to index articles".to_string()),
+            ));
+        }
+    };
+
+    // 1. Exact article_key match (covers declared + generated identities)
+    for a in articles {
+        if let Ok(key) = article_key(a) {
+            if key == article_arg {
+                return Ok(ResolvedArticle { article: a, canonical_key: key });
+            }
+        }
+    }
+
+    // 2. Exact source_path match
+    for a in articles {
+        if a.source_path == article_arg {
+            let key = article_key(a).unwrap_or_else(|_| article_arg.to_string());
+            return Ok(ResolvedArticle { article: a, canonical_key: key });
+        }
+    }
+
+    // 3. Optional unambiguous short name / basename.
+    // Try matching the article_arg against the source_path after stripping:
+    // - any first directory component (e.g. docs/, notes/, specs/)
+    // - .md extension
+    // Also try constructing expected paths from the arg.
+    let matches: Vec<&Article> = articles
+        .iter()
+        .filter(|a| {
+            let sp = &a.source_path;
+            // Direct path matches
+            sp == article_arg
+                || sp == &format!("docs/{}", article_arg)
+                || sp == &format!("docs/{}.md", article_arg)
+                // Strip first directory component and .md extension
+                || sp.split_once('/')
+                    .map(|(_, rest)| rest.strip_suffix(".md").unwrap_or(rest))
+                    .is_some_and(|stem| stem == article_arg)
+        })
+        .collect();
+
+    match matches.len() {
+        1 => {
+            let a = matches[0];
+            let key = article_key(a).unwrap_or_else(|_| article_arg.to_string());
+            Ok(ResolvedArticle { article: a, canonical_key: key })
+        }
+        0 => Err(MfError::not_found(
+            format!("article '{article_arg}' not found"),
+            Some("run `mf article list` to see available articles".to_string()),
+        )),
+        _ => Err(MfError::usage(
+            format!("ambiguous article '{}'; found {} matches", article_arg, matches.len()),
+            Some("use the canonical article key from `mf article list`".to_string()),
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -469,6 +552,78 @@ mod tests {
             !key.contains("outputs"),
             "generated article key must NOT contain source_path-derived fragments: {key}"
         );
+    }
+
+    #[test]
+    fn article_key_handles_directory_source_path() {
+        let article = make_article("docs/2026-05-monthly", None);
+        let key = article_key(&article).unwrap();
+        assert_eq!(key, "2026-05-monthly", "directory source_path should produce article key without trailing slash");
+    }
+
+    #[test]
+    fn article_key_handles_non_docs_directory_source_path() {
+        let article = make_article("specs/quarterly", None);
+        let key = article_key(&article).unwrap();
+        assert_eq!(key, "specs/quarterly", "non-docs source_path should produce key verbatim");
+    }
+
+    // ── resolve_article tests ──
+
+    fn make_index(articles: Vec<Article>) -> IndexFile {
+        IndexFile {
+            schema_version: "1".to_string(),
+            articles: Some(articles),
+            publish_records: None,
+            sources: None,
+            assets: None,
+            terms: None,
+            extra: None,
+        }
+    }
+
+    #[test]
+    fn resolve_by_exact_key_declared() {
+        let index = make_index(vec![make_article("docs/2026-05-monthly", None)]);
+        let resolved = resolve_article(&index, "2026-05-monthly").unwrap();
+        assert_eq!(resolved.canonical_key, "2026-05-monthly");
+        assert_eq!(resolved.article.source_path, "docs/2026-05-monthly");
+    }
+
+    #[test]
+    fn resolve_by_exact_key_generated() {
+        let article = make_article(
+            "outputs/2026-05/2026-05-15.md",
+            Some(TemplateOrigin { template_name: "daily_report".to_string(), slot_value: "2026-05-15".to_string() }),
+        );
+        let index = make_index(vec![article]);
+        let resolved = resolve_article(&index, "daily_report/2026-05-15").unwrap();
+        assert_eq!(resolved.canonical_key, "daily_report/2026-05-15");
+        assert_eq!(resolved.article.source_path, "outputs/2026-05/2026-05-15.md");
+    }
+
+    #[test]
+    fn resolve_by_exact_source_path() {
+        let index = make_index(vec![make_article("docs/my-article.md", None)]);
+        let resolved = resolve_article(&index, "docs/my-article.md").unwrap();
+        assert_eq!(resolved.canonical_key, "my-article");
+    }
+
+    #[test]
+    fn resolve_not_found() {
+        let index = make_index(vec![make_article("docs/only-article.md", None)]);
+        let err = resolve_article(&index, "missing-article").unwrap_err();
+        assert!(matches!(err, MfError::NotFound { .. }));
+    }
+
+    #[test]
+    fn resolve_title_not_used() {
+        // The title "2026 05 monthly" is NOT a valid lookup key
+        let mut article = make_article("docs/2026-05-monthly", None);
+        article.title = "2026 05 monthly".to_string();
+        let index = make_index(vec![article]);
+        let err = resolve_article(&index, "2026 05 monthly").unwrap_err();
+        assert!(matches!(err, MfError::NotFound { .. }));
     }
 
     #[test]

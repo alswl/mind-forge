@@ -835,3 +835,107 @@ fn list_works_without_prior_index() {
         "should still discover generated article without index: {stdout}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// US1: Fix Article Source Path Identity — integration tests (T010–T013)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn article_index_declared_directory_source_path() {
+    let repo = common::scaffold_team_reports_minimal_repro();
+    let project_path = repo.path().join("team-reports");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project_path)
+        .args(["article", "index"])
+        .output()
+        .expect("command runs");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "index should succeed: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let articles = common::read_index_articles_map(&repo, "team-reports");
+    common::assert_article_source_path(&articles, "2026-05-monthly", "docs/2026-05-monthly");
+}
+
+#[test]
+fn article_index_does_not_write_nonexistent_md_file() {
+    let repo = common::scaffold_team_reports_minimal_repro();
+    let project_path = repo.path().join("team-reports");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project_path)
+        .args(["article", "index"])
+        .assert()
+        .success();
+
+    let articles = common::read_index_articles_map(&repo, "team-reports");
+    // The article's source_path must be the directory, not a fake .md file
+    common::assert_article_source_path(&articles, "2026-05-monthly", "docs/2026-05-monthly");
+    // Verify the fake .md file does not exist on disk
+    assert!(
+        !project_path.join("docs/2026-05-monthly.md").exists(),
+        "fake docs/2026-05-monthly.md should not exist on disk or in index"
+    );
+}
+
+#[test]
+fn article_index_deterministic_source_path_repeatable() {
+    let repo = common::scaffold_team_reports_minimal_repro();
+    let project_path = repo.path().join("team-reports");
+
+    let run_index = || -> String {
+        let output = Command::cargo_bin("mf")
+            .expect("binary exists")
+            .current_dir(&project_path)
+            .args(["article", "index", "-p", "team-reports"])
+            .output()
+            .expect("command runs");
+        assert_eq!(output.status.code(), Some(0));
+        std::fs::read_to_string(project_path.join("mind-index.yaml")).unwrap()
+    };
+
+    let first = run_index();
+    let second = run_index();
+    assert_eq!(first, second, "re-index should produce byte-identical mind-index.yaml");
+    assert!(
+        first.contains("source_path: docs/2026-05-monthly"),
+        "first run should have directory source_path: {first}"
+    );
+}
+
+#[test]
+fn article_index_missing_declared_source_diagnostic() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    // Declare an article with no existing source path
+    common::write_mind_yaml(&repo, "my-project", "schema: '1'\nbuild:\n  articles:\n    ghost-article: {}\n");
+    // No docs/ghost-article/ dir, no docs/ghost-article.md file
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "index"])
+        .output()
+        .expect("command runs");
+    // Index should still succeed — FR-003: missing-source articles are still emitted
+    // using the conventional docs/<key>.md fallback (visible to `mf article list`).
+    assert_eq!(output.status.code(), Some(0), "index should succeed");
+
+    let articles = common::read_index_articles_map(&repo, "my-project");
+    // The article should be in the index with the conventional docs/ path
+    // (not a random invented path)
+    let entry = articles.get("ghost-article").expect("ghost-article should be in index");
+    let sp = entry["source_path"].as_str().unwrap_or("");
+    assert_eq!(sp, "docs/ghost-article.md", "missing source should use conventional path");
+
+    // FR-003: a stderr warning must name the missing source so the user can fix it.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("ghost-article"), "stderr must name the missing article: {stderr}");
+    assert!(stderr.contains("docs/ghost-article.md"), "stderr must name the expected source path: {stderr}");
+}

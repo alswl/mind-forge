@@ -229,13 +229,42 @@ fn article_key_from_source_path(source_path: &str) -> String {
     key.to_string()
 }
 
+/// Resolve the docs-relative source path for a declared article key.
+///
+/// Checks existing paths in order:
+/// 1. `docs/<key>/` directory
+/// 2. `docs/<key>.md` file
+/// 3. Falls back to `docs/<key>.md` (may not exist — caller diagnoses)
+fn resolve_docs_source_path(project_root: &Path, key: &str) -> String {
+    let dir_path = project_root.join("docs").join(key);
+    if dir_path.is_dir() {
+        return format!("docs/{}", key);
+    }
+    format!("docs/{}.{}", key, defaults::MARKDOWN_EXTENSION)
+}
+
+/// FR-003: warn on stderr when a declared article's resolved source path does
+/// not exist on disk. The entry is still emitted (so `mf article list` shows
+/// it), but the user is told to fix it.
+fn warn_if_source_missing(project_root: &Path, id: &str, source_path: &str) {
+    if !project_root.join(source_path).exists() {
+        eprintln!("warning: declared article '{id}' has no source on disk (expected at '{source_path}')");
+    }
+}
+
 /// Scan config for declared articles from `build.articles` (typed) and
 /// compat top-level `articles` (Python mind 0.3.0).
 ///
 /// Returns entries sorted by `<id>` lexicographically. Typed wins over compat
 /// on `<id>` collision (FR-004). Entries whose `source_path` does not exist on
-/// disk are still emitted (FR-005). `template_origin` is always `None`.
+/// disk are still emitted using the conventional `docs/<key>.md` fallback so
+/// they remain visible to `mf article list` (FR-003). `template_origin` is
+/// always `None`.
 ///
+/// Source-path inference order:
+/// 1. Configured source_dir (if present): `<source_dir>/<key>.md` file, or
+///    `<source_dir>/` directory, else fall back to docs convention.
+/// 2. No source_dir configured: `docs/<key>/` directory before `docs/<key>.md`.
 pub fn scan_declared(project_root: &Path, config: &MindConfig) -> Result<Vec<Article>> {
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let project_name = util::dir_name(project_root);
@@ -248,12 +277,15 @@ pub fn scan_declared(project_root: &Path, config: &MindConfig) -> Result<Vec<Art
             let file_name = format!("{}.{}", id, defaults::MARKDOWN_EXTENSION);
             if dir_path.join(&file_name).is_file() {
                 format!("{source_dir}/{file_name}")
+            } else if dir_path.is_dir() {
+                source_dir.to_string()
             } else {
-                format!("docs/{}.{}", id, defaults::MARKDOWN_EXTENSION)
+                resolve_docs_source_path(project_root, id)
             }
         } else {
-            format!("docs/{}.{}", id, defaults::MARKDOWN_EXTENSION)
+            resolve_docs_source_path(project_root, id)
         };
+        warn_if_source_missing(project_root, id, &source_path);
 
         seen.insert(
             id.clone(),
@@ -283,15 +315,18 @@ pub fn scan_declared(project_root: &Path, config: &MindConfig) -> Result<Vec<Art
                         let file_name = format!("{}.{}", id, defaults::MARKDOWN_EXTENSION);
                         if dir_path.join(&file_name).is_file() {
                             format!("{source_dir}/{file_name}")
+                        } else if dir_path.is_dir() {
+                            source_dir.to_string()
                         } else {
-                            format!("docs/{}.{}", id, defaults::MARKDOWN_EXTENSION)
+                            resolve_docs_source_path(project_root, id)
                         }
                     } else {
-                        format!("docs/{}.{}", id, defaults::MARKDOWN_EXTENSION)
+                        resolve_docs_source_path(project_root, id)
                     }
                 }
-                _ => format!("docs/{}.{}", id, defaults::MARKDOWN_EXTENSION),
+                _ => resolve_docs_source_path(project_root, id),
             };
+            warn_if_source_missing(project_root, id, &source_path);
             seen.insert(
                 id.clone(),
                 Article {
@@ -832,5 +867,87 @@ mod tests {
         for a in &articles {
             assert!(a.template_origin.is_none(), "declared articles must never have template_origin");
         }
+    }
+
+    // ── T004: source-path inference order tests ──
+
+    #[test]
+    fn scan_declared_prefers_docs_dir_over_md_file() {
+        let dir = tempfile::tempdir().unwrap();
+        // Create docs/2026-05-monthly/ as an existing directory
+        std::fs::create_dir_all(dir.path().join("docs/2026-05-monthly")).unwrap();
+        // Do NOT create docs/2026-05-monthly.md
+
+        let config = config_with_typed(vec![("2026-05-monthly", None)]);
+        let articles = scan_declared(dir.path(), &config).unwrap();
+        assert_eq!(articles.len(), 1);
+        assert_eq!(
+            articles[0].source_path, "docs/2026-05-monthly",
+            "should use directory path when docs/<key>/ exists"
+        );
+    }
+
+    #[test]
+    fn scan_declared_uses_md_file_when_dir_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        // Create docs/my-article.md but NOT docs/my-article/
+        std::fs::create_dir_all(dir.path().join("docs")).unwrap();
+        std::fs::write(dir.path().join("docs/my-article.md"), "# content\n").unwrap();
+
+        let config = config_with_typed(vec![("my-article", None)]);
+        let articles = scan_declared(dir.path(), &config).unwrap();
+        assert_eq!(articles.len(), 1);
+        assert_eq!(articles[0].source_path, "docs/my-article.md");
+    }
+
+    #[test]
+    fn scan_declared_directory_precedence_over_file() {
+        let dir = tempfile::tempdir().unwrap();
+        // Create both docs/my-article/ (dir) AND docs/my-article.md (file)
+        std::fs::create_dir_all(dir.path().join("docs/my-article")).unwrap();
+        std::fs::write(dir.path().join("docs/my-article.md"), "# content\n").unwrap();
+
+        let config = config_with_typed(vec![("my-article", None)]);
+        let articles = scan_declared(dir.path(), &config).unwrap();
+        assert_eq!(articles.len(), 1);
+        assert_eq!(articles[0].source_path, "docs/my-article", "directory should take precedence over .md file");
+    }
+
+    #[test]
+    fn scan_declared_resolve_docs_fallback_for_config_no_source_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("docs/team-updates")).unwrap();
+
+        let config = config_with_typed(vec![("team-updates", None)]);
+        let articles = scan_declared(dir.path(), &config).unwrap();
+        assert_eq!(articles.len(), 1);
+        assert_eq!(articles[0].source_path, "docs/team-updates");
+    }
+
+    #[test]
+    fn scan_declared_configured_source_dir_dir_article() {
+        let dir = tempfile::tempdir().unwrap();
+        // Configured source_dir is a directory article (no <id>.md inside)
+        std::fs::create_dir_all(dir.path().join("specs/quarterly")).unwrap();
+
+        let config = config_with_typed(vec![("quarterly-review", Some("specs/quarterly"))]);
+        let articles = scan_declared(dir.path(), &config).unwrap();
+        assert_eq!(articles.len(), 1);
+        assert_eq!(
+            articles[0].source_path, "specs/quarterly",
+            "configured source_dir directory should be used directly"
+        );
+    }
+
+    #[test]
+    fn scan_declared_configured_source_dir_with_id_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("specs")).unwrap();
+        std::fs::write(dir.path().join("specs/my-article.md"), "# spec\n").unwrap();
+
+        let config = config_with_typed(vec![("my-article", Some("specs"))]);
+        let articles = scan_declared(dir.path(), &config).unwrap();
+        assert_eq!(articles.len(), 1);
+        assert_eq!(articles[0].source_path, "specs/my-article.md", "when <source_dir>/<id>.md exists, use file path");
     }
 }

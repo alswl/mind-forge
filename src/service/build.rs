@@ -143,59 +143,16 @@ pub fn build_article_path(
 }
 
 fn resolve_indexed_article_source(project_path: &Path, article: &str) -> Result<PathBuf> {
-    // Load index and find article
     let index = index::load(project_path)?;
-    let paths = config_svc::project_paths(project_path)?;
-    let article_entry = index
-        .articles
-        .iter()
-        .flat_map(|a| a.iter())
-        .find(|a| {
-            // Priority 1: exact path match
-            let exact = format!("{}/{}", paths.docs, article);
-            let exact_md = format!("{}/{}.{}", paths.docs, article, defaults::MARKDOWN_EXTENSION);
-            if a.source_path == exact || a.source_path == exact_md {
-                return true;
-            }
-            // Priority 2: slug match — strip docs/ and optional .md
-            if let Some(stripped) = a.source_path.strip_prefix(&format!("{}/", paths.docs)) {
-                let slug = stripped.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)).unwrap_or(stripped);
-                if slug == article {
-                    return true;
-                }
-            }
-            // Priority 3: title match
-            if a.title == article || a.title.replace(' ', "-") == article || util::to_filename(&a.title) == article {
-                return true;
-            }
-            false
-        })
-        .ok_or_else(|| {
-            let project_name = util::dir_name(project_path);
-            MfError::not_found(
-                format!("article '{article}' not found in project '{project_name}'"),
-                Some("use `mf article list` to see available articles".to_string()),
-            )
-        })?;
-
-    let source_path = project_path.join(&article_entry.source_path);
+    let resolved = index::resolve_article(&index, article)?;
+    let source_path = project_path.join(&resolved.article.source_path);
     if source_path.exists() {
         return Ok(source_path);
     }
-
-    let title_slug = util::to_filename(&article_entry.title);
-    let candidates = [
-        project_path.join(&paths.docs).join(article),
-        project_path.join(&paths.docs).join(format!("{article}.{}", defaults::MARKDOWN_EXTENSION)),
-        project_path.join(&paths.docs).join(&title_slug),
-        project_path.join(&paths.docs).join(format!("{title_slug}.{}", defaults::MARKDOWN_EXTENSION)),
-    ];
-    candidates.into_iter().find(|path| path.exists()).ok_or_else(|| {
-        MfError::usage(
-            format!("source not found: {}", article_entry.source_path),
-            Some("the file or directory may have been moved or deleted".to_string()),
-        )
-    })
+    Err(MfError::usage(
+        format!("source not found: {}", resolved.article.source_path),
+        Some("the file or directory may have been moved or deleted".to_string()),
+    ))
 }
 
 fn build_source(
@@ -400,4 +357,62 @@ fn auto_index_article(project_path: &Path, article: &str, source_path: &Path) ->
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::article::{Article, ArticleStatus, ArticleType};
+    use crate::model::index::IndexFile;
+
+    fn make_article(source_path: &str, title: &str) -> Article {
+        Article {
+            title: title.to_string(),
+            project: "test".to_string(),
+            article_type: ArticleType::Blog,
+            source_path: source_path.to_string(),
+            status: ArticleStatus::Draft,
+            created_at: "2026-05-15T00:00:00Z".to_string(),
+            updated_at: "2026-05-15T00:00:00Z".to_string(),
+            template_origin: None,
+        }
+    }
+
+    #[test]
+    fn resolve_indexed_article_source_by_exact_key() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("docs/2026-05-monthly")).unwrap();
+        std::fs::write(dir.path().join("docs/2026-05-monthly/01-team-okr.md"), "# okr\n").unwrap();
+        let index = IndexFile {
+            schema_version: "1".to_string(),
+            articles: Some(vec![make_article("docs/2026-05-monthly", "2026 05 monthly")]),
+            ..IndexFile::create_default()
+        };
+        index::save(dir.path(), &index).unwrap();
+
+        let result = resolve_indexed_article_source(dir.path(), "2026-05-monthly").unwrap();
+        assert!(result.exists());
+        assert!(result.is_dir());
+    }
+
+    #[test]
+    fn resolve_indexed_article_source_title_not_used_as_path_derivation() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("docs/team-updates")).unwrap();
+        std::fs::write(dir.path().join("docs/team-updates/01-note.md"), "# note\n").unwrap();
+        let index = IndexFile {
+            schema_version: "1".to_string(),
+            articles: Some(vec![make_article("docs/team-updates", "Team Updates")]),
+            ..IndexFile::create_default()
+        };
+        index::save(dir.path(), &index).unwrap();
+
+        // Lookup by key (not title) should work
+        let result = resolve_indexed_article_source(dir.path(), "team-updates").unwrap();
+        assert!(result.exists());
+
+        // Lookup by display title should fail — title is not a search key
+        let err = resolve_indexed_article_source(dir.path(), "Team Updates").unwrap_err();
+        assert!(matches!(err, MfError::NotFound { .. }));
+    }
 }

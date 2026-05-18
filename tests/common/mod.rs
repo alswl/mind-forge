@@ -202,3 +202,85 @@ pub fn write_term_index(repo: &TempDir, project_name: &str, terms_yaml: &str) {
     let yaml = format!("schema_version: '1'\nterms:\n  - {terms_yaml}\n");
     write_index(repo, project_name, &yaml);
 }
+
+/// Scaffold the minimal repro fixture matching quickstart.md:
+/// - `projects/team-reports/docs/2026-05-monthly/01-team-okr.md`
+/// - `projects/team-reports/outputs/2026-05/2026-05-15.md`
+/// - build.articles `2026-05-monthly` (no source_dir)
+/// - templates `daily_report` with `mode: generated`
+/// - local publish target with date expansion + prefix
+#[allow(dead_code)]
+pub fn scaffold_team_reports_minimal_repro() -> TempDir {
+    let dir = TempDir::new().unwrap();
+    let repo_path = dir.path().to_path_buf();
+    // Use the project as a top-level directory under the repo (matching projects_dir: '.')
+    let project_name = "team-reports";
+    let project_path = repo_path.join(project_name);
+
+    // minds.yaml at repo root
+    fs::write(repo_path.join("minds.yaml"), format!("schema: '1'\nprojects_dir: '.'\nprojects:\n  - {project_name}\n"))
+        .unwrap();
+
+    fs::create_dir_all(project_path.join("docs/2026-05-monthly")).unwrap();
+    fs::create_dir_all(project_path.join("outputs/2026-05")).unwrap();
+
+    // mind.yaml matching quickstart
+    let mind_yaml = r#"schema: '1'
+build:
+  articles:
+    2026-05-monthly: {}
+
+publish:
+  targets:
+    - name: local-test
+      type: local
+      path: "/tmp/mf-repro-publish/{date:YYYY-MM}/daily/"
+      prefix: "cie-"
+
+templates:
+  daily_report:
+    pattern: "outputs/{date:YYYY-MM}/{date:YYYY-MM-DD}.md"
+    cadence: daily
+    mode: generated
+"#;
+    fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
+
+    // Create the directory article part
+    fs::write(project_path.join("docs/2026-05-monthly/01-team-okr.md"), "# 2026-05 Monthly\n\nmonthly content\n")
+        .unwrap();
+
+    // Create the generated source file
+    fs::write(project_path.join("outputs/2026-05/2026-05-15.md"), "# 2026-05-15\n\ndaily content\n").unwrap();
+
+    dir
+}
+
+/// Parse `mind-index.yaml` for a project and return the articles mapping.
+#[allow(dead_code)]
+pub fn read_index_articles_map(repo: &TempDir, project_name: &str) -> serde_yaml::Value {
+    let content = fs::read_to_string(repo.path().join(project_name).join("mind-index.yaml")).unwrap();
+    let parsed: serde_yaml::Value = serde_yaml::from_str(&content).unwrap();
+    parsed.get("articles").cloned().unwrap_or(serde_yaml::Value::Null)
+}
+
+/// Assert that `articles_map` contains a key with `source_path` equal to `expected`.
+#[allow(dead_code)]
+pub fn assert_article_source_path(articles_map: &serde_yaml::Value, key: &str, expected: &str) {
+    let entry = articles_map
+        .get(key)
+        .unwrap_or_else(|| panic!("article key '{}' not found in articles map: {articles_map:#?}", key));
+    let source_path = entry["source_path"]
+        .as_str()
+        .unwrap_or_else(|| panic!("article '{}' has no source_path field: {entry:#?}", key));
+    assert_eq!(source_path, expected, "source_path mismatch for article '{}'", key);
+}
+
+/// Assert that `articles_map` does NOT contain a key.
+#[allow(dead_code)]
+pub fn assert_no_article_key(articles_map: &serde_yaml::Value, key: &str) {
+    assert!(
+        articles_map.get(key).is_none(),
+        "article key '{}' should not exist in articles map: {articles_map:#?}",
+        key
+    );
+}

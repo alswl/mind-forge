@@ -143,14 +143,16 @@ fn build_accepts_repo_relative_directory_article_path() {
 fn build_falls_back_to_directory_matching_article_argument_when_index_source_is_stale() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
+    // Indexed entry source_path does not exist — the article key is "review" and
+    // its source_path is a directory that does exist
     common::write_index(
         &repo,
         "my-project",
         r#"schema: '1'
 articles:
-  stale-entry:
+  review:
     title: Review
-    source_path: docs/stale-entry
+    source_path: docs/review
 "#,
     );
     let article_dir = repo.path().join("my-project/docs/review");
@@ -607,4 +609,140 @@ fn build_auto_indexes_configured_source_dir_as_article_directory() {
         !index.contains("source_path: specs/quarterly/quarterly-review.md"),
         "index should not invent a Markdown file inside the configured source dir: {index}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// US2: Build resolves by article key using indexed source path (T019–T022)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn build_dry_run_exact_key_lookup_directory_article() {
+    let repo = common::scaffold_team_reports_minimal_repro();
+    let project_path = repo.path().join("team-reports");
+
+    // Index first so the declared article is registered
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project_path)
+        .args(["article", "index"])
+        .assert()
+        .success();
+
+    // Build dry-run using exact article key
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project_path)
+        .args(["build", "2026-05-monthly", "--dry-run"])
+        .output()
+        .expect("command runs");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "build dry-run should succeed: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("2026-05-monthly"), "build plan should reference article key: {stdout}");
+    assert!(stdout.contains("Input sources:"), "dry-run should show input sources: {stdout}");
+}
+
+#[test]
+fn build_dry_run_input_source_includes_directory_file() {
+    let repo = common::scaffold_team_reports_minimal_repro();
+    let project_path = repo.path().join("team-reports");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project_path)
+        .args(["article", "index"])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project_path)
+        .args(["build", "2026-05-monthly", "--dry-run"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("docs/2026-05-monthly/01-team-okr.md"),
+        "input sources should include directory markdown file: {stdout}"
+    );
+}
+
+#[test]
+fn build_title_not_used_for_source_path_derivation() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Create a directory article with a display title that looks different from the key
+    let article_dir = repo.path().join("my-project/docs/team-updates");
+    fs::create_dir_all(&article_dir).unwrap();
+    fs::write(article_dir.join("01-note.md"), "# Note\n").unwrap();
+
+    // Index with the article key, not the title
+    let index_yaml = r#"schema: '1'
+articles:
+  team-updates:
+    title: Team Updates 2026
+    source_path: docs/team-updates
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    // Build using the article key should work
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "team-updates", "--dry-run"])
+        .assert()
+        .success();
+
+    // Build using the title should fail — title is not a lookup key
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "Team Updates 2026", "--dry-run"])
+        .output()
+        .expect("command runs");
+    assert_ne!(output.status.code(), Some(0), "build by title should fail");
+}
+
+#[test]
+fn build_dry_run_json_envelope_includes_source_path() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_index(
+        &repo,
+        "my-project",
+        r#"schema: '1'
+articles:
+  my-article:
+    title: My Article
+    source_path: docs/my-article
+"#,
+    );
+    let article_dir = repo.path().join("my-project/docs/my-article");
+    fs::create_dir_all(&article_dir).unwrap();
+    fs::write(article_dir.join("01-content.md"), "# Content\n").unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["--format", "json", "build", "my-article", "--dry-run"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Skip potential tracing lines
+    let json_start = stdout.find('{').unwrap_or(0);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout[json_start..]).unwrap();
+    assert_eq!(parsed["status"], "ok");
+    assert_eq!(parsed["data"]["article"], "my-article");
+    assert!(parsed["data"]["source_path"].as_str().unwrap_or("").contains("my-article"));
+    assert!(parsed["data"]["dry_run"].as_bool().unwrap_or(false));
 }

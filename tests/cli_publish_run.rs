@@ -1023,6 +1023,159 @@ fn publish_run_auto_reindex_picks_up_declared_articles() {
 }
 
 // ---------------------------------------------------------------------------
+// US3: Publish declared directory article by key (T027)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn publish_declared_directory_article_dry_run() {
+    let dest = tempfile::tempdir().unwrap();
+    let repo = common::setup_repo();
+    let project_path = repo.path().join("team-reports");
+    fs::create_dir_all(project_path.join("docs/2026-05-monthly")).unwrap();
+    fs::write(project_path.join("docs/2026-05-monthly/01-team-okr.md"), b"# Monthly\n\nmonthly content\n").unwrap();
+
+    let mind_yaml = format!(
+        "schema_version: '1'\n\
+         project:\n  name: team-reports\n\
+         build:\n  output_dir: _build\n  format: md\n\
+           articles:\n    2026-05-monthly: {{}}\n\
+         publish:\n  targets:\n    - name: local-out\n      type: local\n      enabled: true\n      path: \"{}\"\n      prefix: \"\"\n",
+        dest.path().display()
+    );
+    fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
+
+    // Index
+    let (_, stderr, code) = json_run(&["article", "index"], project_path.as_path());
+    assert_eq!(code, Some(0), "index: stderr={stderr}");
+
+    // Build to create artifact
+    let out = Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(&project_path)
+        .args(["build", "2026-05-monthly"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "build: stderr={}", String::from_utf8_lossy(&out.stderr));
+
+    // Publish dry-run by key
+    let (parsed, stderr, code) = json_run(
+        &["--format", "json", "publish", "run", "2026-05-monthly", "--target", "local-out", "--dry-run"],
+        project_path.as_path(),
+    );
+    assert_eq!(code, Some(0), "publish declared dir article should succeed: stderr={stderr}");
+    let source = parsed["data"]["source"].as_str().unwrap_or("");
+    assert!(source.contains("_build/2026-05-monthly.md"), "source should reference build artifact, got: {source}");
+}
+
+// ---------------------------------------------------------------------------
+// US3: Regression — title never used in publish error messages (T028)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn publish_title_not_used_for_error_messages() {
+    let dest = tempfile::tempdir().unwrap();
+    let repo = common::setup_repo();
+    let project_path = repo.path().join("team-reports");
+    fs::create_dir_all(project_path.join("docs/2026-05-monthly")).unwrap();
+    fs::write(project_path.join("docs/2026-05-monthly/01-team-okr.md"), b"# Monthly\n\nmonthly content\n").unwrap();
+
+    let mind_yaml = format!(
+        "schema_version: '1'\n\
+         project:\n  name: team-reports\n\
+         build:\n  output_dir: _build\n  format: md\n\
+           articles:\n    2026-05-monthly: {{}}\n\
+         publish:\n  targets:\n    - name: local-out\n      type: local\n      enabled: true\n      path: \"{}\"\n      prefix: \"\"\n",
+        dest.path().display()
+    );
+    fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
+
+    // Index
+    let (_, stderr, code) = json_run(&["article", "index"], project_path.as_path());
+    assert_eq!(code, Some(0), "index: stderr={stderr}");
+
+    // Build
+    let out = Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(&project_path)
+        .args(["build", "2026-05-monthly"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "build: stderr={}", String::from_utf8_lossy(&out.stderr));
+
+    // Publish by key succeeds
+    let (parsed, stderr, code) = json_run(
+        &["--format", "json", "publish", "run", "2026-05-monthly", "--target", "local-out", "--dry-run"],
+        project_path.as_path(),
+    );
+    assert_eq!(code, Some(0), "publish by key should succeed: stderr={stderr}");
+    assert_eq!(parsed["status"], "ok");
+
+    // Try to publish an article that doesn't exist — error should NOT use title
+    let (parsed, stderr, code) = json_run(
+        &["--format", "json", "publish", "run", "nonexistent", "--target", "local-out", "--dry-run"],
+        project_path.as_path(),
+    );
+    assert_ne!(code, Some(0), "publish of nonexistent article should fail");
+    assert_eq!(parsed["error"]["kind"], "not-found");
+    let msg = parsed["error"]["message"].as_str().unwrap_or("");
+    // The error must NOT mention a kebab→title-space conversion (the old bug)
+    assert!(!msg.contains("2026 05 monthly"), "error must not contain display-title: {msg}");
+    assert!(!stderr.contains("2026 05 monthly"), "stderr must not contain display-title: {stderr}");
+}
+
+// ---------------------------------------------------------------------------
+// US3: dry-run writes no destination content (T031)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn publish_dry_run_does_not_write_destination_file() {
+    let dest = tempfile::tempdir().unwrap();
+    let repo = common::setup_repo();
+    let project_path = repo.path().join("team-reports");
+    fs::create_dir_all(project_path.join("docs/2026-05-monthly")).unwrap();
+    fs::write(project_path.join("docs/2026-05-monthly/01-team-okr.md"), b"# Monthly\n\ncontent\n").unwrap();
+
+    let mind_yaml = format!(
+        "schema_version: '1'\n\
+         project:\n  name: team-reports\n\
+         build:\n  output_dir: _build\n  format: md\n\
+           articles:\n    2026-05-monthly: {{}}\n\
+         publish:\n  targets:\n    - name: local-out\n      type: local\n      enabled: true\n      path: \"{}\"\n      prefix: \"\"\n",
+        dest.path().display()
+    );
+    fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
+
+    // Index
+    let (_, stderr, code) = json_run(&["article", "index"], project_path.as_path());
+    assert_eq!(code, Some(0), "index: stderr={stderr}");
+
+    // Build
+    let out = Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(&project_path)
+        .args(["build", "2026-05-monthly"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "build: stderr={}", String::from_utf8_lossy(&out.stderr));
+
+    // Dry-run
+    let (parsed, stderr, code) = json_run(
+        &["--format", "json", "publish", "run", "2026-05-monthly", "--target", "local-out", "--dry-run"],
+        project_path.as_path(),
+    );
+    assert_eq!(code, Some(0), "dry-run should succeed: stderr={stderr}");
+    assert_eq!(parsed["data"]["dry_run"], true);
+
+    // Destination file must NOT exist
+    let dest_file = dest.path().join("2026-05-monthly.md");
+    assert!(!dest_file.exists(), "dry-run must not write destination file: {dest_file:?}");
+
+    // No files at all in the dest dir
+    let entries: Vec<_> = fs::read_dir(dest.path()).unwrap().collect();
+    assert!(entries.is_empty(), "dry-run must leave dest dir empty, found {entries:?}");
+}
+
+// ---------------------------------------------------------------------------
 // BUG-4 reverify — date expansion + prefix works end-to-end (FR-009)
 // ---------------------------------------------------------------------------
 

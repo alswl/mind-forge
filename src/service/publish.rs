@@ -10,7 +10,7 @@ use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::article::Article;
 use crate::model::config::{MindConfig, PublishTarget, PublishTargetType};
-use crate::model::index::{IndexFile, PublishRecord, PublishStatus};
+use crate::model::index::{PublishRecord, PublishStatus};
 use crate::model::publish::{
     EffectiveDateOut, LocalRunOutcome, PublishRunOutcome, PublishUpdateOutcome, UpdateAction, YuquePromptRunOutcome,
 };
@@ -34,13 +34,13 @@ pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path) -> Result<Publis
     })?;
 
     let mut index = index::load(&project_path)?;
-    let article_entry = match find_article_in_index(&index, &args.article) {
-        Some(a) => a.clone(),
-        None => {
-            // Auto-reindex on cache miss (US2)
+    let article_entry = match index::resolve_article(&index, &args.article) {
+        Ok(resolved) => resolved.article.clone(),
+        Err(_) => {
+            // Auto-reindex on cache miss
             let refreshed = crate::service::article::refresh_index(&project_path, &config)?;
             index = refreshed;
-            find_article_in_index(&index, &args.article).cloned().ok_or_else(|| {
+            index::resolve_article(&index, &args.article).map(|r| r.article.clone()).map_err(|_| {
                 MfError::not_found(
                     format!("article '{}' not found in mind-index.yaml", args.article),
                     Some("run `mf article index` to refresh the index".to_string()),
@@ -452,19 +452,6 @@ After publishing, run:\n\
         envelope,
         suggested_update_command,
         dry_run: args.dry_run,
-    })
-}
-
-/// Look up an article by CLI argument: supports both `docs/{name}.md` and
-/// `{template_name}/{slot_value}` patterns.
-fn find_article_in_index<'a>(index: &'a IndexFile, article: &str) -> Option<&'a Article> {
-    index.articles.as_ref()?.iter().find(|a| {
-        // Arm 1: docs-walked match (source_path = "docs/<article>.md")
-        a.source_path == format!("docs/{}.md", article)
-            // Arm 2: template-generated match (template_name/slot_value)
-            || a.template_origin.as_ref().is_some_and(|to| format!("{}/{}", to.template_name, to.slot_value) == article)
-            // Arm 3: article_key match (covers declared + docs articles)
-            || index::article_key(a).ok().map(|k| k == article).unwrap_or(false)
     })
 }
 

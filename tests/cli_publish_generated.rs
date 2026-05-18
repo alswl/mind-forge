@@ -159,3 +159,51 @@ fn publish_still_missing_after_reindex() {
     assert_ne!(code, Some(0), "publish of non-existent generated article should fail: {stderr}");
     assert_eq!(parsed["error"]["kind"], "not-found", "should report not-found: {parsed}");
 }
+
+// ---------------------------------------------------------------------------
+// US3: Generated publish source regression — source is the template file (T029)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn generated_publish_source_is_template_file() {
+    let repo = common::scaffold_team_reports_minimal_repro();
+    let project_path = repo.path().join("team-reports");
+
+    let (_, stderr, code) = json_run(&["article", "index"], project_path.as_path());
+    assert_eq!(code, Some(0), "index: stderr={stderr}");
+
+    let (parsed, stderr, code) = json_run(
+        &["--format", "json", "publish", "run", "daily_report/2026-05-15", "--target", "local-test", "--dry-run"],
+        project_path.as_path(),
+    );
+    assert_eq!(code, Some(0), "publish generated should succeed: stderr={stderr}");
+    let source = parsed["data"]["source"].as_str().unwrap_or("");
+    assert!(
+        source.ends_with("outputs/2026-05/2026-05-15.md"),
+        "source should be the generated template source file, got: {source}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// US3: Generated publish date expansion and prefix in destination (T030)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn generated_publish_date_expansion_and_prefix_destination() {
+    let repo = common::scaffold_team_reports_minimal_repro();
+    let project_path = repo.path().join("team-reports");
+
+    let (_, stderr, code) = json_run(&["article", "index"], project_path.as_path());
+    assert_eq!(code, Some(0), "index: stderr={stderr}");
+
+    let (parsed, stderr, code) = json_run(
+        &["--format", "json", "publish", "run", "daily_report/2026-05-15", "--target", "local-test", "--dry-run"],
+        project_path.as_path(),
+    );
+    assert_eq!(code, Some(0), "publish generated should succeed: stderr={stderr}");
+    let dest = parsed["data"]["destination"].as_str().unwrap_or("");
+    assert!(
+        dest.contains("/2026-05/daily/cie-2026-05-15.md"),
+        "destination should expand date placeholder and apply prefix, got: {dest}"
+    );
+}
