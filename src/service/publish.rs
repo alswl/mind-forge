@@ -57,7 +57,7 @@ pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path) -> Result<Publis
             Ok(PublishRunOutcome::Local(outcome))
         }
         PublishTargetType::YuquePrompt => {
-            let outcome = run_yuque_prompt(args, &target, &project_path, &config, &article_entry.source_path)?;
+            let outcome = run_yuque_prompt(args, &target, &project_path, &config, &article_entry)?;
             Ok(PublishRunOutcome::YuquePrompt(outcome))
         }
         PublishTargetType::Yuque
@@ -319,14 +319,40 @@ fn resolve_local_path(
     }
 }
 
-fn locate_build_artifact(project_path: &Path, config: &MindConfig, article: &str) -> Result<(PathBuf, u64)> {
+fn locate_build_artifact(project_path: &Path, config: &MindConfig, article_entry: &Article) -> Result<(PathBuf, u64)> {
+    // FR-002 (R2): generated article — the source file IS the artifact
+    if article_entry.template_origin.is_some() {
+        let path = project_path.join(&article_entry.source_path);
+        let metadata = fs::metadata(&path).map_err(|_| {
+            MfError::build_artifact_missing(
+                format!("build artifact (template source) missing at {}", path.display()),
+                Some(
+                    "the template-matched file was removed; regenerate it or remove the entry from mind-index.yaml"
+                        .to_string(),
+                ),
+            )
+        })?;
+        return Ok((path, metadata.len()));
+    }
+
+    // Non-generated: artifact lives at <output_dir>/<key>.<format>
     let format =
         if config.build.format.is_empty() { defaults::DEFAULT_BUILD_FORMAT } else { config.build.format.as_str() };
-    let path = project_path.join(&config.build.output_dir).join(format!("{article}.{format}"));
+    let key = index::article_key(article_entry)
+        .map_err(|e| MfError::Internal(anyhow::anyhow!("failed to derive article key: {e}")))?;
+    let path = project_path.join(&config.build.output_dir).join(format!("{key}.{format}"));
     let metadata = fs::metadata(&path).map_err(|_| {
-        MfError::not_found(
+        // Check if source file is also missing — indicates no source files (FR-005)
+        let source_path = project_path.join(&article_entry.source_path);
+        if !source_path.exists() {
+            return MfError::NoSourceFiles {
+                article: article_entry.title.clone(),
+                source_path: article_entry.source_path.clone(),
+            };
+        }
+        MfError::build_artifact_missing(
             format!("build artifact not found: {}", path.display()),
-            Some(format!("run `mf build {article}` first")),
+            Some(format!("run `mf build {key}` first")),
         )
     })?;
     Ok((path, metadata.len()))
@@ -340,7 +366,7 @@ fn run_local(
     config: &MindConfig,
     article_entry: &Article,
 ) -> Result<LocalRunOutcome> {
-    let (artifact_path, size_bytes) = locate_build_artifact(project_path, config, &args.article)?;
+    let (artifact_path, size_bytes) = locate_build_artifact(project_path, config, article_entry)?;
 
     let (dest_dir, effective_out) = resolve_local_path(repo_root, target, article_entry)?;
     let format =
@@ -392,9 +418,9 @@ fn run_yuque_prompt(
     target: &PublishTarget,
     project_path: &Path,
     config: &MindConfig,
-    source_path: &str,
+    article_entry: &Article,
 ) -> Result<YuquePromptRunOutcome> {
-    let (artifact_path, _size_bytes) = locate_build_artifact(project_path, config, &args.article)?;
+    let (artifact_path, _size_bytes) = locate_build_artifact(project_path, config, article_entry)?;
 
     let content = fs::read_to_string(&artifact_path).map_err(MfError::Io)?;
 
@@ -412,14 +438,14 @@ After publishing, run:\n\
     {suggested}",
         tgt = target.name,
         article = args.article,
-        source = source_path,
+        source = article_entry.source_path,
         suggested = suggested_update_command,
     );
 
     Ok(YuquePromptRunOutcome {
         target_name: target.name.clone(),
         article: args.article.clone(),
-        source_path: source_path.to_string(),
+        source_path: article_entry.source_path.clone(),
         build_artifact_path: artifact_path.to_string_lossy().to_string(),
         content,
         prompt,
@@ -433,8 +459,12 @@ After publishing, run:\n\
 /// `{template_name}/{slot_value}` patterns.
 fn find_article_in_index<'a>(index: &'a IndexFile, article: &str) -> Option<&'a Article> {
     index.articles.as_ref()?.iter().find(|a| {
+        // Arm 1: docs-walked match (source_path = "docs/<article>.md")
         a.source_path == format!("docs/{}.md", article)
+            // Arm 2: template-generated match (template_name/slot_value)
             || a.template_origin.as_ref().is_some_and(|to| format!("{}/{}", to.template_name, to.slot_value) == article)
+            // Arm 3: article_key match (covers declared + docs articles)
+            || index::article_key(a).ok().map(|k| k == article).unwrap_or(false)
     })
 }
 

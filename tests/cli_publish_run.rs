@@ -411,7 +411,7 @@ fn local_creates_missing_destination_dir() {
 }
 
 #[test]
-fn missing_build_artifact_returns_not_found() {
+fn missing_build_artifact_returns_build_artifact_missing() {
     let dest_root = tempfile::tempdir().unwrap();
     let repo = setup_repo_with_targets(&local_target_yaml("local-blog", dest_root.path()));
 
@@ -420,7 +420,7 @@ fn missing_build_artifact_returns_not_found() {
     let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog"]);
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
-    assert_eq!(v["error"]["kind"], "not-found");
+    assert_eq!(v["error"]["kind"], "build_artifact_missing");
     assert!(v["error"]["hint"].as_str().unwrap_or("").contains("mf build"), "hint should mention `mf build`: {v}");
 
     assert!(!dest_root.path().join("my-article.md").exists(), "destination must not be created when artifact missing");
@@ -596,14 +596,14 @@ fn yuque_prompt_empty_config_defaults_to_object() {
 }
 
 #[test]
-fn yuque_prompt_missing_build_artifact_returns_not_found() {
+fn yuque_prompt_missing_build_artifact_returns_build_artifact_missing() {
     let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
     fs::remove_file(repo.path().join("my-project/_build/my-article.md")).unwrap();
 
     let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
-    assert_eq!(v["error"]["kind"], "not-found");
+    assert_eq!(v["error"]["kind"], "build_artifact_missing");
 
     let stdout = String::from_utf8(out.stdout).unwrap();
     assert!(stdout.is_empty(), "no stdout output on error: {stdout}");
@@ -921,5 +921,184 @@ fn no_effective_date_errors() {
         v["error"]["hint"].as_str().unwrap_or("").contains("YYYY-MM-DD"),
         "hint should mention adding YYYY-MM-DD prefix, got: {:?}",
         v["error"]["hint"]
+    );
+}
+
+// ---------------------------------------------------------------------------
+// US2 — Declared article publish (FR-002, FR-005)
+// ---------------------------------------------------------------------------
+
+fn json_run(args: &[&str], cwd: &std::path::Path) -> (serde_json::Value, String, Option<i32>) {
+    let output =
+        Command::cargo_bin("mf").expect("binary exists").current_dir(cwd).args(args).output().expect("command runs");
+    let code = output.status.code();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let body = if code != Some(0) && !stderr.is_empty() { &stderr } else { &stdout };
+    let parsed = serde_json::from_str(body).unwrap_or_else(|_| serde_json::Value::String(body.clone()));
+    (parsed, stderr, code)
+}
+
+#[test]
+fn publish_run_declared_missing_source_returns_no_source_files() {
+    let repo = common::setup_repo();
+    common::scaffold_three_source_project(&repo, "q24");
+    let project_path = repo.path().join("q24");
+
+    // Index first so declared articles are known
+    let (_, stderr, code) = json_run(&["article", "index", "-p", "q24"], project_path.as_path());
+    assert_eq!(code, Some(0), "index: stderr={stderr}");
+
+    // Try to publish legacy-blog (compat declared, no source on disk)
+    let (parsed, stderr, code) = json_run(
+        &[
+            "--format",
+            "json",
+            "publish",
+            "run",
+            "legacy-blog",
+            "--target",
+            "simple-out",
+            "--project",
+            "q24",
+            "--dry-run",
+        ],
+        project_path.as_path(),
+    );
+    assert_eq!(code, Some(1), "publish of missing-source declared article should fail: {stderr}");
+    assert_eq!(
+        parsed["error"]["kind"], "no_source_files",
+        "FR-005: error.kind should be 'no_source_files', got: {parsed}"
+    );
+}
+
+#[test]
+fn publish_run_declared_present_succeeds_dry_run() {
+    let repo = common::setup_repo();
+    common::scaffold_three_source_project(&repo, "q24");
+    let project_path = repo.path().join("q24");
+
+    // First build the declared article to create its artifact
+    let out = Command::cargo_bin("mf").unwrap().current_dir(&project_path).args(["build", "reports"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(0), "build reports: stderr={}", String::from_utf8_lossy(&out.stderr));
+
+    // Index
+    let (_, stderr, code) = json_run(&["article", "index", "-p", "q24"], project_path.as_path());
+    assert_eq!(code, Some(0), "index: stderr={stderr}");
+
+    // Publish the declared article
+    let (parsed, stderr, code) = json_run(
+        &["--format", "json", "publish", "run", "reports", "--target", "simple-out", "--project", "q24", "--dry-run"],
+        project_path.as_path(),
+    );
+    assert_eq!(code, Some(0), "publish declared should succeed: stderr={stderr} parsed={parsed}");
+    let source = parsed["data"]["source"].as_str().unwrap_or("");
+    assert!(
+        source.ends_with("_build/reports.md"),
+        "FR-002: source should be _build/reports.md (article_key-derived), not path-joined from args: {source}"
+    );
+}
+
+#[test]
+fn publish_run_auto_reindex_picks_up_declared_articles() {
+    let repo = common::setup_repo();
+    common::scaffold_three_source_project(&repo, "q24");
+    let project_path = repo.path().join("q24");
+
+    // Build to create the artifact
+    let out = Command::cargo_bin("mf").unwrap().current_dir(&project_path).args(["build", "reports"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(0), "build reports: stderr={}", String::from_utf8_lossy(&out.stderr));
+
+    // Delete index to trigger auto-reindex
+    let index_path = project_path.join("mind-index.yaml");
+    let _ = std::fs::remove_file(&index_path);
+
+    // Publish — should auto-reindex and find the declared article
+    let (parsed, stderr, code) = json_run(
+        &["--format", "json", "publish", "run", "reports", "--target", "simple-out", "--project", "q24", "--dry-run"],
+        project_path.as_path(),
+    );
+    assert_eq!(code, Some(0), "auto-reindex should find declared article: stderr={stderr} parsed={parsed}");
+    assert!(index_path.exists(), "FR-008: mind-index.yaml should have been recreated by auto-reindex");
+}
+
+// ---------------------------------------------------------------------------
+// BUG-4 reverify — date expansion + prefix works end-to-end (FR-009)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn publish_run_local_target_expands_date_and_prefix_for_generated() {
+    let repo = common::setup_repo();
+    common::scaffold_three_source_project(&repo, "q24");
+    let project_path = repo.path().join("q24");
+
+    // Index to register generated articles (no build needed — source IS artifact)
+    let (_, stderr, code) = json_run(&["article", "index", "-p", "q24"], project_path.as_path());
+    assert_eq!(code, Some(0), "index: stderr={stderr}");
+
+    // Publish generated article to paas-git target with date template + prefix
+    let (parsed, stderr, code) = json_run(
+        &[
+            "--format",
+            "json",
+            "publish",
+            "run",
+            "daily_report/2026-05-15",
+            "--target",
+            "paas-git",
+            "--project",
+            "q24",
+            "--dry-run",
+        ],
+        project_path.as_path(),
+    );
+    assert_eq!(code, Some(0), "FR-009: generated article publish should succeed: stderr={stderr}");
+    let dest = parsed["data"]["destination"].as_str().unwrap_or("");
+    assert!(
+        dest.contains("/2026-05/daily/cie-2026-05-15.md"),
+        "FR-009: destination should expand date and prefix for generated article, got: {dest}"
+    );
+}
+
+#[test]
+fn publish_run_local_target_expands_date_and_prefix_for_docs() {
+    let repo = common::setup_repo();
+    common::scaffold_three_source_project(&repo, "q24");
+    let project_path = repo.path().join("q24");
+
+    // Index first so `mf build` can find the article
+    let (_, stderr, code) = json_run(&["article", "index", "-p", "q24"], project_path.as_path());
+    assert_eq!(code, Some(0), "index: stderr={stderr}");
+
+    // Build artifact for the docs article
+    let out = Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(&project_path)
+        .args(["build", "2026-05-10-hello"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "build: stderr={}", String::from_utf8_lossy(&out.stderr));
+
+    // Publish docs article to paas-git target with date template + prefix
+    let (parsed, stderr, code) = json_run(
+        &[
+            "--format",
+            "json",
+            "publish",
+            "run",
+            "2026-05-10-hello",
+            "--target",
+            "paas-git",
+            "--project",
+            "q24",
+            "--dry-run",
+        ],
+        project_path.as_path(),
+    );
+    assert_eq!(code, Some(0), "FR-009: docs article publish should succeed: stderr={stderr}");
+    let dest = parsed["data"]["destination"].as_str().unwrap_or("");
+    assert!(
+        dest.contains("/2026-05/daily/cie-2026-05-10-hello.md"),
+        "FR-009: destination should expand date and prefix for docs article, got: {dest}"
     );
 }

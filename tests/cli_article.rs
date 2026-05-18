@@ -452,7 +452,7 @@ fn article_list_json_shows_source_dir_field() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(parsed["status"], "ok");
-    let articles = parsed["data"].as_array().unwrap();
+    let articles = parsed["data"]["articles"].as_array().unwrap();
     assert!(!articles.is_empty());
     let first = &articles[0];
     // The JSON should include a source_dir field per contract
@@ -483,7 +483,7 @@ fn article_list_json_with_configured_source_dir() {
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8(output.stdout).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    let articles = parsed["data"].as_array().unwrap();
+    let articles = parsed["data"]["articles"].as_array().unwrap();
     let article = articles.iter().find(|a| a["source_path"].as_str().unwrap_or("").contains("custom-article"));
     assert!(article.is_some(), "custom-article should appear in listing");
     let source_dir = article.unwrap()["source_dir"].as_str().unwrap_or("");
@@ -593,7 +593,7 @@ fn article_index_uses_configured_article_key_for_directory_source_dir() {
         .expect("command runs");
     let stdout = String::from_utf8(list_output.stdout).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    let articles = parsed["data"].as_array().unwrap();
+    let articles = parsed["data"]["articles"].as_array().unwrap();
     let article = articles.iter().find(|a| a["source_path"] == "specs/quarterly").expect("configured article");
 
     assert_eq!(article["title"], "quarterly review");
@@ -741,7 +741,7 @@ fn list_discovers_generated_articles() {
     let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(parsed["status"], "ok");
 
-    let articles = parsed["data"].as_array().unwrap();
+    let articles = parsed["data"]["articles"].as_array().unwrap();
     let gen = articles.iter().find(|a| a["title"] == "daily_report/2026-05-15");
     assert!(gen.is_some(), "should find generated article: {stdout}");
 
@@ -829,7 +829,7 @@ fn list_works_without_prior_index() {
     let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(parsed["status"], "ok");
 
-    let articles = parsed["data"].as_array().unwrap();
+    let articles = parsed["data"]["articles"].as_array().unwrap();
     assert!(
         articles.iter().any(|a| a["title"] == "daily_report/2026-05-15"),
         "should still discover generated article without index: {stdout}"

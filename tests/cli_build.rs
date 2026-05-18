@@ -574,7 +574,7 @@ fn build_auto_indexes_article_in_mind_index_yaml() {
     let parsed: serde_json::Value = serde_json::from_str(stripped).unwrap_or_else(|e| {
         panic!("JSON parse error: {e}\nstdout: {stdout:?}");
     });
-    let articles = parsed["data"].as_array().unwrap();
+    let articles = parsed["data"]["articles"].as_array().unwrap();
     let auto_indexed = articles.iter().find(|a| a["source_path"].as_str().unwrap_or("").contains("auto-index-me"));
     assert!(auto_indexed.is_some(), "built article should appear in index after build: {stdout}");
 }

@@ -76,6 +76,14 @@ pub enum MfError {
     /// A template key does not match `^[a-z][a-z0-9_]*$`.
     #[error("invalid template name '{name}'")]
     InvalidTemplateName { name: String },
+
+    /// A declared article has no source files on disk (FR-005).
+    #[error("no source files for '{article}'")]
+    NoSourceFiles { article: String, source_path: String },
+
+    /// The build artifact could not be found on disk (renamed from overloaded `not_found`).
+    #[error("{message}")]
+    BuildArtifactMissing { message: String, hint: Option<String> },
 }
 
 impl MfError {
@@ -105,6 +113,10 @@ impl MfError {
         Self::NotFound { message: message.into(), hint }
     }
 
+    pub fn build_artifact_missing(message: impl Into<String>, hint: Option<String>) -> Self {
+        Self::BuildArtifactMissing { message: message.into(), hint }
+    }
+
     pub fn exit_code(&self) -> ExitCode {
         match self {
             Self::Usage { .. } => ExitCode::UsageError,
@@ -116,7 +128,9 @@ impl MfError {
             | Self::UnknownPlaceholder { .. }
             | Self::NoEffectiveDate
             | Self::MultiSlotTemplate { .. }
-            | Self::InvalidTemplateName { .. } => ExitCode::Failure,
+            | Self::InvalidTemplateName { .. }
+            | Self::NoSourceFiles { .. }
+            | Self::BuildArtifactMissing { .. } => ExitCode::Failure,
             Self::NotImplemented { .. } => ExitCode::NotImplemented,
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => ExitCode::Failure,
         }
@@ -135,6 +149,8 @@ impl MfError {
             Self::NoEffectiveDate => "no_effective_date",
             Self::MultiSlotTemplate { .. } => "multi_slot_template",
             Self::InvalidTemplateName { .. } => "invalid_template_name",
+            Self::NoSourceFiles { .. } => "no_source_files",
+            Self::BuildArtifactMissing { .. } => "build_artifact_missing",
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => "internal",
         }
     }
@@ -152,6 +168,8 @@ impl MfError {
             | Self::MultiSlotTemplate { .. }
             | Self::InvalidTemplateName { .. } => self.to_string(),
             Self::NoEffectiveDate => "article has no effective date".to_string(),
+            Self::NoSourceFiles { article, .. } => format!("no source files for '{article}'"),
+            Self::BuildArtifactMissing { message, .. } => message.clone(),
             Self::Internal(error) => error.to_string(),
             Self::Io(error) => error.to_string(),
             Self::Json(error) => error.to_string(),
@@ -177,6 +195,8 @@ impl MfError {
                 Some("rewrite template to use a single distinguishing slot; coarse-then-fine date nests are accepted")
             }
             Self::InvalidTemplateName { .. } => Some("rename template key to match ^[a-z][a-z0-9_]*$"),
+            Self::NoSourceFiles { .. } => Some("create the source file or remove the declaration from mind.yaml"),
+            Self::BuildArtifactMissing { hint, .. } => hint.as_deref().or(Some("run `mf build <id>` first")),
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => Some("this is an internal error; please report it"),
         }
     }
@@ -274,6 +294,13 @@ mod tests {
     }
 
     #[test]
+    fn no_source_files_kind_and_hint() {
+        let err = MfError::NoSourceFiles { article: "test".to_string(), source_path: "docs/test.md".to_string() };
+        assert_eq!(err.kind(), "no_source_files");
+        assert!(err.hint().unwrap_or("").contains("source file"));
+    }
+
+    #[test]
     fn incompatible_schema_kind_is_incompatible_schema() {
         let err = MfError::IncompatibleSchema {
             path: PathBuf::from("/tmp/index.yaml"),
@@ -328,6 +355,8 @@ mod tests {
             MfError::NoEffectiveDate,
             MfError::MultiSlotTemplate { template_name: "t".to_string() },
             MfError::InvalidTemplateName { name: "Bad".to_string() },
+            MfError::NoSourceFiles { article: "x".to_string(), source_path: "docs/x.md".to_string() },
+            MfError::BuildArtifactMissing { message: "missing".to_string(), hint: None },
         ];
         for err in &cases {
             assert!(err.hint().is_some(), "hint is None for variant: {}", err.kind());

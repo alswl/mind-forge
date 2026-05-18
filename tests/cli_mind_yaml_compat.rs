@@ -120,7 +120,7 @@ fn cli_compat_article_list_dictionary_index() {
     let (value, stderr, code) = run_json(&dir, &["article", "list", "--project", "2026-blogs", "--json"]);
     assert_eq!(code, 0, "article list: {stderr}");
     assert_eq!(value["status"], "ok");
-    assert_eq!(value["data"].as_array().expect("articles array").len(), 3);
+    assert_eq!(value["data"]["articles"].as_array().expect("articles array").len(), 3);
 }
 
 #[test]

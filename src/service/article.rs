@@ -82,9 +82,10 @@ pub fn new_article(
     Ok(filename)
 }
 
-/// Build an in-memory index by scanning docs/ and template patterns.
+/// Build an in-memory index from all discovery sources.
 ///
-/// Loads the existing index (tolerating missing), scans the filesystem for
+/// Priority order (higher wins): declared > docs > templates.
+/// Loads the existing index (tolerating missing), scans declared articles,
 /// docs-declared articles and template-generated articles, merges results
 /// (preserving metadata for articles that still exist). Unlike
 /// [`refresh_index`], this does **not** persist the result.
@@ -98,10 +99,26 @@ pub fn build_index(project_root: &Path, config: &MindConfig) -> Result<IndexFile
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let project_name = util::dir_name(project_root);
 
-    // Scan docs/ for markdown files
+    // Phase 1: Declared articles (from build.articles + compat articles)
+    let declared = scan_declared(project_root, config)?;
+    let mut declared_prefixes: Vec<String> = Vec::new();
+    for da in &declared {
+        covered.insert(da.source_path.clone());
+        // Track directory-like source_paths for template dedup (FR-006)
+        if !da.source_path.ends_with(&format!(".{}", defaults::MARKDOWN_EXTENSION)) {
+            let prefix = da.source_path.trim_end_matches('/').to_string() + "/";
+            declared_prefixes.push(prefix);
+        }
+        articles.push(fresh_or_existing(da, &existing_map, &now, &project_name));
+    }
+
+    // Phase 2: Docs scan
     let scanned = scan_docs(project_root)?;
     for s in scanned {
         let sp = source_path_for_scanned(&s);
+        if covered.contains(&sp) {
+            continue;
+        }
         covered.insert(sp.clone());
         if let Some(existing_article) = existing_map.get(sp.as_str()) {
             let mut article = (*existing_article).clone();
@@ -121,9 +138,16 @@ pub fn build_index(project_root: &Path, config: &MindConfig) -> Result<IndexFile
         }
     }
 
-    // Scan template-generated files
+    // Phase 3: Template-generated files
     let template_articles = scan_templates(project_root, config)?;
     for ta in template_articles {
+        if covered.contains(&ta.source_path) {
+            continue;
+        }
+        // FR-006: Skip if template file falls under a declared article's source_dir
+        if declared_prefixes.iter().any(|p| ta.source_path.starts_with(p)) {
+            continue;
+        }
         covered.insert(ta.source_path.clone());
         if let Some(existing_article) = existing_map.get(ta.source_path.as_str()) {
             let mut article = (*existing_article).clone();
@@ -157,6 +181,27 @@ pub fn build_index(project_root: &Path, config: &MindConfig) -> Result<IndexFile
     Ok(index)
 }
 
+/// Helper: reuse existing article metadata if available, otherwise create fresh.
+fn fresh_or_existing(src: &Article, existing_map: &HashMap<&str, &Article>, now: &str, project_name: &str) -> Article {
+    if let Some(existing) = existing_map.get(src.source_path.as_str()) {
+        let mut article = (*existing).clone();
+        article.source_path = src.source_path.clone();
+        article.template_origin = src.template_origin.clone();
+        article
+    } else {
+        Article {
+            title: src.title.clone(),
+            project: project_name.to_string(),
+            article_type: ArticleType::Blog,
+            source_path: src.source_path.clone(),
+            status: ArticleStatus::Draft,
+            created_at: now.to_string(),
+            updated_at: now.to_string(),
+            template_origin: None,
+        }
+    }
+}
+
 /// Rebuild the index by scanning docs/ and template patterns, then persist.
 ///
 /// See [`build_index`] for the computation logic. This function additionally
@@ -182,6 +227,88 @@ fn article_key_from_source_path(source_path: &str) -> String {
     let without_ext = source_path.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)).unwrap_or(source_path);
     let (_docs_prefix, key) = without_ext.rsplit_once('/').unwrap_or(("", without_ext));
     key.to_string()
+}
+
+/// Scan config for declared articles from `build.articles` (typed) and
+/// compat top-level `articles` (Python mind 0.3.0).
+///
+/// Returns entries sorted by `<id>` lexicographically. Typed wins over compat
+/// on `<id>` collision (FR-004). Entries whose `source_path` does not exist on
+/// disk are still emitted (FR-005). `template_origin` is always `None`.
+///
+pub fn scan_declared(project_root: &Path, config: &MindConfig) -> Result<Vec<Article>> {
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let project_name = util::dir_name(project_root);
+    let mut seen: std::collections::BTreeMap<String, Article> = std::collections::BTreeMap::new();
+
+    // 1. Typed build.articles (authoritative)
+    for (id, cfg) in &config.build.articles {
+        let source_path = if let Some(ref source_dir) = cfg.source_dir {
+            let dir_path = project_root.join(source_dir);
+            let file_name = format!("{}.{}", id, defaults::MARKDOWN_EXTENSION);
+            if dir_path.join(&file_name).is_file() {
+                format!("{source_dir}/{file_name}")
+            } else {
+                format!("docs/{}.{}", id, defaults::MARKDOWN_EXTENSION)
+            }
+        } else {
+            format!("docs/{}.{}", id, defaults::MARKDOWN_EXTENSION)
+        };
+
+        seen.insert(
+            id.clone(),
+            Article {
+                title: id.replace('-', " "),
+                project: project_name.clone(),
+                article_type: ArticleType::Blog,
+                source_path,
+                status: ArticleStatus::Draft,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                template_origin: None,
+            },
+        );
+    }
+
+    // 2. Compat top-level articles (only for IDs not already seen)
+    if let Some(serde_json::Value::Object(map)) = config.articles.as_ref() {
+        for (id, value) in map {
+            if seen.contains_key(id) {
+                continue;
+            }
+            let source_path = match value {
+                serde_json::Value::Object(obj) => {
+                    if let Some(source_dir) = obj.get("source_dir").and_then(|v| v.as_str()) {
+                        let dir_path = project_root.join(source_dir);
+                        let file_name = format!("{}.{}", id, defaults::MARKDOWN_EXTENSION);
+                        if dir_path.join(&file_name).is_file() {
+                            format!("{source_dir}/{file_name}")
+                        } else {
+                            format!("docs/{}.{}", id, defaults::MARKDOWN_EXTENSION)
+                        }
+                    } else {
+                        format!("docs/{}.{}", id, defaults::MARKDOWN_EXTENSION)
+                    }
+                }
+                _ => format!("docs/{}.{}", id, defaults::MARKDOWN_EXTENSION),
+            };
+            seen.insert(
+                id.clone(),
+                Article {
+                    title: id.replace('-', " "),
+                    project: project_name.clone(),
+                    article_type: ArticleType::Blog,
+                    source_path,
+                    status: ArticleStatus::Draft,
+                    created_at: now.clone(),
+                    updated_at: now.clone(),
+                    template_origin: None,
+                },
+            );
+        }
+    }
+
+    Ok(seen.into_values().collect())
 }
 
 /// Compute the effective source directory for an article based on project config.
@@ -598,4 +725,112 @@ fn check_content(issues: &mut Vec<LintIssue>, full_path: &Path, rel_path: &str) 
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::config::{ArticleBuildConfig, BuildConfig};
+    use std::collections::HashMap;
+
+    /// Helper: build a MindConfig with typed build.articles entries.
+    fn config_with_typed(entries: Vec<(&str, Option<&str>)>) -> MindConfig {
+        let mut articles: HashMap<String, ArticleBuildConfig> = HashMap::new();
+        for (id, source_dir) in entries {
+            articles.insert(id.to_string(), ArticleBuildConfig { source_dir: source_dir.map(|s| s.to_string()) });
+        }
+        MindConfig { build: BuildConfig { articles, ..Default::default() }, ..Default::default() }
+    }
+
+    /// Helper: build a MindConfig with compat top-level articles entries.
+    fn config_with_compat(entries: Vec<(&str, Option<&str>)>) -> MindConfig {
+        let mut map = serde_json::Map::new();
+        for (id, source_dir) in entries {
+            let entry = match source_dir {
+                Some(dir) => serde_json::json!({"source_dir": dir}),
+                None => serde_json::json!({"type": "blog"}),
+            };
+            map.insert(id.to_string(), entry);
+        }
+        MindConfig { articles: Some(serde_json::Value::Object(map)), ..Default::default() }
+    }
+
+    #[test]
+    fn scan_declared_typed_only_returns_typed_id_with_source_dir_resolved_path() {
+        let config = config_with_typed(vec![("reports", Some("reports"))]);
+        let dir = tempfile::tempdir().unwrap();
+        let articles = scan_declared(dir.path(), &config).unwrap();
+        assert_eq!(articles.len(), 1, "should return one declared article");
+        assert_eq!(articles[0].title, "reports");
+        assert_eq!(
+            articles[0].source_path, "docs/reports.md",
+            "falls back to docs/{{id}}.md when no file exists in source_dir"
+        );
+        assert!(articles[0].template_origin.is_none());
+    }
+
+    #[test]
+    fn scan_declared_compat_only_returns_compat_id_with_docs_fallback() {
+        let config = config_with_compat(vec![("legacy-blog", None)]);
+        let dir = tempfile::tempdir().unwrap();
+        let articles = scan_declared(dir.path(), &config).unwrap();
+        assert_eq!(articles.len(), 1, "should return one compat article");
+        assert_eq!(articles[0].title, "legacy blog");
+        assert_eq!(articles[0].source_path, "docs/legacy-blog.md");
+    }
+
+    #[test]
+    fn scan_declared_typed_wins_over_compat_on_id_collision() {
+        let typed_cfg = ArticleBuildConfig { source_dir: Some("typed-path".to_string()) };
+        let mut typed: HashMap<String, ArticleBuildConfig> = HashMap::new();
+        typed.insert("shared".to_string(), typed_cfg);
+        let mut compat_map = serde_json::Map::new();
+        compat_map.insert("shared".to_string(), serde_json::json!({"source_dir": "compat-path"}));
+        let config = MindConfig {
+            build: BuildConfig { articles: typed, ..Default::default() },
+            articles: Some(serde_json::Value::Object(compat_map)),
+            ..Default::default()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let articles = scan_declared(dir.path(), &config).unwrap();
+        assert_eq!(articles.len(), 1, "typed wins should produce exactly one article");
+        assert_eq!(
+            articles[0].source_path, "docs/shared.md",
+            "typed article without source file falls back to docs/{{id}}.md"
+        );
+    }
+
+    #[test]
+    fn scan_declared_sorts_alphabetically_by_id() {
+        let config = config_with_typed(vec![
+            ("zulu", Some("zulu/src")),
+            ("alpha", Some("alpha/src")),
+            ("beta", Some("beta/src")),
+        ]);
+        let dir = tempfile::tempdir().unwrap();
+        let articles = scan_declared(dir.path(), &config).unwrap();
+        assert_eq!(articles.len(), 3, "should return 3 declared articles");
+        assert_eq!(articles[0].title, "alpha", "first should be alpha");
+        assert_eq!(articles[1].title, "beta", "second should be beta");
+        assert_eq!(articles[2].title, "zulu", "third should be zulu");
+    }
+
+    #[test]
+    fn scan_declared_missing_source_still_returns_article() {
+        let config = config_with_typed(vec![("ghost", Some("nonexistent-dir"))]);
+        let dir = tempfile::tempdir().unwrap();
+        let articles = scan_declared(dir.path(), &config).unwrap();
+        assert_eq!(articles.len(), 1, "should return article even with missing source");
+        assert_eq!(articles[0].title, "ghost");
+    }
+
+    #[test]
+    fn scan_declared_template_origin_always_none() {
+        let config = config_with_typed(vec![("reports", Some("reports"))]);
+        let dir = tempfile::tempdir().unwrap();
+        let articles = scan_declared(dir.path(), &config).unwrap();
+        for a in &articles {
+            assert!(a.template_origin.is_none(), "declared articles must never have template_origin");
+        }
+    }
 }

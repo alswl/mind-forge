@@ -56,6 +56,67 @@ pub fn write_article_index(repo: &TempDir, project_name: &str, article: &str) {
     write_index(repo, project_name, &yaml);
 }
 
+/// Create a project with all three discovery sources: generated (template),
+/// declared (typed build.articles + compat articles), and docs-walked.
+///
+/// Mirrors the quickstart q24 fixture shape:
+/// - `templates.daily_report` with `mode: generated`,
+///   `pattern: "outputs/{date:YYYY-MM}/{date:YYYY-MM-DD}.md"`
+///   and matching file at `outputs/2026-05/2026-05-15.md`
+/// - `build.articles.reports` with `source_dir: reports` + present file
+/// - compat `articles.legacy-blog` (no on-disk source → declared+missing)
+/// - `docs/2026-05-10-hello.md`
+/// - Two local targets: `paas-git` (with `{date:YYYY-MM}` + `prefix: "cie-"`)
+///   and `simple-out` (plain path)
+#[allow(dead_code)]
+pub fn scaffold_three_source_project(repo: &TempDir, project_name: &str) {
+    let project_path = repo.path().join(project_name);
+    fs::create_dir_all(&project_path).unwrap();
+    fs::create_dir_all(project_path.join("docs")).unwrap();
+    fs::create_dir_all(project_path.join("reports")).unwrap();
+    fs::create_dir_all(project_path.join("outputs/2026-05")).unwrap();
+
+    let mind_yaml = format!(
+        r#"schema_version: '1'
+project:
+  name: {name}
+build:
+  output_dir: _build
+  format: md
+  articles:
+    reports:
+      source_dir: reports
+articles:
+  legacy-blog:
+    type: blog
+publish:
+  targets:
+    - name: paas-git
+      type: local
+      enabled: true
+      path: "/tmp/mf-024-out/{{date:YYYY-MM}}/daily/"
+      prefix: "cie-"
+    - name: simple-out
+      type: local
+      enabled: true
+      path: "/tmp/mf-024-out/simple/"
+templates:
+  daily_report:
+    pattern: "outputs/{{date:YYYY-MM}}/{{date:YYYY-MM-DD}}.md"
+    mode: generated
+"#,
+        name = project_name,
+    );
+    fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
+
+    // Generated source
+    fs::write(project_path.join("outputs/2026-05/2026-05-15.md"), b"# Daily 5-15\n").unwrap();
+    // Declared+present source
+    fs::write(project_path.join("reports/2026-05.md"), b"# Reports body\n").unwrap();
+    // Docs-walked source
+    fs::write(project_path.join("docs/2026-05-10-hello.md"), b"# Hello\n").unwrap();
+}
+
 /// 在项目 docs/ 目录中写入 Markdown 文件。
 #[allow(dead_code)]
 pub fn write_doc(repo: &TempDir, project_name: &str, name: &str, content: &str) {

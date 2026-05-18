@@ -386,7 +386,12 @@ fn source_key(source: &crate::model::source::Source) -> std::result::Result<Stri
     Ok(source.path.clone().unwrap_or_else(|| source.name.clone()))
 }
 
-fn article_key(article: &crate::model::article::Article) -> std::result::Result<String, serde_yaml::Error> {
+pub fn article_key(article: &crate::model::article::Article) -> std::result::Result<String, serde_yaml::Error> {
+    // FR-001: generated articles keyed as <template-name>/<slot-value>
+    if let Some(ref to) = article.template_origin {
+        return Ok(format!("{}/{}", to.template_name, to.slot_value));
+    }
+    // Non-generated: strip docs/ prefix and .md extension
     let path = article.source_path.trim_start_matches("docs/");
     Ok(path.strip_suffix(".md").unwrap_or(path).trim_end_matches('/').to_string())
 }
@@ -411,6 +416,60 @@ fn json_to_yaml(value: &serde_json::Value) -> serde_yaml::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::article::{Article, ArticleStatus, ArticleType, TemplateOrigin};
+
+    fn make_article(source_path: &str, template_origin: Option<TemplateOrigin>) -> Article {
+        Article {
+            title: "test".to_string(),
+            project: "test".to_string(),
+            article_type: ArticleType::Blog,
+            source_path: source_path.to_string(),
+            status: ArticleStatus::Draft,
+            created_at: "2026-05-15T00:00:00Z".to_string(),
+            updated_at: "2026-05-15T00:00:00Z".to_string(),
+            template_origin,
+        }
+    }
+
+    #[test]
+    fn article_key_uses_template_origin_when_present() {
+        let article = make_article(
+            "outputs/2026-05/2026-05-15.md",
+            Some(TemplateOrigin { template_name: "daily_report".to_string(), slot_value: "2026-05-15".to_string() }),
+        );
+        let key = article_key(&article).unwrap();
+        assert_eq!(
+            key, "daily_report/2026-05-15",
+            "generated article key should be template_name/slot_value, not source-path-derived"
+        );
+    }
+
+    #[test]
+    fn article_key_falls_back_to_source_path_when_no_template_origin() {
+        let article = make_article("docs/weekly-summary.md", None);
+        let key = article_key(&article).unwrap();
+        assert_eq!(key, "weekly-summary", "non-generated article key should be derived from source_path");
+    }
+
+    #[test]
+    fn article_key_strips_docs_prefix_and_md_extension() {
+        let article = make_article("docs/my-article.md", None);
+        let key = article_key(&article).unwrap();
+        assert_eq!(key, "my-article");
+    }
+
+    #[test]
+    fn article_key_generated_does_not_contain_source_path_fragment() {
+        let article = make_article(
+            "outputs/2026-05/2026-05-15.md",
+            Some(TemplateOrigin { template_name: "daily_report".to_string(), slot_value: "2026-05-15".to_string() }),
+        );
+        let key = article_key(&article).unwrap();
+        assert!(
+            !key.contains("outputs"),
+            "generated article key must NOT contain source_path-derived fragments: {key}"
+        );
+    }
 
     #[test]
     fn load_returns_default_when_file_missing() {

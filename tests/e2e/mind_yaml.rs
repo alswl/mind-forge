@@ -98,7 +98,7 @@ fn e2e_mind_yaml_index_dictionary_commands_complete() {
     assert_eq!(code, 0, "article list failed: {stderr}");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(value["status"], "ok");
-    assert_eq!(value["data"].as_array().expect("articles array").len(), 3);
+    assert_eq!(value["data"]["articles"].as_array().expect("articles array").len(), 3);
 
     // Source list against path-keyed dictionary index
     let (stdout, stderr, code) = run_in(ds.root(), &["source", "list", "--project", "2026-ai-sites-build", "--json"]);

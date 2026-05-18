@@ -136,15 +136,49 @@ pub fn dispatch(
                 .map(|a| {
                     let source_dir = config.as_ref().map(|cfg| article_svc::effective_source_dir(cfg, a));
                     let mut v = serde_json::to_value(a).unwrap_or_default();
+
+                    // Add source_dir
                     if let Some(dir) = source_dir {
                         v["source_dir"] = serde_json::Value::String(dir);
                     }
+
+                    // Article key (id)
+                    if let Ok(key) = crate::service::index::article_key(a) {
+                        v["id"] = serde_json::Value::String(key);
+                    }
+
+                    // Discovery origin
+                    let origin = if a.template_origin.is_some() {
+                        "generated"
+                    } else {
+                        // Check if article matches a declared config entry
+                        let is_declared = config.as_ref().is_some_and(|cfg| {
+                            crate::service::index::article_key(a).ok().is_some_and(|id| {
+                                cfg.build.articles.contains_key(&id)
+                                    || cfg
+                                        .articles
+                                        .as_ref()
+                                        .and_then(|v| v.as_object())
+                                        .is_some_and(|map| map.contains_key(&id))
+                            })
+                        });
+                        if is_declared {
+                            "declared"
+                        } else {
+                            "docs"
+                        }
+                    };
+                    v["origin"] = serde_json::Value::String(origin.to_string());
+
+                    // Source file existence
+                    v["source_present"] = serde_json::Value::Bool(project_path.join(&a.source_path).exists());
+
                     v
                 })
                 .collect();
 
             match format {
-                Format::Json => Ok(CommandOutcome::Success(serde_json::Value::Array(enriched), None)),
+                Format::Json => Ok(CommandOutcome::Success(serde_json::json!({"articles": enriched}), None)),
                 Format::Text => {
                     if enriched.is_empty() {
                         return Ok(CommandOutcome::Success(serde_json::json!("No articles found."), None));
@@ -207,10 +241,35 @@ pub fn dispatch(
 
             let mut updated = article_svc::reconcile_articles(&project_path, index, diff)?;
 
-            // Phase 2: Merge template-discovered articles (US2)
+            // Phase 2: Merge declared articles (FR-003, FR-004)
             if let Some(ref config) = config {
+                let declared = article_svc::scan_declared(&project_path, config)?;
+                for da in declared {
+                    let articles = updated.articles.get_or_insert_with(Vec::new);
+                    if !articles.iter().any(|a| a.source_path == da.source_path) {
+                        articles.push(da);
+                    }
+                }
+
+                // Collect declared source_dir prefixes for template dedup (FR-006)
+                let declared_prefixes: Vec<String> = config
+                    .build
+                    .articles
+                    .values()
+                    .filter_map(|cfg| cfg.source_dir.as_ref().map(|d| d.trim_end_matches('/').to_string() + "/"))
+                    .collect();
+
+                // Phase 3: Merge template-discovered articles (US2)
                 let template_articles = article_svc::scan_templates(&project_path, config)?;
                 for ta in template_articles {
+                    // Skip if already covered by declared
+                    if updated.articles.as_ref().is_some_and(|a| a.iter().any(|e| e.source_path == ta.source_path)) {
+                        continue;
+                    }
+                    // FR-006: Skip if template file falls under a declared source_dir
+                    if declared_prefixes.iter().any(|p| ta.source_path.starts_with(p)) {
+                        continue;
+                    }
                     let articles = updated.articles.get_or_insert_with(Vec::new);
                     let pos = articles.iter().position(|a| a.source_path == ta.source_path);
                     if let Some(pos) = pos {
