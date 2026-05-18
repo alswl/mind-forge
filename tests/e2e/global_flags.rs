@@ -10,13 +10,12 @@ use crate::helpers::*;
 fn json_format_on_real_command() {
     let ds = Dataset::empty();
 
-    let (_stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "term", "list"]);
+    let (stdout, _stderr, code) = run_in(ds.root(), &["--format", "json", "term", "list"]);
 
-    assert_eq!(code, 2, "exit 2 (usage) because no project context, but JSON envelope still valid");
-    // Error JSON envelope goes to stderr
-    let parsed: serde_json::Value = serde_json::from_str(&stderr).expect("valid JSON");
-    assert_eq!(parsed["status"], "error");
-    assert!(parsed.get("error").is_some(), "JSON should contain error field: {parsed}");
+    assert_eq!(code, 0, "global terms, empty list should succeed");
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(parsed["status"], "ok");
+    assert!(parsed.get("data").is_some(), "JSON should contain data field: {parsed}");
 }
 
 /// E2E: 默认 text 格式输出
@@ -24,10 +23,10 @@ fn json_format_on_real_command() {
 fn text_format_on_real_command() {
     let ds = Dataset::empty();
 
-    let (_stdout, stderr, code) = run_in(ds.root(), &["term", "list"]);
+    let (stdout, _stderr, code) = run_in(ds.root(), &["term", "list"]);
 
-    assert_eq!(code, 2, "exit 2 (usage) because no project context");
-    assert!(stderr.contains("could not detect"), "text error to stderr: {stderr}");
+    assert_eq!(code, 0, "global terms, empty list should succeed");
+    assert!(stdout.contains("No terms found") || stdout.is_empty(), "text output: {stdout}");
 }
 
 // ---------------------------------------------------------------------------

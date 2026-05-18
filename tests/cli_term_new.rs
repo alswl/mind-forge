@@ -194,23 +194,26 @@ fn new_term_outside_mind_repo() {
 }
 
 // ---------------------------------------------------------------------------
-// 8. new_term_without_project_context — repo root, no project
+// 8. new_term_without_project_context — repo root, no project → global terms
 // ---------------------------------------------------------------------------
 
 #[test]
 fn new_term_without_project_context() {
     let repo = common::setup_repo();
-    // repo has no projects, so running from root with --root but no --project
-    // and cwd not inside a project → should fail
+    // No --project and not inside a project dir → should succeed with global terms
     let output = Command::cargo_bin("mf")
         .unwrap()
         .args(["--root", repo.path().to_str().unwrap(), "term", "new", "Test"])
         .output()
         .unwrap();
 
-    assert_eq!(output.status.code(), Some(2));
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("could not detect"), "stderr: {stderr}");
+    assert!(output.status.success(), "should succeed with global terms");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Test"), "stdout: {stdout}");
+
+    // Verify global terms file was written
+    let global_terms = fs::read_to_string(repo.path().join("minds-terms.yaml")).unwrap();
+    assert!(global_terms.contains("Test"), "global terms should contain Test: {global_terms}");
 }
 
 // ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ pub fn learn_correction(project_root: &Path, original: &str, correct: &str) -> R
     }
 
     let mut index = index::load(project_root)?;
-    let idx = find_term_by_correct(&index, correct)?;
+    let idx = find_term_by_correct(index.terms.as_deref().unwrap_or_default(), correct)?;
     let term_clone = {
         let terms = index
             .terms

@@ -1,10 +1,9 @@
 use crate::error::{MfError, Result};
-use crate::model::index::IndexFile;
+use crate::model::term::Term;
 
 /// Find a term by its main name or alias.
-/// Returns the index into `index.terms[]`.
-pub(crate) fn find_term_by_correct(index: &IndexFile, correct: &str) -> Result<usize> {
-    let terms = index.terms.as_deref().unwrap_or_default();
+/// Returns the index into the `terms` slice.
+pub(crate) fn find_term_by_correct(terms: &[Term], correct: &str) -> Result<usize> {
     let matches: Vec<usize> = terms
         .iter()
         .enumerate()

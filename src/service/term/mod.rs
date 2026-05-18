@@ -2,6 +2,7 @@
 // Directory module facade: re-exports sub-module public items.
 
 pub mod fix;
+pub mod global;
 pub mod learn;
 pub mod lint;
 pub mod list;

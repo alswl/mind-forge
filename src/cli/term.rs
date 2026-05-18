@@ -140,8 +140,12 @@ pub fn dispatch(
 // ── Handle: mf term new (US1 / T017) ─────────────────────────────────────────
 
 fn handle_new(args: TermNewArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
-    let term = term_svc::new_term(&project_path, &args.term, args.definition.as_deref(), &args.alias, &args.tag)?;
+    let term = if let Some(ref project) = args.project {
+        let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
+        term_svc::new_term(&project_path, &args.term, args.definition.as_deref(), &args.alias, &args.tag)?
+    } else {
+        term_svc::global::new_term(root, &args.term, args.definition.as_deref(), &args.alias, &args.tag)?
+    };
 
     match format {
         Format::Json => {
@@ -176,13 +180,21 @@ fn handle_list(
     // D5: --term <X> redirects to term show
     if let Some(ref name) = args.term {
         deprecation.warn_by_id(crate::cli::deprecation::DeprecationId::D5, None);
-        let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
-        let term = term_svc::show_term(&project_path, name)?;
+        let term = if let Some(ref project) = args.project {
+            let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
+            term_svc::show_term(&project_path, name)?
+        } else {
+            term_svc::global::show_term(root, name)?
+        };
         return render_term_show(&term, format);
     }
 
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
-    let terms = term_svc::list_terms(&project_path, args.filter.as_deref())?;
+    let terms = if let Some(ref project) = args.project {
+        let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
+        term_svc::list_terms(&project_path, args.filter.as_deref())?
+    } else {
+        term_svc::global::list_terms(root, args.filter.as_deref())?
+    };
 
     match format {
         Format::Json => {
@@ -228,6 +240,7 @@ fn handle_list(
 // ── Handle: mf term lint (US3 / T027 + US4 / T033) ──────────────────────────
 
 fn handle_lint(args: TermLintArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
+    // Lint always requires project context — it scans project docs for term usage.
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
 
     let effective_fix = args.fix;
@@ -358,8 +371,6 @@ fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_
 // ── Handle: mf term learn (US5 / T037) ───────────────────────────────────────
 
 fn handle_learn(args: TermLearnArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
-
     // Resolve primary form (--term/--alias) vs deprecated form (--original/--correct)
     let (original, correct) = if args.term.is_some() || args.alias.is_some() {
         let t = args.term.as_deref().unwrap_or("");
@@ -378,7 +389,12 @@ fn handle_learn(args: TermLearnArgs, root: &Path, cwd: &Path, format: Format) ->
         ));
     }
 
-    let (term, appended) = term_svc::learn_correction(&project_path, original, correct)?;
+    let (term, appended) = if let Some(ref project) = args.project {
+        let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
+        term_svc::learn_correction(&project_path, original, correct)?
+    } else {
+        term_svc::global::learn_correction(root, original, correct)?
+    };
 
     match format {
         Format::Json => {
@@ -399,9 +415,12 @@ fn handle_learn(args: TermLearnArgs, root: &Path, cwd: &Path, format: Format) ->
 // ── Handle: mf term fix (US6 / T041) ─────────────────────────────────────────
 
 fn handle_fix(args: TermFixArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
-
-    let term = term_svc::fix_term(&project_path, &args.term, args.definition.as_deref(), &args.alias, &args.tag)?;
+    let term = if let Some(ref project) = args.project {
+        let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
+        term_svc::fix_term(&project_path, &args.term, args.definition.as_deref(), &args.alias, &args.tag)?
+    } else {
+        term_svc::global::fix_term(root, &args.term, args.definition.as_deref(), &args.alias, &args.tag)?
+    };
 
     match format {
         Format::Json => {
@@ -458,7 +477,11 @@ fn render_term_show(term: &crate::model::term::Term, format: Format) -> Result<C
 }
 
 fn handle_show(args: TermShowArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
-    let term = term_svc::show_term(&project_path, &args.name)?;
+    let term = if let Some(ref project) = args.project {
+        let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
+        term_svc::show_term(&project_path, &args.name)?
+    } else {
+        term_svc::global::show_term(root, &args.name)?
+    };
     render_term_show(&term, format)
 }
