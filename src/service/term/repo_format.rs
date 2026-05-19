@@ -44,8 +44,9 @@ pub(super) fn path_for(repo_root: &Path) -> std::path::PathBuf {
 ///
 /// Rules (FR-001):
 /// 1. Empty / null → Repository.
-/// 2. Mapping with `schema_version` (or `schema`) key → SchemaVersion.
-/// 3. Mapping where every value is itself a mapping containing a
+/// 2. Mapping with `terms` key → SchemaVersion.
+/// 3. Mapping with optional `schema_version` (or `schema`) plus entries
+///    where every non-schema value is itself a mapping containing a
 ///    `misrecognitions: [String]` → Repository.
 /// 4. Anything else → ParseError.
 pub fn detect_format(content: &str, path: &Path) -> Result<TermsFileFormat> {
@@ -67,15 +68,19 @@ pub fn detect_format(content: &str, path: &Path) -> Result<TermsFileFormat> {
     match value {
         serde_yaml::Value::Null => Ok(TermsFileFormat::Repository),
         serde_yaml::Value::Mapping(ref map) => {
-            if map.contains_key("schema_version") || map.contains_key("schema") {
+            if map.contains_key("terms") {
                 return Ok(TermsFileFormat::SchemaVersion);
             }
+            validate_optional_repository_schema_version(map, path)?;
             for (key, val) in map.iter() {
                 let key_str = key.as_str().ok_or_else(|| MfError::ParseError {
                     kind: "yaml".to_string(),
                     path: path.to_path_buf(),
                     detail: "top-level key must be a string in repository-format minds-terms.yaml".to_string(),
                 })?;
+                if is_schema_key(key_str) {
+                    continue;
+                }
                 match val {
                     serde_yaml::Value::Mapping(inner) => {
                         match inner.get("misrecognitions") {
@@ -98,6 +103,27 @@ pub fn detect_format(content: &str, path: &Path) -> Result<TermsFileFormat> {
             detail: "unsupported file shape: top-level must be a mapping; supported shapes: (a) schema_version: '1' with terms: [...] or (b) flat dictionary <term>: { misrecognitions: [string, ...] }".to_string(),
         }),
     }
+}
+
+fn is_schema_key(key: &str) -> bool {
+    key == "schema_version" || key == "schema"
+}
+
+fn validate_optional_repository_schema_version(map: &serde_yaml::Mapping, path: &std::path::Path) -> Result<()> {
+    for key in ["schema_version", "schema"] {
+        let Some(value) = map.get(key) else {
+            continue;
+        };
+        let Some(version) = value.as_str() else {
+            return Err(MfError::ParseError {
+                kind: "yaml".to_string(),
+                path: path.to_path_buf(),
+                detail: format!("{key} must be a string"),
+            });
+        };
+        validate_schema_version(version, path)?;
+    }
+    Ok(())
 }
 
 fn shape_error(path: &Path, offending_key: &str) -> MfError {
@@ -223,6 +249,9 @@ fn load_repository(content: &str, path: &std::path::Path) -> Result<(Vec<Term>, 
                 detail: "top-level key must be a string in repository-format minds-terms.yaml".to_string(),
             })?
             .to_string();
+        if is_schema_key(&term_name) {
+            continue;
+        }
         let corrections = if let serde_yaml::Value::Mapping(inner) = val {
             if let Some(serde_yaml::Value::Sequence(seq)) = inner.get("misrecognitions") {
                 seq.iter()
@@ -489,9 +518,15 @@ mod tests {
     }
 
     #[test]
+    fn detect_schema_tagged_repository_format() {
+        let content = "schema_version: '1'\ncafed:\n  misrecognitions:\n    - 凯飞迪\n";
+        assert_eq!(detect_format(content, Path::new("tagged.yaml")).unwrap(), TermsFileFormat::Repository);
+    }
+
+    #[test]
     fn detect_mixed_is_schema_version() {
         let content = read_fixture("mixed.yaml");
-        // schema_version present → SchemaVersion wins (rule 3a)
+        // terms present → SchemaVersion wins.
         assert_eq!(detect_format(&content, Path::new("mixed.yaml")).unwrap(), TermsFileFormat::SchemaVersion);
     }
 
@@ -547,6 +582,30 @@ mod tests {
         assert_eq!(terms[0].corrections[0].original, "凯飞迪");
         assert_eq!(terms[0].corrections[0].correct, "cafed");
         assert_eq!(terms[0].corrections[1].original, "caféd");
+    }
+
+    #[test]
+    fn load_schema_tagged_repository_format_skips_schema_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = "schema_version: '1'\ncafed:\n  misrecognitions:\n    - 凯飞迪\n";
+        std::fs::write(dir.path().join("minds-terms.yaml"), content).unwrap();
+
+        let (terms, format) = load(dir.path()).unwrap();
+        assert_eq!(format, TermsFileFormat::Repository);
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].term, "cafed");
+        assert_eq!(terms[0].corrections[0].original, "凯飞迪");
+    }
+
+    #[test]
+    fn load_schema_tagged_repository_format_validates_schema_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = "schema_version: '2'\ncafed:\n  misrecognitions:\n    - 凯飞迪\n";
+        std::fs::write(dir.path().join("minds-terms.yaml"), content).unwrap();
+
+        let err = load(dir.path()).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("incompatible schema"), "got: {msg}");
     }
 
     #[test]

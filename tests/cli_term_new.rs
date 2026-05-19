@@ -306,6 +306,26 @@ fn new_appends_repo_format() {
     assert!(content.contains("凯飞迪"), "original misrecognition must be present: {content}");
 }
 
+#[test]
+fn new_appends_schema_tagged_repo_format() {
+    let repo = common::setup_repo();
+    let fixture = "# 会议纪要术语校准表\nschema_version: '1'\n\ncafed:\n  misrecognitions:\n    - 凯飞迪\n";
+    write_global_terms(&repo, fixture);
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "term", "new", "IGO", "--misrecognition", "Igo"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "exit 0: {:?}", output.status.code());
+    let content = fs::read_to_string(repo.path().join("minds-terms.yaml")).unwrap();
+    assert!(content.starts_with("# 会议纪要术语校准表\nschema_version: '1'\n"), "schema header preserved: {content}");
+    assert!(content.contains("cafed:\n  misrecognitions:\n    - 凯飞迪\n"), "existing entry unchanged: {content}");
+    assert!(content.contains("IGO:\n  misrecognitions:\n    - Igo\n"), "new entry appended as repo format: {content}");
+    assert!(!content.contains("terms:"), "must not migrate to schema-version terms list: {content}");
+}
+
 // T025
 #[test]
 fn new_empty_misrecognitions() {

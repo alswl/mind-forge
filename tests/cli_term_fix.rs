@@ -235,6 +235,27 @@ fn fix_rejects_definition_on_repo_format() {
     assert_eq!(fixture, after, "file unchanged after all rejected commands");
 }
 
+#[test]
+fn fix_rejects_schema_tagged_repo_format() {
+    let repo = common::setup_repo();
+    let fixture = "# 会议纪要术语校准表\nschema_version: '1'\n\ncafed:\n  misrecognitions:\n    - 凯飞迪\n";
+    write_global_terms(&repo, fixture);
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "term", "fix", "cafed", "--definition", "updated"])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2), "exit 2 for repo-format fix");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("--definition"), "stderr should name --definition: {stderr}");
+    assert!(stderr.contains("repository-format"), "stderr should mention repository-format: {stderr}");
+
+    let after = fs::read_to_string(repo.path().join("minds-terms.yaml")).unwrap();
+    assert_eq!(fixture, after, "file unchanged after rejected fix");
+}
+
 // Regression: `--definition=""` (empty string) on a repo-format file must
 // be rejected, NOT silently accepted and committed via a schema-version
 // rewrite that destroys comments. See FR-013 / FR-008 / FR-010.

@@ -268,6 +268,25 @@ fn learn_appends_misrecognition_repo_format() {
     assert!(content.contains("凯飞迪"), "original misrecognition intact: {content}");
 }
 
+#[test]
+fn learn_appends_misrecognition_schema_tagged_repo_format() {
+    let repo = common::setup_repo();
+    let fixture = "# 会议纪要术语校准表\nschema_version: '1'\n\ncafed:\n  misrecognitions:\n    - 凯飞迪\n";
+    write_global_terms(&repo, fixture);
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "term", "learn", "--term", "cafed", "--alias", "caféd"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "exit 0: {:?}", output.status.code());
+    let content = fs::read_to_string(repo.path().join("minds-terms.yaml")).unwrap();
+    assert!(content.starts_with("# 会议纪要术语校准表\nschema_version: '1'\n"), "schema header preserved: {content}");
+    assert!(content.contains("    - 凯飞迪\n    - caféd\n"), "misrecognition appended: {content}");
+    assert!(!content.contains("terms:"), "must not migrate to schema-version terms list: {content}");
+}
+
 // T039
 #[test]
 fn learn_is_idempotent_repo_format() {
