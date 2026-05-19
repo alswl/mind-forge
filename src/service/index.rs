@@ -398,13 +398,15 @@ pub fn article_key(article: &crate::model::article::Article) -> std::result::Res
 
 /// Derive the build artifact filename stem.
 ///
-/// Strips `docs/` prefix and `.md` extension for docs articles;
-/// for non-docs articles strips only `.md`.
+/// Strips `docs/` or `outputs/` prefix and `.md` extension.
 /// Used by build output and publish artifact lookup to keep
-/// `_build/<short-key>.<format>` consistent.
+/// `_build/<short-key>.<format>` consistent and avoid double-prefix
+/// paths like `outputs/outputs/...`.
 pub fn article_output_stem(source_path: &str) -> &str {
     let path = source_path.strip_suffix(".md").unwrap_or(source_path);
-    path.strip_prefix("docs/").unwrap_or(path)
+    path.strip_prefix("docs/")
+        .or_else(|| path.strip_prefix("outputs/"))
+        .unwrap_or(path)
 }
 
 fn json_to_yaml(value: &serde_json::Value) -> serde_yaml::Value {
