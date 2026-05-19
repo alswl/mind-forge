@@ -206,6 +206,12 @@ get a machine-readable envelope.
   and `outputs/`
 - **Compatibility** — reads and writes mind 0.3.0 YAML; tolerates older
   `schema_version` and list-based shapes on read
+- **Version** — `mf version` outputs the current CLI version in text (`mf 0.1.0`) or
+  JSON (`{ status, command, data: { version } }`) format; works from any directory
+  without a Mind Repo
+- **Release workflow** — push a valid `v<MAJOR>.<MINOR>.<PATCH>` tag to trigger
+  cross-platform builds (Linux x86_64/aarch64, macOS aarch64) and create a GitHub
+  Releases draft for maintainer review before publishing
 - **Output contract** — `text` by default, `--json` for `{ status, command, data }`
   envelopes; stable exit codes; shell completion via `mf completion <shell>`
 

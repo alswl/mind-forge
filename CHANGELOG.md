@@ -1,5 +1,14 @@
 # Changelog
 
+## 029 (2026-05-19)
+
+### Features
+
+- **version**: add `mf version` command with text (`mf <version>`) and JSON envelope output, works without a Mind Repo, and is fully read-only
+- **release workflow**: add version tag validation (`v<MAJOR>.<MINOR>.<PATCH>` with optional prerelease/build metadata)
+- **release workflow**: releases are now created as GitHub Releases drafts for maintainer review before publishing
+- **release workflow**: add explicit duplicate release handling (`allowUpdates`) and minimum `contents: write` permissions
+
 ## 028 (2026-05-19)
 
 ### Breaking Changes
