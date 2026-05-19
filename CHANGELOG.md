@@ -1,5 +1,21 @@
 # Changelog
 
+## 028 (2026-05-19)
+
+### Breaking Changes
+
+- **article new**: the `<TYPE>` positional is removed. The new signature is `mf article new <TITLE> [--template <S>] [--file]`. Migration: `mf article new arch "T"` → `mf article new "T" --template arch`. The legacy `data.type` JSON envelope field is replaced by `data.template`.
+
+### Features
+
+- **article new**: default to `blank` template and directory-article output shape. `mf article new "X"` creates `docs/x/00-head.md` from the minimal blank scaffold.
+- **article new**: `--template <S>` accepts built-in names (`blank`, `arch`, `prd`, `blog`) or a project-root-relative path to a custom template file. Built-in names win on name clash.
+- **article new**: `--file` opts into the single-file output shape `docs/{slug}.md` for compatibility with legacy workflows.
+- **article new**: directory articles are split on `## ` headings — `00-head.md` + one block file per H2 section.
+- **article new**: atomic group write for directory articles — N+1 files committed via a single `rename`.
+- **article new**: JSON envelope gains four fields (`data.template`, `data.shape`, `data.path`, `data.files`); legacy `data.type` is removed.
+- **article new**: three new error kinds — `unknown_template`, `duplicate_block_slug`, `shape_conflict`.
+
 ## 024 (2026-05-18)
 
 ### Bug Fixes

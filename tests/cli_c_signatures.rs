@@ -31,8 +31,10 @@ fn article_new_type_title_succeeds() {
         "json",
         "article",
         "new",
-        "blog",
         "My Article",
+        "--template",
+        "blog",
+        "--file",
         "-p",
         "alpha",
     ]);
@@ -42,25 +44,24 @@ fn article_new_type_title_succeeds() {
 
     let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(parsed["status"], "ok");
-    assert_eq!(parsed["data"]["type"], "blog");
+    assert_eq!(parsed["data"]["template"], "blog");
     assert!(parsed["data"]["filename"].as_str().unwrap_or("").contains("my-article"));
 }
 
 // ---------------------------------------------------------------------------
-// T103: article new TITLE only (old form → usage error)
+// T103: article new TITLE only (new default form → success)
 // ---------------------------------------------------------------------------
 
 #[test]
-fn article_new_title_only_errors() {
+fn article_new_title_only_succeeds() {
     let dir = common::setup_repo();
     common::create_project(&dir, "alpha");
 
-    // clap requires TYPE and TITLE, so single positional should error
+    // TITLE is the sole positional; should succeed with default blank template
     let (_stdout, stderr, code) =
         run(&["--root", &dir.path().to_string_lossy(), "article", "new", "MyArticle", "-p", "alpha"]);
 
-    // clap should report a usage error (exit 2)
-    assert_eq!(code, 2, "should error with exit code 2: stderr={stderr:?}");
+    assert_eq!(code, 0, "should succeed with default blank template: stderr={stderr:?}");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

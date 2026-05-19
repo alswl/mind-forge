@@ -152,12 +152,13 @@ Subcommands: `new`, `list` (alias `ls`), `archive`, `status` (alias `info`), `li
 
 Subcommands: `new`, `list` (alias `ls`), `lint`, `index`, `rename`
 
-**`mf article new <TYPE> <TITLE>`**
+**`mf article new <TITLE> [--template <S>] [--file]`**
 `-p`, `--project <NAME>`
-`-t`, `--template <PATH>` — Template file path (relative to project root)
+`-t`, `--template <S>` — Built-in schema name (`blank` / `arch` / `prd` / `blog`) or path under project root (default: `blank`). Built-in names win on exact case-sensitive match; use a subdirectory prefix (e.g. `./arch`) to force path resolution.
+`--file` — Write a single file `docs/{slug}.md` instead of a directory
 `--tag <TAG>` — Tag (repeatable)
 `--draft` — Mark as draft (default: `true`)
-`-f`, `--force` — Overwrite existing
+`-f`, `--force` — Overwrite existing same-shape artefact (does not cross file/directory shapes)
 
 **`mf article list`**
 `-p`, `--project <NAME>`
@@ -299,7 +300,7 @@ mf asset index --refresh-metadata --project my-project
 mf asset clean --project my-project
 
 # Articles
-mf article new blog "My First Post" --project my-project
+mf article new "My First Post" --template blog --file --project my-project
 mf article list --project my-project
 mf article index --project my-project
 mf article rename "Old Title" "New Title" --project my-project

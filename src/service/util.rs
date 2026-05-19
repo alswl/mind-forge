@@ -43,6 +43,42 @@ pub fn validate_schema_version(version: &str, path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Atomically write a directory containing multiple files.
+///
+/// Builds the directory under a sibling tmp path
+/// `parent/.{name}.tmp.{pid}.{rand}`, writes all files there, then
+/// `fs::rename`s into `target`. On any error before the rename, the tmp
+/// directory is removed.
+pub fn atomic_write_directory(target: &Path, files: &[(&str, &str)]) -> Result<()> {
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    let name = target.file_name().unwrap_or_default();
+    let pid = std::process::id();
+    let rand: u64 = {
+        let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+        t.as_nanos() as u64
+    };
+    let tmp_name = format!(".{}.tmp.{pid}.{rand}", name.to_string_lossy());
+    let tmp_path = parent.join(&tmp_name);
+
+    fs::create_dir(&tmp_path).map_err(MfError::Io)?;
+
+    if let Err(e) = (|| -> Result<()> {
+        for (filename, content) in files {
+            fs::write(tmp_path.join(filename), content).map_err(MfError::Io)?;
+        }
+        Ok(())
+    })() {
+        let _ = fs::remove_dir_all(&tmp_path);
+        return Err(e);
+    }
+
+    fs::rename(&tmp_path, target).map_err(|e| {
+        let _ = fs::remove_dir_all(&tmp_path);
+        MfError::Io(e)
+    })?;
+    Ok(())
+}
+
 /// Canonicalize a path, falling back to the raw path on failure.
 ///
 /// Canonicalization failures are logged as a debug warning so callers
@@ -401,5 +437,58 @@ mod tests {
 
         let err = canonicalize_within(&root, &target).unwrap_err();
         assert!(err.to_string().contains("invalid") || err.to_string().contains("outside"));
+    }
+
+    // --- atomic_write_directory ---
+
+    #[test]
+    fn atomic_write_directory_happy_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("my-article");
+
+        let files: Vec<(&str, &str)> = vec![("00-head.md", "# Title\n"), ("01-summary.md", "## Summary\nBody\n")];
+        atomic_write_directory(&target, &files).unwrap();
+
+        assert!(target.is_dir());
+        assert_eq!(std::fs::read_to_string(target.join("00-head.md")).unwrap(), "# Title\n");
+        assert_eq!(std::fs::read_to_string(target.join("01-summary.md")).unwrap(), "## Summary\nBody\n");
+    }
+
+    #[test]
+    fn atomic_write_directory_rollback_on_mid_write_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("my-article");
+
+        // Use an invalid filename to trigger a write error
+        let result = atomic_write_directory(&target, &[("00-head.md", "# Title\n"), ("bad/\x00name.md", "nope")]);
+        assert!(result.is_err());
+        // The tmp dir must not have leaked into target
+        assert!(!target.exists());
+        // No sibling tmp directory left behind
+        let siblings: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with('.'))
+            .collect();
+        assert!(siblings.is_empty(), "no tmp dir left behind: {:?}", siblings);
+    }
+
+    #[test]
+    fn atomic_write_directory_target_already_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("existing");
+        std::fs::create_dir(&target).unwrap();
+
+        // Rename onto an existing directory fails on most platforms
+        let result = atomic_write_directory(&target, &[("00-head.md", "# Title\n")]);
+        // The call may succeed (rename replaces on some fs) or fail; either is
+        // acceptable. The important invariant is no tmp dir leak.
+        let siblings: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with('.'))
+            .collect();
+        assert!(siblings.is_empty(), "no tmp dir left behind");
+        let _ = result;
     }
 }

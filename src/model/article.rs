@@ -5,8 +5,9 @@ use serde::{Deserialize, Serialize};
 pub enum ArticleType {
     Arch,
     Prd,
-    #[default]
     Blog,
+    #[default]
+    Blank,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -96,6 +97,29 @@ updated_at: '2026-05-15T00:00:00Z'
         // Round-trip: the pre-23 form should serialize back without template_origin
         let serialized = serde_yaml::to_string(&article).unwrap();
         assert!(!serialized.contains("template_origin"));
+    }
+
+    #[test]
+    fn article_type_blank_round_trips() {
+        // Wire form is "blank" (snake_case)
+        let yaml = "type: blank\n";
+        let article: Article = serde_yaml::from_str(&format!("title: T\n{yaml}")).unwrap();
+        assert_eq!(article.article_type, ArticleType::Blank);
+
+        let serialized = serde_yaml::to_string(&article).unwrap();
+        assert!(serialized.contains("type: blank"), "expected 'type: blank' in serialized YAML");
+    }
+
+    #[test]
+    fn article_type_default_is_blank() {
+        assert_eq!(ArticleType::default(), ArticleType::Blank);
+    }
+
+    #[test]
+    fn article_type_blog_still_deserializes() {
+        let yaml = "title: Old\nproject: p\ntype: blog\nsource_path: docs/old.md\nstatus: draft\ncreated_at: '2026-01-01T00:00:00Z'\nupdated_at: '2026-01-01T00:00:00Z'\n";
+        let article: Article = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(article.article_type, ArticleType::Blog);
     }
 
     #[test]

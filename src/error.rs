@@ -84,6 +84,18 @@ pub enum MfError {
     /// The build artifact could not be found on disk (renamed from overloaded `not_found`).
     #[error("{message}")]
     BuildArtifactMissing { message: String, hint: Option<String> },
+
+    /// The requested template name is neither a built-in nor an existing path.
+    #[error("unknown template '{name}': built-ins are blank, arch, prd, blog; otherwise expected a path under the project root")]
+    UnknownTemplate { name: String },
+
+    /// Two H2 headings produced the same slug when splitting a template.
+    #[error("duplicate block slug '{slug}' from headings '{h1}' and '{h2}'")]
+    DuplicateBlockSlug { slug: String, h1: String, h2: String },
+
+    /// A file/directory shape conflict: --file vs directory or vice versa.
+    #[error("cannot create {wanted_shape} '{path}': a {existing_shape} with the same name already exists; remove it manually or pick a different title")]
+    ShapeConflict { wanted_shape: String, existing_shape: String, path: PathBuf },
 }
 
 impl MfError {
@@ -132,6 +144,8 @@ impl MfError {
             | Self::NoSourceFiles { .. }
             | Self::BuildArtifactMissing { .. } => ExitCode::Failure,
             Self::NotImplemented { .. } => ExitCode::NotImplemented,
+            Self::UnknownTemplate { .. } => ExitCode::UsageError,
+            Self::DuplicateBlockSlug { .. } | Self::ShapeConflict { .. } => ExitCode::Failure,
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => ExitCode::Failure,
         }
     }
@@ -151,6 +165,9 @@ impl MfError {
             Self::InvalidTemplateName { .. } => "invalid_template_name",
             Self::NoSourceFiles { .. } => "no_source_files",
             Self::BuildArtifactMissing { .. } => "build_artifact_missing",
+            Self::UnknownTemplate { .. } => "unknown_template",
+            Self::DuplicateBlockSlug { .. } => "duplicate_block_slug",
+            Self::ShapeConflict { .. } => "shape_conflict",
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => "internal",
         }
     }
@@ -170,6 +187,9 @@ impl MfError {
             Self::NoEffectiveDate => "article has no effective date".to_string(),
             Self::NoSourceFiles { article, .. } => format!("no source files for '{article}'"),
             Self::BuildArtifactMissing { message, .. } => message.clone(),
+            Self::UnknownTemplate { .. } | Self::DuplicateBlockSlug { .. } | Self::ShapeConflict { .. } => {
+                self.to_string()
+            }
             Self::Internal(error) => error.to_string(),
             Self::Io(error) => error.to_string(),
             Self::Json(error) => error.to_string(),
@@ -197,6 +217,13 @@ impl MfError {
             Self::InvalidTemplateName { .. } => Some("rename template key to match ^[a-z][a-z0-9_]*$"),
             Self::NoSourceFiles { .. } => Some("create the source file or remove the declaration from mind.yaml"),
             Self::BuildArtifactMissing { hint, .. } => hint.as_deref().or(Some("run `mf build <id>` first")),
+            Self::UnknownTemplate { .. } => {
+                Some("built-ins are blank, arch, prd, blog; otherwise expected a path under the project root")
+            }
+            Self::DuplicateBlockSlug { .. } => Some("rename one of the headings to produce a distinct filename"),
+            Self::ShapeConflict { .. } => {
+                Some("remove the conflicting file or directory manually, or pick a different title")
+            }
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => Some("this is an internal error; please report it"),
         }
     }
@@ -331,6 +358,39 @@ mod tests {
     }
 
     #[test]
+    fn unknown_template_kind_and_exit_code() {
+        let err = MfError::UnknownTemplate { name: "nope".to_string() };
+        assert_eq!(err.kind(), "unknown_template");
+        assert_eq!(err.exit_code(), ExitCode::UsageError);
+        assert!(err.to_string().contains("nope"));
+    }
+
+    #[test]
+    fn duplicate_block_slug_kind_and_exit_code() {
+        let err = MfError::DuplicateBlockSlug {
+            slug: "notes".to_string(),
+            h1: "## Notes".to_string(),
+            h2: "## NOTES".to_string(),
+        };
+        assert_eq!(err.kind(), "duplicate_block_slug");
+        assert_eq!(err.exit_code(), ExitCode::Failure);
+        assert!(err.to_string().contains("notes"));
+    }
+
+    #[test]
+    fn shape_conflict_kind_and_exit_code() {
+        let err = MfError::ShapeConflict {
+            wanted_shape: "directory".to_string(),
+            existing_shape: "file".to_string(),
+            path: PathBuf::from("docs/test.md"),
+        };
+        assert_eq!(err.kind(), "shape_conflict");
+        assert_eq!(err.exit_code(), ExitCode::Failure);
+        assert!(err.to_string().contains("directory"));
+        assert!(err.to_string().contains("file"));
+    }
+
+    #[test]
     fn all_variants_hint_returns_some() {
         let cases: Vec<MfError> = vec![
             MfError::usage("test", Some("hint".to_string())),
@@ -357,6 +417,13 @@ mod tests {
             MfError::InvalidTemplateName { name: "Bad".to_string() },
             MfError::NoSourceFiles { article: "x".to_string(), source_path: "docs/x.md".to_string() },
             MfError::BuildArtifactMissing { message: "missing".to_string(), hint: None },
+            MfError::UnknownTemplate { name: "x".to_string() },
+            MfError::DuplicateBlockSlug { slug: "x".to_string(), h1: "a".to_string(), h2: "b".to_string() },
+            MfError::ShapeConflict {
+                wanted_shape: "dir".to_string(),
+                existing_shape: "file".to_string(),
+                path: PathBuf::from("/tmp/x"),
+            },
         ];
         for err in &cases {
             assert!(err.hint().is_some(), "hint is None for variant: {}", err.kind());

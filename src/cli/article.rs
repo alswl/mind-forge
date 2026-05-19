@@ -33,14 +33,16 @@ pub enum ArticleSubcommand {
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleNewArgs {
-    /// Article type name (e.g. 'arch', 'blog')
-    pub r#type: String,
-    /// Article title
+    /// Article title (sole positional)
     pub title: String,
+    /// Template: built-in schema name (blank/arch/prd/blog) or path under project root. Default: blank.
+    #[arg(short = 't', long, default_value = "blank")]
+    pub template: String,
+    /// Write a single file instead of a directory
+    #[arg(long, default_value_t = false)]
+    pub file: bool,
     #[arg(short = 'p', long)]
     pub project: Option<String>,
-    #[arg(short = 't', long)]
-    pub template: Option<String>,
     #[arg(long = "tag")]
     pub tag: Vec<String>,
     #[arg(long, default_value_t = true)]
@@ -96,33 +98,30 @@ pub fn dispatch(
         Some(ArticleSubcommand::New(args)) => {
             let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
 
-            let template_text = match args.template {
-                Some(ref path) => {
-                    let tmpl_path = project_path.join(path);
-                    Some(std::fs::read_to_string(&tmpl_path).map_err(|e| {
-                        MfError::usage(
-                            format!("cannot read template '{}': {e}", tmpl_path.display()),
-                            Some("use a path relative to the project root".to_string()),
-                        )
-                    })?)
-                }
-                None => None,
-            };
-
-            let filename = article_svc::new_article(
+            let result = article_svc::new_article(
                 &project_path,
                 &args.title,
-                template_text.as_deref(),
+                &args.template,
+                args.file,
                 &args.tag,
                 args.draft,
                 args.force,
             )?;
 
+            let path = if result.shape == "directory" {
+                format!("{}/{}/", result.docs_dir, result.filename)
+            } else {
+                format!("{}/{}.{}", result.docs_dir, result.filename, defaults::MARKDOWN_EXTENSION)
+            };
+
             let data = serde_json::json!({
-                "type": args.r#type,
-                "filename": filename,
-                "path": format!("{}/{}.{}", defaults::DOCS_DIR, filename, defaults::MARKDOWN_EXTENSION),
+                "title": args.title,
+                "filename": result.filename,
                 "draft": args.draft,
+                "template": result.template,
+                "shape": result.shape,
+                "path": path,
+                "files": result.files,
             });
             Ok(CommandOutcome::Success(data, None))
         }

@@ -13,7 +13,7 @@ fn build_succeeds_with_article() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "blog", "Test Article"])
+        .args(["article", "new", "Test Article"])
         .assert()
         .success();
 
@@ -42,7 +42,7 @@ fn build_uses_configured_output_dir() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "blog", "Configurable Output"])
+        .args(["article", "new", "Configurable Output"])
         .assert()
         .success();
 
@@ -74,12 +74,15 @@ fn build_uses_configured_docs_dir() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "blog", "Custom Docs"])
+        .args(["article", "new", "Custom Docs"])
         .assert()
         .success();
 
-    assert!(repo.path().join("my-project/notes/custom-docs.md").exists());
-    assert!(!repo.path().join("my-project/docs/custom-docs.md").exists());
+    assert!(
+        repo.path().join("my-project/notes/custom-docs/00-head.md").exists(),
+        "article should be in custom docs dir"
+    );
+    assert!(!repo.path().join("my-project/docs/custom-docs.md").exists(), "should not use default docs dir");
 
     Command::cargo_bin("mf")
         .expect("binary exists")
@@ -99,7 +102,7 @@ fn build_dry_run_shows_plan() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "blog", "Dry Run Test"])
+        .args(["article", "new", "Dry Run Test"])
         .assert()
         .success();
 

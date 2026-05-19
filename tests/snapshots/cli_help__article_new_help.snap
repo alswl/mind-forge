@@ -1,0 +1,48 @@
+---
+source: tests/cli_help.rs
+assertion_line: 219
+expression: stdout
+---
+Create an article
+
+Usage: mf article new [OPTIONS] <TITLE>
+
+Arguments:
+  <TITLE>  Article title (sole positional)
+
+Options:
+      --root <PATH>
+          Mind Repo root directory
+  -t, --template <TEMPLATE>
+          Template: built-in schema name (blank/arch/prd/blog) or path under project root. Default:
+          blank [default: blank]
+      --config <PATH>
+          Config file path
+      --file
+          Write a single file instead of a directory
+  -p, --project <PROJECT>
+          
+  -v, --verbose...
+          Verbose output
+  -q, --quiet
+          Silence non-error output
+      --tag <TAG>
+          
+      --draft
+          
+      --format <FORMAT>
+          Output format [default: text] [possible values: text, json]
+  -f, --force
+          
+      --json
+          Shorthand for --format json
+      --no-color
+          Disable colored output
+      --install-completion <INSTALL_COMPLETION>
+          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+      --show-completion <SHOW_COMPLETION>
+          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+  -h, --help
+          Print help
+  -V, --version
+          Print version

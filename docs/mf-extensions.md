@@ -37,3 +37,45 @@ Index commands reconcile the filesystem state with the project index
 - **`--config <PATH>`** — specify a config file path
 - **`--verbose` / `-v`** — increase log verbosity
 - **`--quiet` / `-q`** — suppress non-essential output
+
+## Article `new` — template system
+
+The `mf article new` command has been redesigned from type-first to title-first:
+
+```text
+mf article new <TITLE> [--template <S>] [--file]
+```
+
+**Default behaviour**: Creates a **directory article** at `docs/{slug}/` using
+the `blank` template (H1 + creation date only, no H2 sections).
+
+**`--template <S>`**: Accepts a built-in schema name or a path under the project root.
+
+| Value | Behaviour |
+|-------|-----------|
+| `blank` (default) | Minimal scaffold — H1 + creation date, no H2 sections |
+| `arch` | Architecture Decision Record: `## Context` / `## Decision` / `## Consequence` / `## Alternatives Considered` |
+| `prd` | Product Requirements Document: `## Background` / `## Goals` / `## Non-Goals` / `## Requirements` |
+| `blog` | Blog post: `## Summary` / `## Content` |
+| `<path>` | Custom template read from `{project}/<path>`. Recorded as `article_type: blank`. |
+
+When a value matches both a built-in name and a file path, the **built-in wins**.
+Use a leading `./` or subdirectory prefix (e.g. `templates/arch.md`) to force
+path resolution.
+
+**Directory-article H2 split rule**: In directory mode, the resolved template
+is split on top-level `## ` lines: `00-head.md` contains everything before the
+first H2; each subsequent H2 section becomes `0N-<heading-slug>.md` (1-indexed,
+zero-padded to two digits). The concatenation of all block files in filename
+order reproduces the template byte-for-byte.
+
+**`--file`**: Write a single file `docs/{slug}.md` instead of a directory. No
+H2 split occurs. Compatible with all template sources.
+
+**JSON envelope**: Four new fields under `data`:
+- `template` (`string`) — resolved name (`blank`/`arch`/`prd`/`blog`) or relative path
+- `shape` (`"directory"` | `"file"`) — output form
+- `path` (`string`) — `docs/{slug}/` (directory mode, trailing slash) or `docs/{slug}.md`
+- `files` (`array<string>`) — block filenames in write order
+
+The legacy `data.type` field is removed; use `data.template` instead.

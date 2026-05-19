@@ -10,12 +10,12 @@ fn article_new_creates_file_and_index() {
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "blog", "My First Article"])
+        .args(["article", "new", "My First Article"])
         .output()
         .expect("command runs");
     assert_eq!(output.status.code(), Some(0), "article new should succeed");
 
-    let md_path = repo.path().join("my-project/docs/my-first-article.md");
+    let md_path = repo.path().join("my-project/docs/my-first-article/00-head.md");
     assert!(md_path.exists(), "article file should exist");
 
     let index_path = repo.path().join("my-project/mind-index.yaml");
@@ -34,14 +34,14 @@ fn article_new_refuses_duplicate() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "blog", "Test"])
+        .args(["article", "new", "Test"])
         .assert()
         .success();
 
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "blog", "Test"])
+        .args(["article", "new", "Test"])
         .output()
         .expect("command runs");
     assert_eq!(output.status.code(), Some(1), "duplicate should fail");
@@ -54,7 +54,7 @@ fn article_new_needs_project() {
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path())
-        .args(["article", "new", "blog", "Hello"])
+        .args(["article", "new", "Hello"])
         .output()
         .expect("command runs");
     assert_eq!(output.status.code(), Some(2), "should fail without project context");
@@ -68,7 +68,7 @@ fn article_new_with_project_flag() {
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path())
-        .args(["article", "new", "blog", "Hello", "--project", "my-project"])
+        .args(["article", "new", "Hello", "--project", "my-project"])
         .output()
         .expect("command runs");
     assert_eq!(output.status.code(), Some(0), "should succeed with --project flag");
@@ -94,7 +94,7 @@ articles:
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "blog", "New Article"])
+        .args(["article", "new", "New Article"])
         .assert()
         .success();
 
@@ -115,14 +115,14 @@ fn article_list_shows_articles() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "blog", "Article One"])
+        .args(["article", "new", "Article One"])
         .assert()
         .success();
 
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "blog", "Article Two"])
+        .args(["article", "new", "Article Two"])
         .assert()
         .success();
 
@@ -166,7 +166,7 @@ fn article_lint_no_issues() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "blog", "valid-article"])
+        .args(["article", "new", "valid-article"])
         .assert()
         .success();
 
@@ -291,11 +291,11 @@ fn article_index_dry_run_shows_changes() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
 
-    // Create an article via normal command
+    // Create an article as a single file so the index diff sees it.
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "blog", "Indexed Article"])
+        .args(["article", "new", "Indexed Article", "--file"])
         .assert()
         .success();
 
@@ -342,13 +342,13 @@ fn article_index_removes_deleted_file() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "blog", "To Be Removed"])
+        .args(["article", "new", "To Be Removed"])
         .assert()
         .success();
 
-    // Delete the file
-    let md_path = repo.path().join("my-project/docs/to-be-removed.md");
-    std::fs::remove_file(&md_path).unwrap();
+    // Delete the directory article
+    let dir_path = repo.path().join("my-project/docs/to-be-removed");
+    std::fs::remove_dir_all(&dir_path).unwrap();
 
     // Run index — should remove from index
     let (_, output) = json_index(&[], &repo.path().join("my-project"));
@@ -414,7 +414,7 @@ fn article_list_shows_default_source_dir() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "blog", "Default Dir"])
+        .args(["article", "new", "Default Dir"])
         .assert()
         .success();
 
@@ -438,7 +438,7 @@ fn article_list_json_shows_source_dir_field() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["article", "new", "blog", "JSON Article"])
+        .args(["article", "new", "JSON Article"])
         .assert()
         .success();
 

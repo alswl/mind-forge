@@ -206,6 +206,20 @@ fn render_help_snapshot() {
 }
 
 #[test]
+fn article_help_snapshot() {
+    let (stdout, _, code) = run(&["article", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("article_help", stdout);
+}
+
+#[test]
+fn article_new_help_snapshot() {
+    let (stdout, _, code) = run(&["article", "new", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("article_new_help", stdout);
+}
+
+#[test]
 fn render_template_list_help_snapshot() {
     let (stdout, _, code) = run(&["render", "template", "list", "--help"]);
     assert_eq!(code, 0);

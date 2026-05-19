@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::Utc;
 use serde::Serialize;
@@ -17,6 +18,7 @@ use crate::service::index;
 use crate::service::util;
 use crate::service::util::path_template::PathTemplate;
 
+#[allow(dead_code)]
 const ARTICLE_TEMPLATE: &str = r#"# {title}
 
 > Created: {created_at}
@@ -26,43 +28,339 @@ const ARTICLE_TEMPLATE: &str = r#"# {title}
 ## Content
 "#;
 
+const TEMPLATE_BLANK: &str = "# {title}\n\n> Created: {created_at}\n";
+const TEMPLATE_ARCH: &str = "# {title}\n\n> Created: {created_at}\n\n## Context\n\n## Decision\n\n## Consequence\n\n## Alternatives Considered\n";
+const TEMPLATE_PRD: &str =
+    "# {title}\n\n> Created: {created_at}\n\n## Background\n\n## Goals\n\n## Non-Goals\n\n## Requirements\n";
+const TEMPLATE_BLOG: &str = "# {title}\n\n> Created: {created_at}\n\n## Summary\n\n## Content\n";
+
+fn builtin_template(name: &str) -> Option<(&'static str, ArticleType)> {
+    match name {
+        "blank" => Some((TEMPLATE_BLANK, ArticleType::Blank)),
+        "arch" => Some((TEMPLATE_ARCH, ArticleType::Arch)),
+        "prd" => Some((TEMPLATE_PRD, ArticleType::Prd)),
+        "blog" => Some((TEMPLATE_BLOG, ArticleType::Blog)),
+        _ => None,
+    }
+}
+
+fn resolve_custom_template_path(project_path: &Path, template_arg: &str) -> Result<PathBuf> {
+    let relative = Path::new(template_arg);
+    if relative.components().any(|c| matches!(c, Component::ParentDir | Component::RootDir | Component::Prefix(_))) {
+        return Err(MfError::usage(
+            format!("template path '{template_arg}' is outside the project root"),
+            Some("use a path relative to the project root".to_string()),
+        ));
+    }
+
+    let tmpl_path = project_path.join(relative);
+    if tmpl_path.exists() {
+        return util::canonicalize_within(project_path, &tmpl_path);
+    }
+
+    if let Some(parent) = tmpl_path.parent() {
+        if parent.exists() {
+            let _ = util::canonicalize_within(project_path, parent)?;
+        }
+    }
+    Ok(tmpl_path)
+}
+
+/// Split a resolved template body into block files for a directory article.
+///
+/// LF-normalises input, scans for `^## ` headings, and returns a vector of
+/// `(filename, body)` pairs. Returns [`MfError::DuplicateBlockSlug`] when
+/// two headings produce the same slug.
+fn split_template_into_blocks(resolved: &str) -> Result<Vec<(String, String)>> {
+    let normalized = resolved.replace("\r\n", "\n");
+    let lines: Vec<&str> = normalized.lines().collect();
+
+    struct Block {
+        h2_text: String,
+        slug: String,
+        body: String,
+    }
+
+    let mut raw: Vec<Block> = Vec::new();
+    let mut head_lines: Vec<&str> = Vec::new();
+    let mut current_h2: Option<&str> = None;
+    let mut current_body: Vec<&str> = Vec::new();
+
+    for line in &lines {
+        if let Some(h2_text) = line.strip_prefix("## ") {
+            if let Some(h2_text) = current_h2.take() {
+                let slug = util::to_filename(h2_text.trim());
+                let body = current_body.join("\n");
+                raw.push(Block { h2_text: h2_text.to_string(), slug, body });
+            } else {
+                let body = head_lines.join("\n");
+                raw.push(Block { h2_text: String::new(), slug: String::new(), body });
+                head_lines.clear();
+            }
+            current_h2 = Some(h2_text);
+            current_body = vec![*line];
+        } else if current_h2.is_some() {
+            current_body.push(line);
+        } else {
+            head_lines.push(line);
+        }
+    }
+
+    if let Some(h2_text) = current_h2.take() {
+        let slug = util::to_filename(h2_text.trim());
+        let body = current_body.join("\n");
+        raw.push(Block { h2_text: h2_text.to_string(), slug, body });
+    } else {
+        let body = head_lines.join("\n");
+        raw.push(Block { h2_text: String::new(), slug: String::new(), body });
+    }
+
+    // Check for duplicate slugs among H2 blocks (skip head block at index 0)
+    let mut slug_map: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+    for block in raw.iter().skip(1) {
+        if block.slug.is_empty() {
+            continue;
+        }
+        if let Some(prev_h2) = slug_map.insert(&block.slug, &block.h2_text) {
+            return Err(MfError::DuplicateBlockSlug {
+                slug: block.slug.clone(),
+                h1: prev_h2.to_string(),
+                h2: block.h2_text.clone(),
+            });
+        }
+    }
+
+    let mut result: Vec<(String, String)> = Vec::new();
+    for (i, block) in raw.into_iter().enumerate() {
+        if i == 0 {
+            result.push(("00-head.md".to_string(), block.body));
+        } else {
+            result.push((format!("{:02}-{}.md", i, block.slug), block.body));
+        }
+    }
+
+    Ok(result)
+}
+
 /// Create a new article in the given project directory.
+///
+/// Handles both directory mode (default) and file mode (`--file`). The
+/// template arg is resolved via [`builtin_template`] first and falls back
+/// to a project-root-relative path lookup.
 pub fn new_article(
     project_path: &Path,
     title: &str,
-    template_text: Option<&str>,
+    template_arg: &str,
+    file_mode: bool,
     tags: &[String],
     draft: bool,
     force: bool,
-) -> Result<String> {
+) -> Result<NewArticleResult> {
     let filename = util::to_filename(title);
     let paths = config_svc::project_paths(project_path)?;
     let docs_dir = project_path.join(&paths.docs);
     fs::create_dir_all(&docs_dir).map_err(MfError::Io)?;
 
-    let article_path = docs_dir.join(format!("{filename}.{}", defaults::MARKDOWN_EXTENSION));
-    if article_path.exists() {
-        if force {
-            fs::remove_file(&article_path).map_err(MfError::Io)?;
-        } else {
-            return Err(MfError::file_exists(article_path));
+    // Resolve template
+    let (resolved_body, article_type, template_label) = if let Some((body, at)) = builtin_template(template_arg) {
+        (body.to_string(), at, template_arg.to_string())
+    } else {
+        let tmpl_path = resolve_custom_template_path(project_path, template_arg)?;
+        match fs::read_to_string(&tmpl_path) {
+            Ok(body) => (body, ArticleType::Blank, template_arg.to_string()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Err(MfError::UnknownTemplate { name: template_arg.to_string() });
+            }
+            Err(e) => return Err(MfError::Io(e)),
         }
-    }
+    };
 
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let content = template_text.unwrap_or(ARTICLE_TEMPLATE);
-    let content = content.replace("{title}", title).replace("{created_at}", &now).replace("{tags}", &tags.join(", "));
+    let resolved =
+        resolved_body.replace("{title}", title).replace("{created_at}", &now).replace("{tags}", &tags.join(", "));
 
-    fs::write(&article_path, content).map_err(MfError::Io)?;
+    let files = if file_mode {
+        write_article_file(project_path, &paths.docs, &filename, &resolved, &now, title, article_type, draft, force)
+    } else {
+        write_article_directory(
+            project_path,
+            &paths.docs,
+            &filename,
+            &resolved,
+            &now,
+            title,
+            article_type,
+            draft,
+            force,
+        )
+    }?;
 
+    Ok(NewArticleResult {
+        filename: filename.clone(),
+        template: template_label,
+        shape: if file_mode { "file".to_string() } else { "directory".to_string() },
+        docs_dir: paths.docs,
+        files,
+    })
+}
+
+/// Result of creating a new article, carrying metadata for the JSON envelope.
+pub struct NewArticleResult {
+    pub filename: String,
+    pub template: String,
+    pub shape: String,
+    pub docs_dir: String,
+    pub files: Vec<String>,
+}
+
+fn sibling_backup_path(target: &Path) -> PathBuf {
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    let name = target.file_name().unwrap_or_default().to_string_lossy();
+    let pid = std::process::id();
+    let rand = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+    parent.join(format!(".{name}.bak.{pid}.{rand}"))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_article_file(
+    project_path: &Path,
+    docs: &str,
+    slug: &str,
+    content: &str,
+    now: &str,
+    title: &str,
+    article_type: ArticleType,
+    draft: bool,
+    force: bool,
+) -> Result<Vec<String>> {
+    let file_path = project_path.join(format!("{docs}/{slug}.{}", defaults::MARKDOWN_EXTENSION));
+    let dir_path = project_path.join(format!("{docs}/{slug}"));
+    let file_name = format!("{slug}.{}", defaults::MARKDOWN_EXTENSION);
+
+    // Cross-shape conflict check
+    if dir_path.exists() {
+        return Err(MfError::ShapeConflict {
+            wanted_shape: "file".to_string(),
+            existing_shape: "directory".to_string(),
+            path: dir_path,
+        });
+    }
+
+    let backup_path = if file_path.exists() {
+        if force {
+            let backup_path = sibling_backup_path(&file_path);
+            fs::rename(&file_path, &backup_path).map_err(MfError::Io)?;
+            Some(backup_path)
+        } else {
+            return Err(MfError::file_exists(file_path));
+        }
+    } else {
+        None
+    };
+
+    if let Err(e) = fs::write(&file_path, content).map_err(MfError::Io) {
+        if let Some(backup_path) = &backup_path {
+            let _ = fs::rename(backup_path, &file_path);
+        }
+        return Err(e);
+    }
+
+    let source_path = format!("{docs}/{file_name}");
+    match write_index_entry(project_path, title, article_type, &source_path, now, draft, force) {
+        Ok(()) => {
+            if let Some(backup_path) = backup_path {
+                let _ = fs::remove_file(backup_path);
+            }
+            Ok(vec![file_name])
+        }
+        Err(e) => {
+            let _ = fs::remove_file(&file_path);
+            if let Some(backup_path) = &backup_path {
+                let _ = fs::rename(backup_path, &file_path);
+            }
+            Err(e)
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_article_directory(
+    project_path: &Path,
+    docs: &str,
+    slug: &str,
+    content: &str,
+    now: &str,
+    title: &str,
+    article_type: ArticleType,
+    draft: bool,
+    force: bool,
+) -> Result<Vec<String>> {
+    let dir_path = project_path.join(format!("{docs}/{slug}"));
+    let file_path = project_path.join(format!("{docs}/{slug}.{}", defaults::MARKDOWN_EXTENSION));
+
+    // Cross-shape conflict check
+    if file_path.exists() {
+        return Err(MfError::ShapeConflict {
+            wanted_shape: "directory".to_string(),
+            existing_shape: "file".to_string(),
+            path: file_path,
+        });
+    }
+
+    let backup_path = if dir_path.exists() {
+        if force {
+            let backup_path = sibling_backup_path(&dir_path);
+            fs::rename(&dir_path, &backup_path).map_err(MfError::Io)?;
+            Some(backup_path)
+        } else {
+            return Err(MfError::file_exists(dir_path));
+        }
+    } else {
+        None
+    };
+
+    let blocks = split_template_into_blocks(content)?;
+    let files: Vec<String> = blocks.iter().map(|(filename, _)| filename.clone()).collect();
+    let block_refs: Vec<(&str, &str)> = blocks.iter().map(|(f, b)| (f.as_str(), b.as_str())).collect();
+    if let Err(e) = util::atomic_write_directory(&dir_path, &block_refs) {
+        if let Some(backup_path) = &backup_path {
+            let _ = fs::rename(backup_path, &dir_path);
+        }
+        return Err(e);
+    }
+
+    let source_path = format!("{docs}/{slug}");
+    match write_index_entry(project_path, title, article_type, &source_path, now, draft, force) {
+        Ok(()) => {
+            if let Some(backup_path) = backup_path {
+                let _ = fs::remove_dir_all(backup_path);
+            }
+            Ok(files)
+        }
+        Err(e) => {
+            let _ = fs::remove_dir_all(&dir_path);
+            if let Some(backup_path) = &backup_path {
+                let _ = fs::rename(backup_path, &dir_path);
+            }
+            Err(e)
+        }
+    }
+}
+
+fn write_index_entry(
+    project_path: &Path,
+    title: &str,
+    article_type: ArticleType,
+    source_path: &str,
+    now: &str,
+    draft: bool,
+    force: bool,
+) -> Result<()> {
     let project_name = util::dir_name(project_path);
-
     let mut index = index::load(project_path)?;
     let articles = index.articles.get_or_insert_with(Vec::new);
     let status = if draft { ArticleStatus::Draft } else { ArticleStatus::Published };
 
-    // When force, replace existing index entry instead of duplicating
-    let source_path = format!("{}/{filename}.{}", paths.docs, defaults::MARKDOWN_EXTENSION);
     if force {
         articles.retain(|a| a.source_path != source_path);
     }
@@ -70,16 +368,15 @@ pub fn new_article(
     articles.push(Article {
         title: title.to_string(),
         project: project_name,
-        article_type: ArticleType::Blog,
-        source_path,
+        article_type,
+        source_path: source_path.to_string(),
         status,
-        created_at: now.clone(),
-        updated_at: now,
+        created_at: now.to_string(),
+        updated_at: now.to_string(),
         template_origin: None,
     });
     index::save(project_path, &index)?;
-
-    Ok(filename)
+    Ok(())
 }
 
 /// Build an in-memory index from all discovery sources.
@@ -950,5 +1247,130 @@ mod tests {
         let articles = scan_declared(dir.path(), &config).unwrap();
         assert_eq!(articles.len(), 1);
         assert_eq!(articles[0].source_path, "specs/my-article.md", "when <source_dir>/<id>.md exists, use file path");
+    }
+
+    // ── T007: builtin_template tests ──
+
+    #[test]
+    fn builtin_blank() {
+        let (body, at) = builtin_template("blank").unwrap();
+        assert_eq!(at, ArticleType::Blank);
+        assert!(body.contains("{title}"));
+    }
+
+    #[test]
+    fn builtin_arch() {
+        let (body, at) = builtin_template("arch").unwrap();
+        assert_eq!(at, ArticleType::Arch);
+        assert!(body.contains("## Context"));
+        assert!(body.contains("## Decision"));
+        assert!(body.contains("## Consequence"));
+        assert!(body.contains("## Alternatives Considered"));
+    }
+
+    #[test]
+    fn builtin_prd() {
+        let (body, at) = builtin_template("prd").unwrap();
+        assert_eq!(at, ArticleType::Prd);
+        assert!(body.contains("## Background"));
+        assert!(body.contains("## Goals"));
+    }
+
+    #[test]
+    fn builtin_blog_matches_legacy_article_template() {
+        let (body, at) = builtin_template("blog").unwrap();
+        assert_eq!(at, ArticleType::Blog);
+        assert_eq!(body, ARTICLE_TEMPLATE, "TEMPLATE_BLOG must be byte-identical to ARTICLE_TEMPLATE");
+    }
+
+    #[test]
+    fn builtin_blog_body_matches_legacy_byte_for_byte() {
+        let (body, _) = builtin_template("blog").unwrap();
+        assert_eq!(body, super::ARTICLE_TEMPLATE);
+    }
+
+    #[test]
+    fn builtin_unknown_returns_none() {
+        assert!(builtin_template("nope").is_none());
+        assert!(builtin_template("ARCH").is_none());
+        assert!(builtin_template("").is_none());
+    }
+
+    #[test]
+    fn builtin_h2_slugs_are_distinct() {
+        for name in &["arch", "prd", "blog"] {
+            let (body, _) = builtin_template(name).unwrap();
+            let mut slugs: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for line in body.lines() {
+                if let Some(h2) = line.strip_prefix("## ") {
+                    let slug = util::to_filename(h2.trim());
+                    assert!(slugs.insert(slug.clone()), "duplicate slug '{slug}' in template '{name}'");
+                }
+            }
+        }
+    }
+
+    // ── T008: split_template_into_blocks tests ──
+
+    #[test]
+    fn split_zero_h2_produces_head_only() {
+        let input = "# Title\n\nBody text\n";
+        let blocks = split_template_into_blocks(input).unwrap();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].0, "00-head.md");
+        assert_eq!(blocks[0].1, "# Title\n\nBody text");
+    }
+
+    #[test]
+    fn split_four_h2_arch_style() {
+        let input = "# Title\n\n> Created: now\n\n## Context\n\nctx body\n\n## Decision\n\ndec\n\n## Consequence\n\ncons\n\n## Alternatives Considered\n\nalt\n";
+        let blocks = split_template_into_blocks(input).unwrap();
+        assert_eq!(blocks.len(), 5);
+        assert_eq!(blocks[0].0, "00-head.md");
+        assert!(blocks[0].1.starts_with("# Title"));
+        assert_eq!(blocks[1].0, "01-context.md");
+        assert!(blocks[1].1.starts_with("## Context"));
+        assert_eq!(blocks[2].0, "02-decision.md");
+        assert_eq!(blocks[3].0, "03-consequence.md");
+        assert_eq!(blocks[4].0, "04-alternatives-considered.md");
+    }
+
+    #[test]
+    fn split_leading_h2_empty_head() {
+        let input = "## Intro\n\nintro body\n";
+        let blocks = split_template_into_blocks(input).unwrap();
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].0, "00-head.md");
+        assert_eq!(blocks[0].1, "");
+        assert_eq!(blocks[1].0, "01-intro.md");
+        assert_eq!(blocks[1].1, "## Intro\n\nintro body");
+    }
+
+    #[test]
+    fn split_crlf_normalized() {
+        let input = "# Title\r\n\r\n## Summary\r\n\r\nbody\r\n";
+        let blocks = split_template_into_blocks(input).unwrap();
+        assert_eq!(blocks.len(), 2);
+        assert!(!blocks[0].1.contains('\r'));
+        assert!(!blocks[1].1.contains('\r'));
+    }
+
+    #[test]
+    fn split_duplicate_slug_rejected() {
+        let input = "# T\n\n## Notes\n\nbody1\n\n## NOTES\n\nbody2\n";
+        let err = split_template_into_blocks(input).unwrap_err();
+        assert!(matches!(err, MfError::DuplicateBlockSlug { .. }));
+        assert_eq!(err.kind(), "duplicate_block_slug");
+    }
+
+    #[test]
+    fn split_single_h2() {
+        let input = "# Title\n\nintro\n\n## Summary\n\nsummary body\n";
+        let blocks = split_template_into_blocks(input).unwrap();
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].0, "00-head.md");
+        assert_eq!(blocks[0].1, "# Title\n\nintro\n");
+        assert_eq!(blocks[1].0, "01-summary.md");
+        assert!(blocks[1].1.starts_with("## Summary"));
     }
 }
