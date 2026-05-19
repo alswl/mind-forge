@@ -164,8 +164,11 @@ impl<'de> Deserialize<'de> for IndexFile {
                             default_str(&mut entry, "project", "");
                             // Infer source_path from dict key when absent
                             let key_str = key_string(k);
-                            let inferred_source =
-                                if key_str.starts_with("docs/") { key_str } else { format!("docs/{}", key_str) };
+                            let inferred_source = if key_str.starts_with(defaults::DOCS_PATH_PREFIX) {
+                                key_str
+                            } else {
+                                format!("{}/{}", defaults::DOCS_DIR, key_str)
+                            };
                             let sp_key = yaml_key("source_path");
                             if !entry.contains_key(&sp_key) {
                                 entry.insert(sp_key, serde_yaml::Value::String(inferred_source));

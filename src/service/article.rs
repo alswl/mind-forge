@@ -236,11 +236,11 @@ fn article_key_from_source_path(source_path: &str) -> String {
 /// 2. `docs/<key>.md` file
 /// 3. Falls back to `docs/<key>.md` (may not exist — caller diagnoses)
 fn resolve_docs_source_path(project_root: &Path, key: &str) -> String {
-    let dir_path = project_root.join("docs").join(key);
+    let dir_path = project_root.join(defaults::DOCS_DIR).join(key);
     if dir_path.is_dir() {
-        return format!("docs/{}", key);
+        return format!("{}/{}", defaults::DOCS_DIR, key);
     }
-    format!("docs/{}.{}", key, defaults::MARKDOWN_EXTENSION)
+    format!("{}/{}.{}", defaults::DOCS_DIR, key, defaults::MARKDOWN_EXTENSION)
 }
 
 /// FR-003: warn on stderr when a declared article's resolved source path does
@@ -353,7 +353,7 @@ pub fn scan_declared(project_root: &Path, config: &MindConfig) -> Result<Vec<Art
 /// - Otherwise `docs/<article-name>` as the default
 pub fn effective_source_dir(config: &MindConfig, article: &Article) -> String {
     let article_key = article_key_from_source_path(&article.source_path);
-    let short_key = article_key.strip_prefix("docs/").unwrap_or(&article_key);
+    let short_key = article_key.strip_prefix(defaults::DOCS_PATH_PREFIX).unwrap_or(&article_key);
     if let Some(source_dir) = config.build.articles.get(short_key).and_then(|a| a.source_dir.clone()) {
         return source_dir;
     }

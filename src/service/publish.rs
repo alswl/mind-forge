@@ -101,7 +101,7 @@ pub fn update(args: &PublishUpdateArgs, repo_root: &Path, cwd: &Path) -> Result<
         .articles
         .iter()
         .flat_map(|a| a.iter())
-        .find(|a| a.source_path == format!("docs/{}.md", args.article))
+        .find(|a| a.source_path == format!("{}/{}.{}", defaults::DOCS_DIR, args.article, defaults::MARKDOWN_EXTENSION))
         .map(|a| a.source_path.clone())
         .ok_or_else(|| {
             MfError::not_found(

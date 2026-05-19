@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use crate::cli::deprecation::DeprecationContext;
 use crate::cli::CommandOutcome;
+use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::config::TemplateMode;
 use crate::output::Format;
@@ -120,7 +121,7 @@ pub fn dispatch(
             let data = serde_json::json!({
                 "type": args.r#type,
                 "filename": filename,
-                "path": format!("docs/{}.md", filename),
+                "path": format!("{}/{}.{}", defaults::DOCS_DIR, filename, defaults::MARKDOWN_EXTENSION),
                 "draft": args.draft,
             });
             Ok(CommandOutcome::Success(data, None))

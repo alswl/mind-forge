@@ -2,6 +2,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
+use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::article::Article;
 use crate::model::index::IndexFile;
@@ -404,8 +405,8 @@ pub fn article_key(article: &crate::model::article::Article) -> std::result::Res
 /// paths like `outputs/outputs/...`.
 pub fn article_output_stem(source_path: &str) -> &str {
     let path = source_path.strip_suffix(".md").unwrap_or(source_path);
-    path.strip_prefix("docs/")
-        .or_else(|| path.strip_prefix("outputs/"))
+    path.strip_prefix(defaults::DOCS_PATH_PREFIX)
+        .or_else(|| path.strip_prefix(defaults::BUILD_OUTPUT_PATH_PREFIX))
         .unwrap_or(path)
 }
 
@@ -502,8 +503,8 @@ pub fn resolve_article<'a>(index: &'a IndexFile, article_arg: &str) -> Result<Re
         .iter()
         .filter(|a| {
             let sp = &a.source_path;
-            sp == &format!("docs/{}", article_arg)
-                || sp == &format!("docs/{}.md", article_arg)
+            sp == &format!("{}/{}", defaults::DOCS_DIR, article_arg)
+                || sp == &format!("{}/{}.{}", defaults::DOCS_DIR, article_arg, defaults::MARKDOWN_EXTENSION)
                 || sp
                     .split_once('/')
                     .map(|(_, rest)| rest.strip_suffix(".md").unwrap_or(rest))

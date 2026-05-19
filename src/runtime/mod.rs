@@ -35,7 +35,9 @@ impl AppContext {
                 None
             }
         } else {
-            std::env::current_dir().ok().and_then(|cwd| repo::detect_repo_root(&cwd, 50))
+            std::env::current_dir()
+                .ok()
+                .and_then(|cwd| repo::detect_repo_root(&cwd, crate::defaults::MAX_REPO_SEARCH_DEPTH))
         };
 
         Ok(Self { format: global.effective_format(), config_path, repo_root })
