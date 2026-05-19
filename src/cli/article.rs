@@ -151,16 +151,15 @@ pub fn dispatch(
                     let origin = if a.template_origin.is_some() {
                         "generated"
                     } else {
-                        // Check if article matches a declared config entry
+                        // Check if article matches a declared config entry via docs-relative short key.
                         let is_declared = config.as_ref().is_some_and(|cfg| {
-                            crate::service::index::article_key(a).ok().is_some_and(|id| {
-                                cfg.build.articles.contains_key(&id)
-                                    || cfg
-                                        .articles
-                                        .as_ref()
-                                        .and_then(|v| v.as_object())
-                                        .is_some_and(|map| map.contains_key(&id))
-                            })
+                            let short_key = crate::service::index::article_output_stem(&a.source_path);
+                            cfg.build.articles.contains_key(short_key)
+                                || cfg
+                                    .articles
+                                    .as_ref()
+                                    .and_then(|v| v.as_object())
+                                    .is_some_and(|map| map.contains_key(short_key))
                         });
                         if is_declared {
                             "declared"

@@ -388,13 +388,23 @@ fn source_key(source: &crate::model::source::Source) -> std::result::Result<Stri
 }
 
 pub fn article_key(article: &crate::model::article::Article) -> std::result::Result<String, serde_yaml::Error> {
-    // FR-001: generated articles keyed as <template-name>/<slot-value>
-    if let Some(ref to) = article.template_origin {
-        return Ok(format!("{}/{}", to.template_name, to.slot_value));
-    }
-    // Non-generated: strip docs/ prefix and .md extension
-    let path = article.source_path.trim_start_matches("docs/");
-    Ok(path.strip_suffix(".md").unwrap_or(path).trim_end_matches('/').to_string())
+    // Primary key is source_path without .md extension.
+    // For docs/ articles: "docs/2026-05-monthly"
+    // For generated articles: "outputs/2026-05/2026-05-15"
+    // For non-docs directory articles: "specs/quarterly"
+    let path = article.source_path.strip_suffix(".md").unwrap_or(&article.source_path);
+    Ok(path.trim_end_matches('/').to_string())
+}
+
+/// Derive the build artifact filename stem.
+///
+/// Strips `docs/` prefix and `.md` extension for docs articles;
+/// for non-docs articles strips only `.md`.
+/// Used by build output and publish artifact lookup to keep
+/// `_build/<short-key>.<format>` consistent.
+pub fn article_output_stem(source_path: &str) -> &str {
+    let path = source_path.strip_suffix(".md").unwrap_or(source_path);
+    path.strip_prefix("docs/").unwrap_or(path)
 }
 
 fn json_to_yaml(value: &serde_json::Value) -> serde_yaml::Value {
@@ -425,9 +435,11 @@ pub struct ResolvedArticle<'a> {
 /// Resolve an article argument to its canonical index entry.
 ///
 /// Resolution order:
-/// 1. Exact canonical article key (covers declared + generated identities)
+/// 1. Exact canonical article key (path全名, e.g. `docs/2026-05-monthly`)
 /// 2. Exact indexed source_path
-/// 3. Optional unambiguous short name / basename
+/// 3. DOCS_DIR relative name (e.g. `2026-05-monthly` for docs/ articles)
+/// 4. Template alias (`<template_name>/<slot_value>`, e.g. `daily_report/2026-05-15`)
+/// 5. Unambiguous basename (strip first directory component + .md extension)
 ///
 /// Display title is intentionally NOT used for resolution — it is
 /// presentation-only and must not determine filesystem paths.
@@ -442,7 +454,7 @@ pub fn resolve_article<'a>(index: &'a IndexFile, article_arg: &str) -> Result<Re
         }
     };
 
-    // 1. Exact article_key match (covers declared + generated identities)
+    // 1. Exact canonical article key match (path全名)
     for a in articles {
         if let Ok(key) = article_key(a) {
             if key == article_arg {
@@ -459,7 +471,27 @@ pub fn resolve_article<'a>(index: &'a IndexFile, article_arg: &str) -> Result<Re
         }
     }
 
-    // 3. Optional unambiguous short name / basename.
+    // 3. DOCS_DIR relative name match (e.g. "2026-05-monthly" for docs/2026-05-monthly)
+    for a in articles {
+        if let Ok(key) = article_key(a) {
+            if key != article_arg && article_output_stem(&a.source_path) == article_arg {
+                return Ok(ResolvedArticle { article: a, canonical_key: key });
+            }
+        }
+    }
+
+    // 4. Template alias match (<template_name>/<slot_value>)
+    for a in articles {
+        if let Some(ref to) = a.template_origin {
+            let alias = format!("{}/{}", to.template_name, to.slot_value);
+            if alias == article_arg {
+                let key = article_key(a).unwrap_or_else(|_| article_arg.to_string());
+                return Ok(ResolvedArticle { article: a, canonical_key: key });
+            }
+        }
+    }
+
+    // 5. Unambiguous short name / basename.
     // Try matching the article_arg against the source_path after stripping:
     // - any first directory component (e.g. docs/, notes/, specs/)
     // - .md extension
@@ -468,12 +500,10 @@ pub fn resolve_article<'a>(index: &'a IndexFile, article_arg: &str) -> Result<Re
         .iter()
         .filter(|a| {
             let sp = &a.source_path;
-            // Direct path matches
-            sp == article_arg
-                || sp == &format!("docs/{}", article_arg)
+            sp == &format!("docs/{}", article_arg)
                 || sp == &format!("docs/{}.md", article_arg)
-                // Strip first directory component and .md extension
-                || sp.split_once('/')
+                || sp
+                    .split_once('/')
                     .map(|(_, rest)| rest.strip_suffix(".md").unwrap_or(rest))
                     .is_some_and(|stem| stem == article_arg)
         })
@@ -515,50 +545,47 @@ mod tests {
     }
 
     #[test]
-    fn article_key_uses_template_origin_when_present() {
+    fn article_key_uses_source_path_not_template_origin() {
         let article = make_article(
             "outputs/2026-05/2026-05-15.md",
             Some(TemplateOrigin { template_name: "daily_report".to_string(), slot_value: "2026-05-15".to_string() }),
         );
         let key = article_key(&article).unwrap();
         assert_eq!(
-            key, "daily_report/2026-05-15",
-            "generated article key should be template_name/slot_value, not source-path-derived"
+            key, "outputs/2026-05/2026-05-15",
+            "primary key should be derived from source_path, not template_origin"
         );
     }
 
     #[test]
-    fn article_key_falls_back_to_source_path_when_no_template_origin() {
+    fn article_key_returns_full_path_for_docs_article() {
         let article = make_article("docs/weekly-summary.md", None);
         let key = article_key(&article).unwrap();
-        assert_eq!(key, "weekly-summary", "non-generated article key should be derived from source_path");
+        assert_eq!(key, "docs/weekly-summary", "key should be path全名: docs/weekly-summary");
     }
 
     #[test]
-    fn article_key_strips_docs_prefix_and_md_extension() {
+    fn article_key_strips_md_keeps_docs_prefix() {
         let article = make_article("docs/my-article.md", None);
         let key = article_key(&article).unwrap();
-        assert_eq!(key, "my-article");
+        assert_eq!(key, "docs/my-article");
     }
 
     #[test]
-    fn article_key_generated_does_not_contain_source_path_fragment() {
+    fn article_key_generated_has_source_path_key() {
         let article = make_article(
             "outputs/2026-05/2026-05-15.md",
             Some(TemplateOrigin { template_name: "daily_report".to_string(), slot_value: "2026-05-15".to_string() }),
         );
         let key = article_key(&article).unwrap();
-        assert!(
-            !key.contains("outputs"),
-            "generated article key must NOT contain source_path-derived fragments: {key}"
-        );
+        assert_eq!(key, "outputs/2026-05/2026-05-15", "generated article primary key is its source_path without .md");
     }
 
     #[test]
     fn article_key_handles_directory_source_path() {
         let article = make_article("docs/2026-05-monthly", None);
         let key = article_key(&article).unwrap();
-        assert_eq!(key, "2026-05-monthly", "directory source_path should produce article key without trailing slash");
+        assert_eq!(key, "docs/2026-05-monthly", "directory source_path should produce key without trailing slash");
     }
 
     #[test]
@@ -585,9 +612,29 @@ mod tests {
     #[test]
     fn resolve_by_exact_key_declared() {
         let index = make_index(vec![make_article("docs/2026-05-monthly", None)]);
-        let resolved = resolve_article(&index, "2026-05-monthly").unwrap();
-        assert_eq!(resolved.canonical_key, "2026-05-monthly");
+        let resolved = resolve_article(&index, "docs/2026-05-monthly").unwrap();
+        assert_eq!(resolved.canonical_key, "docs/2026-05-monthly");
         assert_eq!(resolved.article.source_path, "docs/2026-05-monthly");
+    }
+
+    #[test]
+    fn resolve_by_docs_dir_relative_name() {
+        let index = make_index(vec![make_article("docs/2026-05-monthly", None)]);
+        let resolved = resolve_article(&index, "2026-05-monthly").unwrap();
+        assert_eq!(resolved.canonical_key, "docs/2026-05-monthly");
+        assert_eq!(resolved.article.source_path, "docs/2026-05-monthly");
+    }
+
+    #[test]
+    fn resolve_by_template_alias() {
+        let article = make_article(
+            "outputs/2026-05/2026-05-15.md",
+            Some(TemplateOrigin { template_name: "daily_report".to_string(), slot_value: "2026-05-15".to_string() }),
+        );
+        let index = make_index(vec![article]);
+        let resolved = resolve_article(&index, "daily_report/2026-05-15").unwrap();
+        assert_eq!(resolved.canonical_key, "outputs/2026-05/2026-05-15");
+        assert_eq!(resolved.article.source_path, "outputs/2026-05/2026-05-15.md");
     }
 
     #[test]
@@ -597,8 +644,8 @@ mod tests {
             Some(TemplateOrigin { template_name: "daily_report".to_string(), slot_value: "2026-05-15".to_string() }),
         );
         let index = make_index(vec![article]);
-        let resolved = resolve_article(&index, "daily_report/2026-05-15").unwrap();
-        assert_eq!(resolved.canonical_key, "daily_report/2026-05-15");
+        let resolved = resolve_article(&index, "outputs/2026-05/2026-05-15").unwrap();
+        assert_eq!(resolved.canonical_key, "outputs/2026-05/2026-05-15");
         assert_eq!(resolved.article.source_path, "outputs/2026-05/2026-05-15.md");
     }
 
@@ -606,7 +653,7 @@ mod tests {
     fn resolve_by_exact_source_path() {
         let index = make_index(vec![make_article("docs/my-article.md", None)]);
         let resolved = resolve_article(&index, "docs/my-article.md").unwrap();
-        assert_eq!(resolved.canonical_key, "my-article");
+        assert_eq!(resolved.canonical_key, "docs/my-article");
     }
 
     #[test]

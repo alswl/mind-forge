@@ -220,13 +220,13 @@ pub fn list_articles(project_path: &Path) -> Result<Vec<Article>> {
     Ok(index.articles.unwrap_or_default())
 }
 
-/// Derive the article key (slug) from its source_path.
+/// Derive the article key from its source_path.
 ///
-/// For a source_path like `"docs/my-article.md"`, returns `"my-article"`.
+/// Returns the full project-relative path without `.md` extension.
+/// For `"docs/my-article.md"` → `"docs/my-article"`.
+/// For `"outputs/2026-05/2026-05-15.md"` → `"outputs/2026-05/2026-05-15"`.
 fn article_key_from_source_path(source_path: &str) -> String {
-    let without_ext = source_path.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)).unwrap_or(source_path);
-    let (_docs_prefix, key) = without_ext.rsplit_once('/').unwrap_or(("", without_ext));
-    key.to_string()
+    source_path.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)).unwrap_or(source_path).to_string()
 }
 
 /// Resolve the docs-relative source path for a declared article key.
@@ -353,7 +353,8 @@ pub fn scan_declared(project_root: &Path, config: &MindConfig) -> Result<Vec<Art
 /// - Otherwise `docs/<article-name>` as the default
 pub fn effective_source_dir(config: &MindConfig, article: &Article) -> String {
     let article_key = article_key_from_source_path(&article.source_path);
-    if let Some(source_dir) = config.build.articles.get(&article_key).and_then(|a| a.source_dir.clone()) {
+    let short_key = article_key.strip_prefix("docs/").unwrap_or(&article_key);
+    if let Some(source_dir) = config.build.articles.get(short_key).and_then(|a| a.source_dir.clone()) {
         return source_dir;
     }
     if let Some(source_dir) = config
@@ -366,7 +367,7 @@ pub fn effective_source_dir(config: &MindConfig, article: &Article) -> String {
         return source_dir.clone();
     }
     let paths = crate::defaults::DOCS_DIR;
-    format!("{}/{}", paths, article_key)
+    format!("{paths}/{short_key}")
 }
 
 /// Scan the docs directory for markdown files and return discovered articles.

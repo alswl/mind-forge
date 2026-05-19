@@ -335,12 +335,11 @@ fn locate_build_artifact(project_path: &Path, config: &MindConfig, article_entry
         return Ok((path, metadata.len()));
     }
 
-    // Non-generated: artifact lives at <output_dir>/<key>.<format>
+    // Non-generated: artifact lives at <output_dir>/<stem>.<format>
     let format =
         if config.build.format.is_empty() { defaults::DEFAULT_BUILD_FORMAT } else { config.build.format.as_str() };
-    let key = index::article_key(article_entry)
-        .map_err(|e| MfError::Internal(anyhow::anyhow!("failed to derive article key: {e}")))?;
-    let path = project_path.join(&config.build.output_dir).join(format!("{key}.{format}"));
+    let stem = index::article_output_stem(&article_entry.source_path);
+    let path = project_path.join(&config.build.output_dir).join(format!("{stem}.{format}"));
     let metadata = fs::metadata(&path).map_err(|_| {
         // Check if source file is also missing — indicates no source files (FR-005)
         let source_path = project_path.join(&article_entry.source_path);
@@ -352,7 +351,7 @@ fn locate_build_artifact(project_path: &Path, config: &MindConfig, article_entry
         }
         MfError::build_artifact_missing(
             format!("build artifact not found: {}", path.display()),
-            Some(format!("run `mf build {key}` first")),
+            Some(format!("run `mf build {stem}` first")),
         )
     })?;
     Ok((path, metadata.len()))
@@ -373,6 +372,7 @@ fn run_local(
         if config.build.format.is_empty() { defaults::DEFAULT_BUILD_FORMAT } else { config.build.format.as_str() };
     let prefix = target.prefix.as_deref().unwrap_or("");
     let article_stem = args.article.rsplit_once('/').map(|(_, stem)| stem).unwrap_or(&args.article);
+    let article_stem = article_stem.strip_suffix(".md").unwrap_or(article_stem);
     let dest_file = dest_dir.join(format!("{prefix}{article_stem}.{format}"));
 
     if size_bytes == 0 {

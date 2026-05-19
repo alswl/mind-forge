@@ -102,8 +102,8 @@ articles:
     assert!(content.contains("schema:"), "schema alias should be preserved:\n{content}");
     assert!(!content.contains("schema_version:"), "schema_version should not be introduced:\n{content}");
     assert!(content.contains("project: my-project"), "unknown top-level fields should remain:\n{content}");
-    assert!(content.contains("articles:\n  existing:"), "articles should remain a mapping:\n{content}");
-    assert!(content.contains("  new-article:"), "new article should be inserted as a mapping entry:\n{content}");
+    assert!(content.contains("docs/existing:"), "existing article key should be path全名:\n{content}");
+    assert!(content.contains("docs/new-article:"), "new article key should be path全名:\n{content}");
     assert!(!content.contains("extra:"), "unknown fields should not be nested under extra:\n{content}");
 }
 
@@ -859,7 +859,7 @@ fn article_index_declared_directory_source_path() {
     );
 
     let articles = common::read_index_articles_map(&repo, "team-reports");
-    common::assert_article_source_path(&articles, "2026-05-monthly", "docs/2026-05-monthly");
+    common::assert_article_source_path(&articles, "docs/2026-05-monthly", "docs/2026-05-monthly");
 }
 
 #[test]
@@ -876,7 +876,7 @@ fn article_index_does_not_write_nonexistent_md_file() {
 
     let articles = common::read_index_articles_map(&repo, "team-reports");
     // The article's source_path must be the directory, not a fake .md file
-    common::assert_article_source_path(&articles, "2026-05-monthly", "docs/2026-05-monthly");
+    common::assert_article_source_path(&articles, "docs/2026-05-monthly", "docs/2026-05-monthly");
     // Verify the fake .md file does not exist on disk
     assert!(
         !project_path.join("docs/2026-05-monthly.md").exists(),
@@ -929,8 +929,8 @@ fn article_index_missing_declared_source_diagnostic() {
 
     let articles = common::read_index_articles_map(&repo, "my-project");
     // The article should be in the index with the conventional docs/ path
-    // (not a random invented path)
-    let entry = articles.get("ghost-article").expect("ghost-article should be in index");
+    // (not a random invented path). Key is path全名: docs/ghost-article
+    let entry = articles.get("docs/ghost-article").expect("docs/ghost-article should be in index");
     let sp = entry["source_path"].as_str().unwrap_or("");
     assert_eq!(sp, "docs/ghost-article.md", "missing source should use conventional path");
 

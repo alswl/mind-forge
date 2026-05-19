@@ -46,15 +46,6 @@ pub fn dispatch(
             .unwrap_or_else(|| "article".to_string());
         (project_path, Some(source_path), article_name)
     } else {
-        if args.article.contains('/') || args.article.contains('\\') {
-            return Err(MfError::usage(
-                format!("invalid article name: '{}'", args.article),
-                Some(
-                    "prefix repo-relative paths with '@', for example `mf build @projects/my-project/docs/post/`"
-                        .to_string(),
-                ),
-            ));
-        }
         (svc_util::resolve_project(root, args.project.as_deref(), &cwd)?, None, args.article.clone())
     };
 

@@ -200,7 +200,10 @@ fn build_source(
     // 4. Determine output path
     let output_path = match output_override {
         Some(path) => path.to_path_buf(),
-        None => project_path.join(&build_cfg.output_dir).join(format!("{}.{}", article, build_cfg.format)),
+        None => {
+            let stem = crate::service::index::article_output_stem(article);
+            project_path.join(&build_cfg.output_dir).join(format!("{stem}.{}", build_cfg.format))
+        }
     };
 
     // 5. Gather source files — single file or directory contents
