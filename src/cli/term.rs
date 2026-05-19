@@ -51,6 +51,8 @@ pub struct TermNewArgs {
     pub alias: Vec<String>,
     #[arg(long = "tag")]
     pub tag: Vec<String>,
+    #[arg(long = "misrecognition")]
+    pub misrecognition: Vec<String>,
     #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
@@ -141,10 +143,23 @@ pub fn dispatch(
 
 fn handle_new(args: TermNewArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let term = if let Some(ref project) = args.project {
+        if !args.misrecognition.is_empty() {
+            return Err(MfError::usage(
+                "--misrecognition is not supported on project-scoped term files",
+                Some("use global terms (without --project) for --misrecognition".to_string()),
+            ));
+        }
         let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
         term_svc::new_term(&project_path, &args.term, args.definition.as_deref(), &args.alias, &args.tag)?
     } else {
-        term_svc::global::new_term(root, &args.term, args.definition.as_deref(), &args.alias, &args.tag)?
+        term_svc::global::new_term(
+            root,
+            &args.term,
+            args.definition.as_deref(),
+            &args.alias,
+            &args.tag,
+            &args.misrecognition,
+        )?
     };
 
     match format {
@@ -155,13 +170,16 @@ fn handle_new(args: TermNewArgs, root: &Path, cwd: &Path, format: Format) -> Res
         Format::Text => {
             let alias_count = term.aliases.len();
             let tag_count = term.tags.len();
+            let misrecog_count = term.corrections.len();
             let msg = format!(
-                "✓ added term: {} ({} alias{}, {} tag{})",
+                "✓ added term: {} ({} alias{}, {} tag{}, {} misrecognition{})",
                 term.term,
                 alias_count,
                 if alias_count == 1 { "" } else { "es" },
                 tag_count,
                 if tag_count == 1 { "" } else { "s" },
+                misrecog_count,
+                if misrecog_count == 1 { "" } else { "s" },
             );
             Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
         }

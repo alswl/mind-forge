@@ -1,0 +1,18 @@
+# 术语校准表
+# 格式: 标准名: { misrecognitions: [误识别列表] }
+
+# ===== 人员 =====
+cafed:
+  misrecognitions:
+    - 凯飞迪
+    - caféd
+IGO:
+  misrecognitions:
+    - Igo
+    - iGo
+
+# ===== 技术 =====
+卿祤:
+  misrecognitions:
+    - 庆宇
+    - 清雨

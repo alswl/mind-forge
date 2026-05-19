@@ -181,6 +181,120 @@ fn list_terms_outside_repo() {
 }
 
 // ---------------------------------------------------------------------------
+// ── US1: repo format global terms ─────────────────────────────────────────
+
+fn write_global_terms(repo: &common::TempDir, content: &str) {
+    std::fs::write(repo.path().join("minds-terms.yaml"), content).unwrap();
+}
+
+fn repo_format_fixture(name: &str) -> String {
+    std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/term_repo_format").join(name),
+    )
+    .unwrap()
+}
+
+// T015
+#[test]
+fn list_repo_format_text() {
+    let repo = common::setup_repo();
+    write_global_terms(&repo, &repo_format_fixture("simple.yaml"));
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "term", "list"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "exit 0 for repo-format file");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("cafed"), "should list cafed: {stdout}");
+    assert!(stdout.contains("IGO"), "should list IGO: {stdout}");
+    assert!(stdout.contains("卿祤"), "should list 卿祤: {stdout}");
+    // CORRECTIONS column shows count (2 corrections per entry)
+    assert!(stdout.contains("2"), "should show correction count: {stdout}");
+}
+
+// T016
+#[test]
+fn list_repo_format_json() {
+    let repo = common::setup_repo();
+    write_global_terms(&repo, &repo_format_fixture("simple.yaml"));
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "--format", "json", "term", "list"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(parsed["status"], "ok");
+    let data = parsed["data"].as_array().unwrap();
+    assert_eq!(data.len(), 3, "3 terms from simple.yaml");
+    for item in data.as_slice() {
+        assert_eq!(item["definition"], serde_json::Value::Null);
+        assert_eq!(item["aliases"].as_array().unwrap().len(), 0);
+        assert_eq!(item["tags"].as_array().unwrap().len(), 0);
+        let corr = item["corrections"].as_array().unwrap();
+        for c in corr {
+            assert_eq!(c["correct"], item["term"]);
+        }
+    }
+}
+
+// T017
+#[test]
+fn list_repo_format_with_comments() {
+    let repo = common::setup_repo();
+    write_global_terms(&repo, &repo_format_fixture("simple.yaml"));
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "term", "list"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.is_empty(), "no stderr noise: {stderr}");
+}
+
+// T018
+#[test]
+fn list_rejects_duplicate_top_level_key() {
+    let repo = common::setup_repo();
+    write_global_terms(&repo, &repo_format_fixture("duplicate.yaml"));
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "term", "list"])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(1), "exit 1 for duplicate key");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("duplicate term"), "stderr should mention duplicate term: {stderr}");
+}
+
+// T019
+#[test]
+fn list_rejects_malformed_file() {
+    let repo = common::setup_repo();
+    write_global_terms(&repo, &repo_format_fixture("malformed.yaml"));
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "term", "list"])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(1), "exit 1 for malformed file");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("unsupported file shape"), "should name both supported shapes: {stderr}");
+}
+
 // 7. missing index → empty list, exit 0
 // ---------------------------------------------------------------------------
 

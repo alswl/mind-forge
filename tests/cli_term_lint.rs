@@ -446,3 +446,88 @@ fn lint_fix_json_shape() {
     assert!(parsed["data"]["fixed_count"].as_u64().unwrap_or(0) >= 1);
     assert_eq!(parsed["data"]["modified_files"].as_array().unwrap().len(), 1);
 }
+
+// ── US4: Lint doesn't modify global repo-format terms file ─────────────────
+
+fn repo_format_fixture(name: &str) -> String {
+    std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/term_repo_format").join(name),
+    )
+    .unwrap()
+}
+
+// T049: Lint read-only doesn't modify global repo-format terms file
+#[test]
+fn lint_does_not_modify_repo_terms_file() {
+    let repo = common::setup_repo();
+    // Create project with terms and article with a misrecognition
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: cafed
+    corrections:
+      - original: 凯飞迪
+        correct: cafed
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    write_doc(&project, "test", "hello 凯飞迪 world\n");
+
+    // Write repo-format global terms file
+    let fixture = repo_format_fixture("simple.yaml");
+    fs::write(repo.path().join("minds-terms.yaml"), &fixture).unwrap();
+
+    let before = fs::read(repo.path().join("minds-terms.yaml")).unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "term", "lint", "--project", "alpha"])
+        .output()
+        .unwrap();
+
+    // May exit 0 or 1 depending on findings, but global terms file must be unchanged
+    let after = fs::read(repo.path().join("minds-terms.yaml")).unwrap();
+    assert_eq!(before, after, "global terms file must be unchanged after read-only lint");
+    let _ = output; // consumed for side effects
+}
+
+// T050: Lint --fix writes articles, not the global terms file
+#[test]
+fn lint_fix_writes_articles_not_terms_file() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: cafed
+    corrections:
+      - original: 凯飞迪
+        correct: cafed
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    write_doc(&project, "test", "hello 凯飞迪 world\n");
+
+    // Write repo-format global terms file
+    let fixture = repo_format_fixture("simple.yaml");
+    fs::write(repo.path().join("minds-terms.yaml"), &fixture).unwrap();
+
+    let before_terms = fs::read(repo.path().join("minds-terms.yaml")).unwrap();
+    let before_article = fs::read_to_string(project.join("docs/test.md")).unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "term", "lint", "--fix", "--project", "alpha"])
+        .output()
+        .unwrap();
+
+    let after_terms = fs::read(repo.path().join("minds-terms.yaml")).unwrap();
+    assert_eq!(before_terms, after_terms, "global terms file must be unchanged after lint --fix");
+
+    let after_article = fs::read_to_string(project.join("docs/test.md")).unwrap();
+    assert_ne!(before_article, after_article, "article should be modified by lint --fix");
+    assert!(!after_article.contains("凯飞迪"), "misrecognition should be fixed in article");
+
+    let _ = output;
+}

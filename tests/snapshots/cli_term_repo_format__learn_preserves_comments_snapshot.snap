@@ -1,0 +1,24 @@
+---
+source: tests/cli_term_repo_format.rs
+assertion_line: 206
+expression: content
+---
+# 术语校准表
+# 格式: 标准名: { misrecognitions: [误识别列表] }
+
+# ===== 人员 =====
+cafed:
+  misrecognitions:
+    - 凯飞迪
+    - caféd
+    - 卡维地
+IGO:
+  misrecognitions:
+    - Igo
+    - iGo
+
+# ===== 技术 =====
+卿祤:
+  misrecognitions:
+    - 庆宇
+    - 清雨

@@ -8,6 +8,7 @@ pub mod lint;
 pub mod list;
 pub mod lookup;
 pub mod new;
+pub mod repo_format;
 pub mod show;
 
 use std::collections::BTreeSet;

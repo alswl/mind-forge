@@ -1,5 +1,6 @@
 ---
 source: tests/cli_help.rs
+assertion_line: 152
 expression: stdout
 ---
 Create a term (mf extension)
@@ -22,12 +23,14 @@ Options:
           
   -v, --verbose...
           Verbose output
-  -p, --project <PROJECT>
+      --misrecognition <MISRECOGNITION>
           
   -q, --quiet
           Silence non-error output
       --format <FORMAT>
           Output format [default: text] [possible values: text, json]
+  -p, --project <PROJECT>
+          
       --json
           Shorthand for --format json
       --no-color
