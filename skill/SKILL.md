@@ -300,7 +300,9 @@ mf asset index --refresh-metadata --project my-project
 mf asset clean --project my-project
 
 # Articles
-mf article new "My First Post" --template blog --file --project my-project
+mf article new "My First Post" --project my-project
+mf article new "Auth Rewrite" --template arch --project my-project
+mf article new "Quick Note" --template blog --file --project my-project
 mf article list --project my-project
 mf article index --project my-project
 mf article rename "Old Title" "New Title" --project my-project

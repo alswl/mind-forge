@@ -94,7 +94,7 @@ mf --install-completion zsh   # or bash | fish | powershell | elvish
 mkdir my-repo && cd my-repo
 mf config init                       # creates minds.yaml
 
-# 2. Create a project and an article
+# 2. Create a project and a default blank directory article
 mf project new blog
 mf article new "First Post" --project blog
 
@@ -166,10 +166,11 @@ flowchart LR
 
 1. **Capture** — `mf source add` and `mf asset add` pull raw material into a
    project. `mf term new` records vocabulary.
-2. **Draft** — `mf article new` scaffolds a directory article (default) or
-   single file (`--file`) under `docs/`. Defaults to the `blank` template;
-   `--template arch|prd|blog` picks a built-in scaffold. Edit in any
-   Markdown editor.
+2. **Draft** — `mf article new <TITLE> [--template <S>] [--file]`
+   scaffolds a directory article (default) or single file (`--file`) under
+   `docs/`. The default template is `blank`; `--template arch|prd|blog`
+   selects another built-in scaffold, and `--template <path>` reads a
+   project-local Markdown template. Edit in any Markdown editor.
 3. **Index** — `mf source index`, `mf article index`, and
    `mf project lint --fix` reconcile `mind-index.yaml` with the filesystem.
 4. **Build** — `mf build <article>` assembles output (directory articles
@@ -183,9 +184,11 @@ get a machine-readable envelope.
 ## Features
 
 - **Project lifecycle** — `mf project new | list | status | lint | index | archive | rename | import | show`
-- **Article management** — `mf article new | list | lint | index | rename`,
-  directory articles by default, `blank`/`arch`/`prd`/`blog` built-in
-  templates, `--file` for single-file shape, custom template paths
+- **Article management** — `mf article new <TITLE> [--template <S>] [--file]`,
+  plus `list | lint | index | rename`; new articles are directory articles by
+  default, use the `blank` template unless `--template blank|arch|prd|blog` or
+  a custom project-local template path is supplied, and `--file` opts into the
+  single-file shape
 - **Sources** — `mf source add | list | update | index | remove | clean`,
   file kinds `auto`, `pdf`, `file`, `rss`, `web`
 - **Assets** — `mf asset add | list | update | index | remove | clean`
