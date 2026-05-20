@@ -45,7 +45,7 @@ fn directory_article_block_content_roundtrip() {
     assert_eq!(code, 0);
     let dir2 = project.join("docs/simple");
     assert!(dir2.is_dir());
-    let head = fs::read_to_string(dir2.join("00-head.md")).unwrap();
+    let head = fs::read_to_string(dir2.join("01-opening.md")).unwrap();
     assert!(head.contains("# Simple"));
     assert!(head.contains("> Created:"));
 }

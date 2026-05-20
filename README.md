@@ -166,8 +166,8 @@ flowchart LR
 
 1. **Capture** — `mf source add` and `mf asset add` pull raw material into a
    project. `mf term new` records vocabulary.
-2. **Draft** — `mf article new <TITLE> [--template <S>] [--file]`
-   scaffolds a directory article (default) or single file (`--file`) under
+2. **Draft** — `mf article new <TITLE> [--template <S>] [--file|--single-file]`
+   scaffolds a directory article (default) or single file (`--file`/`--single-file`) under
    `docs/`. The default template is `blank`; `--template arch|prd|blog`
    selects another built-in scaffold, and `--template <path>` reads a
    project-local Markdown template. Edit in any Markdown editor.
@@ -184,11 +184,11 @@ get a machine-readable envelope.
 ## Features
 
 - **Project lifecycle** — `mf project new | list | status | lint | index | archive | rename | import | show`
-- **Article management** — `mf article new <TITLE> [--template <S>] [--file]`,
+- **Article management** — `mf article new <TITLE> [--template <S>] [--file|--single-file]`,
   plus `list | lint | index | rename`; new articles are directory articles by
   default, use the `blank` template unless `--template blank|arch|prd|blog` or
-  a custom project-local template path is supplied, and `--file` opts into the
-  single-file shape
+  a custom project-local template path is supplied, and `--file`/`--single-file`
+  opts into the single-file shape
 - **Sources** — `mf source add | list | update | index | remove | clean`,
   file kinds `auto`, `pdf`, `file`, `rss`, `web`
 - **Assets** — `mf asset add | list | update | index | remove | clean`

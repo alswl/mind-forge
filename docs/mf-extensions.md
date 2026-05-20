@@ -43,7 +43,7 @@ Index commands reconcile the filesystem state with the project index
 The `mf article new` command has been redesigned from type-first to title-first:
 
 ```text
-mf article new <TITLE> [--template <S>] [--file]
+mf article new <TITLE> [--template <S>] [--file|--single-file]
 ```
 
 **Default behaviour**: Creates a **directory article** at `docs/{slug}/` using
@@ -64,13 +64,13 @@ Use a leading `./` or subdirectory prefix (e.g. `templates/arch.md`) to force
 path resolution.
 
 **Directory-article H2 split rule**: In directory mode, the resolved template
-is split on top-level `## ` lines: `00-head.md` contains everything before the
-first H2; each subsequent H2 section becomes `0N-<heading-slug>.md` (1-indexed,
+is split on top-level `## ` lines: `01-opening.md` contains everything before the
+first H2; each subsequent H2 section becomes `0N-<heading-slug>.md` (2-indexed,
 zero-padded to two digits). The concatenation of all block files in filename
 order reproduces the template byte-for-byte.
 
-**`--file`**: Write a single file `docs/{slug}.md` instead of a directory. No
-H2 split occurs. Compatible with all template sources.
+**`--file` / `--single-file`**: Write a single file `docs/{slug}.md` instead
+of a directory. No H2 split occurs. Compatible with all template sources.
 
 **JSON envelope**: Four new fields under `data`:
 - `template` (`string`) — resolved name (`blank`/`arch`/`prd`/`blog`) or relative path

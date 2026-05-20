@@ -133,9 +133,9 @@ fn split_template_into_blocks(resolved: &str) -> Result<Vec<(String, String)>> {
     let mut result: Vec<(String, String)> = Vec::new();
     for (i, block) in raw.into_iter().enumerate() {
         if i == 0 {
-            result.push(("00-head.md".to_string(), block.body));
+            result.push(("01-opening.md".to_string(), block.body));
         } else {
-            result.push((format!("{:02}-{}.md", i, block.slug), block.body));
+            result.push((format!("{:02}-{}.md", i + 1, block.slug), block.body));
         }
     }
 
@@ -1317,7 +1317,7 @@ mod tests {
         let input = "# Title\n\nBody text\n";
         let blocks = split_template_into_blocks(input).unwrap();
         assert_eq!(blocks.len(), 1);
-        assert_eq!(blocks[0].0, "00-head.md");
+        assert_eq!(blocks[0].0, "01-opening.md");
         assert_eq!(blocks[0].1, "# Title\n\nBody text");
     }
 
@@ -1326,13 +1326,13 @@ mod tests {
         let input = "# Title\n\n> Created: now\n\n## Context\n\nctx body\n\n## Decision\n\ndec\n\n## Consequence\n\ncons\n\n## Alternatives Considered\n\nalt\n";
         let blocks = split_template_into_blocks(input).unwrap();
         assert_eq!(blocks.len(), 5);
-        assert_eq!(blocks[0].0, "00-head.md");
+        assert_eq!(blocks[0].0, "01-opening.md");
         assert!(blocks[0].1.starts_with("# Title"));
-        assert_eq!(blocks[1].0, "01-context.md");
+        assert_eq!(blocks[1].0, "02-context.md");
         assert!(blocks[1].1.starts_with("## Context"));
-        assert_eq!(blocks[2].0, "02-decision.md");
-        assert_eq!(blocks[3].0, "03-consequence.md");
-        assert_eq!(blocks[4].0, "04-alternatives-considered.md");
+        assert_eq!(blocks[2].0, "03-decision.md");
+        assert_eq!(blocks[3].0, "04-consequence.md");
+        assert_eq!(blocks[4].0, "05-alternatives-considered.md");
     }
 
     #[test]
@@ -1340,9 +1340,9 @@ mod tests {
         let input = "## Intro\n\nintro body\n";
         let blocks = split_template_into_blocks(input).unwrap();
         assert_eq!(blocks.len(), 2);
-        assert_eq!(blocks[0].0, "00-head.md");
+        assert_eq!(blocks[0].0, "01-opening.md");
         assert_eq!(blocks[0].1, "");
-        assert_eq!(blocks[1].0, "01-intro.md");
+        assert_eq!(blocks[1].0, "02-intro.md");
         assert_eq!(blocks[1].1, "## Intro\n\nintro body");
     }
 
@@ -1368,9 +1368,9 @@ mod tests {
         let input = "# Title\n\nintro\n\n## Summary\n\nsummary body\n";
         let blocks = split_template_into_blocks(input).unwrap();
         assert_eq!(blocks.len(), 2);
-        assert_eq!(blocks[0].0, "00-head.md");
+        assert_eq!(blocks[0].0, "01-opening.md");
         assert_eq!(blocks[0].1, "# Title\n\nintro\n");
-        assert_eq!(blocks[1].0, "01-summary.md");
+        assert_eq!(blocks[1].0, "02-summary.md");
         assert!(blocks[1].1.starts_with("## Summary"));
     }
 }

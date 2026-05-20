@@ -39,7 +39,7 @@ pub struct ArticleNewArgs {
     #[arg(short = 't', long, default_value = "blank")]
     pub template: String,
     /// Write a single file instead of a directory
-    #[arg(long, default_value_t = false)]
+    #[arg(long = "file", visible_alias = "single-file", default_value_t = false)]
     pub file: bool,
     #[arg(short = 'p', long)]
     pub project: Option<String>,

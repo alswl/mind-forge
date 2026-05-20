@@ -21,7 +21,7 @@ fn default_invocation_creates_directory_article() {
     assert_eq!(output.status.code(), Some(0), "default article new should succeed");
 
     let project = repo.path().join("demo");
-    assert!(project.join("docs/my-title/00-head.md").exists(), "00-head.md should exist under docs/my-title/");
+    assert!(project.join("docs/my-title/01-opening.md").exists(), "01-opening.md should exist under docs/my-title/");
     assert!(!project.join("docs/my-title.md").exists(), "no docs/my-title.md file should exist (directory default)");
 
     // FR-010: source_path is docs/my-title (no trailing slash)
@@ -54,7 +54,7 @@ fn json_envelope_has_new_fields() {
     assert_eq!(envelope["data"]["shape"], "directory");
     assert_eq!(envelope["data"]["path"], "docs/probe-two/");
     assert_eq!(envelope["data"]["files"].as_array().unwrap().len(), 1);
-    assert_eq!(envelope["data"]["files"][0], "00-head.md");
+    assert_eq!(envelope["data"]["files"][0], "01-opening.md");
     // FR-011: legacy data.type is absent
     assert!(envelope["data"]["type"].is_null(), "legacy data.type must be absent");
 }
@@ -75,7 +75,7 @@ fn json_envelope_uses_configured_docs_dir() {
     assert_eq!(output.status.code(), Some(0));
 
     let project = repo.path().join("demo");
-    assert!(project.join("notes/configured-docs/00-head.md").exists());
+    assert!(project.join("notes/configured-docs/01-opening.md").exists());
     assert!(!project.join("docs/configured-docs").exists());
 
     let envelope: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -231,7 +231,7 @@ fn force_replacement_restores_existing_directory_on_index_failure() {
 
     assert_ne!(output.status.code(), Some(0), "force replacement should fail when index cannot load/save");
     assert!(article_dir.join("old-marker.md").exists(), "old directory content must be restored");
-    assert!(!article_dir.join("01-context.md").exists(), "failed replacement must not leave new template blocks");
+    assert!(!article_dir.join("02-context.md").exists(), "failed replacement must not leave new template blocks");
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -256,11 +256,11 @@ fn arch_template_creates_correct_directory_structure() {
 
     let dir = repo.path().join("demo/docs/auth-rewrite");
     assert!(dir.is_dir());
-    assert!(dir.join("00-head.md").exists());
-    assert!(dir.join("01-context.md").exists());
-    assert!(dir.join("02-decision.md").exists());
-    assert!(dir.join("03-consequence.md").exists());
-    assert!(dir.join("04-alternatives-considered.md").exists());
+    assert!(dir.join("01-opening.md").exists());
+    assert!(dir.join("02-context.md").exists());
+    assert!(dir.join("03-decision.md").exists());
+    assert!(dir.join("04-consequence.md").exists());
+    assert!(dir.join("05-alternatives-considered.md").exists());
 
     // Exactly 5 files
     let count = std::fs::read_dir(&dir).unwrap().count();
@@ -293,7 +293,7 @@ fn arch_template_json_envelope() {
     assert_eq!(envelope["data"]["path"], "docs/auth-rewrite/");
     let files = envelope["data"]["files"].as_array().unwrap();
     assert_eq!(files.len(), 5);
-    assert!(files.iter().any(|f| f.as_str() == Some("00-head.md")));
+    assert!(files.iter().any(|f| f.as_str() == Some("01-opening.md")));
 }
 
 // ── T021: template roundtrip — concat = resolved template ──
@@ -404,22 +404,63 @@ fn file_mode_creates_single_file() {
     assert!(index_content.contains("source_path: docs/quick-note.md"));
 }
 
-// ── T026: Byte-equality regression test (blog --file matches legacy blog body) ──
+// ── T026: Template content determines the block structure ──
 
 #[test]
-fn blog_file_mode_matches_legacy_blog_body() {
+fn custom_template_creates_monthly_review_blocks_from_h2_headings() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "demo");
+
+    let templates_dir = repo.path().join("demo/templates");
+    fs::create_dir_all(&templates_dir).unwrap();
+    fs::write(
+        templates_dir.join("monthly-review.md"),
+        "# {title}\n\n> Created: {created_at}\n\n## What Done\n\n## Next Month\n\n## Thoughts\n\n## Others Sharing\n",
+    )
+    .unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("demo"))
+        .args(["--json", "article", "new", "2026-04 Review", "--template", "templates/monthly-review.md"])
+        .output()
+        .expect("command runs");
+    assert_eq!(output.status.code(), Some(0));
+
+    let dir = repo.path().join("demo/docs/2026-04-review");
+    assert!(dir.join("01-opening.md").exists());
+    assert!(dir.join("02-what-done.md").exists());
+    assert!(dir.join("03-next-month.md").exists());
+    assert!(dir.join("04-thoughts.md").exists());
+    assert!(dir.join("05-others-sharing.md").exists());
+    assert!(!repo.path().join("demo/docs/2026-04-review.md").exists());
+
+    let envelope: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        envelope["data"]["files"],
+        serde_json::json!([
+            "01-opening.md",
+            "02-what-done.md",
+            "03-next-month.md",
+            "04-thoughts.md",
+            "05-others-sharing.md"
+        ])
+    );
+}
+
+#[test]
+fn blog_file_mode_keeps_blog_body_in_single_file() {
     let repo = common::setup_repo();
     common::create_project(&repo, "demo");
 
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("demo"))
-        .args(["article", "new", "Quick Note", "--template", "blog", "--file"])
+        .args(["article", "new", "Quick Note", "--template", "blog", "--single-file"])
         .output()
         .expect("command runs");
 
     let content = std::fs::read_to_string(repo.path().join("demo/docs/quick-note.md")).unwrap();
-    // Legacy ARTICLE_TEMPLATE has H1, > Created, ## Summary, ## Content
     assert!(content.contains("# Quick Note"));
     assert!(content.contains("> Created:"));
     assert!(content.contains("## Summary"));
@@ -522,10 +563,10 @@ fn custom_template_directory_layout() {
 
     let dir = repo.path().join("demo/docs/q2-outage");
     assert!(dir.is_dir());
-    assert!(dir.join("00-head.md").exists());
-    assert!(dir.join("01-background.md").exists());
-    assert!(dir.join("02-analysis.md").exists());
-    assert!(dir.join("03-action-items.md").exists());
+    assert!(dir.join("01-opening.md").exists());
+    assert!(dir.join("02-background.md").exists());
+    assert!(dir.join("03-analysis.md").exists());
+    assert!(dir.join("04-action-items.md").exists());
 
     let count = std::fs::read_dir(&dir).unwrap().count();
     assert_eq!(count, 4);

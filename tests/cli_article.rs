@@ -15,7 +15,7 @@ fn article_new_creates_file_and_index() {
         .expect("command runs");
     assert_eq!(output.status.code(), Some(0), "article new should succeed");
 
-    let md_path = repo.path().join("my-project/docs/my-first-article/00-head.md");
+    let md_path = repo.path().join("my-project/docs/my-first-article/01-opening.md");
     assert!(md_path.exists(), "article file should exist");
 
     let index_path = repo.path().join("my-project/mind-index.yaml");

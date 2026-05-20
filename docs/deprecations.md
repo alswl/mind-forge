@@ -10,7 +10,7 @@ scripts using these forms will continue to work but will emit a stderr warning.
 | | |
 |---|---|
 | **Old form** | `mf article new <TYPE> <TITLE>` (e.g. `mf article new blog "Hello"`) |
-| **New form** | `mf article new <TITLE> [--template <S>] [--file]` (e.g. `mf article new "Hello" --template blog --file`) |
+| **New form** | `mf article new <TITLE> [--template <S>] [--file|--single-file]` (e.g. `mf article new "Hello" --template blog`) |
 | **Error** | Passing two positionals exits 2 with a usage message naming the new signature and pointing at `--template` |
 | **Migration** | `mf article new arch "T"` → `mf article new "T" --template arch` |
 | **JSON envelope** | The legacy `data.type` field is removed; use `data.template` instead |

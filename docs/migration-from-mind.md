@@ -5,7 +5,8 @@
 
 ## Quick replacement
 
-For most commands, simply replace the executable name:
+For most commands, simply replace the executable name. `article new` is an
+exception because `mf` uses a title-first signature and template flag:
 
 ```text
 # Before (mind)
@@ -13,7 +14,7 @@ mind article new blog "My Post"
 mind source list --project my-project
 
 # After (mf)
-mf article new blog "My Post"
+mf article new "My Post" --template blog
 mf source list --project my-project
 ```
 

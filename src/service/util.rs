@@ -446,12 +446,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("my-article");
 
-        let files: Vec<(&str, &str)> = vec![("00-head.md", "# Title\n"), ("01-summary.md", "## Summary\nBody\n")];
+        let files: Vec<(&str, &str)> = vec![("01-opening.md", "# Title\n"), ("02-summary.md", "## Summary\nBody\n")];
         atomic_write_directory(&target, &files).unwrap();
 
         assert!(target.is_dir());
-        assert_eq!(std::fs::read_to_string(target.join("00-head.md")).unwrap(), "# Title\n");
-        assert_eq!(std::fs::read_to_string(target.join("01-summary.md")).unwrap(), "## Summary\nBody\n");
+        assert_eq!(std::fs::read_to_string(target.join("01-opening.md")).unwrap(), "# Title\n");
+        assert_eq!(std::fs::read_to_string(target.join("02-summary.md")).unwrap(), "## Summary\nBody\n");
     }
 
     #[test]
@@ -460,7 +460,7 @@ mod tests {
         let target = dir.path().join("my-article");
 
         // Use an invalid filename to trigger a write error
-        let result = atomic_write_directory(&target, &[("00-head.md", "# Title\n"), ("bad/\x00name.md", "nope")]);
+        let result = atomic_write_directory(&target, &[("01-opening.md", "# Title\n"), ("bad/\x00name.md", "nope")]);
         assert!(result.is_err());
         // The tmp dir must not have leaked into target
         assert!(!target.exists());
@@ -480,7 +480,7 @@ mod tests {
         std::fs::create_dir(&target).unwrap();
 
         // Rename onto an existing directory fails on most platforms
-        let result = atomic_write_directory(&target, &[("00-head.md", "# Title\n")]);
+        let result = atomic_write_directory(&target, &[("01-opening.md", "# Title\n")]);
         // The call may succeed (rename replaces on some fs) or fail; either is
         // acceptable. The important invariant is no tmp dir leak.
         let siblings: Vec<_> = std::fs::read_dir(dir.path())

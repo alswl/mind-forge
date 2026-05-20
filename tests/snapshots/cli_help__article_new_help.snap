@@ -19,7 +19,7 @@ Options:
       --config <PATH>
           Config file path
       --file
-          Write a single file instead of a directory
+          Write a single file instead of a directory [aliases: --single-file]
   -p, --project <PROJECT>
           
   -v, --verbose...

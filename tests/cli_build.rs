@@ -79,7 +79,7 @@ fn build_uses_configured_docs_dir() {
         .success();
 
     assert!(
-        repo.path().join("my-project/notes/custom-docs/00-head.md").exists(),
+        repo.path().join("my-project/notes/custom-docs/01-opening.md").exists(),
         "article should be in custom docs dir"
     );
     assert!(!repo.path().join("my-project/docs/custom-docs.md").exists(), "should not use default docs dir");
