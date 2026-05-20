@@ -379,4 +379,50 @@ fn build_tolerates_typora_front_matter_without_rewriting() {
 
     let after = read_md(&repo, "my-project", "docs/has-typora.md");
     assert_eq!(after, original, "build must not modify the source file");
+
+    let output = std::fs::read_to_string(repo.path().join("my-project/outputs/has-typora.md")).unwrap();
+    assert!(!output.contains("typora-copy-images-to:"), "build output must omit Typora front matter");
+    assert!(output.starts_with("# Article\n"), "empty Typora-only front matter should be removed from build output");
+}
+
+#[test]
+fn build_strips_typora_front_matter_from_every_directory_block() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    article_new_json(&repo, "my-project", &["Architecture Note", "--template", "arch"]);
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "architecture-note"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success(), "build should succeed: {}", String::from_utf8_lossy(&output.stderr));
+
+    let artifact = std::fs::read_to_string(repo.path().join("my-project/outputs/architecture-note.md")).unwrap();
+    assert!(!artifact.contains("typora-copy-images-to:"), "all directory block Typora keys should be stripped");
+}
+
+#[test]
+fn build_strips_only_typora_key_from_mixed_front_matter() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let article_content = "---\ntitle: Keep Me\ntypora-copy-images-to: ../assets\ntags:\n  - rust\n---\n# Article\n";
+    write_existing_md(&repo, "my-project", "mixed-front-matter.md", article_content);
+    common::write_article_index(&repo, "my-project", "mixed-front-matter");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "mixed-front-matter"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success(), "build should succeed: {}", String::from_utf8_lossy(&output.stderr));
+
+    let artifact = std::fs::read_to_string(repo.path().join("my-project/outputs/mixed-front-matter.md")).unwrap();
+    assert!(artifact.starts_with("---\ntitle: Keep Me\n"), "non-Typora front matter should be preserved");
+    assert!(artifact.contains("tags:\n  - rust\n---\n# Article\n"));
+    assert!(!artifact.contains("typora-copy-images-to:"));
 }

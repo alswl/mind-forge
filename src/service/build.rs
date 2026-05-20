@@ -85,6 +85,83 @@ fn insert_banner_into_content(content: &str, banner_text: &str) -> String {
     result
 }
 
+/// Remove Typora-only metadata from generated build content.
+///
+/// Source files keep the `typora-copy-images-to` key for editor convenience,
+/// but build artifacts should not publish that local editor setting.
+fn strip_typora_front_matter(content: &str) -> String {
+    if let Some((front, body, eol)) = split_initial_yaml_front_matter(content) {
+        let mut kept = String::new();
+        let mut removed = false;
+
+        for line in front.split_inclusive('\n') {
+            if is_typora_copy_images_to_line(line) {
+                removed = true;
+            } else {
+                kept.push_str(line);
+            }
+        }
+
+        if !removed {
+            return content.to_string();
+        }
+
+        if kept.lines().any(|line| !line.trim().is_empty()) {
+            let mut result = String::new();
+            result.push_str("---");
+            result.push_str(eol);
+            result.push_str(&kept);
+            if !kept.is_empty() && !kept.ends_with('\n') {
+                result.push_str(eol);
+            }
+            result.push_str("---");
+            result.push_str(eol);
+            result.push_str(body);
+            return result;
+        }
+
+        return body.strip_prefix(eol).unwrap_or(body).to_string();
+    }
+
+    content.to_string()
+}
+
+fn split_initial_yaml_front_matter(content: &str) -> Option<(&str, &str, &'static str)> {
+    let (opening_len, eol) = if content.starts_with("---\r\n") {
+        (5, "\r\n")
+    } else if content.starts_with("---\n") {
+        (4, "\n")
+    } else {
+        return None;
+    };
+
+    let remaining = &content[opening_len..];
+    let mut offset = 0;
+    for line in remaining.split_inclusive('\n') {
+        let line_body = line.trim_end_matches(['\r', '\n']);
+        let next_offset = offset + line.len();
+        if line_body == "---" {
+            let front = &remaining[..offset];
+            let body = &remaining[next_offset..];
+            return Some((front, body, eol));
+        }
+        offset = next_offset;
+    }
+
+    let trailing = &remaining[offset..];
+    if trailing == "---" {
+        let front = &remaining[..offset];
+        return Some((front, "", eol));
+    }
+
+    None
+}
+
+fn is_typora_copy_images_to_line(line: &str) -> bool {
+    let line = line.trim_start().trim_end_matches(['\r', '\n']);
+    line.starts_with("typora-copy-images-to:")
+}
+
 /// Build an article: load config, resolve sources, render to output.
 ///
 /// `article` is the article name (filename stem within `docs/`).
@@ -261,6 +338,7 @@ fn build_source(
     let mut content = String::new();
     for file in &source_files {
         let file_content = fs::read_to_string(file).map_err(MfError::Io)?;
+        let file_content = strip_typora_front_matter(&file_content);
         content.push_str(&file_content);
         if !content.ends_with('\n') {
             content.push('\n');
