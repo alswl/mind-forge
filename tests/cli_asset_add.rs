@@ -287,7 +287,7 @@ fn add_self_reference_rejected() {
 fn add_uses_configured_asset_dir() {
     let repo = common::setup_repo();
     common::create_project(&repo, "custom-assets");
-    common::write_mind_yaml(&repo, "custom-assets", "schema: '1'\nlayout:\n  assets: media\n");
+    common::write_mind_yaml(&repo, "custom-assets", "schema: '1'\npaths:\n  assets: media\n");
 
     let source_dir = TempDir::new().unwrap();
     let source_file = source_dir.path().join("cover.png");
@@ -327,7 +327,7 @@ fn add_uses_configured_asset_dir() {
 fn add_self_reference_rejected_with_configured_asset_dir() {
     let repo = common::setup_repo();
     common::create_project(&repo, "custom-assets");
-    common::write_mind_yaml(&repo, "custom-assets", "schema: '1'\nlayout:\n  assets: images\n");
+    common::write_mind_yaml(&repo, "custom-assets", "schema: '1'\npaths:\n  assets: images\n");
 
     let source_dir = TempDir::new().unwrap();
     let source_file = source_dir.path().join("logo.png");

@@ -4,6 +4,7 @@ use crate::defaults;
 use crate::error::Result;
 use crate::model::index::IndexFile;
 use crate::model::project::{MindYamlSummary, ProjectDetails};
+use crate::service::config as config_svc;
 
 /// Show project details: metadata, counts, and mind.yaml summary.
 pub fn show(project_path: &Path, project_name: &str) -> Result<ProjectDetails> {
@@ -75,6 +76,8 @@ pub fn show(project_path: &Path, project_name: &str) -> Result<ProjectDetails> {
         None
     };
 
+    let layout = Some(config_svc::effective_layout(project_path)?);
+
     Ok(ProjectDetails {
         name: project_name.to_string(),
         path: rel_path,
@@ -83,5 +86,6 @@ pub fn show(project_path: &Path, project_name: &str) -> Result<ProjectDetails> {
         asset_count,
         last_active,
         mind_yaml_summary,
+        layout,
     })
 }

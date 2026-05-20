@@ -116,6 +116,54 @@ are mf-only commands with no mind equivalent.
 | `--install-completion <SHELL>` | `--install-completion <SHELL>` or `completion install` | |
 | `--show-completion <SHELL>` | `--show-completion <SHELL>` or `completion show` | |
 
+## Project layout migration
+
+`mf` introduces a canonical `layout` block in `mind.yaml` that replaces the
+historical `paths` and `build.output_dir` fields with a unified directory map.
+
+### Default layout
+
+When no `layout` is configured, effective defaults are:
+
+```yaml
+layout:
+  articles: docs
+  sources: sources
+  assets: assets
+  templates: templates
+  build_output: outputs
+```
+
+### Compatibility
+
+Historical fields are still accepted and map to the effective layout:
+
+| Historical field | Effective layout category |
+|------------------|---------------------------|
+| `paths.docs` | `layout.articles` |
+| `paths.sources` | `layout.sources` |
+| `paths.assets` | `layout.assets` |
+| `build.output_dir` | `layout.build_output` |
+
+**Precedence**: Canonical `layout` values win over historical fields.
+Conflicts produce a diagnostic naming both fields.
+
+### Migration steps
+
+1. **Inspect** the current effective layout: `mf config show --output-format json`
+2. **Add** a `layout` block to `mind.yaml` with your desired directory names
+3. **Move** existing files to the new directories manually — layout changes never
+   move, delete, or rewrite existing user files
+4. **Run** commands like `mf article new`, `mf build`, etc. — they will use the
+   new directories
+
+### What's not in layout
+
+- **Terms**: Stored in `minds-terms.yaml` (project or repo level), not a layout directory
+- **Archive**: Out of scope; existing `paths.archive` is unchanged but not a
+  layout category
+- **Publish**: Post-build action, not a layout directory
+
 ## What's different from mind
 
 - **Output format**: `mf` uses `--format text|json` (not just `--json`), which is

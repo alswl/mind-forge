@@ -30,8 +30,8 @@ pub fn add(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<Asset> {
         ));
     }
 
-    let paths = config_svc::project_paths(project_path)?;
-    let assets_dir = project_path.join(&paths.assets);
+    let layout = config_svc::effective_layout(project_path)?;
+    let assets_dir = project_path.join(&layout.assets);
     fs::create_dir_all(&assets_dir).map_err(MfError::Io)?;
 
     let basename = args.source.file_name().map(|s| s.to_string_lossy().to_string()).ok_or_else(|| {
@@ -42,7 +42,7 @@ pub fn add(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<Asset> {
     let assets_canonical = assets_dir.canonicalize().map_err(MfError::Io)?;
     if source_canonical.starts_with(&assets_canonical) {
         return Err(MfError::usage(
-            format!("source file is already inside the project's {}/ directory", paths.assets),
+            format!("source file is already inside the project's {}/ directory", layout.assets),
             Some("use 'mf asset update <PATH>' to refresh metadata".to_string()),
         ));
     }
@@ -67,7 +67,7 @@ pub fn add(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<Asset> {
     let size = dest_metadata.len();
     let hash = sha256_file(&dest)?;
 
-    let rel_path = format!("{}/{}", paths.assets, basename);
+    let rel_path = format!("{}/{}", layout.assets, basename);
 
     let ext = dest.extension();
     let kind = infer_kind(ext);

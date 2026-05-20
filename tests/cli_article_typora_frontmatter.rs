@@ -104,8 +104,8 @@ fn custom_assets_path_used_in_front_matter() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
 
-    // Override assets to "media"
-    let mind_yaml = "schema_version: '1'\nlayout:\n  assets: media\n";
+    // Override assets to "media" (using paths compat)
+    let mind_yaml = "schema_version: '1'\npaths:\n  assets: media\n";
     std::fs::write(repo.path().join("my-project/mind.yaml"), mind_yaml).unwrap();
 
     let json = article_new_json(&repo, "my-project", &["Daily Note"]);

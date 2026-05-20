@@ -4,7 +4,7 @@
 //! It strictly separates from `src/cli/` (dispatch + formatting) and `src/model/` (pure data).
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use chrono::Utc;
 use schemars::schema_for;
@@ -12,7 +12,7 @@ use serde::Serialize;
 
 use crate::defaults;
 use crate::error::{MfError, Result};
-use crate::model::config::{MindConfig, PathsConfig, ProjectMeta};
+use crate::model::config::{EffectiveLayout, LayoutConfig, MindConfig, PathsConfig, ProjectMeta};
 use crate::service::util;
 
 // ---------------------------------------------------------------------------
@@ -36,6 +36,7 @@ pub fn merge(base: MindConfig, overlay: MindConfig) -> MindConfig {
         source: overlay.source,
         term: overlay.term,
         paths: overlay.paths,
+        layout: overlay.layout,
         // Compatibility fields: overlay wins, fall back to base
         name: overlay.name.or(base.name),
         description: overlay.description.or(base.description),
@@ -154,8 +155,221 @@ pub fn load_project(cwd: &Path, repo_root: Option<&Path>) -> Result<Option<MindC
     }
 }
 
+#[allow(dead_code)]
 pub fn project_paths(project_path: &Path) -> Result<PathsConfig> {
     Ok(load_project(project_path, Some(project_path))?.map(|config| config.paths).unwrap_or_default())
+}
+
+/// Load project config, resolve effective layout with defaults and compat
+/// mapping, and validate the result. Returns the resolved layout.
+pub fn effective_layout(project_path: &Path) -> Result<EffectiveLayout> {
+    let mut config = load_project(project_path, Some(project_path))?.unwrap_or_else(MindConfig::default);
+    resolve_and_validate(project_path, &mut config)
+}
+
+// ---------------------------------------------------------------------------
+// Effective layout resolution
+// ---------------------------------------------------------------------------
+
+/// Resolve the effective layout from both canonical `layout` and
+/// compatibility `paths`/`build.output_dir` fields.
+///
+/// Precedence (highest wins):
+/// 1. Canonical `layout.<category>`
+/// 2. Historical `paths.<category>` or `build.output_dir`
+/// 3. Default values
+///
+/// Returns the resolved layout and an optional conflict warning message.
+pub fn resolve_effective_layout(config: &MindConfig) -> (EffectiveLayout, Option<String>) {
+    let defaults = LayoutConfig::default();
+    let mut conflicts: Vec<String> = Vec::new();
+
+    let layout = config.layout.as_ref();
+    let articles = resolve_layout_value(
+        &mut conflicts,
+        "layout.articles",
+        layout.and_then(|l| l.articles.as_deref()),
+        "paths.docs",
+        &config.paths.docs,
+        defaults.articles.as_deref().unwrap_or(defaults::LAYOUT_ARTICLES_DEFAULT),
+    );
+    let sources = resolve_layout_value(
+        &mut conflicts,
+        "layout.sources",
+        layout.and_then(|l| l.sources.as_deref()),
+        "paths.sources",
+        &config.paths.sources,
+        defaults.sources.as_deref().unwrap_or(defaults::LAYOUT_SOURCES_DEFAULT),
+    );
+    let assets = resolve_layout_value(
+        &mut conflicts,
+        "layout.assets",
+        layout.and_then(|l| l.assets.as_deref()),
+        "paths.assets",
+        &config.paths.assets,
+        defaults.assets.as_deref().unwrap_or(defaults::LAYOUT_ASSETS_DEFAULT),
+    );
+    let templates = layout
+        .and_then(|l| l.templates.clone())
+        .unwrap_or_else(|| defaults.templates.unwrap_or_else(|| defaults::LAYOUT_TEMPLATES_DEFAULT.to_string()));
+    let build_output = resolve_layout_value(
+        &mut conflicts,
+        "layout.build_output",
+        layout.and_then(|l| l.build_output.as_deref()),
+        "build.output_dir",
+        &config.build.output_dir,
+        defaults::LAYOUT_BUILD_OUTPUT_DEFAULT,
+    );
+
+    let conflict_msg = if conflicts.is_empty() { None } else { Some(conflicts.join("; ")) };
+
+    (EffectiveLayout { articles, sources, assets, templates, build_output }, conflict_msg)
+}
+
+fn resolve_layout_value(
+    conflicts: &mut Vec<String>,
+    canonical_name: &str,
+    canonical_value: Option<&str>,
+    compat_name: &str,
+    compat_value: &str,
+    default_value: &str,
+) -> String {
+    match canonical_value {
+        Some(value) => {
+            if value != compat_value && compat_value != default_value {
+                conflicts.push(format!("{canonical_name}=\"{value}\" overrides {compat_name}=\"{compat_value}\""));
+            }
+            value.to_string()
+        }
+        None => compat_value.to_string(),
+    }
+}
+
+/// Resolve effective layout and update the config's `layout` field in-place
+/// so serialization emits the correct canonical values.
+pub fn apply_effective_layout(config: &mut MindConfig) -> EffectiveLayout {
+    let (effective, _conflict) = resolve_effective_layout(config);
+    config.layout = Some(LayoutConfig {
+        articles: Some(effective.articles.clone()),
+        sources: Some(effective.sources.clone()),
+        assets: Some(effective.assets.clone()),
+        templates: Some(effective.templates.clone()),
+        build_output: Some(effective.build_output.clone()),
+    });
+    effective
+}
+
+// ---------------------------------------------------------------------------
+// Layout validation
+// ---------------------------------------------------------------------------
+
+/// Validate a layout value against all safety rules.
+///
+/// Returns `Ok(())` when the value is safe to use as a project-relative
+/// directory path. Returns a usage error naming the category, value, and
+/// the reason when validation fails.
+pub fn validate_layout(project_root: &Path, effective: &EffectiveLayout) -> Result<()> {
+    let categories = layout_entries(effective);
+    let canonical_root = project_root.canonicalize().unwrap_or_else(|_| project_root.to_path_buf());
+
+    // 1. Empty or whitespace-only values
+    for (name, value) in &categories {
+        if value.trim().is_empty() {
+            return Err(MfError::usage(
+                format!("{name} is empty or whitespace-only"),
+                Some(format!("provide a project-relative directory name, e.g. {name}: my_dir")),
+            ));
+        }
+    }
+
+    // 2. Absolute paths
+    for (name, value) in &categories {
+        if Path::new(value).is_absolute() {
+            return Err(MfError::usage(
+                format!("{name} is an absolute path: '{value}'"),
+                Some("use a project-relative directory name without a leading /".to_string()),
+            ));
+        }
+    }
+
+    // 3. Project-boundary escapes and file-backed paths
+    for (name, value) in &categories {
+        let normalized = normalize_relative_layout_path(value).ok_or_else(|| {
+            MfError::usage(
+                format!("{name} escapes the project root: '{value}'"),
+                Some("use a directory name that stays inside the project".to_string()),
+            )
+        })?;
+        let full_path = project_root.join(&normalized);
+
+        if let Ok(canonical_full) = full_path.canonicalize() {
+            if canonical_full.strip_prefix(&canonical_root).is_err() {
+                return Err(MfError::usage(
+                    format!("{name} escapes the project root: '{value}'"),
+                    Some("use a directory name that stays inside the project".to_string()),
+                ));
+            }
+        }
+
+        // 4. Existing regular file
+        if full_path.exists() && full_path.is_file() {
+            return Err(MfError::usage(
+                format!("{name} points to an existing file: '{value}'"),
+                Some("remove the file or choose a different directory name".to_string()),
+            ));
+        }
+    }
+
+    // 5. Duplicate normalized paths
+    let mut seen: std::collections::HashMap<PathBuf, &str> = std::collections::HashMap::new();
+    for (name, value) in &categories {
+        let normalized = normalize_relative_layout_path(value)
+            .expect("layout paths were already normalized during boundary validation");
+        if let Some(existing) = seen.get(&normalized) {
+            return Err(MfError::usage(
+                format!("{name} and {existing} resolve to the same path: '{value}'"),
+                Some("each layout category must use a unique directory name".to_string()),
+            ));
+        }
+        seen.insert(normalized, name);
+    }
+
+    Ok(())
+}
+
+fn layout_entries(effective: &EffectiveLayout) -> Vec<(&'static str, &str)> {
+    vec![
+        ("layout.articles", effective.articles.as_str()),
+        ("layout.sources", effective.sources.as_str()),
+        ("layout.assets", effective.assets.as_str()),
+        ("layout.templates", effective.templates.as_str()),
+        ("layout.build_output", effective.build_output.as_str()),
+    ]
+}
+
+fn normalize_relative_layout_path(value: &str) -> Option<PathBuf> {
+    let mut normalized = PathBuf::new();
+    for component in Path::new(value.trim()).components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(segment) => normalized.push(segment),
+            Component::ParentDir => {
+                if !normalized.pop() {
+                    return None;
+                }
+            }
+            Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+    (!normalized.as_os_str().is_empty()).then_some(normalized)
+}
+
+/// Validate and apply effective layout, returning the validated layout
+/// or a usage error.
+pub fn resolve_and_validate(project_root: &Path, config: &mut MindConfig) -> Result<EffectiveLayout> {
+    let effective = apply_effective_layout(config);
+    validate_layout(project_root, &effective)?;
+    Ok(effective)
 }
 
 /// Validate new config fields after loading.
@@ -236,8 +450,14 @@ project:
   name: "{name}"
   created_at: "{created_at}"
 
+# layout:
+#   articles: "{articles_dir}"       # 文章目录
+#   sources: "{sources_dir}"         # 源文件目录
+#   assets: "{assets_dir}"           # 资源目录
+#   templates: "{templates_dir}"     # 文章创建指南模板目录
+#   build_output: "{build_output_dir}"  # 构建输出目录
+
 # build:
-#   output_dir: "{build_output_dir}"      # 默认构建输出目录
 #   merge_order: []            # 合并优先级（按文件名模式）
 
 # publish:
@@ -251,12 +471,6 @@ project:
 # term:
 #   enabled: true              # 术语检查启用
 #   case_sensitive: false      # 术语大小写敏感
-
-# paths:
-#   docs: "{docs_dir}"               # 文档目录
-#   sources: "{sources_dir}"         # 源文件目录
-#   assets: "{assets_dir}"           # 资源目录
-#   archive: "{archive_dir}"       # 归档目录
 "#;
 
 /// Generate the default `mind.yaml` content for `mf config init`.
@@ -265,11 +479,11 @@ pub fn init_template(name: &str, created_at: &str) -> String {
         .replace("{schema_version}", defaults::SCHEMA_VERSION)
         .replace("{name}", name)
         .replace("{created_at}", created_at)
-        .replace("{build_output_dir}", defaults::BUILD_OUTPUT_DIR)
-        .replace("{docs_dir}", defaults::DOCS_DIR)
-        .replace("{sources_dir}", defaults::SOURCES_DIR)
-        .replace("{assets_dir}", defaults::ASSETS_DIR)
-        .replace("{archive_dir}", defaults::ARCHIVE_DIR)
+        .replace("{articles_dir}", defaults::LAYOUT_ARTICLES_DEFAULT)
+        .replace("{sources_dir}", defaults::LAYOUT_SOURCES_DEFAULT)
+        .replace("{assets_dir}", defaults::LAYOUT_ASSETS_DEFAULT)
+        .replace("{templates_dir}", defaults::LAYOUT_TEMPLATES_DEFAULT)
+        .replace("{build_output_dir}", defaults::LAYOUT_BUILD_OUTPUT_DEFAULT)
 }
 
 /// Sanitize a directory name to kebab-case for use as project name.
@@ -337,13 +551,15 @@ pub fn to_json(value: &impl Serialize) -> Result<String> {
 // Orchestration functions (called by CLI dispatch)
 // ---------------------------------------------------------------------------
 
-/// Run `mf config show`: load and merge config, serialize to `output_format`.
+/// Run `mf config show`: load and merge config, resolve layout, serialize.
 pub fn show_effective(cwd: &Path, repo_root: Option<&Path>, output_format: &str) -> Result<String> {
     let project_layer = load_project(cwd, repo_root)?;
-    let effective = match project_layer {
+    let mut effective = match project_layer {
         Some(overlay) => merge(MindConfig::default(), overlay),
         None => MindConfig::default(),
     };
+    let project_path = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+    resolve_and_validate(&project_path, &mut effective)?;
     match output_format {
         "json" => to_json(&effective),
         _ => to_yaml(&effective),
@@ -525,5 +741,198 @@ mod tests {
         // Should contain PublishTargetType enum
         let schema_str = serde_json::to_string(&schema).unwrap();
         assert!(schema_str.contains("github_pages"));
+    }
+
+    // --- T011: default layout resolution ---
+
+    #[test]
+    fn test_resolve_default_layout() {
+        let config = MindConfig::default();
+        let (effective, _) = resolve_effective_layout(&config);
+        assert_eq!(effective.articles, "docs");
+        assert_eq!(effective.sources, "sources");
+        assert_eq!(effective.assets, "assets");
+        assert_eq!(effective.templates, "templates");
+        assert_eq!(effective.build_output, "outputs");
+    }
+
+    #[test]
+    fn test_effective_layout_fields_order_is_deterministic() {
+        let config = MindConfig::default();
+        let (effective, _) = resolve_effective_layout(&config);
+        let yaml = serde_yaml::to_string(&effective).unwrap();
+        let articles_pos = yaml.find("articles:").unwrap();
+        let sources_pos = yaml.find("sources:").unwrap();
+        let assets_pos = yaml.find("assets:").unwrap();
+        let templates_pos = yaml.find("templates:").unwrap();
+        let build_output_pos = yaml.find("build_output:").unwrap();
+        assert!(articles_pos < sources_pos);
+        assert!(sources_pos < assets_pos);
+        assert!(assets_pos < templates_pos);
+        assert!(templates_pos < build_output_pos);
+    }
+
+    // --- T012: compatibility mapping and canonical precedence ---
+
+    #[test]
+    fn test_paths_compat_maps_to_layout() {
+        let mut config = MindConfig::default();
+        config.layout = None; // Simulate project with only paths
+        config.paths.docs = "notes".to_string();
+        config.paths.sources = "refs".to_string();
+        config.paths.assets = "media".to_string();
+        let (effective, _) = resolve_effective_layout(&config);
+        assert_eq!(effective.articles, "notes");
+        assert_eq!(effective.sources, "refs");
+        assert_eq!(effective.assets, "media");
+    }
+
+    #[test]
+    fn test_build_output_dir_maps_to_layout() {
+        let mut config = MindConfig::default();
+        config.layout = None;
+        config.build.output_dir = "dist".to_string();
+        let (effective, _) = resolve_effective_layout(&config);
+        assert_eq!(effective.build_output, "dist");
+    }
+
+    #[test]
+    fn test_canonical_layout_wins_over_paths() {
+        let config: MindConfig =
+            serde_yaml::from_str("schema_version: '1'\nlayout:\n  articles: canon\npaths:\n  docs: compat\n").unwrap();
+        let (effective, _) = resolve_effective_layout(&config);
+        assert_eq!(effective.articles, "canon");
+    }
+
+    #[test]
+    fn test_layout_docs_alias_maps_to_articles() {
+        let config: MindConfig = serde_yaml::from_str("schema_version: '1'\nlayout:\n  docs: legacy_name\n").unwrap();
+        let layout = config.layout.as_ref().unwrap();
+        assert_eq!(layout.articles.as_deref(), Some("legacy_name"));
+    }
+
+    #[test]
+    fn test_layout_output_dir_alias_maps_to_build_output() {
+        let config: MindConfig =
+            serde_yaml::from_str("schema_version: '1'\nlayout:\n  output_dir: _myoutput\n").unwrap();
+        let layout = config.layout.as_ref().unwrap();
+        assert_eq!(layout.build_output.as_deref(), Some("_myoutput"));
+    }
+
+    // --- T013: invalid layout values ---
+
+    #[test]
+    fn test_validate_empty_layout_value() {
+        let tmp = tempfile::tempdir().unwrap();
+        let effective = EffectiveLayout {
+            articles: "docs".to_string(),
+            sources: "".to_string(),
+            assets: "assets".to_string(),
+            templates: "templates".to_string(),
+            build_output: "outputs".to_string(),
+        };
+        let err = validate_layout(tmp.path(), &effective).unwrap_err();
+        assert!(err.to_string().contains("layout.sources"));
+        assert!(err.to_string().contains("empty"));
+    }
+
+    #[test]
+    fn test_validate_absolute_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let effective = EffectiveLayout {
+            articles: "/etc/passwd".to_string(),
+            sources: "sources".to_string(),
+            assets: "assets".to_string(),
+            templates: "templates".to_string(),
+            build_output: "outputs".to_string(),
+        };
+        let err = validate_layout(tmp.path(), &effective).unwrap_err();
+        assert!(err.to_string().contains("layout.articles"));
+        assert!(err.to_string().contains("absolute"));
+    }
+
+    #[test]
+    fn test_validate_escape_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let effective = EffectiveLayout {
+            articles: "../outside".to_string(),
+            sources: "sources".to_string(),
+            assets: "assets".to_string(),
+            templates: "templates".to_string(),
+            build_output: "outputs".to_string(),
+        };
+        let err = validate_layout(tmp.path(), &effective).unwrap_err();
+        assert!(err.to_string().contains("layout.articles"));
+        assert!(err.to_string().contains("escapes"));
+    }
+
+    #[test]
+    fn test_validate_allows_parent_dir_text_in_segment_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let effective = EffectiveLayout {
+            articles: "notes..drafts".to_string(),
+            sources: "sources".to_string(),
+            assets: "assets".to_string(),
+            templates: "templates".to_string(),
+            build_output: "outputs".to_string(),
+        };
+        validate_layout(tmp.path(), &effective).unwrap();
+    }
+
+    #[test]
+    fn test_validate_duplicate_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let effective = EffectiveLayout {
+            articles: "content".to_string(),
+            sources: "content".to_string(),
+            assets: "assets".to_string(),
+            templates: "templates".to_string(),
+            build_output: "outputs".to_string(),
+        };
+        let err = validate_layout(tmp.path(), &effective).unwrap_err();
+        assert!(err.to_string().contains("layout.articles"));
+        assert!(err.to_string().contains("layout.sources"));
+        assert!(err.to_string().contains("same path"));
+    }
+
+    #[test]
+    fn test_validate_duplicate_paths_after_normalization() {
+        let tmp = tempfile::tempdir().unwrap();
+        let effective = EffectiveLayout {
+            articles: "docs".to_string(),
+            sources: "./docs".to_string(),
+            assets: "assets".to_string(),
+            templates: "templates".to_string(),
+            build_output: "outputs".to_string(),
+        };
+        let err = validate_layout(tmp.path(), &effective).unwrap_err();
+        assert!(err.to_string().contains("layout.articles"));
+        assert!(err.to_string().contains("layout.sources"));
+        assert!(err.to_string().contains("same path"));
+    }
+
+    #[test]
+    fn test_validate_file_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("existing_file"), b"hello").unwrap();
+        let effective = EffectiveLayout {
+            articles: "existing_file".to_string(),
+            sources: "sources".to_string(),
+            assets: "assets".to_string(),
+            templates: "templates".to_string(),
+            build_output: "outputs".to_string(),
+        };
+        let err = validate_layout(tmp.path(), &effective).unwrap_err();
+        assert!(err.to_string().contains("layout.articles"));
+        assert!(err.to_string().contains("file"));
+    }
+
+    #[test]
+    fn test_resolve_and_validate_passes_for_valid_layout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut config = MindConfig::default();
+        resolve_and_validate(tmp.path(), &mut config).unwrap();
+        let layout = config.layout.as_ref().unwrap();
+        assert_eq!(layout.articles.as_deref(), Some("docs"));
     }
 }

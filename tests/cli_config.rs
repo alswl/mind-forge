@@ -211,3 +211,32 @@ fn config_default_includes_typora_plugin_json() {
     let tfm = plugins.get("typora-front-matter").expect("should have typora-front-matter");
     assert_eq!(tfm.get("enabled"), Some(&serde_json::Value::Bool(true)));
 }
+
+// ── US1: schema contains layout property with all categories ──
+
+#[test]
+fn test_schema_contains_layout_property() {
+    let schema_output = mf().arg("config").arg("schema").output().unwrap();
+    assert!(schema_output.status.success());
+    let schema_str = String::from_utf8_lossy(&schema_output.stdout);
+    let schema_val: serde_json::Value = serde_json::from_str(&schema_str).unwrap();
+    let props = schema_val.get("properties").unwrap();
+    assert!(props.get("layout").is_some(), "schema should contain layout property");
+}
+
+#[test]
+fn test_schema_layout_contains_all_categories() {
+    let schema_output = mf().arg("config").arg("schema").output().unwrap();
+    assert!(schema_output.status.success());
+    let schema_str = String::from_utf8_lossy(&schema_output.stdout);
+    let schema_val: serde_json::Value = serde_json::from_str(&schema_str).unwrap();
+    // The schema contains layout definitions; the layout object should be defined
+    let defs = schema_val.get("definitions").unwrap();
+    let layout_def = defs.get("LayoutConfig").expect("schema should define LayoutConfig");
+    let layout_props = layout_def.get("properties").unwrap();
+    assert!(layout_props.get("articles").is_some(), "LayoutConfig should have articles");
+    assert!(layout_props.get("sources").is_some(), "LayoutConfig should have sources");
+    assert!(layout_props.get("assets").is_some(), "LayoutConfig should have assets");
+    assert!(layout_props.get("templates").is_some(), "LayoutConfig should have templates");
+    assert!(layout_props.get("build_output").is_some(), "LayoutConfig should have build_output");
+}

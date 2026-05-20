@@ -46,8 +46,8 @@ pub fn set_publish_url(project_path: &Path, url: &str, channel: &str) -> Result<
 
 /// Resolve a user-provided path to an asset path within `<project>/assets/`.
 fn resolve_asset_path(project_root: &Path, cwd: &Path, input: &Path) -> Result<PathBuf> {
-    let paths = config_svc::project_paths(project_root)?;
-    let assets_dir = project_root.join(&paths.assets);
+    let layout = config_svc::effective_layout(project_root)?;
+    let assets_dir = project_root.join(&layout.assets);
     let candidates = [project_root.join(input), assets_dir.join(input), cwd.join(input)];
     for candidate in &candidates {
         if let Ok(canonical) = util::canonicalize_within(&assets_dir, candidate) {
@@ -55,7 +55,7 @@ fn resolve_asset_path(project_root: &Path, cwd: &Path, input: &Path) -> Result<P
         }
     }
     Err(MfError::usage(
-        format!("could not resolve '{}' within {}/", input.display(), paths.assets),
+        format!("could not resolve '{}' within {}/", input.display(), layout.assets),
         Some("run 'mf asset list'".to_string()),
     ))
 }

@@ -157,8 +157,8 @@ pub fn new_article(
     force: bool,
 ) -> Result<NewArticleResult> {
     let filename = util::to_filename(title);
-    let paths = config_svc::project_paths(project_path)?;
-    let docs_dir = project_path.join(&paths.docs);
+    let layout = config_svc::effective_layout(project_path)?;
+    let docs_dir = project_path.join(&layout.articles);
     fs::create_dir_all(&docs_dir).map_err(MfError::Io)?;
 
     // Resolve template
@@ -181,11 +181,11 @@ pub fn new_article(
     let typora_enabled = effective_typora_enabled(plugins);
     let typora_path: Option<String> = if typora_enabled {
         let file_dir = if file_mode {
-            project_path.join(&paths.docs)
+            project_path.join(&layout.articles)
         } else {
-            project_path.join(format!("{}/{}", paths.docs, filename))
+            project_path.join(format!("{}/{}", layout.articles, filename))
         };
-        Some(compute_typora_assets_path(project_path, &paths.assets, &file_dir))
+        Some(compute_typora_assets_path(project_path, &layout.assets, &file_dir))
     } else {
         None
     };
@@ -197,7 +197,7 @@ pub fn new_article(
     let files = if file_mode {
         write_article_file(
             project_path,
-            &paths.docs,
+            &layout.articles,
             &filename,
             &resolved,
             typora_path.as_deref(),
@@ -210,7 +210,7 @@ pub fn new_article(
     } else {
         write_article_directory(
             project_path,
-            &paths.docs,
+            &layout.articles,
             &filename,
             &resolved,
             typora_path.as_deref(),
@@ -226,7 +226,7 @@ pub fn new_article(
         filename: filename.clone(),
         template: template_label,
         shape: if file_mode { "file".to_string() } else { "directory".to_string() },
-        docs_dir: paths.docs,
+        docs_dir: layout.articles,
         files,
         typora_front_matter_injected: typora_enabled,
         typora_copy_images_to: typora_path,
@@ -439,6 +439,7 @@ pub fn build_index(project_root: &Path, config: &MindConfig) -> Result<IndexFile
     let mut covered: std::collections::HashSet<String> = std::collections::HashSet::new();
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let project_name = util::dir_name(project_root);
+    let layout = config_svc::effective_layout(project_root)?;
 
     // Phase 1: Declared articles (from build.articles + compat articles)
     let declared = scan_declared(project_root, config)?;
@@ -456,7 +457,7 @@ pub fn build_index(project_root: &Path, config: &MindConfig) -> Result<IndexFile
     // Phase 2: Docs scan
     let scanned = scan_docs(project_root)?;
     for s in scanned {
-        let sp = source_path_for_scanned(&s);
+        let sp = source_path_for_scanned(&s, &layout.articles);
         if covered.contains(&sp) {
             continue;
         }
@@ -576,12 +577,12 @@ fn article_key_from_source_path(source_path: &str) -> String {
 /// 1. `docs/<key>/` directory
 /// 2. `docs/<key>.md` file
 /// 3. Falls back to `docs/<key>.md` (may not exist — caller diagnoses)
-fn resolve_docs_source_path(project_root: &Path, key: &str) -> String {
-    let dir_path = project_root.join(defaults::DOCS_DIR).join(key);
+fn resolve_docs_source_path(project_root: &Path, key: &str, articles_dir: &str) -> String {
+    let dir_path = project_root.join(articles_dir).join(key);
     if dir_path.is_dir() {
-        return format!("{}/{}", defaults::DOCS_DIR, key);
+        return format!("{}/{}", articles_dir, key);
     }
-    format!("{}/{}.{}", defaults::DOCS_DIR, key, defaults::MARKDOWN_EXTENSION)
+    format!("{}/{}.{}", articles_dir, key, defaults::MARKDOWN_EXTENSION)
 }
 
 /// FR-003: warn on stderr when a declared article's resolved source path does
@@ -609,6 +610,7 @@ fn warn_if_source_missing(project_root: &Path, id: &str, source_path: &str) {
 pub fn scan_declared(project_root: &Path, config: &MindConfig) -> Result<Vec<Article>> {
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let project_name = util::dir_name(project_root);
+    let layout = config_svc::effective_layout(project_root)?;
     let mut seen: std::collections::BTreeMap<String, Article> = std::collections::BTreeMap::new();
 
     // 1. Typed build.articles (authoritative)
@@ -621,10 +623,10 @@ pub fn scan_declared(project_root: &Path, config: &MindConfig) -> Result<Vec<Art
             } else if dir_path.is_dir() {
                 source_dir.to_string()
             } else {
-                resolve_docs_source_path(project_root, id)
+                resolve_docs_source_path(project_root, id, &layout.articles)
             }
         } else {
-            resolve_docs_source_path(project_root, id)
+            resolve_docs_source_path(project_root, id, &layout.articles)
         };
         warn_if_source_missing(project_root, id, &source_path);
 
@@ -659,13 +661,13 @@ pub fn scan_declared(project_root: &Path, config: &MindConfig) -> Result<Vec<Art
                         } else if dir_path.is_dir() {
                             source_dir.to_string()
                         } else {
-                            resolve_docs_source_path(project_root, id)
+                            resolve_docs_source_path(project_root, id, &layout.articles)
                         }
                     } else {
-                        resolve_docs_source_path(project_root, id)
+                        resolve_docs_source_path(project_root, id, &layout.articles)
                     }
                 }
-                _ => resolve_docs_source_path(project_root, id),
+                _ => resolve_docs_source_path(project_root, id, &layout.articles),
             };
             warn_if_source_missing(project_root, id, &source_path);
             seen.insert(
@@ -692,9 +694,12 @@ pub fn scan_declared(project_root: &Path, config: &MindConfig) -> Result<Vec<Art
 /// Returns the project-root-relative directory path:
 /// - Article's configured `source_dir` in `build.articles[article_key]` if present
 /// - Otherwise `docs/<article-name>` as the default
-pub fn effective_source_dir(config: &MindConfig, article: &Article) -> String {
+pub fn effective_source_dir(project_path: &Path, config: &MindConfig, article: &Article) -> String {
     let article_key = article_key_from_source_path(&article.source_path);
-    let short_key = article_key.strip_prefix(defaults::DOCS_PATH_PREFIX).unwrap_or(&article_key);
+    let layout = config_svc::effective_layout(project_path).ok();
+    let articles_dir = layout.as_ref().map(|l| l.articles.as_str()).unwrap_or(defaults::DOCS_DIR);
+    let docs_prefix = format!("{articles_dir}/");
+    let short_key = article_key.strip_prefix(&docs_prefix).unwrap_or(&article_key);
     if let Some(source_dir) = config.build.articles.get(short_key).and_then(|a| a.source_dir.clone()) {
         return source_dir;
     }
@@ -707,8 +712,7 @@ pub fn effective_source_dir(config: &MindConfig, article: &Article) -> String {
     {
         return source_dir.clone();
     }
-    let paths = crate::defaults::DOCS_DIR;
-    format!("{paths}/{short_key}")
+    format!("{articles_dir}/{short_key}")
 }
 
 /// Scan the docs directory for markdown files and return discovered articles.
@@ -716,13 +720,13 @@ pub fn effective_source_dir(config: &MindConfig, article: &Article) -> String {
 /// Scans the default docs directory and any configured `source_dir` directories
 /// from `mind.yaml`'s `build.articles.*.source_dir`.
 pub fn scan_docs(project_path: &Path) -> Result<Vec<ScannedArticle>> {
-    let paths = config_svc::project_paths(project_path)?;
+    let layout = config_svc::effective_layout(project_path)?;
     let mut scanned = Vec::new();
 
     // Scan default docs directory
-    let docs_dir = project_path.join(&paths.docs);
+    let docs_dir = project_path.join(&layout.articles);
     if docs_dir.exists() {
-        scan_md_dir(&docs_dir, &paths.docs, &mut scanned)?;
+        scan_md_dir(&docs_dir, &layout.articles, &mut scanned)?;
     }
 
     // Scan configured source_dir directories from mind.yaml. Each
@@ -748,7 +752,7 @@ pub fn scan_docs(project_path: &Path) -> Result<Vec<ScannedArticle>> {
     // Deduplicate by source path (keep first occurrence)
     let mut seen = std::collections::HashSet::new();
     scanned.retain(|a| {
-        let key = source_path_for_scanned(a);
+        let key = source_path_for_scanned(a, &layout.articles);
         seen.insert(key)
     });
 
@@ -854,13 +858,13 @@ fn scan_md_dir(dir_path: &Path, rel_dir: &str, scanned: &mut Vec<ScannedArticle>
 }
 
 /// Build the project-relative source path for a scanned article.
-fn source_path_for_scanned(a: &ScannedArticle) -> String {
+fn source_path_for_scanned(a: &ScannedArticle, articles_dir: &str) -> String {
     if let Some(ref source_path) = a.source_path {
         return source_path.clone();
     }
     match a.source_dir {
         Some(ref dir) => format!("{}/{}.{}", dir, a.filename, defaults::MARKDOWN_EXTENSION),
-        None => format!("{}/{}.{}", crate::defaults::DOCS_DIR, a.filename, defaults::MARKDOWN_EXTENSION),
+        None => format!("{}/{}.{}", articles_dir, a.filename, defaults::MARKDOWN_EXTENSION),
     }
 }
 
@@ -872,7 +876,8 @@ pub fn compute_article_diff(index: &IndexFile, scanned: &[ScannedArticle], docs_
     let mut removed = Vec::new();
 
     // Build set of scanned source_paths (project-relative)
-    let scanned_paths: std::collections::HashSet<String> = scanned.iter().map(source_path_for_scanned).collect();
+    let scanned_paths: std::collections::HashSet<String> =
+        scanned.iter().map(|s| source_path_for_scanned(s, docs_dir)).collect();
 
     // Build set of scanned filenames for the legacy fallback check
     let scanned_filenames: std::collections::HashSet<&str> = scanned.iter().map(|s| s.filename.as_str()).collect();
@@ -900,7 +905,7 @@ pub fn compute_article_diff(index: &IndexFile, scanned: &[ScannedArticle], docs_
 
     // Added: scanned articles not yet in index
     for s in scanned {
-        let sp = source_path_for_scanned(s);
+        let sp = source_path_for_scanned(s, docs_dir);
         let exists = index.articles.as_ref().is_some_and(|articles| articles.iter().any(|a| a.source_path == sp));
         if !exists {
             added.push(s.clone());
@@ -913,7 +918,7 @@ pub fn compute_article_diff(index: &IndexFile, scanned: &[ScannedArticle], docs_
 /// Apply a diff to the index: add new articles, remove deleted ones.
 pub fn reconcile_articles(project_path: &Path, mut index: IndexFile, diff: ArticleDiff) -> Result<IndexFile> {
     let project_name = util::dir_name(project_path);
-    let paths = config_svc::project_paths(project_path)?;
+    let layout = config_svc::effective_layout(project_path)?;
 
     // Remove deleted articles
     if let Some(ref mut articles) = index.articles {
@@ -927,14 +932,14 @@ pub fn reconcile_articles(project_path: &Path, mut index: IndexFile, diff: Artic
     for a in &diff.added {
         let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
         let source_path = if a.source_dir.is_some() {
-            source_path_for_scanned(a)
+            source_path_for_scanned(a, &layout.articles)
         } else {
-            // Defensive: source_path_for_scanned falls back to defaults::DOCS_DIR,
-            // but we use paths.docs from config which may differ. This branch is
+            // Defensive: source_path_for_scanned falls back to the configured articles dir,
+            // but we use layout.articles from config which may differ. This branch is
             // currently unreachable (scan_md_dir always sets source_dir), kept
             // for correctness if a future caller produces ScannedArticle without
             // a source_dir.
-            format!("{}/{}.{}", paths.docs, a.filename, defaults::MARKDOWN_EXTENSION)
+            format!("{}/{}.{}", layout.articles, a.filename, defaults::MARKDOWN_EXTENSION)
         };
         articles.push(Article {
             title: a.title.clone(),
@@ -954,8 +959,8 @@ pub fn reconcile_articles(project_path: &Path, mut index: IndexFile, diff: Artic
 /// Lint articles in the project: check filenames and content quality.
 /// When `fix` is true, auto-fix fixable issues.
 pub fn lint_articles(project_path: &Path, fix: bool) -> Result<Vec<LintIssue>> {
-    let paths = config_svc::project_paths(project_path)?;
-    let docs_dir = project_path.join(&paths.docs);
+    let layout = config_svc::effective_layout(project_path)?;
+    let docs_dir = project_path.join(&layout.articles);
     if !docs_dir.exists() {
         return Ok(Vec::new());
     }
@@ -969,7 +974,7 @@ pub fn lint_articles(project_path: &Path, fix: bool) -> Result<Vec<LintIssue>> {
             continue;
         }
         if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-            let rel_path = format!("{}/{}.{}", paths.docs, stem, defaults::MARKDOWN_EXTENSION);
+            let rel_path = format!("{}/{}.{}", layout.articles, stem, defaults::MARKDOWN_EXTENSION);
 
             // Check content before filename (filename may rename the file)
             check_content(&mut issues, &path, &rel_path)?;
@@ -1003,7 +1008,7 @@ pub fn rename_article(
     force: bool,
 ) -> Result<ArticleRenameReport> {
     let new_filename = util::to_filename(new_title);
-    let paths = config_svc::project_paths(project_path)?;
+    let layout = config_svc::effective_layout(project_path)?;
 
     // Load the index and find the article by title
     let mut index = index::load(project_path)?;
@@ -1022,7 +1027,7 @@ pub fn rename_article(
     })?;
 
     let old_source_path = article.source_path.clone();
-    let new_source_path = format!("{}/{}.{}", paths.docs, new_filename, defaults::MARKDOWN_EXTENSION);
+    let new_source_path = format!("{}/{}.{}", layout.articles, new_filename, defaults::MARKDOWN_EXTENSION);
 
     // Rename the file on disk (only if the path actually differs)
     if old_source_path != new_source_path {

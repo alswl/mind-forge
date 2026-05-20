@@ -41,8 +41,8 @@ fn scan_assets_dir(assets_dir: &Path) -> Result<Vec<PathBuf>> {
 
 /// Reconcile the filesystem assets directory with the index.
 pub fn reconcile(project_path: &Path, dry_run: bool, refresh_metadata: bool) -> Result<AssetIndexReport> {
-    let paths = config_svc::project_paths(project_path)?;
-    let assets_dir = project_path.join(&paths.assets);
+    let layout = config_svc::effective_layout(project_path)?;
+    let assets_dir = project_path.join(&layout.assets);
     if !assets_dir.exists() {
         return Err(MfError::usage(
             format!("assets directory not found at '{}'", assets_dir.display()),

@@ -170,11 +170,11 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
         ));
     }
 
-    let paths = config_svc::project_paths(project_path)?;
-    let sources_dir = project_path.join(&paths.sources);
+    let layout = config_svc::effective_layout(project_path)?;
+    let sources_dir = project_path.join(&layout.sources);
     if util::canonicalize_within(&sources_dir, &source_canonical).is_ok() {
         return Err(MfError::usage(
-            format!("source file is already inside the project's {}/ directory", paths.sources),
+            format!("source file is already inside the project's {}/ directory", layout.sources),
             Some("use 'mf source update <NAME>' to modify metadata".to_string()),
         ));
     }
