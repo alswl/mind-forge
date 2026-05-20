@@ -225,3 +225,12 @@ fn render_template_list_help_snapshot() {
     assert_eq!(code, 0);
     assert_snapshot!("render_template_list_help", stdout);
 }
+
+// ── Init help snapshots ──
+
+#[test]
+fn init_help_snapshot() {
+    let (stdout, _, code) = run(&["init", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("init_help", stdout);
+}

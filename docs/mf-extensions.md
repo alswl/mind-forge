@@ -15,8 +15,9 @@ Index commands reconcile the filesystem state with the project index
 
 ## Config
 
-- **`config init`** — generate a `mind.yaml` configuration file in the current
-  or specified directory
+- **`config init`** — generate a `mind.yaml` project configuration file in the
+  current or specified directory (initializes project config, not a Mind Repo;
+  use `mf init` to create a new Mind Repo)
 - **`config show`** — display the effective merged configuration (the primary
   target of `config compile`/`generate`/`default` aliases)
 

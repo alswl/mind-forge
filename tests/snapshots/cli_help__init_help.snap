@@ -2,24 +2,12 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-mind-forge command line interface
+Initialize a directory as a Mind Repo
 
-Usage: mf [OPTIONS] [COMMAND]
+Usage: mf init [OPTIONS] [PATH]
 
-Commands:
-  source      Manage content sources
-  asset       Manage project assets
-  project     Manage projects
-  article     Manage articles
-  term        Manage terminology [aliases: terms]
-  completion  Generate shell completion scripts
-  version     Show version information
-  build       Build articles
-  publish     Publish articles
-  render      Generate render prompts
-  config      Manage configuration
-  publisher   Manage repo-wide publishers
-  init        Initialize a directory as a Mind Repo
+Arguments:
+  [PATH]  Target directory path (defaults to current directory)
 
 Options:
       --root <PATH>

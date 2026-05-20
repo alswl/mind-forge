@@ -45,6 +45,19 @@ Use `mind` 0.3.0-compatible YAML as the canonical on-disk format:
 
 ## Commands
 
+### `mf init [PATH]` — Initialize a Mind Repo
+
+Creates `minds.yaml` and the default `projects/` container in the target
+directory. When `PATH` is omitted, initializes the current directory. Missing
+target directories are created; existing empty directories and existing valid
+repos (idempotent) are accepted. Refuses non-empty directories, malformed
+`minds.yaml`, file targets, path traversal, and nested initialization inside
+another Mind Repo. JSON envelope fields: `path`, `created`, `already_existed`,
+`created_files`, `created_directories`, `skipped`.
+
+Use `mf init` to create a Mind Repo; `mf config init` is a lower-level command
+that writes a project-level `mind.yaml`, not a repo root.
+
 ### `mf source` — Manage content sources
 
 Subcommands: `list` (alias `ls`), `add`, `update`, `index`, `remove`, `clean`
@@ -279,6 +292,11 @@ Supported shells: `bash`, `zsh`, `fish`, `powershell`, `elvish`
 ## Common Workflows
 
 ```bash
+# Repo lifecycle
+mf init                              # current directory
+mf init my-repo                      # new or empty target directory
+mf init --json                       # machine-readable envelope
+
 # Project management
 mf project list
 mf project new my-project
@@ -340,7 +358,7 @@ mf publisher list --json
 
 ## Notes
 
-- Commands that modify project state require a Mind Repo context. `config`, `completion`, `version`, and help can run outside repos. `project index` can also run outside repos (scans from cwd).
+- Commands that modify project state require a Mind Repo context. `init`, `config`, `completion`, `version`, and help can run outside repos. `project index` can also run outside repos (scans from cwd).
 - Index subcommands reconcile `mind-index.yaml` with the filesystem; run them after manual file changes.
 - Prefer `schema` over `schema_version` in docs, examples, and generated YAML.
 - Global terms (created without `--project`) are stored in `minds-terms.yaml` at the repo root. Project-scoped terms are stored in each project's `mind-index.yaml`.

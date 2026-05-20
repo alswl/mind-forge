@@ -12,6 +12,7 @@ use serde::Serialize;
 
 use crate::error::{MfError, Result};
 use crate::model::manifest::{default_projects_dir, MindsManifest, ProjectEntry};
+use crate::runtime::repo::detect_repo_root;
 use crate::service::util;
 
 /// Build a repo-root-relative project path from a `projects_dir` and project name.
@@ -292,6 +293,193 @@ fn iso_now() -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Repo lifecycle: init command
+// ---------------------------------------------------------------------------
+
+/// Serializable result returned by a successful `mf init` invocation.
+#[derive(Debug, Clone, Serialize)]
+pub struct RepoInitReport {
+    /// Display path of the initialized repository.
+    pub path: String,
+    /// True when this invocation created a new Mind Repo.
+    pub created: bool,
+    /// True when a valid repo already existed and nothing was rewritten.
+    pub already_existed: bool,
+    /// Repo-relative files created (sorted).
+    pub created_files: Vec<String>,
+    /// Repo-relative directories created (sorted).
+    pub created_directories: Vec<String>,
+    /// Resources intentionally left unchanged (sorted).
+    pub skipped: Vec<String>,
+}
+
+/// Classification of a target path supplied to `mf init`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RepoTargetKind {
+    /// Target exists as an empty directory (no unsafe content).
+    ExistingEmptyDirectory,
+    /// Target does not exist and has a valid parent directory.
+    NewDirectory,
+    /// Target already contains a valid, compatible `minds.yaml`.
+    ExistingRepo,
+    /// Target contains `minds.yaml` that cannot be loaded (parse or schema error).
+    MalformedManifest,
+    /// Target is a regular file, not a directory.
+    InvalidFileTarget,
+    /// Target path is invalid (no extractable leaf, e.g. `..` or `foo/..`).
+    InvalidPath,
+    /// Target exists as a non-empty directory without a compatible `minds.yaml`.
+    UnsafeNonEmptyDirectory,
+}
+
+/// Classify a target path for `mf init` purposes. Does not modify the filesystem.
+pub fn classify_repo_target(target: &Path) -> Result<RepoTargetKind> {
+    // `.` is the only special form without a `file_name()` that we accept;
+    // anything else without a real leaf (`..`, `foo/..`, etc.) is rejected.
+    if target != Path::new(".") && target.file_name().is_none() {
+        return Ok(RepoTargetKind::InvalidPath);
+    }
+
+    if !target.exists() {
+        let parent = parent_or_cwd(target);
+        if !parent.exists() {
+            return Err(MfError::usage(
+                format!("parent directory '{}' does not exist", parent.display()),
+                Some("create the parent directory first, or choose a different path".to_string()),
+            ));
+        }
+        if !parent.is_dir() {
+            return Err(MfError::usage(format!("parent path '{}' is not a directory", parent.display()), None));
+        }
+        return Ok(RepoTargetKind::NewDirectory);
+    }
+
+    if target.is_file() {
+        return Ok(RepoTargetKind::InvalidFileTarget);
+    }
+    if !target.is_dir() {
+        return Ok(RepoTargetKind::InvalidPath);
+    }
+
+    let minds_path = target.join("minds.yaml");
+    if minds_path.exists() {
+        return match load_manifest(&minds_path) {
+            Ok(_) => Ok(RepoTargetKind::ExistingRepo),
+            Err(MfError::ParseError { .. } | MfError::IncompatibleSchema { .. }) => {
+                Ok(RepoTargetKind::MalformedManifest)
+            }
+            Err(e) => Err(e),
+        };
+    }
+
+    if is_directory_empty(target)? {
+        Ok(RepoTargetKind::ExistingEmptyDirectory)
+    } else {
+        Ok(RepoTargetKind::UnsafeNonEmptyDirectory)
+    }
+}
+
+/// Resolve `path.parent()` to a non-empty path, falling back to `.` for
+/// bare leaf paths like `Path::new("foo")` whose parent is the empty path.
+fn parent_or_cwd(path: &Path) -> &Path {
+    let parent = path.parent().unwrap_or(Path::new("."));
+    if parent.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        parent
+    }
+}
+
+fn is_directory_empty(path: &Path) -> Result<bool> {
+    let mut entries = fs::read_dir(path).map_err(MfError::Io)?;
+    Ok(entries.next().is_none())
+}
+
+/// Refuse initialization inside an existing Mind Repo (nested repo guard).
+///
+/// Walks up from `target`'s parent looking for `minds.yaml`.
+pub fn validate_not_nested(target: &Path) -> Result<()> {
+    if let Some(root) = detect_repo_root(parent_or_cwd(target), 50) {
+        return Err(MfError::usage(
+            format!("cannot initialize '{}' inside an existing Mind Repo at '{}'", target.display(), root.display()),
+            Some("use 'mf project new' to create a project inside a Mind Repo".to_string()),
+        ));
+    }
+    Ok(())
+}
+
+/// Run the repo initialization sequence against a target directory.
+///
+/// Writes `minds.yaml` atomically and creates the projects container.
+/// Handles new directory creation with cleanup on failure, and idempotent
+/// already-repo.
+pub fn init_repo(target: &Path, target_kind: &RepoTargetKind) -> Result<RepoInitReport> {
+    match target_kind {
+        RepoTargetKind::ExistingRepo => Ok(RepoInitReport {
+            path: canonical_display(target),
+            created: false,
+            already_existed: true,
+            created_files: vec![],
+            created_directories: vec![],
+            skipped: vec!["minds.yaml".to_string()],
+        }),
+        RepoTargetKind::ExistingEmptyDirectory => init_repo_in_empty_dir(target),
+        RepoTargetKind::NewDirectory => {
+            fs::create_dir(target).map_err(|e| {
+                MfError::usage(
+                    format!("cannot create directory '{}': {}", target.display(), e),
+                    Some("check parent directory permissions".to_string()),
+                )
+            })?;
+            match init_repo_in_empty_dir(target) {
+                Ok(report) => Ok(report),
+                Err(e) => {
+                    let _ = fs::remove_dir(target);
+                    Err(e)
+                }
+            }
+        }
+        RepoTargetKind::MalformedManifest => Err(MfError::usage(
+            format!("cannot initialize '{}': existing minds.yaml is malformed or incompatible", target.display()),
+            Some("fix or remove the existing minds.yaml first, then try again".to_string()),
+        )),
+        RepoTargetKind::InvalidFileTarget => Err(MfError::usage(
+            format!("cannot initialize '{}': path is a file, not a directory", target.display()),
+            Some("choose a directory path instead".to_string()),
+        )),
+        RepoTargetKind::InvalidPath => Err(MfError::usage(
+            format!("invalid target path '{}'", target.display()),
+            Some("use a valid directory name without path traversal".to_string()),
+        )),
+        RepoTargetKind::UnsafeNonEmptyDirectory => Err(MfError::usage(
+            format!("cannot initialize '{}': directory is not empty", target.display()),
+            Some("choose an empty directory, a new path, or run from an existing Mind Repo".to_string()),
+        )),
+    }
+}
+
+fn init_repo_in_empty_dir(repo_root: &Path) -> Result<RepoInitReport> {
+    let manifest = MindsManifest::create_default();
+    let yaml = serialize_mind_manifest(&manifest).expect("default manifest serialization is infallible");
+
+    util::atomic_write(&repo_root.join("minds.yaml"), &yaml)?;
+    fs::create_dir(repo_root.join(&manifest.projects_dir)).map_err(MfError::Io)?;
+
+    Ok(RepoInitReport {
+        path: canonical_display(repo_root),
+        created: true,
+        already_existed: false,
+        created_files: vec!["minds.yaml".to_string()],
+        created_directories: vec![manifest.projects_dir.clone()],
+        skipped: vec![],
+    })
+}
+
+fn canonical_display(path: &Path) -> String {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf()).display().to_string()
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -566,5 +754,161 @@ projects:
         let m = MindsManifest::create_default();
         assert_eq!(m.schema_version, "1");
         assert!(m.projects.is_empty());
+    }
+
+    // ── Init command unit tests ──
+
+    #[test]
+    fn test_classify_new_directory_valid_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("new-dir");
+        let kind = classify_repo_target(&target).unwrap();
+        assert_eq!(kind, RepoTargetKind::NewDirectory);
+    }
+
+    #[test]
+    fn test_classify_new_directory_parent_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("missing-parent").join("child");
+        let result = classify_repo_target(&target);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("parent directory"));
+    }
+
+    #[test]
+    fn test_classify_new_directory_parent_is_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("not-a-dir");
+        fs::write(&file_path, "content").unwrap();
+        let target = file_path.join("child");
+        let result = classify_repo_target(&target);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not a directory"));
+    }
+
+    #[test]
+    fn test_classify_existing_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("minds.yaml"), "schema_version: '1'\nprojects: []\n").unwrap();
+        let kind = classify_repo_target(dir.path()).unwrap();
+        assert_eq!(kind, RepoTargetKind::ExistingRepo);
+    }
+
+    #[test]
+    fn test_classify_existing_empty_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let kind = classify_repo_target(dir.path()).unwrap();
+        assert_eq!(kind, RepoTargetKind::ExistingEmptyDirectory);
+    }
+
+    #[test]
+    fn test_classify_unsafe_non_empty_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("readme.txt"), "notes").unwrap();
+        let kind = classify_repo_target(dir.path()).unwrap();
+        assert_eq!(kind, RepoTargetKind::UnsafeNonEmptyDirectory);
+    }
+
+    #[test]
+    fn test_classify_invalid_file_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("a-file.txt");
+        fs::write(&file_path, "content").unwrap();
+        let kind = classify_repo_target(&file_path).unwrap();
+        assert_eq!(kind, RepoTargetKind::InvalidFileTarget);
+    }
+
+    #[test]
+    fn test_classify_malformed_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("minds.yaml"), "invalid: yaml: [[[").unwrap();
+        let kind = classify_repo_target(dir.path()).unwrap();
+        assert_eq!(kind, RepoTargetKind::MalformedManifest);
+    }
+
+    #[test]
+    fn test_classify_incompatible_schema_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("minds.yaml"), "schema_version: '99'\nprojects: []\n").unwrap();
+        let kind = classify_repo_target(dir.path()).unwrap();
+        assert_eq!(kind, RepoTargetKind::MalformedManifest);
+    }
+
+    #[test]
+    fn test_classify_invalid_path_dotdot() {
+        let kind = classify_repo_target(Path::new("..")).unwrap();
+        assert_eq!(kind, RepoTargetKind::InvalidPath);
+    }
+
+    #[test]
+    fn test_validate_not_nested_detects_parent_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("minds.yaml"), "schema: '1'\nprojects: []\n").unwrap();
+        let sub = dir.path().join("subdir");
+        fs::create_dir(&sub).unwrap();
+        let result = validate_not_nested(&sub);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("inside an existing Mind Repo"));
+    }
+
+    #[test]
+    fn test_validate_not_nested_ok_when_no_parent_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("subdir");
+        fs::create_dir(&sub).unwrap();
+        assert!(validate_not_nested(&sub).is_ok());
+    }
+
+    #[test]
+    fn test_init_repo_existing_repo_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("minds.yaml"), "schema: '1'\nprojects: []\n").unwrap();
+        fs::create_dir(dir.path().join("projects")).unwrap();
+        let report = init_repo(dir.path(), &RepoTargetKind::ExistingRepo).unwrap();
+        assert!(!report.created);
+        assert!(report.already_existed);
+        assert!(report.created_files.is_empty());
+        assert!(report.skipped.contains(&"minds.yaml".to_string()));
+    }
+
+    #[test]
+    fn test_init_repo_in_empty_directory_creates_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let report = init_repo(dir.path(), &RepoTargetKind::ExistingEmptyDirectory).unwrap();
+        assert!(report.created);
+        assert!(!report.already_existed);
+        assert!(report.created_files.contains(&"minds.yaml".to_string()));
+        assert!(report.created_directories.contains(&"projects".to_string()));
+        assert!(dir.path().join("minds.yaml").exists());
+        assert!(dir.path().join("projects").is_dir());
+    }
+
+    #[test]
+    fn test_init_repo_unsafe_non_empty_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("readme.txt"), "notes").unwrap();
+        let result = init_repo(dir.path(), &RepoTargetKind::UnsafeNonEmptyDirectory);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not empty"));
+    }
+
+    #[test]
+    fn test_init_repo_invalid_file_target_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("a-file.txt");
+        fs::write(&file_path, "content").unwrap();
+        let result = init_repo(&file_path, &RepoTargetKind::InvalidFileTarget);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("file"));
+    }
+
+    #[test]
+    fn test_init_repo_new_directory_with_cleanup() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("new-repo");
+        let report = init_repo(&target, &RepoTargetKind::NewDirectory).unwrap();
+        assert!(report.created);
+        assert!(target.join("minds.yaml").exists());
+        assert!(target.join("projects").is_dir());
     }
 }
