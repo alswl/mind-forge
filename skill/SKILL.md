@@ -22,6 +22,8 @@ Use `mind` 0.3.0-compatible YAML as the canonical on-disk format:
 - `minds.yaml`: write `schema: "1"` and `projects` as repo-relative path strings. Default projects dir is `projects`.
 - `mind.yaml`: write `schema: "1"`; accept both top-level mind fields and wrapped `project:` metadata.
 - `mind-index.yaml`: write `schema: "1"` with dictionary sections (`articles:`, `sources:`, `assets:`, `terms:`, `publish_records:`).
+- `mind.yaml` supports a `plugins` block. Known plugin keys are typed; unknown keys round-trip for forward compatibility.
+- The `typora-front-matter` plugin is enabled by default (`enabled: true`). Set `plugins.typora-front-matter.enabled: false` to disable.
 - Read compatibility accepts older `schema_version` and list-based shapes. Mutating commands preserve mind semantics.
 - Read-only commands must not rewrite YAML.
 
@@ -160,6 +162,8 @@ Subcommands: `new`, `list` (alias `ls`), `lint`, `index`, `rename`
 `--draft` — Mark as draft (default: `true`)
 `-f`, `--force` — Overwrite existing same-shape artefact (does not cross file/directory shapes)
 
+JSON envelope fields: `template`, `shape` (`directory`|`file`), `path`, `files`, `typora_front_matter_injected` (bool), `typora_copy_images_to` (string|null). When the Typora plugin is enabled, each generated file starts with a YAML front-matter block containing `typora-copy-images-to` pointing to the project assets directory.
+
 **`mf article list`**
 `-p`, `--project <NAME>`
 
@@ -258,7 +262,7 @@ Subcommands: `schema`, `show`, `compile`, `generate`, `default`, `init`
 
 **`mf config generate`** — `--output-format <json\|yaml>` (default: `yaml`), `-o`, `--output <PATH>`
 
-**`mf config default`** — `--output-format <json\|yaml>` (default: `yaml`)
+**`mf config default`** — `--output-format <json\|yaml>` (default: `yaml`). Generated config includes a `plugins.typora-front-matter` block with `enabled: true`.
 
 **`mf config init`** — `--output <PATH>`, `--target <project\|repo>` (default: `project`), `--force`
 

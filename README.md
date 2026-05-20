@@ -170,7 +170,10 @@ flowchart LR
    scaffolds a directory article (default) or single file (`--file`/`--single-file`) under
    `docs/`. The default template is `blank`; `--template arch|prd|blog`
    selects another built-in scaffold, and `--template <path>` reads a
-   project-local Markdown template. Edit in any Markdown editor.
+   project-local Markdown template. New articles automatically get Typora
+   front matter (`typora-copy-images-to`) pointing to the project assets
+   directory (disable with `plugins.typora-front-matter.enabled: false` in
+   `mind.yaml`). Edit in any Markdown editor.
 3. **Index** — `mf source index`, `mf article index`, and
    `mf project lint --fix` reconcile `mind-index.yaml` with the filesystem.
 4. **Build** — `mf build <article>` assembles output (directory articles
@@ -204,6 +207,10 @@ get a machine-readable envelope.
 - **Config** — `mf config schema | show | generate | default | init`,
   centralized defaults for `docs/`, `sources/`, `assets/`, `_archived/`,
   and `outputs/`
+- **Plugins** — `mind.yaml` supports a `plugins` block for forward-compatible
+  plugin configuration; the `typora-front-matter` plugin is enabled by default
+  and injects `typora-copy-images-to` front matter into new articles so Typora
+  saves pasted images to the project assets directory automatically
 - **Compatibility** — reads and writes mind 0.3.0 YAML; tolerates older
   `schema_version` and list-based shapes on read
 - **Version** — `mf version` outputs the current CLI version in text (`mf 0.1.0`) or
