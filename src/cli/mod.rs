@@ -19,13 +19,21 @@ use serde::Serialize;
 
 use crate::cli::completion::ShellKind;
 use crate::cli::deprecation::DeprecationContext;
-use crate::error::Result;
+use crate::error::{MfError, Result};
 use crate::output::Format;
+use crate::service::repo;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepoRequirement {
     Required,
     NotRequired,
+}
+
+#[derive(Debug, Args)]
+pub struct InitArgs {
+    /// Target directory path. Defaults to the current directory when omitted.
+    #[arg(value_name = "PATH", help = "Target directory path (defaults to current directory)")]
+    pub path: Option<PathBuf>,
 }
 
 #[derive(Debug, Parser)]
@@ -101,6 +109,8 @@ pub enum TopLevelCommand {
     Config(config::ConfigCmd),
     #[command(about = "Manage repo-wide publishers")]
     Publisher(publisher::PublisherCmd),
+    #[command(about = "Initialize a directory as a Mind Repo")]
+    Init(InitArgs),
 }
 
 #[derive(Debug)]
@@ -146,6 +156,7 @@ impl RootCli {
             Some(TopLevelCommand::Config(command)) => config::dispatch(command, repo_root, format, deprecation),
             Some(TopLevelCommand::Publisher(command)) => publisher::dispatch(command, repo_root, format, deprecation),
             Some(TopLevelCommand::Render(command)) => render::dispatch(command, repo_root, format),
+            Some(TopLevelCommand::Init(args)) => dispatch_init(args),
         }
     }
 }
@@ -153,9 +164,25 @@ impl RootCli {
 impl TopLevelCommand {
     pub fn requires_repo(&self) -> RepoRequirement {
         match self {
-            Self::Completion(_) | Self::Config(_) | Self::Version => RepoRequirement::NotRequired,
+            Self::Init(_) | Self::Completion(_) | Self::Config(_) | Self::Version => RepoRequirement::NotRequired,
             Self::Project(cmd) => cmd.requires_repo(),
             _ => RepoRequirement::Required,
         }
     }
+}
+
+fn dispatch_init(args: InitArgs) -> Result<CommandOutcome> {
+    let target = args.path.unwrap_or_else(|| PathBuf::from("."));
+    let kind = repo::classify_repo_target(&target)?;
+
+    // Only guard against nesting when we'd actually create a new repo.
+    // ExistingRepo is idempotent and MalformedManifest will surface its own
+    // error from init_repo with better context.
+    if matches!(kind, repo::RepoTargetKind::NewDirectory | repo::RepoTargetKind::ExistingEmptyDirectory) {
+        repo::validate_not_nested(&target)?;
+    }
+
+    let report = repo::init_repo(&target, &kind)?;
+    let data = serde_json::to_value(&report).map_err(|e| MfError::Internal(e.into()))?;
+    Ok(CommandOutcome::Success(data, None))
 }

@@ -92,7 +92,7 @@ mf --install-completion zsh   # or bash | fish | powershell | elvish
 ```bash
 # 1. Initialize a Mind Repo
 mkdir my-repo && cd my-repo
-mf config init                       # creates minds.yaml
+mf init                              # creates minds.yaml and projects/
 
 # 2. Create a project and a default blank directory article
 mf project new blog
@@ -186,6 +186,10 @@ get a machine-readable envelope.
 
 ## Features
 
+- **Repo lifecycle** — `mf init [PATH]` creates a Mind Repo (`minds.yaml`
+  plus the default `projects/` container) in the current directory or a
+  target path; refuses to overwrite existing content or nest inside an
+  existing Mind Repo
 - **Project lifecycle** — `mf project new | list | status | lint | index | archive | rename | import | show`
 - **Article management** — `mf article new <TITLE> [--template <S>] [--file|--single-file]`,
   plus `list | lint | index | rename`; new articles are directory articles by
