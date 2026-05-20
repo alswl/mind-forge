@@ -93,7 +93,7 @@ pub fn import_project(
                 title: "Welcome".to_string(),
                 project: project_name.clone(),
                 article_type,
-                source_path: String::new(),
+                article_path: String::new(),
                 status: crate::model::article::ArticleStatus::Draft,
                 created_at: now.clone(),
                 updated_at: now,

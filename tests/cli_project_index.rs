@@ -107,11 +107,11 @@ fn test_lint_reports_duplicate_key() {
 articles:
   first:
     title: First
-    source_path: docs/first.md
+    article_path: docs/first.md
 articles:
   second:
     title: Second
-    source_path: docs/second.md
+    article_path: docs/second.md
 "#,
     );
     common::write_doc(&dir, "dup-project", "first", "# First\n");
@@ -142,11 +142,11 @@ fn test_lint_fix_removes_duplicate_keys() {
 articles:
   first:
     title: First
-    source_path: docs/first.md
+    article_path: docs/first.md
 articles:
   second:
     title: Second
-    source_path: docs/second.md
+    article_path: docs/second.md
 "#,
     );
     common::write_doc(&dir, "dup-project", "first", "# First\n");
@@ -183,11 +183,11 @@ fn test_lint_fix_resolves_all_duplicate_keys_in_one_run() {
 articles:
   first:
     title: First
-    source_path: docs/first.md
+    article_path: docs/first.md
 articles:
   second:
     title: Second
-    source_path: docs/second.md
+    article_path: docs/second.md
 terms:
   - name: Alpha
     definition: A

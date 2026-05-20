@@ -28,7 +28,7 @@ pub struct EffectiveDate {
 /// Derive the effective date for an article.
 ///
 /// For US1 (docs/-declared articles): parses the date from the leading
-/// YYYY-MM-DD prefix of the source filename.
+/// YYYY-MM-DD prefix of the article filename.
 ///
 /// For US2 (generated articles): the date is captured from the template
 /// slot match (added in T023).
@@ -41,7 +41,7 @@ pub fn for_article(article: &Article) -> Result<EffectiveDate> {
     }
 
     // US1: parse from filename prefix
-    let basename = article.source_path.rsplit('/').next().unwrap_or(&article.source_path);
+    let basename = article.article_path.rsplit('/').next().unwrap_or(&article.article_path);
     let date = filename_date::parse_leading_date(basename).ok_or(MfError::NoEffectiveDate)?;
     Ok(EffectiveDate { date, origin: EffectiveDateOrigin::FilenamePrefix })
 }

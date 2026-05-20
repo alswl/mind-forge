@@ -162,14 +162,14 @@ impl<'de> Deserialize<'de> for IndexFile {
                             };
                             entry.entry(yaml_key("title")).or_insert_with(|| serde_yaml::Value::String(key_string(k)));
                             default_str(&mut entry, "project", "");
-                            // Infer source_path from dict key when absent
+                            // Infer article_path from dict key when absent
                             let key_str = key_string(k);
                             let inferred_source = if key_str.starts_with(defaults::DOCS_PATH_PREFIX) {
                                 key_str
                             } else {
                                 format!("{}/{}", defaults::DOCS_DIR, key_str)
                             };
-                            let sp_key = yaml_key("source_path");
+                            let sp_key = yaml_key("article_path");
                             if !entry.contains_key(&sp_key) {
                                 entry.insert(sp_key, serde_yaml::Value::String(inferred_source));
                             }
@@ -438,10 +438,10 @@ schema_version: '1'
 articles:
   getting-started:
     title: Getting Started
-    source_path: docs/getting-started.md
+    article_path: docs/getting-started.md
   advanced-guide:
     title: Advanced Guide
-    source_path: docs/advanced-guide.md
+    article_path: docs/advanced-guide.md
 "#;
         let index: IndexFile = serde_yaml::from_str(yaml).unwrap();
         let articles = index.articles.unwrap();

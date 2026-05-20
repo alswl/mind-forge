@@ -132,17 +132,17 @@ pub fn dispatch(
             let articles = article_svc::list_articles(&project_path)?;
             let config = config_svc::load_project(&project_path, Some(root))?;
 
-            // Compute source_dir for each article based on config
+            // Compute article_dir for each article based on config
             let enriched: Vec<serde_json::Value> = articles
                 .iter()
                 .map(|a| {
-                    let source_dir =
-                        config.as_ref().map(|cfg| article_svc::effective_source_dir(&project_path, cfg, a));
+                    let article_dir =
+                        config.as_ref().map(|cfg| article_svc::effective_article_dir(&project_path, cfg, a));
                     let mut v = serde_json::to_value(a).unwrap_or_default();
 
-                    // Add source_dir
-                    if let Some(dir) = source_dir {
-                        v["source_dir"] = serde_json::Value::String(dir);
+                    // Add article_dir
+                    if let Some(dir) = article_dir {
+                        v["article_dir"] = serde_json::Value::String(dir);
                     }
 
                     // Article key (id)
@@ -156,7 +156,7 @@ pub fn dispatch(
                     } else {
                         // Check if article matches a declared config entry via docs-relative short key.
                         let is_declared = config.as_ref().is_some_and(|cfg| {
-                            let short_key = crate::service::index::article_output_stem(&a.source_path);
+                            let short_key = crate::service::index::article_output_stem(&a.article_path);
                             cfg.build.articles.contains_key(short_key)
                                 || cfg
                                     .articles
@@ -172,8 +172,8 @@ pub fn dispatch(
                     };
                     v["origin"] = serde_json::Value::String(origin.to_string());
 
-                    // Source file existence
-                    v["source_present"] = serde_json::Value::Bool(project_path.join(&a.source_path).exists());
+                    // Article content existence
+                    v["article_present"] = serde_json::Value::Bool(project_path.join(&a.article_path).exists());
 
                     v
                 })
@@ -188,10 +188,10 @@ pub fn dispatch(
                     let mut lines = Vec::new();
                     for v in &enriched {
                         let title = v["title"].as_str().unwrap_or("");
-                        let source_path = v["source_path"].as_str().unwrap_or("");
-                        let source_dir = v["source_dir"].as_str().unwrap_or("");
+                        let article_path = v["article_path"].as_str().unwrap_or("");
+                        let article_dir = v["article_dir"].as_str().unwrap_or("");
                         let status = v["status"].as_str().unwrap_or("draft");
-                        lines.push(format!("{title}  {source_path}  {source_dir}  {status}"));
+                        lines.push(format!("{title}  {article_path}  {article_dir}  {status}"));
                     }
                     Ok(CommandOutcome::Raw(lines.join("\n"), None))
                 }
@@ -248,32 +248,32 @@ pub fn dispatch(
                 let declared = article_svc::scan_declared(&project_path, config)?;
                 for da in declared {
                     let articles = updated.articles.get_or_insert_with(Vec::new);
-                    if !articles.iter().any(|a| a.source_path == da.source_path) {
+                    if !articles.iter().any(|a| a.article_path == da.article_path) {
                         articles.push(da);
                     }
                 }
 
-                // Collect declared source_dir prefixes for template dedup (FR-006)
+                // Collect declared article_dir prefixes for template dedup (FR-006)
                 let declared_prefixes: Vec<String> = config
                     .build
                     .articles
                     .values()
-                    .filter_map(|cfg| cfg.source_dir.as_ref().map(|d| d.trim_end_matches('/').to_string() + "/"))
+                    .filter_map(|cfg| cfg.article_dir.as_ref().map(|d| d.trim_end_matches('/').to_string() + "/"))
                     .collect();
 
                 // Phase 3: Merge template-discovered articles (US2)
                 let template_articles = article_svc::scan_templates(&project_path, config)?;
                 for ta in template_articles {
                     // Skip if already covered by declared
-                    if updated.articles.as_ref().is_some_and(|a| a.iter().any(|e| e.source_path == ta.source_path)) {
+                    if updated.articles.as_ref().is_some_and(|a| a.iter().any(|e| e.article_path == ta.article_path)) {
                         continue;
                     }
-                    // FR-006: Skip if template file falls under a declared source_dir
-                    if declared_prefixes.iter().any(|p| ta.source_path.starts_with(p)) {
+                    // FR-006: Skip if template file falls under a declared article_dir
+                    if declared_prefixes.iter().any(|p| ta.article_path.starts_with(p)) {
                         continue;
                     }
                     let articles = updated.articles.get_or_insert_with(Vec::new);
-                    let pos = articles.iter().position(|a| a.source_path == ta.source_path);
+                    let pos = articles.iter().position(|a| a.article_path == ta.article_path);
                     if let Some(pos) = pos {
                         articles[pos].template_origin = ta.template_origin;
                     } else {
@@ -281,7 +281,7 @@ pub fn dispatch(
                     }
                 }
                 if let Some(ref mut articles) = updated.articles {
-                    articles.sort_by(|a, b| a.source_path.cmp(&b.source_path));
+                    articles.sort_by(|a, b| a.article_path.cmp(&b.article_path));
                 }
             }
 
@@ -306,7 +306,7 @@ pub fn dispatch(
                 Format::Text => {
                     let msg = format!(
                         "Renamed article\n  title: {} → {}\n  file: {} → {}",
-                        report.old_title, report.new_title, report.old_source_path, report.new_source_path
+                        report.old_title, report.new_title, report.old_article_path, report.new_article_path
                     );
                     Ok(CommandOutcome::Raw(msg, None))
                 }

@@ -217,7 +217,7 @@ articles:
   - title: my-post
     project: alpha
     type: blog
-    source_path: docs/my-post.md
+    article_path: docs/my-post.md
     status: draft
     created_at: '2026-05-01T10:00:00Z'
     updated_at: '2026-05-01T10:00:00Z'

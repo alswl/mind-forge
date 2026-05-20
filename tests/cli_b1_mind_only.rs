@@ -60,7 +60,7 @@ fn write_index_with_asset_and_article(
     asset_name: &str,
     article_name: &str,
 ) {
-    let source_path = format!("docs/{article_name}.md");
+    let article_path = format!("docs/{article_name}.md");
     let yaml = format!(
         r#"schema_version: '1'
 assets:
@@ -75,7 +75,7 @@ articles:
   - title: "{article_name}"
     project: "{project}"
     type: blog
-    source_path: "{source_path}"
+    article_path: "{article_path}"
     status: draft
     created_at: "2026-05-01T00:00:00Z"
     updated_at: "2026-05-01T00:00:00Z"
@@ -85,7 +85,7 @@ articles:
     // Write article body
     let doc_dir = project_dir.join("docs");
     std::fs::create_dir_all(&doc_dir).unwrap();
-    std::fs::write(project_dir.join(&source_path), format!("uses {asset_name}")).unwrap();
+    std::fs::write(project_dir.join(&article_path), format!("uses {asset_name}")).unwrap();
 }
 
 // ---------------------------------------------------------------------------

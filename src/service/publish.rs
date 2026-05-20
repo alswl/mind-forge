@@ -98,12 +98,12 @@ pub fn update(args: &PublishUpdateArgs, repo_root: &Path, cwd: &Path) -> Result<
     let mut index = index::load(&project_path)?;
 
     let layout = config_svc::effective_layout(&project_path)?;
-    let article_source_path = index
+    let indexed_article_path = index
         .articles
         .iter()
         .flat_map(|a| a.iter())
-        .find(|a| a.source_path == format!("{}/{}.{}", layout.articles, args.article, defaults::MARKDOWN_EXTENSION))
-        .map(|a| a.source_path.clone())
+        .find(|a| a.article_path == format!("{}/{}.{}", layout.articles, args.article, defaults::MARKDOWN_EXTENSION))
+        .map(|a| a.article_path.clone())
         .ok_or_else(|| {
             MfError::not_found(
                 format!("article '{}' not found in mind-index.yaml", args.article),
@@ -122,14 +122,14 @@ pub fn update(args: &PublishUpdateArgs, repo_root: &Path, cwd: &Path) -> Result<
     let existing = index
         .publish_records
         .as_ref()
-        .and_then(|recs| recs.iter().find(|r| r.path == article_source_path && r.target_name == args.target));
+        .and_then(|recs| recs.iter().find(|r| r.path == indexed_article_path && r.target_name == args.target));
 
     let (record, action) =
-        upsert_decision(existing, &article_source_path, &args.target, status_arg, args.target_url.as_deref())?;
+        upsert_decision(existing, &indexed_article_path, &args.target, status_arg, args.target_url.as_deref())?;
 
     if !args.dry_run {
         let recs = index.publish_records.get_or_insert_with(Vec::new);
-        if let Some(pos) = recs.iter().position(|r| r.path == article_source_path && r.target_name == args.target) {
+        if let Some(pos) = recs.iter().position(|r| r.path == indexed_article_path && r.target_name == args.target) {
             recs[pos] = record.clone();
         } else {
             recs.push(record.clone());
@@ -321,9 +321,9 @@ fn resolve_local_path(
 }
 
 fn locate_build_artifact(project_path: &Path, config: &MindConfig, article_entry: &Article) -> Result<(PathBuf, u64)> {
-    // FR-002 (R2): generated article — the source file IS the artifact
+    // FR-002 (R2): generated article — the article file IS the artifact
     if article_entry.template_origin.is_some() {
-        let path = project_path.join(&article_entry.source_path);
+        let path = project_path.join(&article_entry.article_path);
         let metadata = fs::metadata(&path).map_err(|_| {
             MfError::build_artifact_missing(
                 format!("build artifact (template source) missing at {}", path.display()),
@@ -340,15 +340,15 @@ fn locate_build_artifact(project_path: &Path, config: &MindConfig, article_entry
     let layout = config_svc::effective_layout(project_path)?;
     let format =
         if config.build.format.is_empty() { defaults::DEFAULT_BUILD_FORMAT } else { config.build.format.as_str() };
-    let stem = index::article_output_stem(&article_entry.source_path);
+    let stem = index::article_output_stem(&article_entry.article_path);
     let path = project_path.join(&layout.build_output).join(format!("{stem}.{format}"));
     let metadata = fs::metadata(&path).map_err(|_| {
-        // Check if source file is also missing — indicates no source files (FR-005)
-        let source_path = project_path.join(&article_entry.source_path);
-        if !source_path.exists() {
-            return MfError::NoSourceFiles {
+        // Check if the article file is also missing — indicates no article files (FR-005)
+        let article_path = project_path.join(&article_entry.article_path);
+        if !article_path.exists() {
+            return MfError::NoArticleFiles {
                 article: article_entry.title.clone(),
-                source_path: article_entry.source_path.clone(),
+                article_path: article_entry.article_path.clone(),
             };
         }
         MfError::build_artifact_missing(
@@ -440,14 +440,14 @@ After publishing, run:\n\
     {suggested}",
         tgt = target.name,
         article = args.article,
-        source = article_entry.source_path,
+        source = article_entry.article_path,
         suggested = suggested_update_command,
     );
 
     Ok(YuquePromptRunOutcome {
         target_name: target.name.clone(),
         article: args.article.clone(),
-        source_path: article_entry.source_path.clone(),
+        article_path: article_entry.article_path.clone(),
         build_artifact_path: artifact_path.to_string_lossy().to_string(),
         content,
         prompt,

@@ -34,7 +34,7 @@ pub struct LocalRunOutcome {
 pub struct YuquePromptRunOutcome {
     pub target_name: String,
     pub article: String,
-    pub source_path: String,
+    pub article_path: String,
     pub build_artifact_path: String,
     pub content: String,
     pub prompt: String,
@@ -85,7 +85,7 @@ mod tests {
         let outcome = PublishRunOutcome::YuquePrompt(YuquePromptRunOutcome {
             target_name: "tgt".to_string(),
             article: "a".to_string(),
-            source_path: "docs/a.md".to_string(),
+            article_path: "docs/a.md".to_string(),
             build_artifact_path: "/p/_build/a.md".to_string(),
             content: "hello".to_string(),
             prompt: "Please publish ...".to_string(),

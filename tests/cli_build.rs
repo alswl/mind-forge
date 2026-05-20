@@ -146,8 +146,8 @@ fn build_accepts_repo_relative_directory_article_path() {
 fn build_falls_back_to_directory_matching_article_argument_when_index_source_is_stale() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
-    // Indexed entry source_path does not exist — the article key is "review" and
-    // its source_path is a directory that does exist
+    // Indexed entry article_path does not exist — the article key is "review" and
+    // its article_path is a directory that does exist
     common::write_index(
         &repo,
         "my-project",
@@ -155,7 +155,7 @@ fn build_falls_back_to_directory_matching_article_argument_when_index_source_is_
 articles:
   review:
     title: Review
-    source_path: docs/review
+    article_path: docs/review
 "#,
     );
     let article_dir = repo.path().join("my-project/docs/review");
@@ -429,19 +429,19 @@ fn build_banner_empty_text_rejected_on_config() {
 }
 
 // ---------------------------------------------------------------------------
-// US2: Build with source directory tests
+// US2: Build with article directory tests
 // ---------------------------------------------------------------------------
 
 #[test]
-fn build_from_configured_source_dir_under_docs() {
+fn build_from_configured_article_dir_under_docs() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
     common::write_mind_yaml(
         &repo,
         "my-project",
-        "schema: '1'\nbuild:\n  articles:\n    my-article:\n      source_dir: docs/custom-src\n",
+        "schema: '1'\nbuild:\n  articles:\n    my-article:\n      article_dir: docs/custom-src\n",
     );
-    // Create the custom source directory
+    // Create the custom article directory
     let src_dir = repo.path().join("my-project/docs/custom-src");
     std::fs::create_dir_all(&src_dir).unwrap();
     std::fs::write(src_dir.join("01-intro.md"), "Intro\n").unwrap();
@@ -459,20 +459,20 @@ fn build_from_configured_source_dir_under_docs() {
     let output_path = repo.path().join("my-project/outputs/my-article.md");
     assert!(output_path.exists(), "output should exist");
     let content = std::fs::read_to_string(&output_path).unwrap();
-    assert!(content.contains("Intro"), "should include content from configured source dir");
-    assert!(content.contains("Body"), "should include all files from configured source dir");
+    assert!(content.contains("Intro"), "should include content from configured article dir");
+    assert!(content.contains("Body"), "should include all files from configured article dir");
 }
 
 #[test]
-fn build_from_configured_source_dir_outside_docs() {
+fn build_from_configured_article_dir_outside_docs() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
     common::write_mind_yaml(
         &repo,
         "my-project",
-        "schema: '1'\nbuild:\n  articles:\n    my-article:\n      source_dir: specs\n",
+        "schema: '1'\nbuild:\n  articles:\n    my-article:\n      article_dir: specs\n",
     );
-    // Create source directory outside docs/
+    // Create article directory outside docs/
     let src_dir = repo.path().join("my-project/specs");
     std::fs::create_dir_all(&src_dir).unwrap();
     std::fs::write(src_dir.join("01-spec.md"), "Spec content\n").unwrap();
@@ -492,13 +492,13 @@ fn build_from_configured_source_dir_outside_docs() {
 }
 
 #[test]
-fn build_with_missing_source_dir_fails() {
+fn build_with_missing_article_dir_fails() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
     common::write_mind_yaml(
         &repo,
         "my-project",
-        "schema: '1'\nbuild:\n  articles:\n    my-article:\n      source_dir: non-existent-dir\n",
+        "schema: '1'\nbuild:\n  articles:\n    my-article:\n      article_dir: non-existent-dir\n",
     );
     common::write_article_index(&repo, "my-project", "my-article");
 
@@ -508,7 +508,7 @@ fn build_with_missing_source_dir_fails() {
         .args(["build", "my-article"])
         .output()
         .expect("command runs");
-    assert_eq!(output.status.code(), Some(2), "missing source_dir should be usage error");
+    assert_eq!(output.status.code(), Some(2), "missing article_dir should be usage error");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("non-existent-dir") || stderr.contains("does not exist"),
@@ -518,10 +518,10 @@ fn build_with_missing_source_dir_fails() {
 }
 
 #[test]
-fn build_default_source_dir_unchanged_without_config() {
+fn build_default_article_dir_unchanged_without_config() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
-    // No source_dir config — uses default behavior
+    // No article_dir config — uses default behavior
     common::write_article_index(&repo, "my-project", "default-article");
     common::write_doc(&repo, "my-project", "default-article", "Default content\n");
 
@@ -539,7 +539,7 @@ fn build_default_source_dir_unchanged_without_config() {
 }
 
 // ---------------------------------------------------------------------------
-// US2: Build auto-indexing (via configured source_dir)
+// US2: Build auto-indexing (via configured article_dir)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -547,13 +547,13 @@ fn build_auto_indexes_article_in_mind_index_yaml() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
 
-    // Configure a source_dir for the article so build can find it without the index
+    // Configure a article_dir for the article so build can find it without the index
     common::write_mind_yaml(
         &repo,
         "my-project",
-        "schema: '1'\nbuild:\n  articles:\n    auto-index-me:\n      source_dir: specs\n",
+        "schema: '1'\nbuild:\n  articles:\n    auto-index-me:\n      article_dir: specs\n",
     );
-    // Create article file in the configured source_dir
+    // Create article file in the configured article_dir
     common::write_source_file(&repo, "my-project", "specs", "auto-index-me", "# Auto index\n");
     // Write a minimal index (empty, article not in it)
     common::write_index(&repo, "my-project", "schema: '1'\n");
@@ -580,23 +580,23 @@ fn build_auto_indexes_article_in_mind_index_yaml() {
         panic!("JSON parse error: {e}\nstdout: {stdout:?}");
     });
     let articles = parsed["data"]["articles"].as_array().unwrap();
-    let auto_indexed = articles.iter().find(|a| a["source_path"].as_str().unwrap_or("").contains("auto-index-me"));
+    let auto_indexed = articles.iter().find(|a| a["article_path"].as_str().unwrap_or("").contains("auto-index-me"));
     assert!(auto_indexed.is_some(), "built article should appear in index after build: {stdout}");
 }
 
 #[test]
-fn build_auto_indexes_configured_source_dir_as_article_directory() {
+fn build_auto_indexes_configured_article_dir_as_article_directory() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
     common::write_mind_yaml(
         &repo,
         "my-project",
-        "schema: '1'\nbuild:\n  articles:\n    quarterly-review:\n      source_dir: specs/quarterly\n",
+        "schema: '1'\nbuild:\n  articles:\n    quarterly-review:\n      article_dir: specs/quarterly\n",
     );
-    let source_dir = repo.path().join("my-project/specs/quarterly");
-    std::fs::create_dir_all(&source_dir).unwrap();
-    std::fs::write(source_dir.join("01-intro.md"), "Intro\n").unwrap();
-    std::fs::write(source_dir.join("02-body.md"), "Body\n").unwrap();
+    let article_dir = repo.path().join("my-project/specs/quarterly");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-intro.md"), "Intro\n").unwrap();
+    std::fs::write(article_dir.join("02-body.md"), "Body\n").unwrap();
     common::write_index(&repo, "my-project", "schema: '1'\n");
 
     Command::cargo_bin("mf")
@@ -607,15 +607,15 @@ fn build_auto_indexes_configured_source_dir_as_article_directory() {
         .success();
 
     let index = std::fs::read_to_string(repo.path().join("my-project/mind-index.yaml")).unwrap();
-    assert!(index.contains("source_path: specs/quarterly"), "index should store the configured source dir: {index}");
+    assert!(index.contains("article_path: specs/quarterly"), "index should store the configured article dir: {index}");
     assert!(
-        !index.contains("source_path: specs/quarterly/quarterly-review.md"),
-        "index should not invent a Markdown file inside the configured source dir: {index}"
+        !index.contains("article_path: specs/quarterly/quarterly-review.md"),
+        "index should not invent a Markdown file inside the configured article dir: {index}"
     );
 }
 
 // ---------------------------------------------------------------------------
-// US2: Build resolves by article key using indexed source path (T019–T022)
+// US2: Build resolves by article key using indexed article path (T019–T022)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -651,7 +651,7 @@ fn build_dry_run_exact_key_lookup_directory_article() {
 }
 
 #[test]
-fn build_dry_run_input_source_includes_directory_file() {
+fn build_dry_run_input_file_includes_directory_file() {
     let repo = common::scaffold_team_reports_minimal_repro();
     let project_path = repo.path().join("team-reports");
 
@@ -678,7 +678,7 @@ fn build_dry_run_input_source_includes_directory_file() {
 }
 
 #[test]
-fn build_title_not_used_for_source_path_derivation() {
+fn build_title_not_used_for_article_path_derivation() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
 
@@ -692,7 +692,7 @@ fn build_title_not_used_for_source_path_derivation() {
 articles:
   team-updates:
     title: Team Updates 2026
-    source_path: docs/team-updates
+    article_path: docs/team-updates
 "#;
     common::write_index(&repo, "my-project", index_yaml);
 
@@ -715,7 +715,7 @@ articles:
 }
 
 #[test]
-fn build_dry_run_json_envelope_includes_source_path() {
+fn build_dry_run_json_envelope_includes_article_path() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
     common::write_index(
@@ -725,7 +725,7 @@ fn build_dry_run_json_envelope_includes_source_path() {
 articles:
   my-article:
     title: My Article
-    source_path: docs/my-article
+    article_path: docs/my-article
 "#,
     );
     let article_dir = repo.path().join("my-project/docs/my-article");
@@ -746,6 +746,6 @@ articles:
     let parsed: serde_json::Value = serde_json::from_str(&stdout[json_start..]).unwrap();
     assert_eq!(parsed["status"], "ok");
     assert_eq!(parsed["data"]["article"], "my-article");
-    assert!(parsed["data"]["source_path"].as_str().unwrap_or("").contains("my-article"));
+    assert!(parsed["data"]["article_path"].as_str().unwrap_or("").contains("my-article"));
     assert!(parsed["data"]["dry_run"].as_bool().unwrap_or(false));
 }

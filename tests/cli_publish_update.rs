@@ -23,7 +23,7 @@ fn setup_repo_with_target() -> common::TempDir {
     .unwrap();
     fs::write(
         project_path.join("mind-index.yaml"),
-        "schema_version: '1'\narticles:\n  - title: My Article\n    project: my-project\n    type: blog\n    source_path: docs/my-article.md\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n",
+        "schema_version: '1'\narticles:\n  - title: My Article\n    project: my-project\n    type: blog\n    article_path: docs/my-article.md\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n",
     )
     .unwrap();
     repo

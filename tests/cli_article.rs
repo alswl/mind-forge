@@ -87,7 +87,7 @@ updated: 2026-05-01
 articles:
   existing:
     title: Existing
-    source_path: docs/existing
+    article_path: docs/existing
 "#,
     );
 
@@ -403,11 +403,11 @@ fn article_index_with_project_flag() {
 }
 
 // ---------------------------------------------------------------------------
-// US2: Article source directory tests
+// US2: Article article directory tests
 // ---------------------------------------------------------------------------
 
 #[test]
-fn article_list_shows_default_source_dir() {
+fn article_list_shows_default_article_dir() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
 
@@ -426,12 +426,12 @@ fn article_list_shows_default_source_dir() {
         .expect("command runs");
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8(output.stdout).unwrap();
-    // Should show the default source_dir: docs/default-dir
-    assert!(stdout.contains("docs/default-dir"), "default source_dir should be docs/<article-name>: {stdout}");
+    // Should show the default article_dir: docs/default-dir
+    assert!(stdout.contains("docs/default-dir"), "default article_dir should be docs/<article-name>: {stdout}");
 }
 
 #[test]
-fn article_list_json_shows_source_dir_field() {
+fn article_list_json_shows_article_dir_field() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
 
@@ -455,23 +455,23 @@ fn article_list_json_shows_source_dir_field() {
     let articles = parsed["data"]["articles"].as_array().unwrap();
     assert!(!articles.is_empty());
     let first = &articles[0];
-    // The JSON should include a source_dir field per contract
-    assert!(first.get("source_dir").is_some(), "article JSON should include source_dir field");
-    let source_dir = first["source_dir"].as_str().unwrap_or("");
-    assert!(source_dir.contains("docs/"), "default source_dir should contain docs/: {source_dir}");
+    // The JSON should include a article_dir field per contract
+    assert!(first.get("article_dir").is_some(), "article JSON should include article_dir field");
+    let article_dir = first["article_dir"].as_str().unwrap_or("");
+    assert!(article_dir.contains("docs/"), "default article_dir should contain docs/: {article_dir}");
 }
 
 #[test]
-fn article_list_json_with_configured_source_dir() {
+fn article_list_json_with_configured_article_dir() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
     common::write_article_index(&repo, "my-project", "custom-article");
     common::write_doc(&repo, "my-project", "custom-article", "content\n");
-    // Configure a custom source_dir for the article
+    // Configure a custom article_dir for the article
     common::write_mind_yaml(
         &repo,
         "my-project",
-        "schema: '1'\nbuild:\n  articles:\n    custom-article:\n      source_dir: specs\n",
+        "schema: '1'\nbuild:\n  articles:\n    custom-article:\n      article_dir: specs\n",
     );
 
     let output = Command::cargo_bin("mf")
@@ -484,10 +484,10 @@ fn article_list_json_with_configured_source_dir() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     let articles = parsed["data"]["articles"].as_array().unwrap();
-    let article = articles.iter().find(|a| a["source_path"].as_str().unwrap_or("").contains("custom-article"));
+    let article = articles.iter().find(|a| a["article_path"].as_str().unwrap_or("").contains("custom-article"));
     assert!(article.is_some(), "custom-article should appear in listing");
-    let source_dir = article.unwrap()["source_dir"].as_str().unwrap_or("");
-    assert_eq!(source_dir, "specs", "source_dir should reflect configured value: {source_dir}");
+    let article_dir = article.unwrap()["article_dir"].as_str().unwrap_or("");
+    assert_eq!(article_dir, "specs", "article_dir should reflect configured value: {article_dir}");
 }
 
 // ---------------------------------------------------------------------------
@@ -495,13 +495,13 @@ fn article_list_json_with_configured_source_dir() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn article_index_scans_configured_source_dir() {
+fn article_index_scans_configured_article_dir() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
     common::write_mind_yaml(
         &repo,
         "my-project",
-        "schema: '1'\nbuild:\n  articles:\n    my-article:\n      source_dir: specs\n",
+        "schema: '1'\nbuild:\n  articles:\n    my-article:\n      article_dir: specs\n",
     );
     common::write_source_file(&repo, "my-project", "specs", "my-article", "# Custom article\n");
     common::write_doc(&repo, "my-project", "docs-article", "# Docs article\n");
@@ -520,7 +520,7 @@ fn article_index_scans_configured_source_dir() {
         .output()
         .expect("command runs");
     let stdout = String::from_utf8(list_output.stdout).unwrap();
-    assert!(stdout.contains("my-article"), "should list article from source_dir: {stdout}");
+    assert!(stdout.contains("my-article"), "should list article from article_dir: {stdout}");
     assert!(stdout.contains("docs-article"), "should list article from docs: {stdout}");
 }
 
@@ -551,7 +551,7 @@ fn article_list_shows_mind_yaml_articles_without_manual_indexing() {
     common::write_mind_yaml(
         &repo,
         "my-project",
-        "schema: '1'\nbuild:\n  articles:\n    configured-article:\n      source_dir: specs\n",
+        "schema: '1'\nbuild:\n  articles:\n    configured-article:\n      article_dir: specs\n",
     );
     common::write_source_file(&repo, "my-project", "specs", "configured-article", "# Configured\n");
 
@@ -565,22 +565,22 @@ fn article_list_shows_mind_yaml_articles_without_manual_indexing() {
     assert_eq!(output.status.code(), Some(0), "article list should succeed without manual index");
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("configured-article"), "should list configured article from mind.yaml: {stdout}");
-    assert!(stdout.contains("specs/configured-article.md"), "should show configured source file: {stdout}");
+    assert!(stdout.contains("specs/configured-article.md"), "should show configured article file: {stdout}");
 }
 
 #[test]
-fn article_index_uses_configured_article_key_for_directory_source_dir() {
+fn article_index_uses_configured_article_key_for_directory_article_dir() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
     common::write_mind_yaml(
         &repo,
         "my-project",
-        "schema: '1'\nbuild:\n  articles:\n    quarterly-review:\n      source_dir: specs/quarterly\n",
+        "schema: '1'\nbuild:\n  articles:\n    quarterly-review:\n      article_dir: specs/quarterly\n",
     );
-    let source_dir = repo.path().join("my-project/specs/quarterly");
-    std::fs::create_dir_all(&source_dir).unwrap();
-    std::fs::write(source_dir.join("01-intro.md"), "Intro\n").unwrap();
-    std::fs::write(source_dir.join("02-body.md"), "Body\n").unwrap();
+    let article_dir = repo.path().join("my-project/specs/quarterly");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-intro.md"), "Intro\n").unwrap();
+    std::fs::write(article_dir.join("02-body.md"), "Body\n").unwrap();
 
     let (_, output) = json_index(&[], &repo.path().join("my-project"));
     assert_eq!(output.status.code(), Some(0), "article index should succeed");
@@ -594,13 +594,13 @@ fn article_index_uses_configured_article_key_for_directory_source_dir() {
     let stdout = String::from_utf8(list_output.stdout).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     let articles = parsed["data"]["articles"].as_array().unwrap();
-    let article = articles.iter().find(|a| a["source_path"] == "specs/quarterly").expect("configured article");
+    let article = articles.iter().find(|a| a["article_path"] == "specs/quarterly").expect("configured article");
 
     assert_eq!(article["title"], "quarterly review");
-    assert_eq!(article["source_dir"], "specs/quarterly");
+    assert_eq!(article["article_dir"], "specs/quarterly");
     assert!(
-        !articles.iter().any(|a| a["source_path"] == "specs/quarterly/01-intro.md"),
-        "directory source_dir should be indexed as the configured article, not each part: {stdout}"
+        !articles.iter().any(|a| a["article_path"] == "specs/quarterly/01-intro.md"),
+        "directory article_dir should be indexed as the configured article, not each part: {stdout}"
     );
 }
 
@@ -619,11 +619,11 @@ fn article_list_duplicate_key_warning_includes_detail() {
 articles:
   first:
     title: First
-    source_path: docs/first.md
+    article_path: docs/first.md
 articles:
   second:
     title: Second
-    source_path: docs/second.md
+    article_path: docs/second.md
 "#,
     );
 
@@ -655,11 +655,11 @@ fn article_index_duplicate_key_warning_includes_key_name() {
 articles:
   first:
     title: First
-    source_path: docs/first.md
+    article_path: docs/first.md
 articles:
   second:
     title: Second
-    source_path: docs/second.md
+    article_path: docs/second.md
 "#,
     );
 
@@ -681,38 +681,38 @@ articles:
 }
 
 #[test]
-fn article_index_same_article_in_docs_and_source_dir_dedup() {
+fn article_index_same_article_in_docs_and_article_dir_dedup() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
-    // Configure a source_dir that matches the default docs name
+    // Configure a article_dir that matches the default docs name
     // This tests the dedup when the same article appears in both places
     common::write_mind_yaml(
         &repo,
         "my-project",
-        "schema: '1'\nbuild:\n  articles:\n    dedup-test:\n      source_dir: docs\n",
+        "schema: '1'\nbuild:\n  articles:\n    dedup-test:\n      article_dir: docs\n",
     );
-    // Create the file in docs/ (which is also the configured source_dir)
+    // Create the file in docs/ (which is also the configured article_dir)
     common::write_doc(&repo, "my-project", "dedup-test", "# Dedup\n");
 
     let (parsed, output) = json_index(&[], &repo.path().join("my-project"));
     assert_eq!(output.status.code(), Some(0));
     let articles_count = parsed["data"]["articles_count"].as_u64().unwrap_or(0);
-    assert_eq!(articles_count, 1, "should index article exactly once despite duplicate source_dir config: {parsed}");
+    assert_eq!(articles_count, 1, "should index article exactly once despite duplicate article_dir config: {parsed}");
 }
 
 #[test]
-fn article_index_skips_missing_source_dir() {
+fn article_index_skips_missing_article_dir() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
     common::write_mind_yaml(
         &repo,
         "my-project",
-        "schema: '1'\nbuild:\n  articles:\n    ghost:\n      source_dir: non-existent\n",
+        "schema: '1'\nbuild:\n  articles:\n    ghost:\n      article_dir: non-existent\n",
     );
     common::write_doc(&repo, "my-project", "real-article", "# Real\n");
 
     let (parsed, output) = json_index(&[], &repo.path().join("my-project"));
-    assert_eq!(output.status.code(), Some(0), "index should succeed even with missing source_dir");
+    assert_eq!(output.status.code(), Some(0), "index should succeed even with missing article_dir");
     assert!(parsed["data"]["articles_count"].as_u64().unwrap_or(0) >= 1);
 }
 
@@ -746,7 +746,7 @@ fn list_discovers_generated_articles() {
     assert!(gen.is_some(), "should find generated article: {stdout}");
 
     let gen = gen.unwrap();
-    assert_eq!(gen["source_path"], "outputs/2026-05/2026-05-15.md");
+    assert_eq!(gen["article_path"], "outputs/2026-05/2026-05-15.md");
     assert_eq!(gen["template_origin"]["template_name"], "daily_report");
     assert_eq!(gen["template_origin"]["slot_value"], "2026-05-15");
 }
@@ -773,7 +773,7 @@ fn list_persists_index_after_index_command() {
     let index_path = repo.path().join("my-project/mind-index.yaml");
     let content = std::fs::read_to_string(&index_path).unwrap();
     assert!(content.contains("daily_report/2026-05-15"), "index should contain template article id: {content}");
-    assert!(content.contains("outputs/2026-05/2026-05-15.md"), "index should contain template source path: {content}");
+    assert!(content.contains("outputs/2026-05/2026-05-15.md"), "index should contain template article path: {content}");
 }
 
 #[test]
@@ -841,7 +841,7 @@ fn list_works_without_prior_index() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn article_index_declared_directory_source_path() {
+fn article_index_declared_directory_article_path() {
     let repo = common::scaffold_team_reports_minimal_repro();
     let project_path = repo.path().join("team-reports");
 
@@ -859,7 +859,7 @@ fn article_index_declared_directory_source_path() {
     );
 
     let articles = common::read_index_articles_map(&repo, "team-reports");
-    common::assert_article_source_path(&articles, "docs/2026-05-monthly", "docs/2026-05-monthly");
+    common::assert_article_path(&articles, "docs/2026-05-monthly", "docs/2026-05-monthly");
 }
 
 #[test]
@@ -875,8 +875,8 @@ fn article_index_does_not_write_nonexistent_md_file() {
         .success();
 
     let articles = common::read_index_articles_map(&repo, "team-reports");
-    // The article's source_path must be the directory, not a fake .md file
-    common::assert_article_source_path(&articles, "docs/2026-05-monthly", "docs/2026-05-monthly");
+    // The article's article_path must be the directory, not a fake .md file
+    common::assert_article_path(&articles, "docs/2026-05-monthly", "docs/2026-05-monthly");
     // Verify the fake .md file does not exist on disk
     assert!(
         !project_path.join("docs/2026-05-monthly.md").exists(),
@@ -885,7 +885,7 @@ fn article_index_does_not_write_nonexistent_md_file() {
 }
 
 #[test]
-fn article_index_deterministic_source_path_repeatable() {
+fn article_index_deterministic_article_path_repeatable() {
     let repo = common::scaffold_team_reports_minimal_repro();
     let project_path = repo.path().join("team-reports");
 
@@ -904,8 +904,8 @@ fn article_index_deterministic_source_path_repeatable() {
     let second = run_index();
     assert_eq!(first, second, "re-index should produce byte-identical mind-index.yaml");
     assert!(
-        first.contains("source_path: docs/2026-05-monthly"),
-        "first run should have directory source_path: {first}"
+        first.contains("article_path: docs/2026-05-monthly"),
+        "first run should have directory article_path: {first}"
     );
 }
 
@@ -913,7 +913,7 @@ fn article_index_deterministic_source_path_repeatable() {
 fn article_index_missing_declared_source_diagnostic() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
-    // Declare an article with no existing source path
+    // Declare an article with no existing article path
     common::write_mind_yaml(&repo, "my-project", "schema: '1'\nbuild:\n  articles:\n    ghost-article: {}\n");
     // No docs/ghost-article/ dir, no docs/ghost-article.md file
 
@@ -931,11 +931,11 @@ fn article_index_missing_declared_source_diagnostic() {
     // The article should be in the index with the conventional docs/ path
     // (not a random invented path). Key is path全名: docs/ghost-article
     let entry = articles.get("docs/ghost-article").expect("docs/ghost-article should be in index");
-    let sp = entry["source_path"].as_str().unwrap_or("");
+    let sp = entry["article_path"].as_str().unwrap_or("");
     assert_eq!(sp, "docs/ghost-article.md", "missing source should use conventional path");
 
     // FR-003: a stderr warning must name the missing source so the user can fix it.
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("ghost-article"), "stderr must name the missing article: {stderr}");
-    assert!(stderr.contains("docs/ghost-article.md"), "stderr must name the expected source path: {stderr}");
+    assert!(stderr.contains("docs/ghost-article.md"), "stderr must name the expected article path: {stderr}");
 }

@@ -49,8 +49,8 @@ pub fn lint_project(
         }
     }
 
-    // Check configured article source directories exist
-    check_article_source_dirs(project_path, &mut issues, &mut unfixed_count, &mut fixable_count)?;
+    // Check configured article article directories exist
+    check_article_dirs(project_path, &mut issues, &mut unfixed_count, &mut fixable_count)?;
 
     let errors = issues.iter().filter(|i| matches!(i.severity, LintSeverity::Error) && !i.fixed).count() as u64;
     let warnings = issues.iter().filter(|i| matches!(i.severity, LintSeverity::Warning) && !i.fixed).count() as u64;
@@ -178,9 +178,9 @@ fn check_stale_index_entry(
     let mut stale_entries: Vec<String> = Vec::new();
 
     for article in index.articles.iter().flatten() {
-        let source_path = project_path.join(&article.source_path);
-        if !source_path.exists() {
-            stale_entries.push(article.source_path.clone());
+        let article_path = project_path.join(&article.article_path);
+        if !article_path.exists() {
+            stale_entries.push(article.article_path.clone());
         }
     }
     for asset in index.assets.iter().flatten() {
@@ -191,8 +191,8 @@ fn check_stale_index_entry(
     }
     for source in index.sources.iter().flatten() {
         if let Some(ref path) = source.path {
-            let source_path = project_path.join(path);
-            if !source_path.exists() {
+            let article_path = project_path.join(path);
+            if !article_path.exists() {
                 stale_entries.push(path.clone());
             }
         }
@@ -211,7 +211,7 @@ fn check_stale_index_entry(
 
     if fix && !stale_entries.is_empty() {
         let mut articles: Vec<crate::model::article::Article> = index.articles.unwrap_or_default();
-        articles.retain(|a| !stale_entries.contains(&a.source_path));
+        articles.retain(|a| !stale_entries.contains(&a.article_path));
 
         let all_assets: Vec<crate::model::asset::Asset> = index.assets.unwrap_or_default();
         let filtered_assets = all_assets.into_iter().filter(|a| !stale_entries.contains(&a.path)).collect::<Vec<_>>();
@@ -257,13 +257,13 @@ fn check_name_convention(project_path: &Path, issues: &mut Vec<ProjectLintIssue>
 
     for article in index.articles.iter().flatten() {
         let filename =
-            Path::new(&article.source_path).file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            Path::new(&article.article_path).file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
         if util::to_filename(&filename) != filename {
             issues.push(ProjectLintIssue {
                 severity: LintSeverity::Warning,
                 kind: LintKind::NameConvention,
                 message: format!("filename '{filename}' should be kebab-case"),
-                path: article.source_path.clone(),
+                path: article.article_path.clone(),
                 fixable: false,
                 fixed: false,
             });
@@ -355,7 +355,7 @@ fn check_duplicate_key(
 
     Ok(())
 }
-fn check_article_source_dirs(
+fn check_article_dirs(
     project_path: &Path,
     issues: &mut Vec<ProjectLintIssue>,
     unfixed_count: &mut u64,
@@ -367,16 +367,16 @@ fn check_article_source_dirs(
     };
 
     for (article_name, article_cfg) in &config.build.articles {
-        if let Some(ref source_dir) = article_cfg.source_dir {
-            let dir_path = project_path.join(source_dir);
+        if let Some(ref article_dir) = article_cfg.article_dir {
+            let dir_path = project_path.join(article_dir);
             if !dir_path.exists() || !dir_path.is_dir() {
                 issues.push(ProjectLintIssue {
                     severity: crate::model::project::LintSeverity::Error,
                     kind: crate::model::project::LintKind::MissingDirectory,
                     message: format!(
-                        "configured source directory '{source_dir}' for article '{article_name}' does not exist"
+                        "configured article directory '{article_dir}' for article '{article_name}' does not exist"
                     ),
-                    path: format!("{source_dir}/"),
+                    path: format!("{article_dir}/"),
                     fixable: true,
                     fixed: false,
                 });

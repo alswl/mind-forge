@@ -28,7 +28,7 @@ articles:
   prd-overview:
     title: PRD Overview
     type: prd
-    source_path: docs/prd-overview.md
+    article_path: docs/prd-overview.md
     status: published
     created_at: 2026-03-01T00:00:00Z
     updated_at: 2026-04-15T00:00:00Z

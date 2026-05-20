@@ -8,9 +8,9 @@ use crate::error::{MfError, Result};
 use crate::model::config::{BannerConfig, BannerLevel};
 use crate::service::{config as config_svc, index, util};
 
-/// A single source file entry in a build plan.
+/// A single article file entry in a build plan.
 #[derive(Debug, Serialize)]
-pub struct SourceEntry {
+pub struct ArticleInputEntry {
     pub path: String,
     pub size: u64,
 }
@@ -30,8 +30,8 @@ pub struct BannerInfo {
 pub struct BuildPlan {
     pub article: String,
     pub project: String,
-    pub source_path: String,
-    pub input_sources: Vec<SourceEntry>,
+    pub article_path: String,
+    pub input_files: Vec<ArticleInputEntry>,
     pub merge_order: Vec<String>,
     pub output_path: String,
     pub size_bytes: u64,
@@ -176,18 +176,18 @@ pub fn build_article(
     dry_run: bool,
     output_override: Option<&Path>,
 ) -> Result<BuildOutput> {
-    // Check for configured source_dir in build.articles.<article>.source_dir
-    let source_path = match config_svc::load_project(project_path, Some(repo_root)) {
+    // Check for configured article_dir in build.articles.<article>.article_dir
+    let article_path = match config_svc::load_project(project_path, Some(repo_root)) {
         Ok(Some(config)) => config
             .build
             .articles
             .get(article)
-            .and_then(|a| a.source_dir.as_ref())
+            .and_then(|a| a.article_dir.as_ref())
             .map(|dir| {
                 let p = project_path.join(dir);
                 if !p.exists() || !p.is_dir() {
                     return Err(MfError::usage(
-                        format!("configured source_dir '{dir}' for article '{article}' does not exist or is not a directory"),
+                        format!("configured article_dir '{dir}' for article '{article}' does not exist or is not a directory"),
                         Some("check the path or create the directory".to_string()),
                     ));
                 }
@@ -197,46 +197,46 @@ pub fn build_article(
         _ => None,
     };
 
-    let source_path = match source_path {
+    let article_path = match article_path {
         Some(path) => path,
-        None => resolve_indexed_article_source(project_path, article)?,
+        None => resolve_indexed_article_path(project_path, article)?,
     };
-    build_source(project_path, repo_root, article, &source_path, dry_run, output_override)
+    build_article_content(project_path, repo_root, article, &article_path, dry_run, output_override)
 }
 
 pub fn build_article_path(
     project_path: &Path,
     repo_root: &Path,
-    source_path: &Path,
+    article_path: &Path,
     dry_run: bool,
     output_override: Option<&Path>,
 ) -> Result<BuildOutput> {
-    let article = source_path
+    let article = article_path
         .file_stem()
-        .or_else(|| source_path.file_name())
+        .or_else(|| article_path.file_name())
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "article".to_string());
-    build_source(project_path, repo_root, &article, source_path, dry_run, output_override)
+    build_article_content(project_path, repo_root, &article, article_path, dry_run, output_override)
 }
 
-fn resolve_indexed_article_source(project_path: &Path, article: &str) -> Result<PathBuf> {
+fn resolve_indexed_article_path(project_path: &Path, article: &str) -> Result<PathBuf> {
     let index = index::load(project_path)?;
     let resolved = index::resolve_article(&index, article)?;
-    let source_path = project_path.join(&resolved.article.source_path);
-    if source_path.exists() {
-        return Ok(source_path);
+    let article_path = project_path.join(&resolved.article.article_path);
+    if article_path.exists() {
+        return Ok(article_path);
     }
     Err(MfError::usage(
-        format!("source not found: {}", resolved.article.source_path),
+        format!("article path not found: {}", resolved.article.article_path),
         Some("the file or directory may have been moved or deleted".to_string()),
     ))
 }
 
-fn build_source(
+fn build_article_content(
     project_path: &Path,
     repo_root: &Path,
     article: &str,
-    source_path: &Path,
+    article_path: &Path,
     dry_run: bool,
     output_override: Option<&Path>,
 ) -> Result<BuildOutput> {
@@ -267,9 +267,9 @@ fn build_source(
         BannerInfo { enabled: true, level: level_str, text: Some(b.text.clone()) }
     });
 
-    if !source_path.exists() {
+    if !article_path.exists() {
         return Err(MfError::usage(
-            format!("source not found: {}", source_path.display()),
+            format!("article path not found: {}", article_path.display()),
             Some("the file or directory may have been moved or deleted".to_string()),
         ));
     }
@@ -284,9 +284,9 @@ fn build_source(
         }
     };
 
-    // 5. Gather source files — single file or directory contents
-    let source_files: Vec<std::path::PathBuf> = if source_path.is_dir() {
-        let mut files: Vec<_> = fs::read_dir(source_path)
+    // 5. Gather article files — single file or directory contents
+    let article_files: Vec<std::path::PathBuf> = if article_path.is_dir() {
+        let mut files: Vec<_> = fs::read_dir(article_path)
             .map_err(MfError::Io)?
             .filter_map(|e| e.ok())
             .filter(|e| e.path().extension().is_some_and(|ext| ext == defaults::MARKDOWN_EXTENSION))
@@ -295,26 +295,26 @@ fn build_source(
         files.sort();
         files
     } else {
-        vec![source_path.to_path_buf()]
+        vec![article_path.to_path_buf()]
     };
 
-    if source_files.is_empty() {
+    if article_files.is_empty() {
         return Err(MfError::usage(
-            format!("no markdown files found in source directory: {}", source_path.display()),
+            format!("no markdown files found in article directory: {}", article_path.display()),
             None,
         ));
     }
 
-    let total_size: u64 = source_files.iter().filter_map(|p| fs::metadata(p).ok()).map(|m| m.len()).sum();
+    let total_size: u64 = article_files.iter().filter_map(|p| fs::metadata(p).ok()).map(|m| m.len()).sum();
 
     // 6. Determine merge order (from config or fallback)
     let merge_order =
         if build_cfg.merge_order.is_empty() { vec![article.to_string()] } else { build_cfg.merge_order.clone() };
 
     // 7. Build plan output (for dry-run)
-    let input_sources: Vec<SourceEntry> = source_files
+    let input_files: Vec<ArticleInputEntry> = article_files
         .iter()
-        .map(|p| SourceEntry {
+        .map(|p| ArticleInputEntry {
             path: p.strip_prefix(project_path).unwrap_or(p).to_string_lossy().to_string(),
             size: fs::metadata(p).ok().map(|m| m.len()).unwrap_or(0),
         })
@@ -324,8 +324,8 @@ fn build_source(
         return Ok(BuildOutput::Plan(BuildPlan {
             article: article.to_string(),
             project: util::dir_name(project_path),
-            source_path: source_path.to_string_lossy().to_string(),
-            input_sources,
+            article_path: article_path.to_string_lossy().to_string(),
+            input_files,
             merge_order,
             output_path: output_path.to_string_lossy().to_string(),
             size_bytes: total_size,
@@ -337,7 +337,7 @@ fn build_source(
 
     // 8. Read and concatenate files, write output
     let mut content = String::new();
-    for file in &source_files {
+    for file in &article_files {
         let file_content = fs::read_to_string(file).map_err(MfError::Io)?;
         let file_content = strip_typora_front_matter(&file_content);
         content.push_str(&file_content);
@@ -361,7 +361,7 @@ fn build_source(
         BuildResult { output_path: output_path.to_string_lossy().to_string(), size_bytes: content.len() as u64 };
 
     // Auto-index: ensure the built article exists in mind-index.yaml
-    if let Err(e) = auto_index_article(project_path, article, source_path) {
+    if let Err(e) = auto_index_article(project_path, article, article_path) {
         tracing::warn!("failed to auto-index article '{}': {}", article, e);
     }
 
@@ -383,16 +383,16 @@ pub enum BuildOutput {
 }
 
 /// After a successful build, ensure the article is present in mind-index.yaml.
-fn auto_index_article(project_path: &Path, article: &str, source_path: &Path) -> Result<()> {
+fn auto_index_article(project_path: &Path, article: &str, article_path: &Path) -> Result<()> {
     let mut index =
         crate::service::index::load(project_path).unwrap_or_else(|_| crate::model::index::IndexFile::create_default());
     let layout = config_svc::effective_layout(project_path)?;
 
-    // Determine the relative source_path from the project root
-    let rel_source = if source_path.is_dir() {
+    // Determine the relative article_path from the project root
+    let rel_source = if article_path.is_dir() {
         let file_name = format!("{}.{}", article, defaults::MARKDOWN_EXTENSION);
-        if source_path.join(&file_name).is_file() {
-            source_path
+        if article_path.join(&file_name).is_file() {
+            article_path
                 .join(file_name)
                 .strip_prefix(project_path)
                 .ok()
@@ -400,7 +400,7 @@ fn auto_index_article(project_path: &Path, article: &str, source_path: &Path) ->
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| format!("{}/{}.{}", layout.articles, article, defaults::MARKDOWN_EXTENSION))
         } else {
-            source_path
+            article_path
                 .strip_prefix(project_path)
                 .ok()
                 .and_then(|p| p.to_str())
@@ -408,8 +408,8 @@ fn auto_index_article(project_path: &Path, article: &str, source_path: &Path) ->
                 .unwrap_or_else(|| format!("{}/{}", layout.articles, article))
         }
     } else {
-        // source_path is a file — strip project prefix to get the relative path
-        source_path
+        // article_path is a file — strip project prefix to get the relative path
+        article_path
             .strip_prefix(project_path)
             .ok()
             .and_then(|p| p.to_str())
@@ -419,7 +419,7 @@ fn auto_index_article(project_path: &Path, article: &str, source_path: &Path) ->
 
     // Check if article is already in the index
     let already_indexed =
-        index.articles.as_ref().is_some_and(|articles| articles.iter().any(|a| a.source_path == rel_source));
+        index.articles.as_ref().is_some_and(|articles| articles.iter().any(|a| a.article_path == rel_source));
 
     if !already_indexed {
         let project_name = util::dir_name(project_path);
@@ -429,7 +429,7 @@ fn auto_index_article(project_path: &Path, article: &str, source_path: &Path) ->
             title: article.replace('-', " "),
             project: project_name,
             article_type: crate::model::article::ArticleType::Blog,
-            source_path: rel_source,
+            article_path: rel_source,
             status: crate::model::article::ArticleStatus::Published,
             created_at: now.clone(),
             updated_at: now,
@@ -447,12 +447,12 @@ mod tests {
     use crate::model::article::{Article, ArticleStatus, ArticleType};
     use crate::model::index::IndexFile;
 
-    fn make_article(source_path: &str, title: &str) -> Article {
+    fn make_article(article_path: &str, title: &str) -> Article {
         Article {
             title: title.to_string(),
             project: "test".to_string(),
             article_type: ArticleType::Blog,
-            source_path: source_path.to_string(),
+            article_path: article_path.to_string(),
             status: ArticleStatus::Draft,
             created_at: "2026-05-15T00:00:00Z".to_string(),
             updated_at: "2026-05-15T00:00:00Z".to_string(),
@@ -461,7 +461,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_indexed_article_source_by_exact_key() {
+    fn resolve_indexed_article_path_by_exact_key() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("docs/2026-05-monthly")).unwrap();
         std::fs::write(dir.path().join("docs/2026-05-monthly/01-team-okr.md"), "# okr\n").unwrap();
@@ -472,13 +472,13 @@ mod tests {
         };
         index::save(dir.path(), &index).unwrap();
 
-        let result = resolve_indexed_article_source(dir.path(), "2026-05-monthly").unwrap();
+        let result = resolve_indexed_article_path(dir.path(), "2026-05-monthly").unwrap();
         assert!(result.exists());
         assert!(result.is_dir());
     }
 
     #[test]
-    fn resolve_indexed_article_source_title_not_used_as_path_derivation() {
+    fn resolve_indexed_article_path_title_not_used_as_path_derivation() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("docs/team-updates")).unwrap();
         std::fs::write(dir.path().join("docs/team-updates/01-note.md"), "# note\n").unwrap();
@@ -490,11 +490,11 @@ mod tests {
         index::save(dir.path(), &index).unwrap();
 
         // Lookup by key (not title) should work
-        let result = resolve_indexed_article_source(dir.path(), "team-updates").unwrap();
+        let result = resolve_indexed_article_path(dir.path(), "team-updates").unwrap();
         assert!(result.exists());
 
         // Lookup by display title should fail — title is not a search key
-        let err = resolve_indexed_article_source(dir.path(), "Team Updates").unwrap_err();
+        let err = resolve_indexed_article_path(dir.path(), "Team Updates").unwrap_err();
         assert!(matches!(err, MfError::NotFound { .. }));
     }
 }

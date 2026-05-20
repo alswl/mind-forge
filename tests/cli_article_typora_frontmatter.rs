@@ -378,7 +378,7 @@ fn build_tolerates_typora_front_matter_without_rewriting() {
     assert!(output.status.success(), "build should succeed: {}", String::from_utf8_lossy(&output.stderr));
 
     let after = read_md(&repo, "my-project", "docs/has-typora.md");
-    assert_eq!(after, original, "build must not modify the source file");
+    assert_eq!(after, original, "build must not modify the article file");
 
     let output = std::fs::read_to_string(repo.path().join("my-project/outputs/has-typora.md")).unwrap();
     assert!(!output.contains("typora-copy-images-to:"), "build output must omit Typora front matter");

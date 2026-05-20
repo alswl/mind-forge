@@ -26,7 +26,7 @@ pub struct Article {
     #[serde(rename = "type", default)]
     pub article_type: ArticleType,
     #[serde(default)]
-    pub source_path: String,
+    pub article_path: String,
     #[serde(default)]
     pub status: ArticleStatus,
     #[serde(default)]
@@ -50,14 +50,14 @@ pub struct TemplateOrigin {
 pub struct ScannedArticle {
     pub title: String,
     pub filename: String,
-    /// The project-relative source directory this article was found in (e.g. "docs", "specs").
+    /// The project-relative article directory this article was found in (e.g. "docs", "specs").
     /// `None` means the default docs directory.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub source_dir: Option<String>,
-    /// Explicit project-relative source path when the scan result represents a
-    /// configured article source directory rather than a single Markdown file.
+    pub article_dir: Option<String>,
+    /// Explicit project-relative article path when the scan result represents a
+    /// configured article directory rather than a single Markdown file.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub source_path: Option<String>,
+    pub article_path: Option<String>,
 }
 
 /// Result of comparing the index against a filesystem scan.
@@ -86,7 +86,7 @@ mod tests {
         let yaml = r#"title: Test Article
 project: my-project
 type: blog
-source_path: docs/test.md
+article_path: docs/test.md
 status: draft
 created_at: '2026-05-15T00:00:00Z'
 updated_at: '2026-05-15T00:00:00Z'
@@ -117,7 +117,7 @@ updated_at: '2026-05-15T00:00:00Z'
 
     #[test]
     fn article_type_blog_still_deserializes() {
-        let yaml = "title: Old\nproject: p\ntype: blog\nsource_path: docs/old.md\nstatus: draft\ncreated_at: '2026-01-01T00:00:00Z'\nupdated_at: '2026-01-01T00:00:00Z'\n";
+        let yaml = "title: Old\nproject: p\ntype: blog\narticle_path: docs/old.md\nstatus: draft\ncreated_at: '2026-01-01T00:00:00Z'\nupdated_at: '2026-01-01T00:00:00Z'\n";
         let article: Article = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(article.article_type, ArticleType::Blog);
     }
@@ -128,7 +128,7 @@ updated_at: '2026-05-15T00:00:00Z'
             title: "Daily Report".to_string(),
             project: "my-project".to_string(),
             article_type: ArticleType::Blog,
-            source_path: "outputs/2026-05/2026-05-15.md".to_string(),
+            article_path: "outputs/2026-05/2026-05-15.md".to_string(),
             status: ArticleStatus::Draft,
             created_at: "2026-05-15T00:00:00Z".to_string(),
             updated_at: "2026-05-15T00:00:00Z".to_string(),

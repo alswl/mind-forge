@@ -13,7 +13,7 @@ articles:
     type: blog
   monthly-review:
     type: blog
-    source_dir: reports
+    article_dir: reports
 publish:
   targets:
     - name: local-pdf

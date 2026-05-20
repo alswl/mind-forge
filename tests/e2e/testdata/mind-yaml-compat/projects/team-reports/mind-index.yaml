@@ -3,14 +3,14 @@ articles:
   weekly-summary:
     title: Weekly Summary
     type: blog
-    source_path: reports/weekly-2026-w19.md
+    article_path: reports/weekly-2026-w19.md
     status: published
     created_at: 2026-05-11T00:00:00Z
     updated_at: 2026-05-13T00:00:00Z
   monthly-review:
     title: Monthly Review
     type: blog
-    source_path: reports/monthly-2026-04.md
+    article_path: reports/monthly-2026-04.md
     status: published
     created_at: 2026-05-01T00:00:00Z
     updated_at: 2026-05-02T00:00:00Z

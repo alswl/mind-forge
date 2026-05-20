@@ -77,9 +77,9 @@ pub enum MfError {
     #[error("invalid template name '{name}'")]
     InvalidTemplateName { name: String },
 
-    /// A declared article has no source files on disk (FR-005).
-    #[error("no source files for '{article}'")]
-    NoSourceFiles { article: String, source_path: String },
+    /// A declared article has no article files on disk (FR-005).
+    #[error("no article files for '{article}'")]
+    NoArticleFiles { article: String, article_path: String },
 
     /// The build artifact could not be found on disk (renamed from overloaded `not_found`).
     #[error("{message}")]
@@ -141,7 +141,7 @@ impl MfError {
             | Self::NoEffectiveDate
             | Self::MultiSlotTemplate { .. }
             | Self::InvalidTemplateName { .. }
-            | Self::NoSourceFiles { .. }
+            | Self::NoArticleFiles { .. }
             | Self::BuildArtifactMissing { .. } => ExitCode::Failure,
             Self::NotImplemented { .. } => ExitCode::NotImplemented,
             Self::UnknownTemplate { .. } => ExitCode::UsageError,
@@ -163,7 +163,7 @@ impl MfError {
             Self::NoEffectiveDate => "no_effective_date",
             Self::MultiSlotTemplate { .. } => "multi_slot_template",
             Self::InvalidTemplateName { .. } => "invalid_template_name",
-            Self::NoSourceFiles { .. } => "no_source_files",
+            Self::NoArticleFiles { .. } => "no_article_files",
             Self::BuildArtifactMissing { .. } => "build_artifact_missing",
             Self::UnknownTemplate { .. } => "unknown_template",
             Self::DuplicateBlockSlug { .. } => "duplicate_block_slug",
@@ -185,7 +185,7 @@ impl MfError {
             | Self::MultiSlotTemplate { .. }
             | Self::InvalidTemplateName { .. } => self.to_string(),
             Self::NoEffectiveDate => "article has no effective date".to_string(),
-            Self::NoSourceFiles { article, .. } => format!("no source files for '{article}'"),
+            Self::NoArticleFiles { article, .. } => format!("no article files for '{article}'"),
             Self::BuildArtifactMissing { message, .. } => message.clone(),
             Self::UnknownTemplate { .. } | Self::DuplicateBlockSlug { .. } | Self::ShapeConflict { .. } => {
                 self.to_string()
@@ -215,7 +215,7 @@ impl MfError {
                 Some("rewrite template to use a single distinguishing slot; coarse-then-fine date nests are accepted")
             }
             Self::InvalidTemplateName { .. } => Some("rename template key to match ^[a-z][a-z0-9_]*$"),
-            Self::NoSourceFiles { .. } => Some("create the source file or remove the declaration from mind.yaml"),
+            Self::NoArticleFiles { .. } => Some("create the article file or remove the declaration from mind.yaml"),
             Self::BuildArtifactMissing { hint, .. } => hint.as_deref().or(Some("run `mf build <id>` first")),
             Self::UnknownTemplate { .. } => {
                 Some("built-ins are blank, arch, prd, blog; otherwise expected a path under the project root")
@@ -321,10 +321,10 @@ mod tests {
     }
 
     #[test]
-    fn no_source_files_kind_and_hint() {
-        let err = MfError::NoSourceFiles { article: "test".to_string(), source_path: "docs/test.md".to_string() };
-        assert_eq!(err.kind(), "no_source_files");
-        assert!(err.hint().unwrap_or("").contains("source file"));
+    fn no_article_files_kind_and_hint() {
+        let err = MfError::NoArticleFiles { article: "test".to_string(), article_path: "docs/test.md".to_string() };
+        assert_eq!(err.kind(), "no_article_files");
+        assert!(err.hint().unwrap_or("").contains("article file"));
     }
 
     #[test]
@@ -415,7 +415,7 @@ mod tests {
             MfError::NoEffectiveDate,
             MfError::MultiSlotTemplate { template_name: "t".to_string() },
             MfError::InvalidTemplateName { name: "Bad".to_string() },
-            MfError::NoSourceFiles { article: "x".to_string(), source_path: "docs/x.md".to_string() },
+            MfError::NoArticleFiles { article: "x".to_string(), article_path: "docs/x.md".to_string() },
             MfError::BuildArtifactMissing { message: "missing".to_string(), hint: None },
             MfError::UnknownTemplate { name: "x".to_string() },
             MfError::DuplicateBlockSlug { slug: "x".to_string(), h1: "a".to_string(), h2: "b".to_string() },

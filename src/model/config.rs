@@ -85,7 +85,7 @@ pub struct BannerConfig {
 #[derive(Debug, Clone, Default, JsonSchema, Serialize, Deserialize)]
 pub struct ArticleBuildConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_dir: Option<String>,
+    pub article_dir: Option<String>,
 }
 
 /// Build configuration for the project.

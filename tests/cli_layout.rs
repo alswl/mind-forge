@@ -119,7 +119,7 @@ fn article_new_uses_configured_articles_dir() {
 
 /// T026: `layout.sources: references` appears in effective layout via config show.
 #[test]
-fn source_dir_configured_in_effective_layout() {
+fn article_dir_configured_in_effective_layout() {
     let repo = common::setup_repo();
     common::write_mind_yaml(&repo, "proj", "schema: '1'\nlayout:\n  sources: references\n");
 

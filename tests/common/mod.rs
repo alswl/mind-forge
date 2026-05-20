@@ -51,7 +51,7 @@ pub fn write_mind_yaml(repo: &TempDir, project_name: &str, yaml: &str) {
 #[allow(dead_code)]
 pub fn write_article_index(repo: &TempDir, project_name: &str, article: &str) {
     let yaml = format!(
-        "schema_version: '1'\narticles:\n  - title: '{article}'\n    project: '{project_name}'\n    article_type: blog\n    source_path: 'docs/{article}.md'\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n"
+        "schema_version: '1'\narticles:\n  - title: '{article}'\n    project: '{project_name}'\n    article_type: blog\n    article_path: 'docs/{article}.md'\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n"
     );
     write_index(repo, project_name, &yaml);
 }
@@ -63,7 +63,7 @@ pub fn write_article_index(repo: &TempDir, project_name: &str, article: &str) {
 /// - `templates.daily_report` with `mode: generated`,
 ///   `pattern: "outputs/{date:YYYY-MM}/{date:YYYY-MM-DD}.md"`
 ///   and matching file at `outputs/2026-05/2026-05-15.md`
-/// - `build.articles.reports` with `source_dir: reports` + present file
+/// - `build.articles.reports` with `article_dir: reports` + present file
 /// - compat `articles.legacy-blog` (no on-disk source → declared+missing)
 /// - `docs/2026-05-10-hello.md`
 /// - Two local targets: `paas-git` (with `{date:YYYY-MM}` + `prefix: "cie-"`)
@@ -85,7 +85,7 @@ build:
   format: md
   articles:
     reports:
-      source_dir: reports
+      article_dir: reports
 articles:
   legacy-blog:
     type: blog
@@ -125,7 +125,7 @@ pub fn write_doc(repo: &TempDir, project_name: &str, name: &str, content: &str) 
     fs::write(doc_dir.join(format!("{name}.md")), content).unwrap();
 }
 
-/// 在项目的指定相对路径（如自定义 source_dir）中写入 Markdown 文件。
+/// 在项目的指定相对路径（如自定义 article_dir）中写入 Markdown 文件。
 #[allow(dead_code)]
 pub fn write_source_file(repo: &TempDir, project_name: &str, rel_dir: &str, name: &str, content: &str) {
     let dst_dir = repo.path().join(project_name).join(rel_dir);
@@ -206,7 +206,7 @@ pub fn write_term_index(repo: &TempDir, project_name: &str, terms_yaml: &str) {
 /// Scaffold the minimal repro fixture matching quickstart.md:
 /// - `projects/team-reports/docs/2026-05-monthly/01-team-okr.md`
 /// - `projects/team-reports/outputs/2026-05/2026-05-15.md`
-/// - build.articles `2026-05-monthly` (no source_dir)
+/// - build.articles `2026-05-monthly` (no article_dir)
 /// - templates `daily_report` with `mode: generated`
 /// - local publish target with date expansion + prefix
 #[allow(dead_code)]
@@ -249,7 +249,7 @@ templates:
     fs::write(project_path.join("docs/2026-05-monthly/01-team-okr.md"), "# 2026-05 Monthly\n\nmonthly content\n")
         .unwrap();
 
-    // Create the generated source file
+    // Create the generated article file
     fs::write(project_path.join("outputs/2026-05/2026-05-15.md"), "# 2026-05-15\n\ndaily content\n").unwrap();
 
     dir
@@ -263,16 +263,16 @@ pub fn read_index_articles_map(repo: &TempDir, project_name: &str) -> serde_yaml
     parsed.get("articles").cloned().unwrap_or(serde_yaml::Value::Null)
 }
 
-/// Assert that `articles_map` contains a key with `source_path` equal to `expected`.
+/// Assert that `articles_map` contains a key with `article_path` equal to `expected`.
 #[allow(dead_code)]
-pub fn assert_article_source_path(articles_map: &serde_yaml::Value, key: &str, expected: &str) {
+pub fn assert_article_path(articles_map: &serde_yaml::Value, key: &str, expected: &str) {
     let entry = articles_map
         .get(key)
         .unwrap_or_else(|| panic!("article key '{}' not found in articles map: {articles_map:#?}", key));
-    let source_path = entry["source_path"]
+    let article_path = entry["article_path"]
         .as_str()
-        .unwrap_or_else(|| panic!("article '{}' has no source_path field: {entry:#?}", key));
-    assert_eq!(source_path, expected, "source_path mismatch for article '{}'", key);
+        .unwrap_or_else(|| panic!("article '{}' has no article_path field: {entry:#?}", key));
+    assert_eq!(article_path, expected, "article_path mismatch for article '{}'", key);
 }
 
 /// Assert that `articles_map` does NOT contain a key.

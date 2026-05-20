@@ -24,9 +24,9 @@ fn default_invocation_creates_directory_article() {
     assert!(project.join("docs/my-title/01-opening.md").exists(), "01-opening.md should exist under docs/my-title/");
     assert!(!project.join("docs/my-title.md").exists(), "no docs/my-title.md file should exist (directory default)");
 
-    // FR-010: source_path is docs/my-title (no trailing slash)
+    // FR-010: article_path is docs/my-title (no trailing slash)
     let index_content = fs::read_to_string(project.join("mind-index.yaml")).unwrap();
-    assert!(index_content.contains("source_path: docs/my-title"));
+    assert!(index_content.contains("article_path: docs/my-title"));
     assert!(index_content.contains("type: blank"));
 }
 
@@ -83,7 +83,7 @@ fn json_envelope_uses_configured_docs_dir() {
     assert_eq!(envelope["data"]["files"].as_array().unwrap().len(), 5);
 
     let index_content = fs::read_to_string(project.join("mind-index.yaml")).unwrap();
-    assert!(index_content.contains("source_path: notes/configured-docs"));
+    assert!(index_content.contains("article_path: notes/configured-docs"));
 }
 
 // ── T012: Same-shape conflict test ──
@@ -129,12 +129,12 @@ fn same_shape_conflict_and_force_replacement() {
     let index_after = fs::read_to_string(project.join("mind-index.yaml")).unwrap();
     // Index should not have grown (replaced, not appended)
     assert_eq!(
-        index_before.matches("source_path: docs/my-title").count(),
-        index_after.matches("source_path: docs/my-title").count(),
+        index_before.matches("article_path: docs/my-title").count(),
+        index_after.matches("article_path: docs/my-title").count(),
         "force should replace, not append"
     );
     assert_eq!(
-        index_after.matches("source_path: docs/my-title").count(),
+        index_after.matches("article_path: docs/my-title").count(),
         1,
         "should be exactly one entry for my-title"
     );
@@ -399,9 +399,9 @@ fn file_mode_creates_single_file() {
     assert_eq!(envelope["data"]["path"], "docs/quick-note.md");
     assert_eq!(envelope["data"]["files"][0], "quick-note.md");
 
-    // FR-008: source_path is docs/quick-note.md
+    // FR-008: article_path is docs/quick-note.md
     let index_content = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
-    assert!(index_content.contains("source_path: docs/quick-note.md"));
+    assert!(index_content.contains("article_path: docs/quick-note.md"));
 }
 
 // ── T026: Template content determines the block structure ──
@@ -581,7 +581,7 @@ fn custom_template_directory_layout() {
     // Index records article_type as blank for custom templates
     let index_content = fs::read_to_string(repo.path().join("demo/mind-index.yaml")).unwrap();
     assert!(index_content.contains("type: blank"));
-    assert!(index_content.contains("source_path: docs/q2-outage"));
+    assert!(index_content.contains("article_path: docs/q2-outage"));
 }
 
 // ── T031: custom-template --file mode ──

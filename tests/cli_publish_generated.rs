@@ -50,7 +50,7 @@ fn end_to_end_generated_publish() {
     std::fs::create_dir_all(&build_dir).unwrap();
     std::fs::write(build_dir.join("2026-05-15.md"), b"# Generated content\n").unwrap();
 
-    // Create the generated source file on disk
+    // Create the generated article file on disk
     let output_dir = project_path.join("outputs/2026-05");
     std::fs::create_dir_all(&output_dir).unwrap();
     std::fs::write(output_dir.join("2026-05-15.md"), b"# Generated content\n").unwrap();
@@ -180,7 +180,7 @@ fn generated_publish_source_is_template_file() {
     let source = parsed["data"]["source"].as_str().unwrap_or("");
     assert!(
         source.ends_with("outputs/2026-05/2026-05-15.md"),
-        "source should be the generated template source file, got: {source}"
+        "source should be the generated template article file, got: {source}"
     );
 }
 

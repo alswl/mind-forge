@@ -38,14 +38,14 @@ articles:
   - title: "First Post"
     project: "alpha"
     type: blog
-    source_path: "docs/first-post.md"
+    article_path: "docs/first-post.md"
     status: draft
     created_at: "2026-04-30T12:00:00Z"
     updated_at: "2026-04-30T12:00:00Z"
   - title: "Second Post"
     project: "alpha"
     type: blog
-    source_path: "docs/second-post.md"
+    article_path: "docs/second-post.md"
     status: published
     created_at: "2026-04-30T12:05:00Z"
     updated_at: "2026-04-30T12:15:00Z"
@@ -73,7 +73,7 @@ articles:
   - title: "Ghost"
     project: "alpha"
     type: blog
-    source_path: "docs/ghost.md"
+    article_path: "docs/ghost.md"
     status: draft
     created_at: "2026-04-30T12:00:00Z"
     updated_at: "2026-04-30T12:00:00Z"
@@ -85,7 +85,7 @@ articles:
   - title: "Some Article"
     project: "alpha"
     type: blog
-    source_path: "docs/Some Article.md"
+    article_path: "docs/Some Article.md"
     status: draft
     created_at: "2026-04-30T12:00:00Z"
     updated_at: "2026-04-30T12:00:00Z"
@@ -227,7 +227,7 @@ articles:
   - title: "My Article"
     project: "my-project"
     type: blog
-    source_path: "docs/my-article.md"
+    article_path: "docs/my-article.md"
     status: published
     created_at: "2026-05-14T00:00:00Z"
     updated_at: "2026-05-14T00:00:00Z"

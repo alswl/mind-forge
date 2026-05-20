@@ -389,11 +389,11 @@ fn source_key(source: &crate::model::source::Source) -> std::result::Result<Stri
 }
 
 pub fn article_key(article: &crate::model::article::Article) -> std::result::Result<String, serde_yaml::Error> {
-    // Primary key is source_path without .md extension.
+    // Primary key is article_path without .md extension.
     // For docs/ articles: "docs/2026-05-monthly"
     // For generated articles: "outputs/2026-05/2026-05-15"
     // For non-docs directory articles: "specs/quarterly"
-    let path = article.source_path.strip_suffix(".md").unwrap_or(&article.source_path);
+    let path = article.article_path.strip_suffix(".md").unwrap_or(&article.article_path);
     Ok(path.trim_end_matches('/').to_string())
 }
 
@@ -403,8 +403,8 @@ pub fn article_key(article: &crate::model::article::Article) -> std::result::Res
 /// Used by build output and publish artifact lookup to keep
 /// `_build/<short-key>.<format>` consistent and avoid double-prefix
 /// paths like `outputs/outputs/...`.
-pub fn article_output_stem(source_path: &str) -> &str {
-    let path = source_path.strip_suffix(".md").unwrap_or(source_path);
+pub fn article_output_stem(article_path: &str) -> &str {
+    let path = article_path.strip_suffix(".md").unwrap_or(article_path);
     path.strip_prefix(defaults::DOCS_PATH_PREFIX)
         .or_else(|| path.strip_prefix(defaults::BUILD_OUTPUT_PATH_PREFIX))
         .unwrap_or(path)
@@ -439,7 +439,7 @@ pub struct ResolvedArticle<'a> {
 ///
 /// Resolution order:
 /// 1. Exact canonical article key (path全名, e.g. `docs/2026-05-monthly`)
-/// 2. Exact indexed source_path
+/// 2. Exact indexed article_path
 /// 3. DOCS_DIR relative name (e.g. `2026-05-monthly` for docs/ articles)
 /// 4. Template alias (`<template_name>/<slot_value>`, e.g. `daily_report/2026-05-15`)
 /// 5. Unambiguous basename (strip first directory component + .md extension)
@@ -466,9 +466,9 @@ pub fn resolve_article<'a>(index: &'a IndexFile, article_arg: &str) -> Result<Re
         }
     }
 
-    // 2. Exact source_path match
+    // 2. Exact article_path match
     for a in articles {
-        if a.source_path == article_arg {
+        if a.article_path == article_arg {
             let key = article_key(a).unwrap_or_else(|_| article_arg.to_string());
             return Ok(ResolvedArticle { article: a, canonical_key: key });
         }
@@ -477,7 +477,7 @@ pub fn resolve_article<'a>(index: &'a IndexFile, article_arg: &str) -> Result<Re
     // 3. DOCS_DIR relative name match (e.g. "2026-05-monthly" for docs/2026-05-monthly)
     for a in articles {
         if let Ok(key) = article_key(a) {
-            if key != article_arg && article_output_stem(&a.source_path) == article_arg {
+            if key != article_arg && article_output_stem(&a.article_path) == article_arg {
                 return Ok(ResolvedArticle { article: a, canonical_key: key });
             }
         }
@@ -495,14 +495,14 @@ pub fn resolve_article<'a>(index: &'a IndexFile, article_arg: &str) -> Result<Re
     }
 
     // 5. Unambiguous short name / basename.
-    // Try matching the article_arg against the source_path after stripping:
+    // Try matching the article_arg against the article_path after stripping:
     // - any first directory component (e.g. docs/, notes/, specs/)
     // - .md extension
     // Also try constructing expected paths from the arg.
     let matches: Vec<&Article> = articles
         .iter()
         .filter(|a| {
-            let sp = &a.source_path;
+            let sp = &a.article_path;
             sp == &format!("{}/{}", defaults::DOCS_DIR, article_arg)
                 || sp == &format!("{}/{}.{}", defaults::DOCS_DIR, article_arg, defaults::MARKDOWN_EXTENSION)
                 || sp
@@ -534,12 +534,12 @@ mod tests {
     use super::*;
     use crate::model::article::{Article, ArticleStatus, ArticleType, TemplateOrigin};
 
-    fn make_article(source_path: &str, template_origin: Option<TemplateOrigin>) -> Article {
+    fn make_article(article_path: &str, template_origin: Option<TemplateOrigin>) -> Article {
         Article {
             title: "test".to_string(),
             project: "test".to_string(),
             article_type: ArticleType::Blog,
-            source_path: source_path.to_string(),
+            article_path: article_path.to_string(),
             status: ArticleStatus::Draft,
             created_at: "2026-05-15T00:00:00Z".to_string(),
             updated_at: "2026-05-15T00:00:00Z".to_string(),
@@ -548,7 +548,7 @@ mod tests {
     }
 
     #[test]
-    fn article_key_uses_source_path_not_template_origin() {
+    fn article_key_uses_article_path_not_template_origin() {
         let article = make_article(
             "outputs/2026-05/2026-05-15.md",
             Some(TemplateOrigin { template_name: "daily_report".to_string(), slot_value: "2026-05-15".to_string() }),
@@ -556,7 +556,7 @@ mod tests {
         let key = article_key(&article).unwrap();
         assert_eq!(
             key, "outputs/2026-05/2026-05-15",
-            "primary key should be derived from source_path, not template_origin"
+            "primary key should be derived from article_path, not template_origin"
         );
     }
 
@@ -575,27 +575,27 @@ mod tests {
     }
 
     #[test]
-    fn article_key_generated_has_source_path_key() {
+    fn article_key_generated_has_article_path_key() {
         let article = make_article(
             "outputs/2026-05/2026-05-15.md",
             Some(TemplateOrigin { template_name: "daily_report".to_string(), slot_value: "2026-05-15".to_string() }),
         );
         let key = article_key(&article).unwrap();
-        assert_eq!(key, "outputs/2026-05/2026-05-15", "generated article primary key is its source_path without .md");
+        assert_eq!(key, "outputs/2026-05/2026-05-15", "generated article primary key is its article_path without .md");
     }
 
     #[test]
-    fn article_key_handles_directory_source_path() {
+    fn article_key_handles_directory_article_path() {
         let article = make_article("docs/2026-05-monthly", None);
         let key = article_key(&article).unwrap();
-        assert_eq!(key, "docs/2026-05-monthly", "directory source_path should produce key without trailing slash");
+        assert_eq!(key, "docs/2026-05-monthly", "directory article_path should produce key without trailing slash");
     }
 
     #[test]
-    fn article_key_handles_non_docs_directory_source_path() {
+    fn article_key_handles_non_docs_directory_article_path() {
         let article = make_article("specs/quarterly", None);
         let key = article_key(&article).unwrap();
-        assert_eq!(key, "specs/quarterly", "non-docs source_path should produce key verbatim");
+        assert_eq!(key, "specs/quarterly", "non-docs article_path should produce key verbatim");
     }
 
     // ── resolve_article tests ──
@@ -617,7 +617,7 @@ mod tests {
         let index = make_index(vec![make_article("docs/2026-05-monthly", None)]);
         let resolved = resolve_article(&index, "docs/2026-05-monthly").unwrap();
         assert_eq!(resolved.canonical_key, "docs/2026-05-monthly");
-        assert_eq!(resolved.article.source_path, "docs/2026-05-monthly");
+        assert_eq!(resolved.article.article_path, "docs/2026-05-monthly");
     }
 
     #[test]
@@ -625,7 +625,7 @@ mod tests {
         let index = make_index(vec![make_article("docs/2026-05-monthly", None)]);
         let resolved = resolve_article(&index, "2026-05-monthly").unwrap();
         assert_eq!(resolved.canonical_key, "docs/2026-05-monthly");
-        assert_eq!(resolved.article.source_path, "docs/2026-05-monthly");
+        assert_eq!(resolved.article.article_path, "docs/2026-05-monthly");
     }
 
     #[test]
@@ -637,7 +637,7 @@ mod tests {
         let index = make_index(vec![article]);
         let resolved = resolve_article(&index, "daily_report/2026-05-15").unwrap();
         assert_eq!(resolved.canonical_key, "outputs/2026-05/2026-05-15");
-        assert_eq!(resolved.article.source_path, "outputs/2026-05/2026-05-15.md");
+        assert_eq!(resolved.article.article_path, "outputs/2026-05/2026-05-15.md");
     }
 
     #[test]
@@ -649,11 +649,11 @@ mod tests {
         let index = make_index(vec![article]);
         let resolved = resolve_article(&index, "outputs/2026-05/2026-05-15").unwrap();
         assert_eq!(resolved.canonical_key, "outputs/2026-05/2026-05-15");
-        assert_eq!(resolved.article.source_path, "outputs/2026-05/2026-05-15.md");
+        assert_eq!(resolved.article.article_path, "outputs/2026-05/2026-05-15.md");
     }
 
     #[test]
-    fn resolve_by_exact_source_path() {
+    fn resolve_by_exact_article_path() {
         let index = make_index(vec![make_article("docs/my-article.md", None)]);
         let resolved = resolve_article(&index, "docs/my-article.md").unwrap();
         assert_eq!(resolved.canonical_key, "docs/my-article");
@@ -725,11 +725,11 @@ mod tests {
 articles:
   first:
     title: First
-    source_path: docs/first.md
+    article_path: docs/first.md
 articles:
   second:
     title: Second
-    source_path: docs/second.md
+    article_path: docs/second.md
 "#;
         let result = deduplicate_top_level_keys(input);
         // Should produce parseable YAML
@@ -753,11 +753,11 @@ articles:
 articles:
   first:
     title: First
-    source_path: docs/first.md
+    article_path: docs/first.md
 articles:
   second:
     title: Second
-    source_path: docs/second.md
+    article_path: docs/second.md
 "#;
         std::fs::write(dir.path().join("mind-index.yaml"), content).unwrap();
         let index = load(dir.path()).unwrap();
@@ -775,7 +775,7 @@ articles:
   first:
     title: Old
     title: New
-    source_path: docs/first.md
+    article_path: docs/first.md
 "#;
         std::fs::write(dir.path().join("mind-index.yaml"), content).unwrap();
         let index = load(dir.path()).unwrap();
@@ -790,11 +790,11 @@ articles:
 articles:
   first:
     title: First
-    source_path: docs/first.md
+    article_path: docs/first.md
 articles:
   second:
     title: Second
-    source_path: docs/second.md
+    article_path: docs/second.md
 "#;
         let merged = merge_duplicate_top_level_keys(input).unwrap();
         let index: IndexFile = serde_yaml::from_str(&merged).unwrap();

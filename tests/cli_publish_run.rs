@@ -37,7 +37,7 @@ publish:\n  targets:\n{targets_yaml}",
     fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
 
     let index_yaml = "schema_version: '1'\n\
-articles:\n  - title: My Article\n    project: my-project\n    type: blog\n    source_path: docs/my-article.md\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n";
+articles:\n  - title: My Article\n    project: my-project\n    type: blog\n    article_path: docs/my-article.md\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n";
     fs::write(project_path.join("mind-index.yaml"), index_yaml).unwrap();
 
     fs::create_dir_all(project_path.join("docs")).unwrap();
@@ -469,7 +469,7 @@ fn default_target_used_when_flag_omitted() {
     fs::write(project_path.join("mind.yaml"), project_yaml).unwrap();
     fs::write(
         project_path.join("mind-index.yaml"),
-        "schema_version: '1'\narticles:\n  - title: My Article\n    project: my-project\n    type: blog\n    source_path: docs/my-article.md\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n",
+        "schema_version: '1'\narticles:\n  - title: My Article\n    project: my-project\n    type: blog\n    article_path: docs/my-article.md\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n",
     )
     .unwrap();
     fs::create_dir_all(project_path.join("docs")).unwrap();
@@ -490,7 +490,7 @@ fn no_target_no_default_returns_usage() {
     fs::write(project_path.join("mind.yaml"), "schema_version: '1'\nproject:\n  name: my-project\n").unwrap();
     fs::write(
         project_path.join("mind-index.yaml"),
-        "schema_version: '1'\narticles:\n  - title: My Article\n    project: my-project\n    type: blog\n    source_path: docs/my-article.md\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n",
+        "schema_version: '1'\narticles:\n  - title: My Article\n    project: my-project\n    type: blog\n    article_path: docs/my-article.md\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n",
     )
     .unwrap();
     fs::create_dir_all(project_path.join("_build")).unwrap();
@@ -828,15 +828,15 @@ publish:\n  targets:\n{targets_yaml}",
     );
     fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
 
-    let source_path = format!("docs/{article_name}.md");
+    let article_path = format!("docs/{article_name}.md");
     let index_yaml = format!(
         "schema_version: '1'\n\
-articles:\n  - title: '{article_name}'\n    project: {project_name}\n    type: blog\n    source_path: {source_path}\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n",
+articles:\n  - title: '{article_name}'\n    project: {project_name}\n    type: blog\n    article_path: {article_path}\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n",
     );
     fs::write(project_path.join("mind-index.yaml"), index_yaml).unwrap();
 
     fs::create_dir_all(project_path.join("docs")).unwrap();
-    fs::write(project_path.join(&source_path), ARTICLE_BODY).unwrap();
+    fs::write(project_path.join(&article_path), ARTICLE_BODY).unwrap();
 
     let build_artifact = format!("{article_name}.md");
     fs::create_dir_all(project_path.join("_build")).unwrap();
@@ -940,7 +940,7 @@ fn json_run(args: &[&str], cwd: &std::path::Path) -> (serde_json::Value, String,
 }
 
 #[test]
-fn publish_run_declared_missing_source_returns_no_source_files() {
+fn publish_run_declared_missing_source_returns_no_article_files() {
     let repo = common::setup_repo();
     common::scaffold_three_source_project(&repo, "q24");
     let project_path = repo.path().join("q24");
@@ -949,7 +949,7 @@ fn publish_run_declared_missing_source_returns_no_source_files() {
     let (_, stderr, code) = json_run(&["article", "index", "-p", "q24"], project_path.as_path());
     assert_eq!(code, Some(0), "index: stderr={stderr}");
 
-    // Try to publish legacy-blog (compat declared, no source on disk)
+    // Try to publish legacy-blog (compat declared, no article content on disk)
     let (parsed, stderr, code) = json_run(
         &[
             "--format",
@@ -965,10 +965,10 @@ fn publish_run_declared_missing_source_returns_no_source_files() {
         ],
         project_path.as_path(),
     );
-    assert_eq!(code, Some(1), "publish of missing-source declared article should fail: {stderr}");
+    assert_eq!(code, Some(1), "publish of missing-article declared article should fail: {stderr}");
     assert_eq!(
-        parsed["error"]["kind"], "no_source_files",
-        "FR-005: error.kind should be 'no_source_files', got: {parsed}"
+        parsed["error"]["kind"], "no_article_files",
+        "FR-005: error.kind should be 'no_article_files', got: {parsed}"
     );
 }
 

@@ -35,23 +35,23 @@ pub fn dispatch(
     }
 
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
-    let (project_path, source_path, article_name) = if let Some(target) = args.article.strip_prefix('@') {
+    let (project_path, article_path, article_name) = if let Some(target) = args.article.strip_prefix('@') {
         let target_path = if Path::new(target).is_absolute() { PathBuf::from(target) } else { root.join(target) };
-        let source_path = svc_util::canonicalize_within(root, &target_path)?;
-        let project_path = project_root_for_source(root, &source_path)?;
-        let article_name = source_path
+        let article_path = svc_util::canonicalize_within(root, &target_path)?;
+        let project_path = project_root_for_source(root, &article_path)?;
+        let article_name = article_path
             .file_stem()
-            .or_else(|| source_path.file_name())
+            .or_else(|| article_path.file_name())
             .map(|name| name.to_string_lossy().to_string())
             .unwrap_or_else(|| "article".to_string());
-        (project_path, Some(source_path), article_name)
+        (project_path, Some(article_path), article_name)
     } else {
         (svc_util::resolve_project(root, args.project.as_deref(), &cwd)?, None, args.article.clone())
     };
 
-    let output = match source_path {
-        Some(source_path) => {
-            build_svc::build_article_path(&project_path, root, &source_path, args.dry_run, args.output.as_deref())?
+    let output = match article_path {
+        Some(article_path) => {
+            build_svc::build_article_path(&project_path, root, &article_path, args.dry_run, args.output.as_deref())?
         }
         None => build_svc::build_article(&project_path, root, &article_name, args.dry_run, args.output.as_deref())?,
     };
@@ -61,8 +61,8 @@ pub fn dispatch(
             let data = serde_json::json!({
                 "article": plan.article,
                 "project": plan.project,
-                "source_path": plan.source_path,
-                "input_sources": plan.input_sources,
+                "article_path": plan.article_path,
+                "input_files": plan.input_files,
                 "merge_order": plan.merge_order,
                 "output_path": plan.output_path,
                 "size_bytes": plan.size_bytes,
@@ -76,7 +76,7 @@ pub fn dispatch(
                 crate::output::Format::Text => {
                     let mut lines = vec![format!("Build Plan: {}", plan.article)];
                     lines.push("  Input sources:".to_string());
-                    for (i, src) in plan.input_sources.iter().enumerate() {
+                    for (i, src) in plan.input_files.iter().enumerate() {
                         let size_kb = format!("{:.1}", src.size as f64 / 1024.0);
                         lines.push(format!("    {}. {} ({} KB)", i + 1, src.path, size_kb));
                     }
@@ -115,11 +115,11 @@ pub fn dispatch(
     }
 }
 
-fn project_root_for_source(repo_root: &Path, source_path: &Path) -> Result<PathBuf> {
-    let mut current = if source_path.is_dir() {
-        source_path.to_path_buf()
+fn project_root_for_source(repo_root: &Path, article_path: &Path) -> Result<PathBuf> {
+    let mut current = if article_path.is_dir() {
+        article_path.to_path_buf()
     } else {
-        source_path.parent().unwrap_or(source_path).to_path_buf()
+        article_path.parent().unwrap_or(article_path).to_path_buf()
     };
 
     loop {
@@ -128,7 +128,7 @@ fn project_root_for_source(repo_root: &Path, source_path: &Path) -> Result<PathB
         }
         if current == repo_root {
             return Err(MfError::usage(
-                format!("path '{}' is not under a Mind Project", source_path.display()),
+                format!("path '{}' is not under a Mind Project", article_path.display()),
                 Some("choose a path below a directory containing mind.yaml".to_string()),
             ));
         }
@@ -136,7 +136,7 @@ fn project_root_for_source(repo_root: &Path, source_path: &Path) -> Result<PathB
             .parent()
             .ok_or_else(|| {
                 MfError::usage(
-                    format!("path '{}' is not under a Mind Project", source_path.display()),
+                    format!("path '{}' is not under a Mind Project", article_path.display()),
                     Some("choose a path below a directory containing mind.yaml".to_string()),
                 )
             })?

@@ -27,11 +27,11 @@ pub fn remove(project_path: &Path, file: &str, force: bool) -> Result<AssetRemov
         let asset_name = assets[pos].name.clone();
         let full_path = project_path.join(&asset_path);
 
-        // Check if asset is referenced in article source files
+        // Check if asset is referenced in article article files
         let was_referenced = if let Some(articles) = &index.articles {
             let name = asset_name.clone();
             articles.iter().any(|a| {
-                let source_file = project_path.join(&a.source_path);
+                let source_file = project_path.join(&a.article_path);
                 if source_file.exists() {
                     match std::fs::read_to_string(&source_file) {
                         Ok(content) => content.contains(&name),

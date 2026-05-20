@@ -180,7 +180,7 @@ fn envelope_asset_remove_referenced_error() {
     setup_project(&repo, "test");
     let project_dir = repo.path().join("test");
     std::fs::write(project_dir.join("assets/logo.png"), b"content").unwrap();
-    // Create the article source file that references the asset
+    // Create the article article file that references the asset
     let doc_dir = project_dir.join("docs");
     std::fs::create_dir_all(&doc_dir).unwrap();
     std::fs::write(doc_dir.join("welcome.md"), b"uses logo.png").unwrap();
@@ -197,7 +197,7 @@ articles:
   - title: "welcome"
     project: "test"
     type: blog
-    source_path: "docs/welcome.md"
+    article_path: "docs/welcome.md"
     status: draft
     created_at: "2026-05-01T00:00:00Z"
     updated_at: "2026-05-01T00:00:00Z"
