@@ -275,11 +275,12 @@ fn build_source(
     }
 
     // 4. Determine output path
+    let layout = config_svc::effective_layout(project_path)?;
     let output_path = match output_override {
         Some(path) => path.to_path_buf(),
         None => {
             let stem = crate::service::index::article_output_stem(article);
-            project_path.join(&build_cfg.output_dir).join(format!("{stem}.{}", build_cfg.format))
+            project_path.join(&layout.build_output).join(format!("{stem}.{}", build_cfg.format))
         }
     };
 
@@ -385,7 +386,7 @@ pub enum BuildOutput {
 fn auto_index_article(project_path: &Path, article: &str, source_path: &Path) -> Result<()> {
     let mut index =
         crate::service::index::load(project_path).unwrap_or_else(|_| crate::model::index::IndexFile::create_default());
-    let paths = config_svc::project_paths(project_path)?;
+    let layout = config_svc::effective_layout(project_path)?;
 
     // Determine the relative source_path from the project root
     let rel_source = if source_path.is_dir() {
@@ -397,14 +398,14 @@ fn auto_index_article(project_path: &Path, article: &str, source_path: &Path) ->
                 .ok()
                 .and_then(|p| p.to_str())
                 .map(|s| s.to_string())
-                .unwrap_or_else(|| format!("{}/{}.{}", paths.docs, article, defaults::MARKDOWN_EXTENSION))
+                .unwrap_or_else(|| format!("{}/{}.{}", layout.articles, article, defaults::MARKDOWN_EXTENSION))
         } else {
             source_path
                 .strip_prefix(project_path)
                 .ok()
                 .and_then(|p| p.to_str())
                 .map(|s| s.to_string())
-                .unwrap_or_else(|| format!("{}/{}", paths.docs, article))
+                .unwrap_or_else(|| format!("{}/{}", layout.articles, article))
         }
     } else {
         // source_path is a file — strip project prefix to get the relative path
@@ -413,7 +414,7 @@ fn auto_index_article(project_path: &Path, article: &str, source_path: &Path) ->
             .ok()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("{}/{}.{}", paths.docs, article, defaults::MARKDOWN_EXTENSION))
+            .unwrap_or_else(|| format!("{}/{}.{}", layout.articles, article, defaults::MARKDOWN_EXTENSION))
     };
 
     // Check if article is already in the index

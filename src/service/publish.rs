@@ -97,11 +97,12 @@ pub fn update(args: &PublishUpdateArgs, repo_root: &Path, cwd: &Path) -> Result<
 
     let mut index = index::load(&project_path)?;
 
+    let layout = config_svc::effective_layout(&project_path)?;
     let article_source_path = index
         .articles
         .iter()
         .flat_map(|a| a.iter())
-        .find(|a| a.source_path == format!("{}/{}.{}", defaults::DOCS_DIR, args.article, defaults::MARKDOWN_EXTENSION))
+        .find(|a| a.source_path == format!("{}/{}.{}", layout.articles, args.article, defaults::MARKDOWN_EXTENSION))
         .map(|a| a.source_path.clone())
         .ok_or_else(|| {
             MfError::not_found(
@@ -336,10 +337,11 @@ fn locate_build_artifact(project_path: &Path, config: &MindConfig, article_entry
     }
 
     // Non-generated: artifact lives at <output_dir>/<stem>.<format>
+    let layout = config_svc::effective_layout(project_path)?;
     let format =
         if config.build.format.is_empty() { defaults::DEFAULT_BUILD_FORMAT } else { config.build.format.as_str() };
     let stem = index::article_output_stem(&article_entry.source_path);
-    let path = project_path.join(&config.build.output_dir).join(format!("{stem}.{format}"));
+    let path = project_path.join(&layout.build_output).join(format!("{stem}.{format}"));
     let metadata = fs::metadata(&path).map_err(|_| {
         // Check if source file is also missing — indicates no source files (FR-005)
         let source_path = project_path.join(&article_entry.source_path);

@@ -188,8 +188,8 @@ pub fn lint_terms(project_root: &Path, fix: bool, dry_run: bool) -> Result<TermL
         return Ok(empty_report(fix, dry_run));
     }
 
-    let paths = config_svc::project_paths(project_root)?;
-    let docs_dir = project_root.join(&paths.docs);
+    let layout = config_svc::effective_layout(project_root)?;
+    let docs_dir = project_root.join(&layout.articles);
     if !docs_dir.exists() {
         return Ok(empty_report(fix, dry_run));
     }
@@ -305,7 +305,7 @@ fn apply_term_fixes(
     let mut fixed_count: u64 = 0;
     let mut modified_files: Vec<String> = Vec::new();
     let mut would_fix_count: u64 = 0;
-    let paths = config_svc::project_paths(project_root)?;
+    let layout = config_svc::effective_layout(project_root)?;
 
     let mut by_path: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     for (idx, ifind) in internal_findings.iter().enumerate() {
@@ -314,10 +314,10 @@ fn apply_term_fixes(
 
     for (path_rel, indices) in &by_path {
         let full_path = project_root.join(path_rel);
-        if canonicalize_within(&project_root.join(&paths.docs), &full_path).is_err() {
+        if canonicalize_within(&project_root.join(&layout.articles), &full_path).is_err() {
             failures.push(TermLintFailure {
                 path: path_rel.clone(),
-                reason: format!("path escapes project {}/", paths.docs),
+                reason: format!("path escapes project {}/", layout.articles),
             });
             continue;
         }

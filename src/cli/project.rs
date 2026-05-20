@@ -338,6 +338,15 @@ fn handle_show(
                 lines.push(format!("Source dirs:    {}", summary.source_dirs.join(", ")));
                 lines.push(format!("Assets dir:     {}", summary.assets_dir));
             }
+            if let Some(ref layout) = details.layout {
+                lines.push(String::new());
+                lines.push("Layout:".to_string());
+                lines.push(format!("  articles:     {}", layout.articles));
+                lines.push(format!("  sources:      {}", layout.sources));
+                lines.push(format!("  assets:       {}", layout.assets));
+                lines.push(format!("  templates:    {}", layout.templates));
+                lines.push(format!("  build_output: {}", layout.build_output));
+            }
             Ok(CommandOutcome::Raw(lines.join("\n"), None))
         }
     }

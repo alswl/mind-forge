@@ -158,7 +158,55 @@ fn default_term_enabled() -> bool {
     true
 }
 
-/// Default paths for project directories.
+/// Canonical layout configuration for project directories.
+///
+/// `articles` accepts `docs` as a compatibility alias. `build_output` accepts
+/// `output_dir` as a compatibility alias.
+#[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
+pub struct LayoutConfig {
+    /// Project-relative path for articles (compat alias: `docs`).
+    #[serde(default, alias = "docs")]
+    pub articles: Option<String>,
+    /// Project-relative path for source materials.
+    #[serde(default)]
+    pub sources: Option<String>,
+    /// Project-relative path for assets.
+    #[serde(default)]
+    pub assets: Option<String>,
+    /// Project-relative path for article-creation guide templates.
+    #[serde(default)]
+    pub templates: Option<String>,
+    /// Project-relative path for build output (compat alias: `output_dir`).
+    #[serde(default, alias = "output_dir")]
+    pub build_output: Option<String>,
+}
+
+impl Default for LayoutConfig {
+    fn default() -> Self {
+        Self {
+            articles: Some(defaults::LAYOUT_ARTICLES_DEFAULT.to_string()),
+            sources: Some(defaults::LAYOUT_SOURCES_DEFAULT.to_string()),
+            assets: Some(defaults::LAYOUT_ASSETS_DEFAULT.to_string()),
+            templates: Some(defaults::LAYOUT_TEMPLATES_DEFAULT.to_string()),
+            build_output: Some(defaults::LAYOUT_BUILD_OUTPUT_DEFAULT.to_string()),
+        }
+    }
+}
+
+/// Resolved effective layout with all values filled in.
+#[derive(Debug, Clone, Serialize)]
+pub struct EffectiveLayout {
+    pub articles: String,
+    pub sources: String,
+    pub assets: String,
+    pub templates: String,
+    pub build_output: String,
+}
+
+/// Default paths for project directories (compatibility layer).
+///
+/// Accepted on read for backward compatibility with mind 0.3.0 projects.
+/// `archive` is not a Layout category and remains here.
 #[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
 pub struct PathsConfig {
     #[serde(default = "default_docs")]
@@ -274,8 +322,11 @@ pub struct MindConfig {
     pub source: SourceConfig,
     #[serde(default)]
     pub term: TermConfig,
-    #[serde(default, alias = "layout")]
+    #[serde(default)]
+    #[serde(skip_serializing)]
     pub paths: PathsConfig,
+    #[serde(default)]
+    pub layout: Option<LayoutConfig>,
     // -- Compatibility top-level fields (Python mind 0.3.0) --
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -304,6 +355,7 @@ impl Default for MindConfig {
             source: SourceConfig::default(),
             term: TermConfig::default(),
             paths: PathsConfig::default(),
+            layout: Some(LayoutConfig::default()),
             name: None,
             description: None,
             created: None,
@@ -394,12 +446,34 @@ mod tests {
     }
 
     #[test]
-    fn test_layout_alias_populates_paths() {
+    fn test_layout_canonical_populates_layout_field() {
+        let config: MindConfig =
+            serde_yaml::from_str("layout:\n  articles: notes\n  sources: refs\n  assets: media\n").unwrap();
+        let layout = config.layout.as_ref().unwrap();
+        assert_eq!(layout.articles.as_deref(), Some("notes"));
+        assert_eq!(layout.sources.as_deref(), Some("refs"));
+        assert_eq!(layout.assets.as_deref(), Some("media"));
+    }
+
+    #[test]
+    fn test_layout_docs_compat_alias() {
         let config: MindConfig =
             serde_yaml::from_str("layout:\n  docs: notes\n  sources: refs\n  assets: media\n").unwrap();
+        let layout = config.layout.as_ref().unwrap();
+        // "docs" is an alias for "articles" in LayoutConfig
+        assert_eq!(layout.articles.as_deref(), Some("notes"));
+        assert_eq!(layout.sources.as_deref(), Some("refs"));
+        assert_eq!(layout.assets.as_deref(), Some("media"));
+    }
+
+    #[test]
+    fn test_paths_still_readable() {
+        let config: MindConfig =
+            serde_yaml::from_str("paths:\n  docs: notes\n  sources: refs\n  assets: media\n").unwrap();
         assert_eq!(config.paths.docs, "notes");
         assert_eq!(config.paths.sources, "refs");
         assert_eq!(config.paths.assets, "media");
+        assert!(config.layout.is_none());
     }
 
     #[test]

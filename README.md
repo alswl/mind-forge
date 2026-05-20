@@ -116,7 +116,7 @@ mf render "First Post" --template report --project blog
 | Concept          | What it is                                                                 |
 | ---------------- | -------------------------------------------------------------------------- |
 | **Mind Repo**    | A directory rooted at `minds.yaml`. The outermost unit of organization.    |
-| **Project**      | A subdirectory with `docs/`, `sources/`, `assets/`, and `mind.yaml`.       |
+| **Project**      | A subdirectory with `mind.yaml`. Default layout: `docs/`, `sources/`, `assets/`, `templates/`, `outputs/`. |
 | **Article**      | A document — either a single Markdown file or a directory of ordered files. |
 | **Block**        | An atomic, reusable unit of content composed into articles.                |
 | **Source**       | An external reference (web page, PDF, RSS feed, file) tracked per project. |

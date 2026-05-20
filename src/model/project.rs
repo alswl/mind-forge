@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::model::config::EffectiveLayout;
+
 // ---------------------------------------------------------------------------
 // View models (output-only, Serialize only)
 // ---------------------------------------------------------------------------
@@ -63,6 +65,7 @@ pub struct ProjectDetails {
     pub asset_count: u64,
     pub last_active: Option<String>,
     pub mind_yaml_summary: Option<MindYamlSummary>,
+    pub layout: Option<EffectiveLayout>,
 }
 
 // ---------------------------------------------------------------------------

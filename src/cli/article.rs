@@ -136,7 +136,8 @@ pub fn dispatch(
             let enriched: Vec<serde_json::Value> = articles
                 .iter()
                 .map(|a| {
-                    let source_dir = config.as_ref().map(|cfg| article_svc::effective_source_dir(cfg, a));
+                    let source_dir =
+                        config.as_ref().map(|cfg| article_svc::effective_source_dir(&project_path, cfg, a));
                     let mut v = serde_json::to_value(a).unwrap_or_default();
 
                     // Add source_dir
@@ -227,8 +228,8 @@ pub fn dispatch(
             // Phase 1: Docs scan + diff + reconcile (existing behavior)
             let scanned = article_svc::scan_docs(&project_path)?;
             let index = crate::service::index::load(&project_path)?;
-            let paths = config_svc::project_paths(&project_path)?;
-            let diff = article_svc::compute_article_diff(&index, &scanned, &paths.docs);
+            let layout = config_svc::effective_layout(&project_path)?;
+            let diff = article_svc::compute_article_diff(&index, &scanned, &layout.articles);
 
             if args.dry_run {
                 let data = serde_json::json!({

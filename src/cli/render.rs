@@ -4,6 +4,7 @@ use serde_json::json;
 use crate::error::{MfError, Result};
 use crate::model::render::{HtmlForm, RenderRequest, RenderScope};
 use crate::output::Format;
+use crate::service::config as config_svc;
 use crate::service::render as render_svc;
 use crate::service::util as svc_util;
 
@@ -64,7 +65,8 @@ fn dispatch_render(args: RenderCmd, repo_root: Option<&std::path::PathBuf>, form
     let (project_path, config) = render_svc::resolve_project_config(root, args.project.as_deref(), &cwd)?;
     let project_name = svc_util::dir_name(&project_path);
 
-    let output_dir = &config.build.output_dir;
+    let layout = config_svc::effective_layout(&project_path)?;
+    let output_dir = &layout.build_output;
     let build_format = &config.build.format;
     let template_name = args.template.as_deref().unwrap_or(render_svc::default_template_name());
 

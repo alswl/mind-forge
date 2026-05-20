@@ -63,7 +63,7 @@ fn json_envelope_has_new_fields() {
 fn json_envelope_uses_configured_docs_dir() {
     let repo = common::setup_repo();
     common::create_project(&repo, "demo");
-    common::write_mind_yaml(&repo, "demo", "schema_version: '1'\nlayout:\n  docs: notes\n");
+    common::write_mind_yaml(&repo, "demo", "schema_version: '1'\npaths:\n  docs: notes\n");
 
     let output = Command::cargo_bin("mf")
         .expect("binary exists")

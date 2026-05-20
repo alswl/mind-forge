@@ -68,8 +68,8 @@ fn scan_recursive_dir(dir: &Path) -> Result<Vec<PathBuf>> {
 }
 
 fn scan_disk_sources(project_path: &Path) -> Result<Vec<PathBuf>> {
-    let paths = config_svc::project_paths(project_path)?;
-    let sources_dir = project_path.join(&paths.sources);
+    let layout = config_svc::effective_layout(project_path)?;
+    let sources_dir = project_path.join(&layout.sources);
     let mut files = Vec::new();
 
     let pdf_dir = sources_dir.join("pdf");
@@ -90,11 +90,11 @@ fn scan_disk_sources(project_path: &Path) -> Result<Vec<PathBuf>> {
 
 /// Reconcile disk files with the index. Returns a report of added/removed/kept.
 pub fn reconcile(project_path: &Path, dry_run: bool) -> Result<SourceIndexReport> {
-    let paths = config_svc::project_paths(project_path)?;
-    let sources_dir = project_path.join(&paths.sources);
+    let layout = config_svc::effective_layout(project_path)?;
+    let sources_dir = project_path.join(&layout.sources);
     if !sources_dir.exists() {
         return Err(MfError::usage(
-            format!("project has no {}/ directory at '{}'", paths.sources, sources_dir.display()),
+            format!("project has no {}/ directory at '{}'", layout.sources, sources_dir.display()),
             Some("use 'mf project lint --fix' to create missing directories".to_string()),
         ));
     }

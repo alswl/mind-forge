@@ -68,7 +68,7 @@ fn build_uses_configured_docs_dir() {
     common::write_mind_yaml(
         &repo,
         "my-project",
-        "schema: '1'\nlayout:\n  docs: notes\nbuild:\n  output_dir: outputs\n  format: md\n",
+        "schema: '1'\npaths:\n  docs: notes\nbuild:\n  output_dir: outputs\n  format: md\n",
     );
 
     Command::cargo_bin("mf")
