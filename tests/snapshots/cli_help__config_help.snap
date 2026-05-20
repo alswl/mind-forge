@@ -9,10 +9,9 @@ Usage: mf config [OPTIONS] [COMMAND]
 Commands:
   schema    Show config schema
   show      Show effective config
-  compile   Compile config (alias of show)
   generate  Generate effective config file
   default   Show default config values
-  init      Initialize config file (mf extension)
+  init      Initialize config file (deprecated: use `mf init`)
 
 Options:
       --root <PATH>

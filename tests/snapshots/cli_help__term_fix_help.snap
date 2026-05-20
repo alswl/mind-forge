@@ -2,7 +2,7 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Fix a term metadata (mf extension)
+Fix a term metadata (deprecated: use `update`)
 
 Usage: mf term fix [OPTIONS] <TERM>
 

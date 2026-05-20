@@ -2,13 +2,14 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Publish articles
+Publish articles to configured targets
 
 Usage: mf publish [OPTIONS] [COMMAND]
 
 Commands:
-  run     Publish article to a target (supported: local, yuque-prompt)
-  update  Update a publish_records entry in mind-index.yaml
+  run     Publish an article to a target
+  update  Update publish record metadata
+  target  List and manage publish targets
 
 Options:
       --root <PATH>

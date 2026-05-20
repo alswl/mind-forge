@@ -24,12 +24,14 @@ pub enum AssetSubcommand {
     Add(AssetAddArgs),
     #[command(about = "Update assets")]
     Update(AssetUpdateArgs),
-    #[command(about = "Index assets (mf extension)")]
+    #[command(about = "Index assets")]
     Index(AssetIndexArgs),
     #[command(about = "Clean stale asset index entries")]
     Clean(AssetCleanArgs),
     #[command(about = "Remove an asset")]
     Remove(AssetRemoveArgs),
+    #[command(about = "Show asset details")]
+    Show(AssetShowArgs),
 }
 
 // ---------------------------------------------------------------------------
@@ -115,6 +117,13 @@ pub struct AssetCleanArgs {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Args, Serialize)]
+pub struct AssetShowArgs {
+    pub name: String,
+    #[arg(short = 'p', long)]
+    pub project: Option<String>,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
 pub struct AssetRemoveArgs {
     pub file: String,
     #[arg(short = 'f', long)]
@@ -143,6 +152,7 @@ pub fn dispatch(
         Some(AssetSubcommand::Update(args)) => handle_update(args, root, &cwd, format),
         Some(AssetSubcommand::Index(args)) => handle_index(args, root, &cwd, format),
         Some(AssetSubcommand::Clean(args)) => handle_clean(args, root, format),
+        Some(AssetSubcommand::Show(args)) => handle_asset_show(args, root, &cwd, format),
         Some(AssetSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format),
     }
 }
@@ -436,5 +446,40 @@ fn handle_remove(args: AssetRemoveArgs, root: &Path, cwd: &Path, format: Format)
             let msg = format!("Removed asset: {}\nwas_referenced: {}", report.removed, report.was_referenced);
             Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
         }
+    }
+}
+
+fn handle_asset_show(args: AssetShowArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+    let assets = asset_svc::list(&project_path, None, None)?;
+
+    let resolved = assets.iter().find(|a| a.name.eq_ignore_ascii_case(&args.name));
+
+    match resolved {
+        None => Err(MfError::usage(
+            format!("asset '{}' not found", args.name),
+            Some("use `mf asset list` to see available assets".to_string()),
+        )),
+        Some(asset) => match format {
+            Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(asset).map_err(MfError::Json)?, None)),
+            Format::Text => {
+                let kind_str = serde_json::to_value(asset.kind)
+                    .ok()
+                    .and_then(|v| v.as_str().map(String::from))
+                    .unwrap_or_default();
+                let mut lines = Vec::new();
+                lines.push(format!("Name: {}", asset.name));
+                lines.push(format!("Type: {kind_str}"));
+                lines.push(format!("Path: {}", asset.path));
+                lines.push(format!("Size: {} bytes", asset.size));
+                if !asset.hash.is_empty() {
+                    lines.push(format!("Hash: {}", asset.hash));
+                }
+                if !asset.tags.is_empty() {
+                    lines.push(format!("Tags: {}", asset.tags.join(", ")));
+                }
+                Ok(CommandOutcome::Raw(lines.join("\n"), None))
+            }
+        },
     }
 }

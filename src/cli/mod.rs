@@ -7,7 +7,6 @@ pub mod deprecation;
 pub mod project;
 pub mod prompt;
 pub mod publish;
-pub mod publisher;
 pub mod render;
 pub mod source;
 pub mod term;
@@ -40,7 +39,7 @@ pub struct InitArgs {
 #[command(
     name = "mf",
     version,
-    about = "mind-forge command line interface",
+    about = "mind-forge: a local-first knowledge management CLI",
     disable_help_subcommand = true,
     propagate_version = true
 )]
@@ -85,32 +84,37 @@ impl GlobalOpts {
 
 #[derive(Debug, Subcommand)]
 pub enum TopLevelCommand {
-    #[command(about = "Manage content sources")]
-    Source(source::SourceCmd),
-    #[command(about = "Manage project assets")]
-    Asset(asset::AssetCmd),
+    // ── Repo lifecycle ──
+    #[command(about = "Initialize a directory as a Mind Repo")]
+    Init(InitArgs),
+
+    // ── Managed resources ──
     #[command(about = "Manage projects")]
     Project(project::ProjectCmd),
     #[command(about = "Manage articles")]
     Article(article::ArticleCmd),
+    #[command(about = "Manage content sources")]
+    Source(source::SourceCmd),
+    #[command(about = "Manage project assets")]
+    Asset(asset::AssetCmd),
     #[command(about = "Manage terminology", visible_alias = "terms")]
     Term(term::TermCmd),
+
+    // ── Workflows ──
+    #[command(about = "Build articles")]
+    Build(build::BuildArgs),
+    #[command(about = "Publish articles to configured targets")]
+    Publish(publish::PublishCmd),
+    #[command(about = "Generate render prompts (emits prompts only, no output files)")]
+    Render(render::RenderCmd),
+
+    // ── Utilities ──
+    #[command(about = "Manage configuration")]
+    Config(config::ConfigCmd),
     #[command(about = "Generate shell completion scripts")]
     Completion(completion::CompletionArgs),
     #[command(about = "Show version information")]
     Version,
-    #[command(about = "Build articles")]
-    Build(build::BuildArgs),
-    #[command(about = "Publish articles")]
-    Publish(publish::PublishCmd),
-    #[command(about = "Generate render prompts")]
-    Render(render::RenderCmd),
-    #[command(about = "Manage configuration")]
-    Config(config::ConfigCmd),
-    #[command(about = "Manage repo-wide publishers")]
-    Publisher(publisher::PublisherCmd),
-    #[command(about = "Initialize a directory as a Mind Repo")]
-    Init(InitArgs),
 }
 
 #[derive(Debug)]
@@ -154,7 +158,6 @@ impl RootCli {
             Some(TopLevelCommand::Build(args)) => build::dispatch(args, repo_root, format, deprecation),
             Some(TopLevelCommand::Publish(command)) => publish::dispatch(command, repo_root, format, deprecation),
             Some(TopLevelCommand::Config(command)) => config::dispatch(command, repo_root, format, deprecation),
-            Some(TopLevelCommand::Publisher(command)) => publisher::dispatch(command, repo_root, format, deprecation),
             Some(TopLevelCommand::Render(command)) => render::dispatch(command, repo_root, format),
             Some(TopLevelCommand::Init(args)) => dispatch_init(args),
         }

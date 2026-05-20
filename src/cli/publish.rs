@@ -7,9 +7,11 @@ use crate::cli::deprecation::DeprecationContext;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::model::index::PublishStatus;
-use crate::model::publish::PublishRunOutcome;
+use crate::model::publish::{LocalRunOutcome, PublishRunOutcome, PublishUpdateOutcome, UpdateAction};
+use crate::model::publisher::PublishersOutcome;
 use crate::output::Format;
 use crate::service::publish as publish_svc;
+use crate::service::publisher as publisher_svc;
 
 #[derive(Debug, Clone, Args)]
 pub struct PublishCmd {
@@ -19,10 +21,24 @@ pub struct PublishCmd {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum PublishSubcommand {
-    #[command(about = "Publish article to a target (supported: local, yuque-prompt)")]
+    #[command(about = "Publish an article to a target")]
     Run(PublishRunArgs),
-    #[command(about = "Update a publish_records entry in mind-index.yaml")]
+    #[command(about = "Update publish record metadata")]
     Update(PublishUpdateArgs),
+    #[command(about = "List and manage publish targets")]
+    Target(PublishTargetCmd),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct PublishTargetCmd {
+    #[command(subcommand)]
+    pub command: Option<PublishTargetSubcommand>,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum PublishTargetSubcommand {
+    #[command(about = "List publishers and diagnostics")]
+    List,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -76,6 +92,66 @@ impl From<PublishStatusArg> for PublishStatus {
     }
 }
 
+/// Handle `publish target list` (moved from removed top-level `publisher list`).
+fn handle_target_list(repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
+    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+
+    let report = publisher_svc::discover(root)?;
+    let outcome = PublishersOutcome::from_report(&report, root);
+
+    match format {
+        Format::Json => {
+            let data = serde_json::to_value(&outcome)?;
+            Ok(CommandOutcome::Success(data, None))
+        }
+        Format::Text => Ok(CommandOutcome::Raw(render_target_list_text(&outcome), None)),
+    }
+}
+
+fn render_target_list_text(outcome: &PublishersOutcome) -> String {
+    let mut lines = Vec::new();
+
+    if outcome.publishers.is_empty() && outcome.diagnostics.is_empty() {
+        return "No publishers found.".to_string();
+    }
+
+    if !outcome.publishers.is_empty() {
+        lines.push(format!("{:<24} {:<12} STATUS", "NAME", "TYPE"));
+        for p in &outcome.publishers {
+            let status = p.status.as_str();
+            let label = p.label.as_deref().unwrap_or("-");
+            lines.push(format!("{:<24} {:<12} {}", p.name, p.target_type, status));
+            if label != "-" {
+                lines.push(format!("  label:       {label}"));
+            }
+            if let Some(ref desc) = p.description {
+                lines.push(format!("  description: {desc}"));
+            }
+            lines.push(format!("  source:      {}", p.source_path));
+            lines.push(format!("  inputs:      [{}]", p.required_inputs.join(", ")));
+        }
+    }
+
+    if !outcome.diagnostics.is_empty() {
+        if !outcome.publishers.is_empty() {
+            lines.push(String::new());
+        }
+        lines.push("Diagnostics:".to_string());
+        for d in &outcome.diagnostics {
+            let path_str = d.path.as_deref().unwrap_or("-");
+            let name_str = d.publisher_name.as_deref().unwrap_or("-");
+            let hint_str = d.hint.as_deref().unwrap_or("");
+            lines.push(format!("  [{kind}] {path} ({name})", kind = d.kind, path = path_str, name = name_str));
+            lines.push(format!("    {msg}", msg = d.message));
+            if !hint_str.is_empty() {
+                lines.push(format!("    hint: {hint_str}"));
+            }
+        }
+    }
+
+    lines.join("\n")
+}
+
 pub fn dispatch(
     command: PublishCmd,
     repo_root: Option<&PathBuf>,
@@ -107,14 +183,17 @@ pub fn dispatch(
             let outcome = publish_svc::update(&merged_args, root, &cwd)?;
             render_update_outcome(outcome, format)
         }
+        Some(PublishSubcommand::Target(target_cmd)) => match target_cmd.command {
+            None => Ok(CommandOutcome::GroupHelp("publish target")),
+            Some(PublishTargetSubcommand::List) => handle_target_list(repo_root, format),
+        },
     }
 }
 
 /// Merge `--set key=val` pairs into status/target_url, with `--set` taking precedence.
 fn merge_set_values(args: PublishUpdateArgs) -> PublishUpdateArgs {
-    let mut merged = PublishUpdateArgs { ..args };
+    let mut merged = args;
 
-    // Also parse --set values for convenience
     for kv in &merged.set {
         if let Some((key, val)) = kv.split_once('=') {
             match key {
@@ -156,7 +235,7 @@ fn render_run_outcome(outcome: PublishRunOutcome, format: Format) -> Result<Comm
     }
 }
 
-fn render_local_text(o: &crate::model::publish::LocalRunOutcome) -> String {
+fn render_local_text(o: &LocalRunOutcome) -> String {
     let mut lines = Vec::new();
     lines.push(format!("target      {}", o.target_name));
     lines.push("type        local".to_string());
@@ -168,10 +247,7 @@ fn render_local_text(o: &crate::model::publish::LocalRunOutcome) -> String {
     lines.join("\n")
 }
 
-fn render_update_outcome(
-    outcome: crate::model::publish::PublishUpdateOutcome,
-    format: Format,
-) -> Result<CommandOutcome> {
+fn render_update_outcome(outcome: PublishUpdateOutcome, format: Format) -> Result<CommandOutcome> {
     match format {
         Format::Json => {
             let data = serde_json::to_value(&outcome)?;
@@ -182,8 +258,8 @@ fn render_update_outcome(
             lines.push(format!("article      {}", outcome.article));
             lines.push(format!("target       {}", outcome.target_name));
             let action = match outcome.action {
-                crate::model::publish::UpdateAction::Created => "created",
-                crate::model::publish::UpdateAction::Updated => "updated",
+                UpdateAction::Created => "created",
+                UpdateAction::Updated => "updated",
             };
             lines.push(format!("action       {action}"));
             let status = match outcome.record.status {

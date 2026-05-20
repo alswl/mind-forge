@@ -62,22 +62,31 @@ fn json_flag_equals_format_json() {
     assert_eq!(stdout_json_flag, stdout_format, "--json and --format json output should match");
 }
 
-/// T045: `mf --install-completion bash` equals `mf completion bash`
+/// T045: `mf --install-completion bash` equals `mf completion bash` (with deprecation on stderr)
 #[test]
 fn install_completion_flag() {
     let (stdout_install, stderr_install, code_install) = run(&["--install-completion", "bash"]);
     assert_eq!(code_install, 0);
-    // Should contain bash completion functions
     assert!(stdout_install.contains("_mf"), "completion output should contain 'mf' completion");
+    assert!(
+        stderr_install.contains("[deprecated]"),
+        "--install-completion should emit deprecation warning, got: {stderr_install:?}"
+    );
+    assert!(
+        stderr_install.contains("--install-completion"),
+        "deprecation should mention --install-completion, got: {stderr_install:?}"
+    );
 
     let (stdout_show, stderr_show, code_show) = run(&["--show-completion", "bash"]);
     assert_eq!(code_show, 0);
     assert!(stdout_show.contains("_mf"), "show-completion output should contain 'mf' completion");
+    assert!(
+        stderr_show.contains("[deprecated]"),
+        "--show-completion should emit deprecation warning, got: {stderr_show:?}"
+    );
 
     // Both --install-completion and --show-completion produce identical output
     assert_eq!(stdout_install, stdout_show, "--install-completion and --show-completion output should match");
-    assert!(stderr_install.is_empty(), "--install-completion should have clean stderr, got: {stderr_install:?}");
-    assert!(stderr_show.is_empty(), "--show-completion should have clean stderr, got: {stderr_show:?}");
 }
 
 /// T046: `mf version` ≡ `mf --version`
@@ -184,15 +193,29 @@ fn short_flag_name() {
     assert!(stdout.contains("-n"), "source add --help should show -n short flag");
 }
 
-/// Verify `mf project info` alias for `mf project status` works
+/// Verify `mf project info` alias is removed (neither visible nor hidden)
 #[test]
-fn project_info_alias() {
+fn project_info_alias_removed() {
     let dir = common::setup_repo();
     common::create_project(&dir, "test-proj");
-    let (_stdout_info, stderr_info, code_info) =
-        run(&["--root", &dir.path().to_string_lossy(), "project", "info", "-p", "test-proj"]);
-    assert_eq!(code_info, 0, "project info should succeed, stderr: {stderr_info:?}");
-    assert!(stderr_info.is_empty(), "project info should have clean stderr, got: {stderr_info:?}");
+    let (_stdout, stderr, code) = run(&["--root", &dir.path().to_string_lossy(), "project", "info", "-p", "test-proj"]);
+    assert_ne!(code, 0, "project info should fail (alias removed)");
+    assert!(
+        stderr.contains("unrecognized subcommand 'info'"),
+        "should get unrecognized subcommand error, got: {stderr:?}"
+    );
+}
+
+/// Verify `mf project status` is a hidden compatibility alias for `project show`
+#[test]
+fn project_status_deprecated_alias() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "test-proj");
+    let (_stdout, stderr, code) =
+        run(&["--root", &dir.path().to_string_lossy(), "project", "status", "-p", "test-proj"]);
+    assert_eq!(code, 0, "project status should still succeed");
+    assert!(stderr.contains("[deprecated]"), "project status should emit deprecation warning, got: {stderr:?}");
+    assert!(stderr.contains("project show"), "deprecation should mention project show, got: {stderr:?}");
 }
 
 /// Verify `mf asset ls` alias works
@@ -225,6 +248,76 @@ fn article_ls_alias() {
         run(&["--root", &dir.path().to_string_lossy(), "article", "list", "-p", "test-proj"]);
     assert_eq!(code_list, 0);
     assert_eq!(stdout_ls, stdout_list, "article ls and list output should match");
+}
+
+// ── T012: Verb consistency across resource families ──────────────────────
+
+/// Verify `new` verb is used for local entity creation across resource groups
+#[test]
+fn verb_new_for_local_creation() {
+    let (stdout_p, _, code_p) = run(&["project", "--help"]);
+    assert_eq!(code_p, 0);
+    assert!(stdout_p.contains("new"), "project should have 'new' subcommand");
+
+    let (stdout_a, _, code_a) = run(&["article", "--help"]);
+    assert_eq!(code_a, 0);
+    assert!(stdout_a.contains("new"), "article should have 'new' subcommand");
+
+    let (stdout_t, _, code_t) = run(&["term", "--help"]);
+    assert_eq!(code_t, 0);
+    assert!(stdout_t.contains("new"), "term should have 'new' subcommand");
+}
+
+/// Verify `add` verb is used for external registration across resource groups
+#[test]
+fn verb_add_for_external_registration() {
+    let (stdout_s, _, code_s) = run(&["source", "--help"]);
+    assert_eq!(code_s, 0);
+    assert!(stdout_s.contains("add"), "source should have 'add' subcommand");
+
+    let (stdout_a, _, code_a) = run(&["asset", "--help"]);
+    assert_eq!(code_a, 0);
+    assert!(stdout_a.contains("add"), "asset should have 'add' subcommand");
+
+    // term add (renamed from learn) should exist
+    let (stdout_t, _, code_t) = run(&["term", "--help"]);
+    assert_eq!(code_t, 0);
+    assert!(stdout_t.contains("add"), "term should have 'add' subcommand (renamed from learn)");
+}
+
+/// Verify `list` verb exists on all resource groups
+#[test]
+fn verb_list_on_all_resources() {
+    for resource in &["source", "asset", "project", "article", "term"] {
+        let (stdout, _, code) = run(&[resource, "--help"]);
+        assert_eq!(code, 0, "{resource} --help should succeed");
+        assert!(stdout.contains("list"), "{resource} should have 'list' subcommand");
+    }
+}
+
+/// Verify `show` verb exists on all resource groups (target state)
+#[test]
+fn verb_show_on_all_resources() {
+    for resource in &["source", "asset", "project", "article", "term"] {
+        let (stdout, _, code) = run(&[resource, "--help"]);
+        assert_eq!(code, 0, "{resource} --help should succeed");
+        assert!(stdout.contains("show"), "{resource} should have 'show' subcommand");
+    }
+}
+
+/// Verify term-specific: `update` replaces `fix`, `add` replaces `learn`
+#[test]
+fn term_renamed_verbs() {
+    let (stdout, _, code) = run(&["term", "--help"]);
+    assert_eq!(code, 0);
+
+    // Target state: should have 'update' and 'add'
+    assert!(stdout.contains("update"), "term should have 'update' subcommand (renamed from fix)");
+    assert!(stdout.contains("add"), "term should have 'add' subcommand (renamed from learn)");
+
+    // Old names should NOT appear in help (they become hidden aliases)
+    assert!(!stdout.contains("learn"), "term help should not show 'learn' (hidden alias)");
+    assert!(!stdout.contains("fix"), "term help should not show 'fix' (hidden alias)");
 }
 
 /// Verify `mf source ls` alias works

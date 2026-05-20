@@ -2,7 +2,7 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Generate render prompts
+Generate render prompts (emits prompts only, no output files)
 
 Usage: mf render [OPTIONS] [ARTICLE] [COMMAND]
 

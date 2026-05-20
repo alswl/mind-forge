@@ -1,11 +1,10 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 189
 expression: stdout
 ---
-Manage repo-wide publishers
+List and manage publish targets
 
-Usage: mf publisher [OPTIONS] [COMMAND]
+Usage: mf publish target [OPTIONS] [COMMAND]
 
 Commands:
   list  List publishers and diagnostics

@@ -9,8 +9,8 @@ Usage: mf source [OPTIONS] [COMMAND]
 Commands:
   list    List sources [aliases: ls]
   add     Add a source
-  update  Update a source (mf extension)
-  index   Index sources (mf extension)
+  update  Update a source
+  index   Index sources
   remove  Remove a source
   clean   Clean source index
 
