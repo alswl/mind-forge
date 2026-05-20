@@ -203,7 +203,7 @@ get a machine-readable envelope.
 - **Build** — config-driven assembly, directory-article merging,
   `--dry-run`, `--output`, and `@path/`-style article addressing
 - **Publish** — `mf publish run | update` against per-target publishers
-  (`local`, `yuque-prompt`, …) plus repo-wide `mf publisher list`
+  (`local`, `yuque-prompt`, …) plus repo-wide `mf publish target list`
 - **Render prompts** — `mf render <article>` emits an Agent-facing HTML
   rendering prompt using built-in templates (`report`, `paper`) or custom
   Markdown templates under `.mind-forge/renders/`; `--html-form` switches

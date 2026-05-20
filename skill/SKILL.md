@@ -1,13 +1,13 @@
 ---
 name: mind-forge
-description: "Rust CLI for mind 0.3.0-compatible local knowledge repos. Manage projects, directory or file articles, sources, assets, glossary terms, builds, publishing, and repo-wide publishers using mind-format YAML."
+description: "Rust CLI for mind 0.3.0-compatible local knowledge repos. Manage projects, directory or file articles, sources, assets, glossary terms, builds, publishing, and publish targets using mind-format YAML."
 ---
 
 # mind-forge — Knowledge Repo CLI
 
 ## Overview
 
-`mf` manages local mind-format knowledge repos: content sources, assets, articles (file or directory), glossary terms, builds, publishing, render prompts, configuration, and repo-wide publishers.
+`mf` manages local mind-format knowledge repos: content sources, assets, articles (file or directory), glossary terms, builds, publishing, publish targets, render prompts, and configuration.
 
 **Key concepts:**
 - **Mind Repo**: A directory rooted at `minds.yaml`. Most commands require running inside one.
@@ -238,7 +238,7 @@ Subcommands: `list`, `new`, `lint`, `learn`, `fix`, `show`
 
 ### `mf publish` — Publish articles
 
-Subcommands: `run`, `update`
+Subcommands: `run`, `update`, `target`
 
 **`mf publish run <ARTICLE>`**
 `--target <TARGET>` — Publish target (e.g. `local`, `yuque-prompt`)
@@ -279,9 +279,9 @@ Subcommands: `schema`, `show`, `compile`, `generate`, `default`, `init`
 
 **`mf config init`** — `--output <PATH>`, `--target <project\|repo>` (default: `project`), `--force`
 
-### `mf publisher` — Manage repo-wide publishers
+### `mf publish target` — Manage publish targets
 
-Subcommand: `list` — List publishers with status and diagnostics. Use `--json` for machine-readable output.
+Subcommand: `list` — List publish targets with status and diagnostics. Use `--json` for machine-readable output.
 
 ### `mf completion <SHELL>` — Generate shell completion scripts
 
@@ -353,7 +353,7 @@ mf render template list
 # Config & diagnostics
 mf config show
 mf config init
-mf publisher list --json
+mf publish target list --json
 ```
 
 ## Notes
