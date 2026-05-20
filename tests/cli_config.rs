@@ -177,3 +177,37 @@ fn test_schema_bidirectional_consistency() {
     let init_val: serde_json::Value = serde_yaml::from_str(&content).unwrap();
     assert_eq!(init_val.get("schema").and_then(|v| v.as_str()), Some("1"));
 }
+
+#[test]
+fn test_schema_contains_plugins_field() {
+    let schema_output = mf().arg("config").arg("schema").output().unwrap();
+    assert!(schema_output.status.success());
+    let schema_str = String::from_utf8_lossy(&schema_output.stdout);
+    let schema_val: serde_json::Value = serde_json::from_str(&schema_str).unwrap();
+    let props = schema_val.get("properties").unwrap();
+    assert!(props.get("plugins").is_some(), "schema should contain plugins property");
+}
+
+// ── US2: config default includes Typora plugin ──
+
+#[test]
+fn config_default_includes_typora_plugin_yaml() {
+    mf().arg("config")
+        .arg("default")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("plugins:"))
+        .stdout(predicate::str::contains("typora-front-matter:"))
+        .stdout(predicate::str::contains("enabled: true"));
+}
+
+#[test]
+fn config_default_includes_typora_plugin_json() {
+    let output = mf().arg("config").arg("default").arg("--output-format").arg("json").output().unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let val: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let plugins = val.get("plugins").expect("should have plugins in JSON default");
+    let tfm = plugins.get("typora-front-matter").expect("should have typora-front-matter");
+    assert_eq!(tfm.get("enabled"), Some(&serde_json::Value::Bool(true)));
+}

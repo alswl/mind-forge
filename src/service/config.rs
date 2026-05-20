@@ -43,6 +43,7 @@ pub fn merge(base: MindConfig, overlay: MindConfig) -> MindConfig {
         updated: overlay.updated.or(base.updated),
         articles: overlay.articles.or(base.articles),
         templates: overlay.templates.or(base.templates),
+        plugins: overlay.plugins.or(base.plugins),
     }
 }
 

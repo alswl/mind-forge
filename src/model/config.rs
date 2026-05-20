@@ -194,6 +194,45 @@ fn default_schema_version() -> String {
     defaults::SCHEMA_VERSION.to_string()
 }
 
+/// Forward-compatible plugins configuration block.
+///
+/// Known plugin keys are typed; unknown keys are preserved round-trip for
+/// future plugins.
+#[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
+pub struct PluginsConfig {
+    /// Configuration for the Typora front-matter plugin.
+    #[serde(default, rename = "typora-front-matter")]
+    pub typora_front_matter: Option<TyporaFrontMatterPluginConfig>,
+    /// Unknown plugin keys, preserved for forward compatibility.
+    #[serde(flatten)]
+    #[schemars(skip)]
+    pub extra: serde_yaml::Mapping,
+}
+
+impl Default for PluginsConfig {
+    fn default() -> Self {
+        Self {
+            typora_front_matter: Some(TyporaFrontMatterPluginConfig {
+                enabled: Some(true),
+                extra: serde_yaml::Mapping::new(),
+            }),
+            extra: serde_yaml::Mapping::new(),
+        }
+    }
+}
+
+/// Configuration for the typora-front-matter plugin.
+#[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
+pub struct TyporaFrontMatterPluginConfig {
+    /// Whether Typora front-matter injection is enabled. Defaults to true when absent.
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    /// Unknown fields under this plugin, preserved for forward compatibility.
+    #[serde(flatten)]
+    #[schemars(skip)]
+    pub extra: serde_yaml::Mapping,
+}
+
 /// Template mode: how the template pattern is interpreted.
 #[derive(Debug, Clone, PartialEq, JsonSchema, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -251,6 +290,8 @@ pub struct MindConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(skip)]
     pub templates: Option<Templates>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugins: Option<PluginsConfig>,
 }
 
 impl Default for MindConfig {
@@ -269,6 +310,7 @@ impl Default for MindConfig {
             updated: None,
             articles: None,
             templates: None,
+            plugins: Some(PluginsConfig::default()),
         }
     }
 }
@@ -520,5 +562,109 @@ project:
 "#;
         let config: MindConfig = serde_yaml::from_str(yaml).unwrap();
         assert!(config.templates.is_none());
+    }
+
+    // ── T007: Plugins config tests ──
+
+    #[test]
+    fn plugins_missing_yields_none() {
+        let config: MindConfig = serde_yaml::from_str("schema_version: '1'\n").unwrap();
+        assert!(config.plugins.is_none());
+    }
+
+    #[test]
+    fn plugins_absent_but_other_fields_present() {
+        let yaml = "schema_version: '1'\nproject:\n  name: test\n";
+        let config: MindConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.plugins.is_none());
+    }
+
+    #[test]
+    fn typora_front_matter_enabled_true() {
+        let yaml = "schema_version: '1'\nplugins:\n  typora-front-matter:\n    enabled: true\n";
+        let config: MindConfig = serde_yaml::from_str(yaml).unwrap();
+        let plugins = config.plugins.unwrap();
+        let tfm = plugins.typora_front_matter.unwrap();
+        assert_eq!(tfm.enabled, Some(true));
+    }
+
+    #[test]
+    fn typora_front_matter_enabled_false() {
+        let yaml = "schema_version: '1'\nplugins:\n  typora-front-matter:\n    enabled: false\n";
+        let config: MindConfig = serde_yaml::from_str(yaml).unwrap();
+        let plugins = config.plugins.unwrap();
+        let tfm = plugins.typora_front_matter.unwrap();
+        assert_eq!(tfm.enabled, Some(false));
+    }
+
+    #[test]
+    fn typora_front_matter_missing_enabled() {
+        let yaml = "schema_version: '1'\nplugins:\n  typora-front-matter: {}\n";
+        let config: MindConfig = serde_yaml::from_str(yaml).unwrap();
+        let plugins = config.plugins.unwrap();
+        let tfm = plugins.typora_front_matter.unwrap();
+        assert_eq!(tfm.enabled, None);
+    }
+
+    #[test]
+    fn plugins_unknown_plugin_key_preserved() {
+        let yaml = "schema_version: '1'\nplugins:\n  some-other-plugin:\n    key: value\n";
+        let config: MindConfig = serde_yaml::from_str(yaml).unwrap();
+        let plugins = config.plugins.unwrap();
+        assert!(plugins.typora_front_matter.is_none());
+        // Unknown plugin key preserved in extra
+        let serialized = serde_yaml::to_string(&plugins).unwrap();
+        assert!(serialized.contains("some-other-plugin"));
+    }
+
+    #[test]
+    fn typora_front_matter_unknown_field_preserved() {
+        let yaml = "schema_version: '1'\nplugins:\n  typora-front-matter:\n    enabled: true\n    custom: keep-me\n";
+        let config: MindConfig = serde_yaml::from_str(yaml).unwrap();
+        let plugins = config.plugins.as_ref().unwrap();
+        let tfm = plugins.typora_front_matter.as_ref().unwrap();
+        assert_eq!(tfm.enabled, Some(true));
+        let serialized = serde_yaml::to_string(&plugins).unwrap();
+        assert!(serialized.contains("custom: keep-me"));
+    }
+
+    #[test]
+    fn plugins_empty_block_yields_present() {
+        let yaml = "schema_version: '1'\nplugins: {}\n";
+        let config: MindConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.plugins.is_some());
+        let plugins = config.plugins.unwrap();
+        assert!(plugins.typora_front_matter.is_none());
+    }
+
+    // ── T008: Invalid config shapes ──
+
+    #[test]
+    fn typora_front_matter_scalar_is_invalid() {
+        let yaml = "schema_version: '1'\nplugins:\n  typora-front-matter: false\n";
+        let result: Result<MindConfig, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err(), "typora-front-matter as bool should be rejected");
+    }
+
+    #[test]
+    fn typora_enabled_string_is_invalid() {
+        let yaml = "schema_version: '1'\nplugins:\n  typora-front-matter:\n    enabled: \"yes\"\n";
+        let result: Result<MindConfig, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err(), "enabled as string should be rejected");
+    }
+
+    #[test]
+    fn typora_enabled_number_is_invalid() {
+        let yaml = "schema_version: '1'\nplugins:\n  typora-front-matter:\n    enabled: 1\n";
+        let result: Result<MindConfig, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err(), "enabled as integer should be rejected");
+    }
+
+    #[test]
+    fn plugin_unknown_round_trips_through_mind_config() {
+        let yaml = "schema_version: '1'\nplugins:\n  some-other-plugin:\n    key: value\n";
+        let config: MindConfig = serde_yaml::from_str(yaml).unwrap();
+        let serialized = serde_yaml::to_string(&config).unwrap();
+        assert!(serialized.contains("some-other-plugin"));
     }
 }

@@ -122,6 +122,8 @@ pub fn dispatch(
                 "shape": result.shape,
                 "path": path,
                 "files": result.files,
+                "typora_front_matter_injected": result.typora_front_matter_injected,
+                "typora_copy_images_to": result.typora_copy_images_to,
             });
             Ok(CommandOutcome::Success(data, None))
         }
