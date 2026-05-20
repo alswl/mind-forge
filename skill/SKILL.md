@@ -66,7 +66,8 @@ Subcommands: `list` (alias `ls`), `add`, `update`, `index`, `remove`, `clean`
 `-n`, `--name <NAME>` — Source name
 `--file-kind <auto\|pdf\|file\|rss\|web>` — File kind (mf primary)
 `--source-kind <yuque\|meeting\|misc>` — Source channel type (mind primary)
-`-t`, `--type` — Deprecated; use `--file-kind` or `--source-kind` instead
+`--file-kind <auto|pdf|file|rss|web>` — File kind
+`--source-kind <yuque|meeting|misc>` — Source channel type
 `--link` — Symlink instead of copy (local files)
 `-f`, `--force` — Overwrite existing
 `-p`, `--project <NAME>` — Project context
@@ -204,7 +205,7 @@ Subcommands: `list`, `new`, `lint`, `learn`, `fix`, `show`
 
 **`mf term list`**
 `--filter <PATTERN>` — Filter by name
-`--term <NAME>` — Deprecated; use `mf term show <NAME>` instead
+`-p`, `--project <NAME>`
 `-p`, `--project <NAME>`
 
 **`mf term lint [PATH]`**
@@ -215,8 +216,8 @@ Subcommands: `list`, `new`, `lint`, `learn`, `fix`, `show`
 **`mf term learn`**
 `--term <CANONICAL>` — Canonical term name (mind primary)
 `--alias <VARIANT>` — Variant/alias (mind primary)
-`--original` — Deprecated; use `--alias` instead
-`--correct` — Deprecated; use `--term` instead
+`--term <CANONICAL>` — Canonical term name
+`--alias <VARIANT>` — Variant/alias
 `-p`, `--project <NAME>`
 
 **`mf term fix <TERM>`**
@@ -248,8 +249,6 @@ Subcommands: `run`, `update`, `target`
 
 **`mf publish update <ARTICLE>`**
 `--target <TARGET>` — Target name (required)
-`--status <draft\|published\|archived>` — Deprecated; use `--set status=<value>`
-`--target-url <URL>` — Deprecated; use `--set url=<value>`
 `--set <KEY=VALUE>` — Set arbitrary field (repeatable)
 `-p`, `--project <NAME>`
 `--dry-run`

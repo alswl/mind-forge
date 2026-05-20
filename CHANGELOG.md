@@ -13,7 +13,7 @@
 
 ### Breaking Changes
 
-- **article new**: the `<TYPE>` positional is removed. The new signature is `mf article new <TITLE> [--template <S>] [--file|--single-file]`. Migration: `mf article new arch "T"` → `mf article new "T" --template arch`. The legacy `data.type` JSON envelope field is replaced by `data.template`.
+- **article new**: the `<TYPE>` positional is removed. The new signature is `mf article new <TITLE> [--template <S>] [--file|--single-file]`. The legacy `data.type` JSON envelope field is replaced by `data.template`.
 
 ### Features
 
