@@ -1,11 +1,10 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 196
 expression: stdout
 ---
 List publishers and diagnostics
 
-Usage: mf publisher list [OPTIONS]
+Usage: mf publish target list [OPTIONS]
 
 Options:
       --root <PATH>

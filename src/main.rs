@@ -50,12 +50,18 @@ fn run(args: Vec<OsString>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> R
             return Ok(err.exit_code());
         }
     }
-    // Handle --install-completion / --show-completion before dispatch
-    if let Some(shell) = cli.global.install_completion.or(cli.global.show_completion) {
+    let mut deprecation = DeprecationContext::new(stderr, cli.global.no_color);
+
+    // Handle --install-completion / --show-completion with deprecation warnings
+    if let Some(shell) = cli.global.install_completion {
+        deprecation.warn_subject("--install-completion", "mf completion");
+        return cli::completion::render_completion(shell.into_shell(), stdout);
+    }
+    if let Some(shell) = cli.global.show_completion {
+        deprecation.warn_subject("--show-completion", "mf completion");
         return cli::completion::render_completion(shell.into_shell(), stdout);
     }
 
-    let mut deprecation = DeprecationContext::new(stderr, cli.global.no_color);
     let outcome = match cli.dispatch(context.repo_root.as_ref(), context.format, &mut deprecation) {
         Ok(o) => o,
         Err(err) => {

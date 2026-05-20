@@ -27,11 +27,11 @@ pub enum ProjectSubcommand {
     List(ProjectListArgs),
     #[command(about = "Archive a project")]
     Archive(ProjectArchiveArgs),
-    #[command(about = "Show project status", visible_alias = "info")]
+    #[command(about = "Show project status (deprecated: use `show`)", hide = true)]
     Status(ProjectStatusArgs),
     #[command(about = "Lint a project")]
     Lint(ProjectLintArgs),
-    #[command(about = "Index projects (mf extension)")]
+    #[command(about = "Index projects")]
     Index(ProjectIndexArgs),
     #[command(about = "Show project details")]
     Show(ProjectShowArgs),
@@ -120,14 +120,17 @@ pub fn dispatch(
     command: ProjectCmd,
     repo_root: Option<&PathBuf>,
     format: Format,
-    _deprecation: &mut DeprecationContext,
+    deprecation: &mut DeprecationContext,
 ) -> Result<CommandOutcome> {
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("project")),
         Some(ProjectSubcommand::New(args)) => handle_new(args, repo_root, format),
         Some(ProjectSubcommand::List(args)) => handle_list(args, repo_root, format),
         Some(ProjectSubcommand::Archive(args)) => handle_archive(args, repo_root, format),
-        Some(ProjectSubcommand::Status(args)) => handle_status(args, repo_root, format),
+        Some(ProjectSubcommand::Status(args)) => {
+            deprecation.warn_subject("project status", "project show");
+            handle_status(args, repo_root, format)
+        }
         Some(ProjectSubcommand::Lint(args)) => handle_lint(args, repo_root, format),
         Some(ProjectSubcommand::Index(args)) => handle_index(args, repo_root, format),
         Some(ProjectSubcommand::Show(args)) => handle_show(args, repo_root, format),

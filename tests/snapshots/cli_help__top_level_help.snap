@@ -2,24 +2,23 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-mind-forge command line interface
+mind-forge: a local-first knowledge management CLI
 
 Usage: mf [OPTIONS] [COMMAND]
 
 Commands:
-  source      Manage content sources
-  asset       Manage project assets
+  init        Initialize a directory as a Mind Repo
   project     Manage projects
   article     Manage articles
+  source      Manage content sources
+  asset       Manage project assets
   term        Manage terminology [aliases: terms]
+  build       Build articles
+  publish     Publish articles to configured targets
+  render      Generate render prompts (emits prompts only, no output files)
+  config      Manage configuration
   completion  Generate shell completion scripts
   version     Show version information
-  build       Build articles
-  publish     Publish articles
-  render      Generate render prompts
-  config      Manage configuration
-  publisher   Manage repo-wide publishers
-  init        Initialize a directory as a Mind Repo
 
 Options:
       --root <PATH>

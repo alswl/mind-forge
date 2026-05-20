@@ -7,12 +7,12 @@ use crate::helpers::*;
 // T004: Publisher List Text
 // ---------------------------------------------------------------------------
 
-/// E2E: `mf publisher list` outputs text-format publisher list with diagnostics
+/// E2E: `mf publish target list` outputs text-format publisher list with diagnostics
 #[test]
 fn publisher_list_text() {
     let ds = datasets::repo_with_publishers();
 
-    let (stdout, stderr, code) = run_in(ds.root(), &["publisher", "list"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["publish", "target", "list"]);
 
     assert_eq!(code, 0, "exit 0 even with invalid publishers: stdout={stdout} stderr={stderr}");
     assert!(stdout.contains("blog"), "stdout should list blog publisher: stdout={stdout} stderr={stderr}");
@@ -36,7 +36,7 @@ fn publisher_list_text() {
 fn publisher_list_json() {
     let ds = datasets::repo_with_publishers();
 
-    let (stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "publisher", "list"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "publish", "target", "list"]);
 
     assert_eq!(code, 0, "exit 0: stdout={stdout} stderr={stderr}");
 
@@ -93,7 +93,7 @@ fn invalid_publisher_diagnostics() {
     let project_dir = ds.root().join("projects").join("my-project");
 
     // Part 1: JSON listing should report diagnostics
-    let (stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "publisher", "list"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "publish", "target", "list"]);
     assert_eq!(code, 0, "listing should succeed: stderr={stderr}");
     let parsed: serde_json::Value =
         serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("valid JSON: {e} stdout={stdout} stderr={stderr}"));

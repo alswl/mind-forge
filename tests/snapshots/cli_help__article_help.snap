@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 212
 expression: stdout
 ---
 Manage articles
@@ -11,8 +10,9 @@ Commands:
   new     Create an article
   list    List articles [aliases: ls]
   lint    Lint articles
-  index   Index articles (mf extension)
+  index   Index articles
   rename  Rename an article
+  show    Show article details
 
 Options:
       --root <PATH>

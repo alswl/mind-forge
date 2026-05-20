@@ -11,6 +11,7 @@ use crate::service::util as svc_util;
 use super::CommandOutcome;
 
 #[derive(Debug, Parser)]
+#[command(about = "Generate render prompts (emits prompts only, does not write output files)")]
 pub struct RenderCmd {
     /// Article name to render
     pub article: Option<String>,

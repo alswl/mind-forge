@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
 use serde::Serialize;
@@ -7,6 +7,7 @@ use crate::cli::deprecation::DeprecationContext;
 use crate::cli::CommandOutcome;
 use crate::defaults;
 use crate::error::{MfError, Result};
+use crate::model::article::ArticleStatus;
 use crate::model::config::TemplateMode;
 use crate::output::Format;
 use crate::service::{article as article_svc, config as config_svc, util as svc_util};
@@ -25,10 +26,12 @@ pub enum ArticleSubcommand {
     List(ArticleListArgs),
     #[command(about = "Lint articles")]
     Lint(ArticleLintArgs),
-    #[command(about = "Index articles (mf extension)")]
+    #[command(about = "Index articles")]
     Index(ArticleIndexArgs),
     #[command(about = "Rename an article")]
     Rename(ArticleRenameArgs),
+    #[command(about = "Show article details")]
+    Show(ArticleShowArgs),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -69,6 +72,13 @@ pub struct ArticleIndexArgs {
     pub project: Option<String>,
     #[arg(long, short = 'n')]
     pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ArticleShowArgs {
+    pub title: String,
+    #[arg(short = 'p', long)]
+    pub project: Option<String>,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -295,6 +305,10 @@ pub fn dispatch(
             });
             Ok(CommandOutcome::Success(data, None))
         }
+        Some(ArticleSubcommand::Show(args)) => {
+            let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
+            handle_article_show(args, &project_path, format)
+        }
         Some(ArticleSubcommand::Rename(args)) => {
             let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
             let report = article_svc::rename_article(&project_path, &args.old_title, &args.new_title, args.force)?;
@@ -309,6 +323,53 @@ pub fn dispatch(
                         report.old_title, report.new_title, report.old_article_path, report.new_article_path
                     );
                     Ok(CommandOutcome::Raw(msg, None))
+                }
+            }
+        }
+    }
+}
+
+fn handle_article_show(args: ArticleShowArgs, project_path: &Path, format: Format) -> Result<CommandOutcome> {
+    let config = config_svc::load_project(project_path, None)?;
+    let articles = article_svc::list_articles(project_path)?;
+
+    let resolved = articles.iter().find(|a| {
+        let stem = crate::service::index::article_output_stem(&a.article_path);
+        a.title.eq_ignore_ascii_case(&args.title)
+            || stem.eq_ignore_ascii_case(&args.title)
+            || a.article_path.contains(&args.title)
+    });
+
+    match resolved {
+        None => Err(MfError::usage(
+            format!("article '{}' not found", args.title),
+            Some("use `mf article list` to see available articles".to_string()),
+        )),
+        Some(article) => {
+            let article_dir = config.as_ref().map(|cfg| article_svc::effective_article_dir(project_path, cfg, article));
+            let path = project_path.join(&article.article_path);
+
+            match format {
+                Format::Json => {
+                    Ok(CommandOutcome::Success(serde_json::to_value(article).map_err(MfError::Json)?, None))
+                }
+                Format::Text => {
+                    let mut lines = Vec::new();
+                    lines.push(format!("Title:      {}", article.title));
+                    lines.push(format!("Path:       {}", article.article_path));
+                    if let Some(ref dir) = article_dir {
+                        lines.push(format!("Article dir: {dir}"));
+                    }
+                    let status_str = match article.status {
+                        ArticleStatus::Draft => "draft",
+                        ArticleStatus::Published => "published",
+                    };
+                    lines.push(format!("Status:     {status_str}"));
+                    lines.push(format!("Exists:     {}", if path.exists() { "yes" } else { "no" }));
+                    if let Some(ref origin) = article.template_origin {
+                        lines.push(format!("Template:   {} ({})", origin.template_name, origin.slot_value));
+                    }
+                    Ok(CommandOutcome::Raw(lines.join("\n"), None))
                 }
             }
         }

@@ -2,7 +2,7 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Index assets (mf extension)
+Index assets
 
 Usage: mf asset index [OPTIONS]
 

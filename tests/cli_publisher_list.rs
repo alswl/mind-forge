@@ -1,4 +1,4 @@
-//! Integration tests for `mf publisher list` (feature 015, US1).
+//! Integration tests for `mf publish target list` (formerly `mf publisher list`).
 //!
 //! Covers publisher discovery and listing output.
 
@@ -18,7 +18,7 @@ fn run_in_repo(repo: &common::TempDir, args: &[&str]) -> std::process::Output {
 fn missing_publisher_dir_returns_empty_json() {
     let repo = common::setup_repo();
 
-    let out = run_in_repo(&repo, &["--format", "json", "publisher", "list"]);
+    let out = run_in_repo(&repo, &["--format", "json", "publish", "target", "list"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -37,7 +37,7 @@ fn file_stem_is_default_name_text() {
     let repo = common::setup_repo();
     common::write_publisher_yaml(&repo, "foo", "type: local\nenabled: true\nconfig:\n  path: ./output\n");
 
-    let out = run_in_repo(&repo, &["publisher", "list"]);
+    let out = run_in_repo(&repo, &["publish", "target", "list"]);
     assert_eq!(out.status.code(), Some(0));
     let stdout = String::from_utf8(out.stdout).unwrap();
     assert!(stdout.contains("foo"), "stdout should contain publisher name 'foo': {stdout}");
@@ -48,7 +48,7 @@ fn file_stem_is_default_name_json() {
     let repo = common::setup_repo();
     common::write_publisher_yaml(&repo, "foo", "type: local\nenabled: true\nconfig:\n  path: ./output\n");
 
-    let out = run_in_repo(&repo, &["--format", "json", "publisher", "list"]);
+    let out = run_in_repo(&repo, &["--format", "json", "publish", "target", "list"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -76,7 +76,7 @@ fn sorted_publishers_json() {
         ],
     );
 
-    let out = run_in_repo(&repo, &["--format", "json", "publisher", "list"]);
+    let out = run_in_repo(&repo, &["--format", "json", "publish", "target", "list"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -99,7 +99,7 @@ fn malformed_yaml_returns_diagnostic_valid_still_listed() {
         &[("good", "type: local\nenabled: true\nconfig:\n  path: ./out\n"), ("bad", "this is not valid yaml: [[[,,")],
     );
 
-    let out = run_in_repo(&repo, &["--format", "json", "publisher", "list"]);
+    let out = run_in_repo(&repo, &["--format", "json", "publish", "target", "list"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -124,7 +124,7 @@ fn missing_type_returns_missing_required_field() {
     // Missing both `type` and `config.path`
     common::write_publisher_yaml(&repo, "notype", "enabled: true\n");
 
-    let out = run_in_repo(&repo, &["--format", "json", "publisher", "list"]);
+    let out = run_in_repo(&repo, &["--format", "json", "publish", "target", "list"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -139,7 +139,7 @@ fn local_missing_config_path_returns_diagnostic() {
     let repo = common::setup_repo();
     common::write_publisher_yaml(&repo, "nopath", "type: local\nenabled: true\n");
 
-    let out = run_in_repo(&repo, &["--format", "json", "publisher", "list"]);
+    let out = run_in_repo(&repo, &["--format", "json", "publish", "target", "list"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -158,7 +158,7 @@ fn invalid_name_returns_invalid_name_diagnostic() {
         "name: has_underscore\ntype: local\nenabled: true\nconfig:\n  path: ./out\n",
     );
 
-    let out = run_in_repo(&repo, &["--format", "json", "publisher", "list"]);
+    let out = run_in_repo(&repo, &["--format", "json", "publish", "target", "list"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -173,7 +173,7 @@ fn reserved_name_returns_reserved_name_diagnostic() {
     let repo = common::setup_repo();
     common::write_publisher_yaml(&repo, "default", "type: local\nenabled: true\nconfig:\n  path: ./out\n");
 
-    let out = run_in_repo(&repo, &["--format", "json", "publisher", "list"]);
+    let out = run_in_repo(&repo, &["--format", "json", "publish", "target", "list"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -197,7 +197,7 @@ fn duplicate_name_returns_duplicate_name_diagnostic() {
         ],
     );
 
-    let out = run_in_repo(&repo, &["--format", "json", "publisher", "list"]);
+    let out = run_in_repo(&repo, &["--format", "json", "publish", "target", "list"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -215,7 +215,7 @@ fn disabled_publisher_shows_disabled_status() {
     let repo = common::setup_repo();
     common::write_publisher_yaml(&repo, "offline", "type: local\nenabled: false\nconfig:\n  path: ./out\n");
 
-    let out = run_in_repo(&repo, &["--format", "json", "publisher", "list"]);
+    let out = run_in_repo(&repo, &["--format", "json", "publish", "target", "list"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -239,7 +239,7 @@ fn secret_field_returns_secret_field_diagnostic() {
         "type: local\nenabled: true\nconfig:\n  path: ./out\n  token: my-secret-token\n",
     );
 
-    let out = run_in_repo(&repo, &["--format", "json", "publisher", "list"]);
+    let out = run_in_repo(&repo, &["--format", "json", "publish", "target", "list"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -262,7 +262,7 @@ fn secret_field_blocks_publisher_listing() {
         "type: local\nenabled: true\nconfig:\n  path: ./out\n  api_key: sk-1234\n",
     );
 
-    let out = run_in_repo(&repo, &["--format", "json", "publisher", "list"]);
+    let out = run_in_repo(&repo, &["--format", "json", "publish", "target", "list"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -291,7 +291,7 @@ fn discover_10_publishers_performance() {
     }
 
     let start = std::time::Instant::now();
-    let out = run_in_repo(&repo, &["--format", "json", "publisher", "list"]);
+    let out = run_in_repo(&repo, &["--format", "json", "publish", "target", "list"]);
     let elapsed = start.elapsed();
 
     assert_eq!(out.status.code(), Some(0));

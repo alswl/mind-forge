@@ -2,7 +2,7 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Update a source (mf extension)
+Update a source
 
 Usage: mf source update [OPTIONS] <NAME>
 

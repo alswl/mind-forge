@@ -2,7 +2,7 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Index sources (mf extension)
+Index sources
 
 Usage: mf source index [OPTIONS]
 

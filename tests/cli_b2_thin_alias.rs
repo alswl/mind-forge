@@ -24,7 +24,10 @@ fn config_compile_equals_config_show() {
         run(&["--root", &dir.path().to_string_lossy(), "config", "compile"]);
 
     assert_eq!(code_compile, 0, "compile should succeed, stderr: {stderr_compile:?}");
-    assert!(stderr_compile.is_empty(), "compile should have clean stderr, got: {stderr_compile:?}");
+    assert!(
+        stderr_compile.contains("[deprecated]"),
+        "compile should emit deprecation warning, got: {stderr_compile:?}"
+    );
 
     let (stdout_show, stderr_show, code_show) = run(&["--root", &dir.path().to_string_lossy(), "config", "show"]);
 

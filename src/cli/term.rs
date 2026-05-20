@@ -19,16 +19,20 @@ pub struct TermCmd {
 pub enum TermSubcommand {
     #[command(about = "List terms")]
     List(TermListArgs),
-    #[command(about = "Create a term (mf extension)")]
+    #[command(about = "Create a term")]
     New(TermNewArgs),
     #[command(about = "Lint term consistency in project docs")]
     Lint(TermLintArgs),
-    #[command(about = "Learn a term correction")]
-    Learn(TermLearnArgs),
-    #[command(about = "Fix a term metadata (mf extension)")]
-    Fix(TermFixArgs),
+    #[command(about = "Add a term correction")]
+    Add(TermLearnArgs),
+    #[command(about = "Update term metadata")]
+    Update(TermFixArgs),
     #[command(about = "Show term details")]
     Show(TermShowArgs),
+    #[command(about = "Learn a term correction (deprecated: use `add`)", hide = true)]
+    Learn(TermLearnArgs),
+    #[command(about = "Fix a term metadata (deprecated: use `update`)", hide = true)]
+    Fix(TermFixArgs),
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -124,18 +128,30 @@ pub fn dispatch(
         Some(TermSubcommand::New(args)) => handle_new(args, root, &cwd, format),
         Some(TermSubcommand::List(args)) => handle_list(args, root, &cwd, format, deprecation),
         Some(TermSubcommand::Lint(args)) => handle_lint(args, root, &cwd, format),
-        Some(TermSubcommand::Learn(args)) => {
-            // Deprecation warning for --original/--correct
-            if args.original.is_some() {
-                deprecation.warn_subject("--original", "--alias <variant>");
-            }
-            if args.correct.is_some() {
-                deprecation.warn_subject("--correct", "--term <canonical>");
-            }
+        Some(TermSubcommand::Add(args)) => {
+            warn_learn_flag_deprecations(&args, deprecation);
             handle_learn(args, root, &cwd, format)
         }
-        Some(TermSubcommand::Fix(args)) => handle_fix(args, root, &cwd, format),
+        Some(TermSubcommand::Update(args)) => handle_fix(args, root, &cwd, format),
+        Some(TermSubcommand::Learn(args)) => {
+            deprecation.warn_subject("term learn", "term add");
+            warn_learn_flag_deprecations(&args, deprecation);
+            handle_learn(args, root, &cwd, format)
+        }
+        Some(TermSubcommand::Fix(args)) => {
+            deprecation.warn_subject("term fix", "term update");
+            handle_fix(args, root, &cwd, format)
+        }
         Some(TermSubcommand::Show(args)) => handle_show(args, root, &cwd, format),
+    }
+}
+
+fn warn_learn_flag_deprecations(args: &TermLearnArgs, deprecation: &mut DeprecationContext) {
+    if args.original.is_some() {
+        deprecation.warn_subject("--original", "--alias <variant>");
+    }
+    if args.correct.is_some() {
+        deprecation.warn_subject("--correct", "--term <canonical>");
     }
 }
 
@@ -197,7 +213,7 @@ fn handle_list(
 ) -> Result<CommandOutcome> {
     // D5: --term <X> redirects to term show
     if let Some(ref name) = args.term {
-        deprecation.warn_by_id(crate::cli::deprecation::DeprecationId::D5, None);
+        deprecation.warn_subject("term list --term <X>", "term show <X>");
         let term = if let Some(ref project) = args.project {
             let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
             term_svc::show_term(&project_path, name)?
@@ -287,28 +303,10 @@ fn handle_lint(args: TermLintArgs, root: &Path, cwd: &Path, format: Format) -> R
 }
 
 fn compute_lint_exit_code(report: &crate::model::term::TermLintReport, fix: bool, dry_run: bool) -> u8 {
-    if fix && dry_run {
-        // dry-run: findings ≥1 → exit 1
-        if report.findings.is_empty() {
-            0
-        } else {
-            1
-        }
-    } else if fix {
-        // --fix: failures ≥1 → exit 1
-        if report.failures.is_empty() {
-            0
-        } else {
-            1
-        }
-    } else {
-        // read-only: findings ≥1 → exit 1
-        if report.findings.is_empty() {
-            0
-        } else {
-            1
-        }
-    }
+    // --fix (without --dry-run) exits non-zero only on write failures.
+    // All other modes (read-only and --fix --dry-run) exit non-zero when findings remain.
+    let has_issue = if fix && !dry_run { !report.failures.is_empty() } else { !report.findings.is_empty() };
+    u8::from(has_issue)
 }
 
 fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_run: bool) -> String {
@@ -341,11 +339,7 @@ fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_
         }
     } else {
         if report.findings.is_empty() {
-            if report.scanned_files == 0
-                && report.findings.is_empty()
-                && report.skipped_files.is_empty()
-                && report.failures.is_empty()
-            {
+            if report.scanned_files == 0 && report.skipped_files.is_empty() && report.failures.is_empty() {
                 return "No terms registered.".to_string();
             }
             if report.failures.is_empty() {
@@ -389,29 +383,24 @@ fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_
 // ── Handle: mf term learn (US5 / T037) ───────────────────────────────────────
 
 fn handle_learn(args: TermLearnArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    // Resolve primary form (--term/--alias) vs deprecated form (--original/--correct)
-    let (original, correct) = if args.term.is_some() || args.alias.is_some() {
-        let t = args.term.as_deref().unwrap_or("");
-        let a = args.alias.as_deref().unwrap_or("");
-        (a, t)
-    } else {
-        let o = args.original.as_deref().unwrap_or("");
-        let c = args.correct.as_deref().unwrap_or("");
-        (o, c)
-    };
+    // The service layer's signature is (variant, canonical) — historically named
+    // (original, correct). Resolve canonical/variant from either the primary
+    // (--term/--alias) or the deprecated (--original/--correct) form.
+    let canonical = args.term.as_deref().or(args.correct.as_deref()).filter(|s| !s.is_empty());
+    let variant = args.alias.as_deref().or(args.original.as_deref()).filter(|s| !s.is_empty());
 
-    if original.is_empty() || correct.is_empty() {
+    let (Some(canonical), Some(variant)) = (canonical, variant) else {
         return Err(MfError::usage(
             "requires --term <canonical> and --alias <variant> (or deprecated --original/--correct)",
             Some("use 'mf term learn --term <canonical> --alias <variant>'".to_string()),
         ));
-    }
+    };
 
     let (term, appended) = if let Some(ref project) = args.project {
         let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
-        term_svc::learn_correction(&project_path, original, correct)?
+        term_svc::learn_correction(&project_path, variant, canonical)?
     } else {
-        term_svc::global::learn_correction(root, original, correct)?
+        term_svc::global::learn_correction(root, variant, canonical)?
     };
 
     match format {
@@ -421,9 +410,9 @@ fn handle_learn(args: TermLearnArgs, root: &Path, cwd: &Path, format: Format) ->
         }
         Format::Text => {
             let msg = if appended {
-                format!("✓ learned correction: \"{original}\" → \"{correct}\" (term: {})", term.term)
+                format!("✓ learned correction: \"{variant}\" → \"{canonical}\" (term: {})", term.term)
             } else {
-                format!("correction already exists: \"{original}\" → \"{correct}\" (term: {})", term.term)
+                format!("correction already exists: \"{variant}\" → \"{canonical}\" (term: {})", term.term)
             };
             Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
         }

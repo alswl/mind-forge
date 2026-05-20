@@ -7,12 +7,12 @@ Manage terminology
 Usage: mf term [OPTIONS] [COMMAND]
 
 Commands:
-  list   List terms
-  new    Create a term (mf extension)
-  lint   Lint term consistency in project docs
-  learn  Learn a term correction
-  fix    Fix a term metadata (mf extension)
-  show   Show term details
+  list    List terms
+  new     Create a term
+  lint    Lint term consistency in project docs
+  add     Add a term correction
+  update  Update term metadata
+  show    Show term details
 
 Options:
       --root <PATH>

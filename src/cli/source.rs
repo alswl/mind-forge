@@ -24,9 +24,9 @@ pub enum SourceSubcommand {
     List(SourceListArgs),
     #[command(about = "Add a source")]
     Add(SourceAddArgs),
-    #[command(about = "Update a source (mf extension)")]
+    #[command(about = "Update a source")]
     Update(SourceUpdateArgs),
-    #[command(about = "Index sources (mf extension)")]
+    #[command(about = "Index sources")]
     Index(SourceIndexArgs),
     #[command(about = "Remove a source")]
     Remove(SourceRemoveArgs),

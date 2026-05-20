@@ -73,6 +73,65 @@ scripts using these forms will continue to work but will emit a stderr warning.
 | **New form** | `mf term show <NAME>` |
 | **Warning** | `[deprecated] term list --term <X> is deprecated, use term show <X> instead` |
 
+## CLI Command UX Review (2026-05-20)
+
+### D6: Top-level `mf publisher` removed
+
+| | |
+|---|---|
+| **Old form** | `mf publisher list` |
+| **New form** | `mf publish target list` |
+| **Behavior** | The old form is unrecognized (unrecognized subcommand error). Update scripts immediately. |
+
+### D7: `mf project status` → `mf project show`
+
+| | |
+|---|---|
+| **Old form** | `mf project status [-p PROJECT]` |
+| **New form** | `mf project show <PROJECT>` |
+| **Behavior** | `project status` remains a hidden compatibility alias. Warning: `[deprecated] project status is deprecated, use project show instead` |
+| **Removal** | The `project info` alias is removed immediately (unrecognized subcommand). |
+
+### D8: `mf term learn` → `mf term add`
+
+| | |
+|---|---|
+| **Old form** | `mf term learn --term <C> --alias <V>` |
+| **New form** | `mf term add --term <C> --alias <V>` |
+| **Behavior** | `term learn` remains a hidden compatibility alias. Warning: `[deprecated] term learn is deprecated, use term add instead` |
+
+### D9: `mf term fix` → `mf term update`
+
+| | |
+|---|---|
+| **Old form** | `mf term fix <TERM> [OPTIONS]` |
+| **New form** | `mf term update <TERM> [OPTIONS]` |
+| **Behavior** | `term fix` remains a hidden compatibility alias. Warning: `[deprecated] term fix is deprecated, use term update instead` |
+
+### D10: `mf config compile` deprecated
+
+| | |
+|---|---|
+| **Old form** | `mf config compile [OPTIONS]` |
+| **New form** | `mf config show [OPTIONS]` |
+| **Behavior** | `config compile` remains a hidden compatibility alias. Warning: `[deprecated] config compile is deprecated, use config show instead` |
+
+### D11: Global `--install-completion` and `--show-completion` deprecated
+
+| | |
+|---|---|
+| **Old form** | `mf --install-completion bash` or `mf --show-completion bash` |
+| **New form** | `mf completion bash` |
+| **Warning** | `[deprecated] --install-completion is deprecated, use mf completion instead` |
+
+### D12: `mf config init` deprecated
+
+| | |
+|---|---|
+| **Old form** | `mf config init [OPTIONS]` |
+| **New form** | `mf init [PATH]` |
+| **Warning** | `[deprecated] config init is deprecated, use mf init instead` |
+
 ## Behavior
 
 - Deprecation warnings are emitted to **stderr only** — they never pollute stdout
@@ -80,3 +139,5 @@ scripts using these forms will continue to work but will emit a stderr warning.
 - Using `--quiet` does not suppress deprecation warnings.
 - Using `--no-color` strips ANSI color codes from warnings.
 - Multiple warnings per command are each emitted on their own line.
+- Hidden compatibility aliases are invisible in help output but remain functional
+  with stderr warnings.

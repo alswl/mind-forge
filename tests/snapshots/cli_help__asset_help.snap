@@ -10,9 +10,10 @@ Commands:
   list    List assets [aliases: ls]
   add     Add an asset
   update  Update assets
-  index   Index assets (mf extension)
+  index   Index assets
   clean   Clean stale asset index entries
   remove  Remove an asset
+  show    Show asset details
 
 Options:
       --root <PATH>

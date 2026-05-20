@@ -395,7 +395,7 @@ terms:
         "--root",
         &dir.path().to_string_lossy(),
         "term",
-        "learn",
+        "add",
         "--term",
         "Mind Repo",
         "--alias",

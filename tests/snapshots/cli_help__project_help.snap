@@ -10,9 +10,8 @@ Commands:
   new      Create a project
   list     List projects [aliases: ls]
   archive  Archive a project
-  status   Show project status [aliases: info]
   lint     Lint a project
-  index    Index projects (mf extension)
+  index    Index projects
   show     Show project details
   import   Import a directory as a project
   rename   Rename a project

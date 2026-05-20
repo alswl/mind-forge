@@ -21,13 +21,13 @@ pub enum ConfigSubcommand {
     Schema(ConfigSchemaArgs),
     #[command(about = "Show effective config")]
     Show(ConfigShowArgs),
-    #[command(about = "Compile config (alias of show)")]
+    #[command(about = "Compile config (deprecated: use `show`)", hide = true)]
     Compile(ConfigCompileArgs),
     #[command(about = "Generate effective config file")]
     Generate(ConfigGenerateArgs),
     #[command(about = "Show default config values")]
     Default(ConfigDefaultArgs),
-    #[command(about = "Initialize config file (mf extension)")]
+    #[command(about = "Initialize config file (deprecated: use `mf init`)")]
     Init(ConfigInitArgs),
 }
 
@@ -81,16 +81,22 @@ pub fn dispatch(
     command: ConfigCmd,
     repo_root: Option<&PathBuf>,
     _format: Format,
-    _deprecation: &mut DeprecationContext,
+    deprecation: &mut DeprecationContext,
 ) -> Result<CommandOutcome> {
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("config")),
         Some(ConfigSubcommand::Schema(args)) => handle_schema(args),
         Some(ConfigSubcommand::Show(args)) => handle_show(args, repo_root),
-        Some(ConfigSubcommand::Compile(args)) => handle_compile(args, repo_root),
+        Some(ConfigSubcommand::Compile(args)) => {
+            deprecation.warn_subject("config compile", "config show");
+            handle_show(ConfigShowArgs { output_format: args.output_format }, repo_root)
+        }
         Some(ConfigSubcommand::Generate(args)) => handle_generate(args, repo_root),
         Some(ConfigSubcommand::Default(args)) => handle_default(args),
-        Some(ConfigSubcommand::Init(args)) => handle_init(args),
+        Some(ConfigSubcommand::Init(args)) => {
+            deprecation.warn_subject("config init", "mf init");
+            handle_init(args)
+        }
     }
 }
 
@@ -100,15 +106,6 @@ fn handle_schema(args: ConfigSchemaArgs) -> Result<CommandOutcome> {
 }
 
 fn handle_show(args: ConfigShowArgs, repo_root: Option<&PathBuf>) -> Result<CommandOutcome> {
-    let cwd = std::env::current_dir()
-        .map_err(|e| crate::error::MfError::usage(format!("failed to get current directory: {e}"), None))?;
-    let output = service::config::show_effective(&cwd, repo_root.map(|p| p.as_path()), &args.output_format)?;
-    Ok(CommandOutcome::Raw(output, None))
-}
-
-// ── B2 thin alias: config compile (routes to same handler as show) ──────────
-
-fn handle_compile(args: ConfigCompileArgs, repo_root: Option<&PathBuf>) -> Result<CommandOutcome> {
     let cwd = std::env::current_dir()
         .map_err(|e| crate::error::MfError::usage(format!("failed to get current directory: {e}"), None))?;
     let output = service::config::show_effective(&cwd, repo_root.map(|p| p.as_path()), &args.output_format)?;
