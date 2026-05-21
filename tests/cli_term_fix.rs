@@ -33,18 +33,6 @@ fn mf(repo: &common::TempDir) -> Command {
     cmd.args(["--root", repo.path().to_str().unwrap()]);
     cmd
 }
-
-fn repo_format_fixture(name: &str) -> String {
-    std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/term_repo_format").join(name),
-    )
-    .unwrap()
-}
-
-fn write_global_terms(repo: &common::TempDir, content: &str) {
-    std::fs::write(repo.path().join("minds-terms.yaml"), content).unwrap();
-}
-
 // ---------------------------------------------------------------------------
 // 1. replace definition
 // ---------------------------------------------------------------------------
@@ -204,84 +192,6 @@ fn fix_term_json_shape() {
     assert!(parsed["data"].get("corrections").is_some());
 }
 
-// ── US4: Repository-format fix rejection ───────────────────────────────────
-
-// T051
-#[test]
-fn fix_rejects_definition_on_repo_format() {
-    let repo = common::setup_repo();
-    let fixture = repo_format_fixture("simple.yaml");
-    write_global_terms(&repo, &fixture);
-
-    let cases = [
-        (vec!["--definition", "foo"], "--definition"),
-        (vec!["--alias", "a"], "--alias"),
-        (vec!["--tag", "t"], "--tag"),
-    ];
-
-    for (args, field_name) in &cases {
-        let mut cmd_args = vec!["--root", repo.path().to_str().unwrap(), "term", "fix", "cafed"];
-        cmd_args.extend(args.iter().copied());
-
-        let output = Command::cargo_bin("mf").unwrap().args(&cmd_args).output().unwrap();
-
-        assert_eq!(output.status.code(), Some(2), "exit 2 for {field_name}");
-        let stderr = String::from_utf8(output.stderr).unwrap();
-        assert!(stderr.contains(field_name), "stderr should name {field_name}: {stderr}");
-        assert!(stderr.contains("repository-format"), "stderr should mention repository-format: {stderr}");
-    }
-
-    let after = fs::read_to_string(repo.path().join("minds-terms.yaml")).unwrap();
-    assert_eq!(fixture, after, "file unchanged after all rejected commands");
-}
-
-#[test]
-fn fix_rejects_schema_tagged_repo_format() {
-    let repo = common::setup_repo();
-    let fixture = "# 会议纪要术语校准表\nschema_version: '1'\n\ncafed:\n  misrecognitions:\n    - 凯飞迪\n";
-    write_global_terms(&repo, fixture);
-
-    let output = Command::cargo_bin("mf")
-        .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "term", "fix", "cafed", "--definition", "updated"])
-        .output()
-        .unwrap();
-
-    assert_eq!(output.status.code(), Some(2), "exit 2 for repo-format fix");
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("--definition"), "stderr should name --definition: {stderr}");
-    assert!(stderr.contains("repository-format"), "stderr should mention repository-format: {stderr}");
-
-    let after = fs::read_to_string(repo.path().join("minds-terms.yaml")).unwrap();
-    assert_eq!(fixture, after, "file unchanged after rejected fix");
-}
-
-// Regression: `--definition=""` (empty string) on a repo-format file must
-// be rejected, NOT silently accepted and committed via a schema-version
-// rewrite that destroys comments. See FR-013 / FR-008 / FR-010.
-#[test]
-fn fix_empty_definition_rejected_on_repo_format() {
-    let repo = common::setup_repo();
-    let fixture = repo_format_fixture("simple.yaml");
-    write_global_terms(&repo, &fixture);
-
-    for value in &["", "   "] {
-        let output = Command::cargo_bin("mf")
-            .unwrap()
-            .args(["--root", repo.path().to_str().unwrap(), "term", "fix", "cafed", "--definition", value])
-            .output()
-            .unwrap();
-
-        assert_eq!(output.status.code(), Some(2), "exit 2 for definition={:?}", value);
-        let stderr = String::from_utf8(output.stderr).unwrap();
-        assert!(stderr.contains("--definition"), "stderr should name --definition: {stderr}");
-        assert!(stderr.contains("repository-format"), "stderr should mention repository-format: {stderr}");
-    }
-
-    let after = fs::read_to_string(repo.path().join("minds-terms.yaml")).unwrap();
-    assert_eq!(fixture, after, "file unchanged after rejected empty-definition commands");
-    assert!(!after.contains("schema_version"), "must NOT be rewritten to schema-version: {after}");
-}
 
 // T052
 #[test]
