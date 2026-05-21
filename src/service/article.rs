@@ -1463,21 +1463,25 @@ mod tests {
 
     #[test]
     fn effective_enabled_explicit_true() {
-        let mut plugins = crate::model::config::PluginsConfig::default();
-        plugins.typora_front_matter = Some(crate::model::config::TyporaFrontMatterPluginConfig {
-            enabled: Some(true),
-            extra: serde_yaml::Mapping::new(),
-        });
+        let plugins = crate::model::config::PluginsConfig {
+            typora_front_matter: Some(crate::model::config::TyporaFrontMatterPluginConfig {
+                enabled: Some(true),
+                extra: serde_yaml::Mapping::new(),
+            }),
+            ..Default::default()
+        };
         assert!(effective_typora_enabled(Some(&plugins)));
     }
 
     #[test]
     fn effective_enabled_explicit_false() {
-        let mut plugins = crate::model::config::PluginsConfig::default();
-        plugins.typora_front_matter = Some(crate::model::config::TyporaFrontMatterPluginConfig {
-            enabled: Some(false),
-            extra: serde_yaml::Mapping::new(),
-        });
+        let plugins = crate::model::config::PluginsConfig {
+            typora_front_matter: Some(crate::model::config::TyporaFrontMatterPluginConfig {
+                enabled: Some(false),
+                extra: serde_yaml::Mapping::new(),
+            }),
+            ..Default::default()
+        };
         assert!(!effective_typora_enabled(Some(&plugins)));
     }
 

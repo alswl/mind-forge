@@ -216,6 +216,31 @@ pub fn lint_file(repo_root: &Path, file_path: &str, fix: bool, dry_run: bool) ->
     lint::lint_single_file_with_index(&global_index(terms), repo_root, file_path, fix, dry_run)
 }
 
+/// Lint a file or directory path relative to the repo root.
+pub fn lint_path(repo_root: &Path, path: &str, fix: bool, dry_run: bool) -> Result<TermLintReport> {
+    if repo_root.join(path).is_dir() {
+        lint_dir(repo_root, path, fix, dry_run)
+    } else {
+        lint_file(repo_root, path, fix, dry_run)
+    }
+}
+
+/// Lint all markdown files under a specific directory (global).
+pub fn lint_dir(repo_root: &Path, dir_path: &str, fix: bool, dry_run: bool) -> Result<TermLintReport> {
+    let terms = load_terms(repo_root)?;
+    if terms.is_empty() {
+        return Ok(lint::empty_report(fix, dry_run));
+    }
+    lint::lint_dir_with_index(
+        &global_index(terms),
+        repo_root,
+        dir_path,
+        "provide a path relative to the repo root",
+        fix,
+        dry_run,
+    )
+}
+
 /// Lint all markdown files in the repo against global terms.
 pub fn lint_terms(repo_root: &Path, fix: bool, dry_run: bool) -> Result<TermLintReport> {
     let terms = load_terms(repo_root)?;

@@ -94,6 +94,24 @@ pub fn lint_file(project_root: &Path, file_path: &str, fix: bool, dry_run: bool)
     lint_single_file_with_index(&index, project_root, file_path, fix, dry_run)
 }
 
+/// Lint a file or directory path relative to the project root.
+pub fn lint_path(project_root: &Path, path: &str, fix: bool, dry_run: bool) -> Result<TermLintReport> {
+    if project_root.join(path).is_dir() {
+        lint_dir(project_root, path, fix, dry_run)
+    } else {
+        lint_file(project_root, path, fix, dry_run)
+    }
+}
+
+/// Lint all markdown files under a specific directory (project-scoped).
+pub fn lint_dir(project_root: &Path, dir_path: &str, fix: bool, dry_run: bool) -> Result<TermLintReport> {
+    let index = index::load(project_root)?;
+    if index.terms.as_ref().map_or(true, |t| t.is_empty()) {
+        return Ok(empty_report(fix, dry_run));
+    }
+    lint_dir_with_index(&index, project_root, dir_path, "provide a path relative to the project root", fix, dry_run)
+}
+
 pub fn lint_terms(project_root: &Path, fix: bool, dry_run: bool) -> Result<TermLintReport> {
     let index = index::load(project_root)?;
     if index.terms.as_ref().map_or(true, |t| t.is_empty()) {
@@ -107,6 +125,21 @@ pub fn lint_terms(project_root: &Path, fix: bool, dry_run: bool) -> Result<TermL
     }
 
     lint_walk_with_index(&index, project_root, &docs_dir, Some(&docs_dir), fix, dry_run)
+}
+
+pub(crate) fn lint_dir_with_index(
+    index: &IndexFile,
+    base_path: &Path,
+    dir_path: &str,
+    hint: &str,
+    fix: bool,
+    dry_run: bool,
+) -> Result<TermLintReport> {
+    let target_dir = base_path.join(dir_path);
+    if !target_dir.is_dir() {
+        return Err(MfError::usage(format!("not a directory: {dir_path}"), Some(hint.to_string())));
+    }
+    lint_walk_with_index(index, base_path, &target_dir, Some(&target_dir), fix, dry_run)
 }
 
 /// Lint a single markdown file against terms in `index`. Used by both project-

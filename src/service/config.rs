@@ -776,11 +776,16 @@ mod tests {
 
     #[test]
     fn test_paths_compat_maps_to_layout() {
-        let mut config = MindConfig::default();
-        config.layout = None; // Simulate project with only paths
-        config.paths.docs = "notes".to_string();
-        config.paths.sources = "refs".to_string();
-        config.paths.assets = "media".to_string();
+        let config = MindConfig {
+            layout: None, // Simulate project with only paths
+            paths: PathsConfig {
+                docs: "notes".to_string(),
+                sources: "refs".to_string(),
+                assets: "media".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         let (effective, _) = resolve_effective_layout(&config);
         assert_eq!(effective.articles, "notes");
         assert_eq!(effective.sources, "refs");
@@ -789,9 +794,11 @@ mod tests {
 
     #[test]
     fn test_build_output_dir_maps_to_layout() {
-        let mut config = MindConfig::default();
-        config.layout = None;
-        config.build.output_dir = "dist".to_string();
+        let config = MindConfig {
+            layout: None,
+            build: BuildConfig { output_dir: "dist".to_string(), ..Default::default() },
+            ..Default::default()
+        };
         let (effective, _) = resolve_effective_layout(&config);
         assert_eq!(effective.build_output, "dist");
     }

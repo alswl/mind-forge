@@ -344,12 +344,12 @@ fn handle_lint(
     let report = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         if let Some(ref path) = args.path {
-            term_svc::lint_file(&project_path, path, effective_fix, effective_dry_run)?
+            term_svc::lint_path(&project_path, path, effective_fix, effective_dry_run)?
         } else {
             term_svc::lint_terms(&project_path, effective_fix, effective_dry_run)?
         }
     } else if let Some(ref path) = args.path {
-        term_svc::global::lint_file(root, path, effective_fix, effective_dry_run)?
+        term_svc::global::lint_path(root, path, effective_fix, effective_dry_run)?
     } else {
         term_svc::global::lint_terms(root, effective_fix, effective_dry_run)?
     };
