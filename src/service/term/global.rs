@@ -48,10 +48,7 @@ pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecogniti
     for alias in &aliases {
         for t in terms.iter() {
             if t.term == *alias || t.aliases.iter().any(|a| a == alias) {
-                return Err(MfError::usage(
-                    format!("alias '{alias}' conflicts with existing term '{}'", t.term),
-                    None,
-                ));
+                return Err(MfError::usage(format!("alias '{alias}' conflicts with existing term '{}'", t.term), None));
             }
         }
     }

@@ -130,5 +130,3 @@ fn term_list_term_json_shape() {
     assert_eq!(parsed["status"], "ok");
     assert_eq!(parsed["data"]["term"], "API");
 }
-
-

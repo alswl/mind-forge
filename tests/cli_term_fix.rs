@@ -192,7 +192,6 @@ fn fix_term_json_shape() {
     assert!(parsed["data"].get("corrections").is_some());
 }
 
-
 // T052
 #[test]
 fn fix_schema_version_unchanged() {

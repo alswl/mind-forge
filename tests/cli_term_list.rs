@@ -180,7 +180,6 @@ fn list_terms_outside_repo() {
     assert!(stderr.contains("not in a mind repo"));
 }
 
-
 // 7. missing index → empty list, exit 0
 // ---------------------------------------------------------------------------
 

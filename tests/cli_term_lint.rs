@@ -448,5 +448,3 @@ fn lint_fix_json_shape() {
     assert!(parsed["data"]["fixed_count"].as_u64().unwrap_or(0) >= 1);
     assert_eq!(parsed["data"]["modified_files"].as_array().unwrap().len(), 1);
 }
-
-

@@ -258,7 +258,6 @@ fn new_term_json_output_shape() {
     assert_eq!(data["corrections"].as_array().unwrap().len(), 0);
 }
 
-
 // T030
 #[test]
 fn new_schema_version_misrecognition_flag() {

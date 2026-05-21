@@ -231,4 +231,3 @@ fn learn_with_project_root_flags() {
 
     assert!(output.status.success());
 }
-
