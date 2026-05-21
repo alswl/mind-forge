@@ -1,15 +1,7 @@
 //! Global terms — repo-root `minds-terms.yaml`.
 //!
 //! When no `--project` flag is given, term commands operate on a single
-//! global terms file at `<repo_root>/minds-terms.yaml` instead of a
-//! project-scoped `mind-index.yaml`.
-//!
-//! Load/save delegates to `repo_format` for format detection and
-//! dual-shape read/write. Read-only callers use the format-unaware
-//! `load_terms` wrapper. Write paths must use `save_terms_with_format`
-//! with the loaded format — there is no format-defaulting save, since
-//! that would silently rewrite repo-format files as schema-version and
-//! destroy comments.
+//! global terms file at `<repo_root>/minds-terms.yaml`.
 
 use std::path::Path;
 
@@ -17,68 +9,21 @@ use super::fix::apply_update;
 use super::{dedup_preserve_first, sort_terms_by_name, TermInput, TermUpdate};
 use crate::error::{MfError, Result};
 use crate::model::term::{Correction, Term};
-use crate::service::term::repo_format::{self, path_for, TermsFileFormat};
+use crate::service::term::repo_format::{self, path_for};
 
-// ── Load / Save ───────────────────────────────────────────────────────────
+// ── Load / Save ─────────────────────────────────────────────────────────────
 
 /// Load terms from `<repo_root>/minds-terms.yaml`.
-///
-/// Delegates to `repo_format::load`; discards the format tag so existing
-/// read-only callers stay unchanged.
 pub fn load_terms(repo_root: &Path) -> Result<Vec<Term>> {
-    repo_format::load(repo_root).map(|(terms, _format)| terms)
-}
-
-/// Load terms with format tag for callers that need to branch on write.
-pub fn load_terms_with_format(repo_root: &Path) -> Result<(Vec<Term>, TermsFileFormat)> {
     repo_format::load(repo_root)
 }
 
-/// Atomically save terms with explicit format control.
-///
-/// `on_disk_content` is required for repository-format writes (surgical
-/// edits). Schema-version writes ignore it. Callers MUST pass the format
-/// they loaded — there is intentionally no format-defaulting wrapper,
-/// because defaulting to schema-version on a repo-format file would
-/// silently destroy comments and reformat the file.
-pub fn save_terms_with_format(
-    repo_root: &Path,
-    terms: &[Term],
-    format: TermsFileFormat,
-    on_disk_content: Option<&str>,
-) -> Result<()> {
-    repo_format::save(repo_root, terms, format, on_disk_content)
+/// Save terms to `<repo_root>/minds-terms.yaml`.
+fn save_terms(repo_root: &Path, terms: &[Term]) -> Result<()> {
+    repo_format::save(repo_root, terms)
 }
 
-// ── Repo-format field guard ───────────────────────────────────────────────
-
-/// Reject any field that the repository format does not carry.
-///
-/// `definition.is_some()` triggers regardless of the value (including
-/// `""` and whitespace-only), because the only correct response on a
-/// repo-format file is to refuse the edit, not to silently accept and
-/// later rewrite the file as schema-version.
-fn assert_no_unsupported_repo_fields(definition: Option<&str>, aliases: &[String], tags: &[String]) -> Result<()> {
-    if definition.is_some() {
-        return Err(repo_field_error("--definition"));
-    }
-    if !aliases.is_empty() {
-        return Err(repo_field_error("--alias"));
-    }
-    if !tags.is_empty() {
-        return Err(repo_field_error("--tag"));
-    }
-    Ok(())
-}
-
-fn repo_field_error(field_name: &str) -> MfError {
-    MfError::usage(
-        format!("{field_name} is not supported on repository-format minds-terms.yaml"),
-        Some("use --misrecognition or convert the file to schema-version format by hand".to_string()),
-    )
-}
-
-// ── Global term operations ────────────────────────────────────────────────
+// ── Global term operations ──────────────────────────────────────────────────
 
 /// Register a new term in the global terms file.
 pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecognitions: &[String]) -> Result<Term> {
@@ -88,9 +33,10 @@ pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecogniti
 
     super::validate_confidence(input.confidence)?;
 
-    let (mut terms, format) = load_terms_with_format(repo_root)?;
-    let on_disk_content = std::fs::read_to_string(path_for(repo_root)).ok();
+    let mut terms = load_terms(repo_root)?;
     let misrecognitions = dedup_preserve_first(misrecognitions);
+    let aliases = dedup_preserve_first(input.aliases);
+    let tags = dedup_preserve_first(input.tags);
 
     if terms.iter().any(|t| t.term == term) {
         return Err(MfError::usage(
@@ -99,72 +45,32 @@ pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecogniti
         ));
     }
 
-    match format {
-        TermsFileFormat::Repository => {
-            assert_no_unsupported_repo_fields(input.definition, input.aliases, input.tags)?;
-
-            let new_content = repo_format::append_term_repo_format(
-                on_disk_content.as_deref().unwrap_or(""),
-                term,
-                &misrecognitions,
-                input.description,
-                input.confidence,
-            )?;
-
-            let new_entry = Term {
-                term: term.to_string(),
-                definition: None,
-                description: input.description.map(String::from),
-                confidence: input.confidence,
-                aliases: vec![],
-                tags: vec![],
-                corrections: misrecognitions
-                    .iter()
-                    .map(|m| Correction { original: m.clone(), correct: term.to_string() })
-                    .collect(),
-            };
-
-            terms.push(new_entry.clone());
-            sort_terms_by_name(&mut terms);
-            save_terms_with_format(repo_root, &terms, TermsFileFormat::Repository, Some(&new_content))?;
-
-            Ok(new_entry)
-        }
-        TermsFileFormat::SchemaVersion => {
-            let aliases = dedup_preserve_first(input.aliases);
-            let tags = dedup_preserve_first(input.tags);
-
-            for alias in &aliases {
-                for t in terms.iter() {
-                    if t.term == *alias || t.aliases.iter().any(|a| a == alias) {
-                        return Err(MfError::usage(
-                            format!("alias '{alias}' conflicts with existing term '{}'", t.term),
-                            None,
-                        ));
-                    }
-                }
+    for alias in &aliases {
+        for t in terms.iter() {
+            if t.term == *alias || t.aliases.iter().any(|a| a == alias) {
+                return Err(MfError::usage(format!("alias '{alias}' conflicts with existing term '{}'", t.term), None));
             }
-
-            let corrections: Vec<Correction> =
-                misrecognitions.iter().map(|m| Correction { original: m.clone(), correct: term.to_string() }).collect();
-
-            let new_entry = Term {
-                term: term.to_string(),
-                definition: input.definition.and_then(|s| if s.is_empty() { None } else { Some(s.to_string()) }),
-                description: input.description.map(String::from),
-                confidence: input.confidence,
-                aliases,
-                tags,
-                corrections,
-            };
-
-            terms.push(new_entry.clone());
-            sort_terms_by_name(&mut terms);
-            save_terms_with_format(repo_root, &terms, TermsFileFormat::SchemaVersion, None)?;
-
-            Ok(new_entry)
         }
     }
+
+    let corrections: Vec<Correction> =
+        misrecognitions.iter().map(|m| Correction { original: m.clone(), correct: term.to_string() }).collect();
+
+    let new_entry = Term {
+        term: term.to_string(),
+        definition: input.definition.and_then(|s| if s.is_empty() { None } else { Some(s.to_string()) }),
+        description: input.description.map(String::from),
+        confidence: input.confidence,
+        aliases,
+        tags,
+        corrections,
+    };
+
+    terms.push(new_entry.clone());
+    sort_terms_by_name(&mut terms);
+    save_terms(repo_root, &terms)?;
+
+    Ok(new_entry)
 }
 
 /// List global terms, optionally filtered by substring.
@@ -203,8 +109,7 @@ pub fn fix_term(repo_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Re
 
     super::validate_confidence(update.confidence)?;
 
-    let (mut terms, format) = load_terms_with_format(repo_root)?;
-    let on_disk_content = std::fs::read_to_string(path_for(repo_root)).ok();
+    let mut terms = load_terms(repo_root)?;
 
     let pos = terms.iter().position(|t| t.term == term_name).ok_or_else(|| {
         MfError::usage(format!("term '{term_name}' not found"), Some("use 'mf term list' or 'mf term new'".to_string()))
@@ -218,33 +123,11 @@ pub fn fix_term(repo_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Re
         });
     }
 
-    match format {
-        TermsFileFormat::Repository => {
-            if update.has_legacy_flags() {
-                assert_no_unsupported_repo_fields(update.definition, update.aliases, update.tags)?;
-                return Err(MfError::internal("fix_term: repo-format guard accepted a write — this is a bug"));
-            }
-
-            let content = on_disk_content.as_deref().unwrap_or("");
-            let desc_val = if update.clear_description { Some("") } else { update.description };
-            let conf_val = if update.clear_confidence { None } else { update.confidence };
-
-            let result = repo_format::update_term_metadata_repo_format(content, term_name, desc_val, conf_val)?;
-
-            apply_update(&mut terms[pos], &update);
-            let result_term = terms[pos].clone();
-            sort_terms_by_name(&mut terms);
-            save_terms_with_format(repo_root, &terms, TermsFileFormat::Repository, Some(&result.content))?;
-            Ok(result_term)
-        }
-        TermsFileFormat::SchemaVersion => {
-            apply_update(&mut terms[pos], &update);
-            let result = terms[pos].clone();
-            sort_terms_by_name(&mut terms);
-            save_terms_with_format(repo_root, &terms, TermsFileFormat::SchemaVersion, None)?;
-            Ok(result)
-        }
-    }
+    apply_update(&mut terms[pos], &update);
+    let result = terms[pos].clone();
+    sort_terms_by_name(&mut terms);
+    save_terms(repo_root, &terms)?;
+    Ok(result)
 }
 
 /// Find a global term by its main name or alias. Returns the index.
@@ -281,10 +164,8 @@ pub fn learn_correction(repo_root: &Path, original: &str, correct: &str) -> Resu
         return Err(MfError::usage("--correct cannot be empty", None));
     }
 
-    let (mut terms, format) = load_terms_with_format(repo_root)?;
-    let on_disk_content = std::fs::read_to_string(path_for(repo_root)).ok();
+    let mut terms = load_terms(repo_root)?;
 
-    // Validate the correct target exists and resolve the canonical term name
     let idx = find_term_index(&terms, correct)?;
     let canonical_name = terms[idx].term.clone();
 
@@ -300,38 +181,21 @@ pub fn learn_correction(repo_root: &Path, original: &str, correct: &str) -> Resu
         return Ok((terms[idx].clone(), false));
     }
 
-    match format {
-        TermsFileFormat::Repository => {
-            let content = on_disk_content.unwrap_or_default();
-            let result = repo_format::append_misrecognition_repo_format(&content, &canonical_name, original)?;
-            if !result.appended {
-                return Ok((terms[idx].clone(), false));
-            }
-
-            terms[idx].corrections.push(Correction { original: original.to_string(), correct: canonical_name.clone() });
-            let term_result = terms[idx].clone();
-            sort_terms_by_name(&mut terms);
-            save_terms_with_format(repo_root, &terms, TermsFileFormat::Repository, Some(&result.content))?;
-            Ok((term_result, true))
-        }
-        TermsFileFormat::SchemaVersion => {
-            terms[idx].corrections.push(Correction { original: original.to_string(), correct: canonical_name.clone() });
-            let result = terms[idx].clone();
-            sort_terms_by_name(&mut terms);
-            save_terms_with_format(repo_root, &terms, TermsFileFormat::SchemaVersion, None)?;
-            Ok((result, true))
-        }
-    }
+    terms[idx].corrections.push(Correction { original: original.to_string(), correct: canonical_name.clone() });
+    let result = terms[idx].clone();
+    sort_terms_by_name(&mut terms);
+    save_terms(repo_root, &terms)?;
+    Ok((result, true))
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────────
+// ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    /// Write a minimal schema-version file so format detection returns SchemaVersion.
-    fn seed_schema_version(root: &Path) {
-        std::fs::write(path_for(root), "schema_version: '1'\nterms: []\n").unwrap();
+
+    fn seed(repo_root: &Path) {
+        std::fs::write(path_for(repo_root), "schema_version: '1'\nterms: []\n").unwrap();
     }
 
     fn def_input(def: &str) -> TermInput<'_> {
@@ -350,7 +214,7 @@ mod tests {
     fn new_and_list() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        seed_schema_version(root);
+        seed(root);
 
         let t = new_term(root, "api-gateway", def_input("The API gateway service"), &[]).unwrap();
         assert_eq!(t.term, "api-gateway");
@@ -365,7 +229,7 @@ mod tests {
     fn duplicate_term_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        seed_schema_version(root);
+        seed(root);
         new_term(root, "foo", TermInput::default(), &[]).unwrap();
         let err = new_term(root, "foo", TermInput::default(), &[]).unwrap_err();
         assert!(err.to_string().contains("already exists"));
@@ -375,7 +239,7 @@ mod tests {
     fn empty_term_name_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        seed_schema_version(root);
+        seed(root);
         let err = new_term(root, "", TermInput::default(), &[]).unwrap_err();
         assert!(err.to_string().contains("cannot be empty"));
     }
@@ -384,7 +248,7 @@ mod tests {
     fn show_term_found() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        seed_schema_version(root);
+        seed(root);
         let tags = vec!["lang".to_string()];
         new_term(root, "rust", tags_input(Some("A systems programming language"), &tags), &[]).unwrap();
 
@@ -404,7 +268,7 @@ mod tests {
     fn fix_term_definition() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        seed_schema_version(root);
+        seed(root);
         new_term(root, "k8s", def_input("Kubernetes"), &[]).unwrap();
 
         let t = fix_term(root, "k8s", TermUpdate { definition: Some("Kubernetes (K8s)"), ..TermUpdate::default() })
@@ -416,7 +280,7 @@ mod tests {
     fn learn_correction_adds() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        seed_schema_version(root);
+        seed(root);
         let aliases = vec!["k8s".to_string()];
         new_term(root, "Kubernetes", aliases_input(&aliases), &[]).unwrap();
 
@@ -429,7 +293,7 @@ mod tests {
     fn learn_correction_idempotent() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        seed_schema_version(root);
+        seed(root);
         new_term(root, "Kubernetes", TermInput::default(), &[]).unwrap();
         learn_correction(root, "kube", "Kubernetes").unwrap();
         let (_, appended) = learn_correction(root, "kube", "Kubernetes").unwrap();
@@ -440,7 +304,7 @@ mod tests {
     fn filter_terms() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        seed_schema_version(root);
+        seed(root);
         let test_tag = vec!["test".to_string()];
         let prod_tag = vec!["prod".to_string()];
         new_term(root, "alpha", tags_input(None, &test_tag), &[]).unwrap();
@@ -455,7 +319,7 @@ mod tests {
     fn alias_conflict_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        seed_schema_version(root);
+        seed(root);
         let aliases = vec!["a".to_string()];
         new_term(root, "alpha", aliases_input(&aliases), &[]).unwrap();
         let err = new_term(root, "beta", aliases_input(&aliases), &[]).unwrap_err();

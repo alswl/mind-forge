@@ -273,7 +273,15 @@ fn handle_list(
             ));
             for t in &terms {
                 let def = t.definition.as_deref().unwrap_or("-");
-                let def_display = if def.len() > 60 { format!("{}…", &def[..60]) } else { def.to_string() };
+                let def_display = if def.len() > 60 {
+                    let mut end = 60;
+                    while !def.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    format!("{}…", &def[..end])
+                } else {
+                    def.to_string()
+                };
                 let alias_display = if t.aliases.is_empty() {
                     "0".to_string()
                 } else {
