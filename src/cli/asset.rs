@@ -28,8 +28,10 @@ pub enum AssetSubcommand {
     Index(AssetIndexArgs),
     #[command(about = "Clean stale asset index entries")]
     Clean(AssetCleanArgs),
-    #[command(about = "Remove an asset")]
+    #[command(about = "Remove an asset", visible_alias = "rm")]
     Remove(AssetRemoveArgs),
+    #[command(about = "Rename an asset")]
+    Rename(AssetRenameArgs),
     #[command(about = "Show asset details")]
     Show(AssetShowArgs),
 }
@@ -128,6 +130,20 @@ pub struct AssetRemoveArgs {
     pub file: String,
     #[arg(short = 'f', long)]
     pub force: bool,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
+    #[arg(short = 'p', long)]
+    pub project: Option<String>,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct AssetRenameArgs {
+    pub old_path: String,
+    pub new_path: String,
+    #[arg(short = 'f', long)]
+    pub force: bool,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
     #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
@@ -154,6 +170,7 @@ pub fn dispatch(
         Some(AssetSubcommand::Clean(args)) => handle_clean(args, root, format),
         Some(AssetSubcommand::Show(args)) => handle_asset_show(args, root, &cwd, format),
         Some(AssetSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format),
+        Some(AssetSubcommand::Rename(args)) => handle_rename(args, root, &cwd, format),
     }
 }
 
@@ -432,18 +449,35 @@ fn handle_clean(args: AssetCleanArgs, root: &Path, format: Format) -> Result<Com
 
 fn handle_remove(args: AssetRemoveArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
-    let report = asset_svc::remove(&project_path, &args.file, args.force)?;
+    let report = asset_svc::remove_asset(&project_path, &args.file, args.force, args.dry_run)?;
 
     match format {
         Format::Json => {
-            let data = serde_json::json!({
-                "removed": report.removed,
-                "was_referenced": report.was_referenced,
-            });
+            let data = serde_json::to_value(&report).map_err(MfError::Json)?;
             Ok(CommandOutcome::Success(data, None))
         }
         Format::Text => {
-            let msg = format!("Removed asset: {}\nwas_referenced: {}", report.removed, report.was_referenced);
+            let prefix = if report.dry_run { "[dry-run] would remove" } else { "✓ removed" };
+            let msg = format!("{prefix} asset: {} (referenced: {})", report.removed, report.was_referenced);
+            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
+        }
+    }
+}
+
+// ── Handle: mf asset rename ─────────────────────────────────────────────────
+
+fn handle_rename(args: AssetRenameArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+    let report = asset_svc::rename_asset(&project_path, &args.old_path, &args.new_path, args.force, args.dry_run)?;
+
+    match format {
+        Format::Json => {
+            let data = serde_json::to_value(&report).map_err(MfError::Json)?;
+            Ok(CommandOutcome::Success(data, None))
+        }
+        Format::Text => {
+            let prefix = if report.dry_run { "[dry-run] would rename" } else { "✓ renamed" };
+            let msg = format!("{} asset: {} → {}", prefix, report.before.path, report.after.path);
             Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
         }
     }

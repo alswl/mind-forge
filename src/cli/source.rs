@@ -28,8 +28,10 @@ pub enum SourceSubcommand {
     Update(SourceUpdateArgs),
     #[command(about = "Index sources")]
     Index(SourceIndexArgs),
-    #[command(about = "Remove a source")]
+    #[command(about = "Remove a source", visible_alias = "rm")]
     Remove(SourceRemoveArgs),
+    #[command(about = "Rename a source")]
+    Rename(SourceRenameArgs),
     #[command(about = "Clean source index")]
     Clean(SourceCleanArgs),
 }
@@ -156,6 +158,10 @@ pub struct SourceRemoveArgs {
     pub name_or_path: String,
     #[arg(long = "keep-file")]
     pub keep_file: bool,
+    #[arg(short = 'f', long)]
+    pub force: bool,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
     #[arg(short = 'p', long)]
     pub project: Option<String>,
 }
@@ -166,6 +172,18 @@ pub struct SourceRemoveArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceIndexArgs {
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
+    #[arg(short = 'p', long)]
+    pub project: Option<String>,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct SourceRenameArgs {
+    pub old_name: String,
+    pub new_name: String,
+    #[arg(short = 'f', long)]
+    pub force: bool,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
     #[arg(short = 'p', long)]
@@ -205,14 +223,8 @@ pub fn dispatch(
         Some(SourceSubcommand::List(args)) => handle_list(args, root, &cwd, format),
         Some(SourceSubcommand::Update(args)) => handle_update(args, root, &cwd, format),
         Some(SourceSubcommand::Index(args)) => handle_index(args, root, &cwd, format),
-        Some(SourceSubcommand::Remove(args)) => {
-            // Detect PATH vs NAME: if input contains '/' or starts with 'sources', treat as PATH
-            let is_path = args.name_or_path.contains('/') || args.name_or_path.starts_with(defaults::SOURCES_DIR);
-            if !is_path {
-                deprecation.warn_subject("positional NAME", "full PATH (e.g., sources/yuque/foo.md)");
-            }
-            handle_remove(args, root, &cwd, format, is_path)
-        }
+        Some(SourceSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format, deprecation),
+        Some(SourceSubcommand::Rename(args)) => handle_rename(args, root, &cwd, format),
         Some(SourceSubcommand::Clean(args)) => handle_clean(args, root, &cwd, format),
     }
 }
@@ -314,15 +326,15 @@ fn handle_remove(
     root: &Path,
     cwd: &Path,
     format: Format,
-    is_path: bool,
+    deprecation: &mut DeprecationContext,
 ) -> Result<CommandOutcome> {
+    let is_path = args.name_or_path.contains('/') || args.name_or_path.starts_with(defaults::SOURCES_DIR);
+    if !is_path {
+        deprecation.warn_subject("positional NAME", "full PATH (e.g., sources/yuque/foo.md)");
+    }
     let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
-
-    let report = if is_path {
-        svc_source::remove_by_path(&project_path, &args.name_or_path, args.keep_file)?
-    } else {
-        svc_source::remove(&project_path, &args.name_or_path, args.keep_file)?
-    };
+    let report =
+        svc_source::remove_source(&project_path, &args.name_or_path, args.keep_file, args.force, args.dry_run)?;
 
     match format {
         Format::Json => {
@@ -330,19 +342,14 @@ fn handle_remove(
             Ok(CommandOutcome::Success(data, None))
         }
         Format::Text => {
+            let prefix = if report.dry_run { "[dry-run] would remove" } else { "✓ removed" };
             let kind_str = report.source.kind.as_str();
-
-            let mut lines = vec![format!("✓ removed source: {} ({kind_str})", report.source.name)];
+            let mut lines = vec![format!("{prefix} source: {} ({kind_str})", report.source.name)];
             if report.file_deleted {
                 if let Some(ref p) = report.source.path {
                     lines.push(format!("  deleted file: {p}"));
                 }
-            } else if matches!(report.source.kind, FileKind::Pdf | FileKind::File) {
-                lines.push("  kept file (already missing or --keep-file)".to_string());
-            } else {
-                lines.push("  (URL source, no file to delete)".to_string());
             }
-
             Ok(CommandOutcome::Success(serde_json::Value::String(lines.join("\n")), None))
         }
     }
@@ -373,6 +380,26 @@ fn handle_clean(args: SourceCleanArgs, root: &Path, cwd: &Path, format: Format) 
 
             let output = lines.join("\n");
             Ok(CommandOutcome::Success(serde_json::Value::String(output), None))
+        }
+    }
+}
+
+// ── Handle: mf source rename ────────────────────────────────────────────────
+
+fn handle_rename(args: SourceRenameArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+    let report = svc_source::rename_source(&project_path, &args.old_name, &args.new_name, args.force, args.dry_run)?;
+
+    match format {
+        Format::Json => {
+            let data = serde_json::to_value(&report).map_err(MfError::Json)?;
+            Ok(CommandOutcome::Success(data, None))
+        }
+        Format::Text => {
+            let prefix = if report.dry_run { "[dry-run] would rename" } else { "✓ renamed" };
+            let kind_str = report.before.file_kind.as_str();
+            let msg = format!("{} source: {} → {} ({})", prefix, report.before.name, report.after.name, kind_str);
+            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
         }
     }
 }

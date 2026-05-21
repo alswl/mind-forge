@@ -17,7 +17,7 @@ pub struct TermCmd {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum TermSubcommand {
-    #[command(about = "List terms")]
+    #[command(about = "List terms", visible_alias = "ls")]
     List(TermListArgs),
     #[command(about = "Create a term")]
     New(TermNewArgs),
@@ -29,6 +29,10 @@ pub enum TermSubcommand {
     Update(TermFixArgs),
     #[command(about = "Show term details")]
     Show(TermShowArgs),
+    #[command(about = "Remove a term", visible_alias = "rm")]
+    Remove(TermRemoveArgs),
+    #[command(about = "Rename a term")]
+    Rename(TermRenameArgs),
     #[command(about = "Learn a term correction (deprecated: use `add`)", hide = true)]
     Learn(TermLearnArgs),
     #[command(about = "Fix a term metadata (deprecated: use `update`)", hide = true)]
@@ -126,6 +130,33 @@ pub struct TermShowArgs {
     pub project: Option<String>,
 }
 
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct TermRemoveArgs {
+    pub term: String,
+    #[arg(short = 'p', long)]
+    pub project: Option<String>,
+    #[arg(long)]
+    pub global: bool,
+    #[arg(short = 'f', long)]
+    pub force: bool,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct TermRenameArgs {
+    pub old_term: String,
+    pub new_term: String,
+    #[arg(long)]
+    pub keep_alias: bool,
+    #[arg(short = 'f', long)]
+    pub force: bool,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
+    #[arg(short = 'p', long)]
+    pub project: Option<String>,
+}
+
 pub fn dispatch(
     command: TermCmd,
     repo_root: Option<&std::path::PathBuf>,
@@ -155,6 +186,8 @@ pub fn dispatch(
             handle_fix(args, root, &cwd, format)
         }
         Some(TermSubcommand::Show(args)) => handle_show(args, root, &cwd, format),
+        Some(TermSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format),
+        Some(TermSubcommand::Rename(args)) => handle_rename(args, root, &cwd, format),
     }
 }
 
@@ -558,4 +591,54 @@ fn handle_show(args: TermShowArgs, root: &Path, cwd: &Path, format: Format) -> R
         term_svc::global::show_term(root, &args.name)?
     };
     render_term_show(&term, format)
+}
+
+// ── Handle: mf term remove / rm ────────────────────────────────────────────
+
+fn handle_remove(args: TermRemoveArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
+    let report = if args.global {
+        term_svc::remove_term_global(root, &args.term, args.force, args.dry_run)?
+    } else {
+        let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+        term_svc::remove_term(&project_path, &args.term, args.force, args.dry_run)?
+    };
+
+    match format {
+        Format::Json => {
+            let data = serde_json::to_value(&report).map_err(MfError::Json)?;
+            Ok(CommandOutcome::Success(data, None))
+        }
+        Format::Text => {
+            let prefix = if report.dry_run { "[dry-run] would remove" } else { "✓ removed" };
+            let msg = format!("{} term: {}", prefix, report.before.name);
+            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
+        }
+    }
+}
+
+// ── Handle: mf term rename ──────────────────────────────────────────────────
+
+fn handle_rename(args: TermRenameArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+    let report = term_svc::rename_term(
+        &project_path,
+        &args.old_term,
+        &args.new_term,
+        args.keep_alias,
+        args.force,
+        args.dry_run,
+    )?;
+
+    match format {
+        Format::Json => {
+            let data = serde_json::to_value(&report).map_err(MfError::Json)?;
+            Ok(CommandOutcome::Success(data, None))
+        }
+        Format::Text => {
+            let prefix = if report.dry_run { "[dry-run] would rename" } else { "✓ renamed" };
+            let alias_note = if args.keep_alias { " (old name kept as alias)" } else { "" };
+            let msg = format!("{} term: {} → {}{}", prefix, report.before.name, report.after.name, alias_note);
+            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
+        }
+    }
 }

@@ -215,6 +215,14 @@ pub fn project_dir_for(repo_root: &Path, projects_dir: &str, name: &str) -> Path
     }
 }
 
+/// Validate that `s` is non-empty after trimming.
+pub fn require_nonempty(s: &str, label: &str) -> Result<()> {
+    if s.trim().is_empty() {
+        return Err(MfError::usage(format!("{label} cannot be empty"), Some("provide a non-empty value".to_string())));
+    }
+    Ok(())
+}
+
 /// Validate that `name` is a legal Mind Project NAME:
 /// - non-empty
 /// - kebab-case (a-z, 0-9, hyphen)

@@ -60,6 +60,31 @@ pub struct TermLintFailure {
     pub reason: String,
 }
 
+// ── Lifecycle reports ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct TermRemoveReport {
+    pub verb: String,
+    pub kind: String,
+    pub before: TermIdentity,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<TermIdentity>,
+    #[serde(default)]
+    pub references: Vec<crate::model::lifecycle::Reference>,
+    #[serde(default)]
+    pub side_effects: Vec<crate::model::lifecycle::PlannedChange>,
+    pub force: bool,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct TermIdentity {
+    pub name: String,
+    pub scope: crate::model::lifecycle::ScopeRef,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct TermLintReport {

@@ -997,6 +997,14 @@ pub struct ArticleRenameReport {
     pub new_title: String,
     pub old_article_path: String,
     pub new_article_path: String,
+    #[serde(default)]
+    pub references: Vec<crate::model::lifecycle::Reference>,
+    #[serde(default)]
+    pub side_effects: Vec<crate::model::lifecycle::PlannedChange>,
+    #[serde(default)]
+    pub force: bool,
+    #[serde(default)]
+    pub dry_run: bool,
 }
 
 /// Rename an article: renames the file on disk and updates the index.
@@ -1067,6 +1075,108 @@ pub fn rename_article(
         new_title: new_title.to_string(),
         old_article_path,
         new_article_path,
+        references: vec![],
+        side_effects: vec![],
+        force,
+        dry_run: false,
+    })
+}
+
+// ── Article remove ────────────────────────────────────────────────────────
+
+use crate::model::article::{ArticleIdentity, ArticleRemoveReport};
+
+/// Hard-remove an article: delete the file/directory and update the index.
+pub fn remove_article(project_path: &Path, title: &str, force: bool, dry_run: bool) -> Result<ArticleRemoveReport> {
+    crate::service::util::require_nonempty(title, "article title")?;
+
+    let mut index = index::load(project_path)?;
+    let articles = index.articles.as_ref().ok_or_else(|| {
+        MfError::not_found(
+            format!("article '{title}' not found"),
+            Some("use 'mf article list --project <project>' to see available articles".to_string()),
+        )
+    })?;
+
+    let article = articles.iter().find(|a| a.title == title).ok_or_else(|| {
+        MfError::not_found(
+            format!("article '{title}' not found"),
+            Some("use 'mf article list --project <project>' to see available articles".to_string()),
+        )
+    })?;
+
+    let scope = crate::model::lifecycle::ScopeRef { project: Some(article.project.clone()), global: false };
+    let before = ArticleIdentity { title: article.title.clone(), article_path: article.article_path.clone(), scope };
+
+    // Reference scan (articles reference other objects, not typically referenced themselves)
+    let refs: Vec<crate::model::lifecycle::Reference> = Vec::new();
+
+    let mut planned: Vec<crate::model::lifecycle::PlannedChange> = Vec::new();
+    let abs_path = project_path.join(&article.article_path);
+    if abs_path.is_dir() {
+        planned.push(crate::model::lifecycle::PlannedChange {
+            op: crate::model::lifecycle::PlannedOp::RemoveDir,
+            path: abs_path.to_string_lossy().to_string(),
+            old: Some(article.title.clone()),
+            new: None,
+        });
+    } else if abs_path.exists() {
+        planned.push(crate::model::lifecycle::PlannedChange {
+            op: crate::model::lifecycle::PlannedOp::RemoveFile,
+            path: abs_path.to_string_lossy().to_string(),
+            old: Some(article.title.clone()),
+            new: None,
+        });
+    }
+    planned.push(crate::model::lifecycle::PlannedChange {
+        op: crate::model::lifecycle::PlannedOp::UpdateYaml,
+        path: project_path.join("mind-index.yaml").to_string_lossy().to_string(),
+        old: Some(article.title.clone()),
+        new: None,
+    });
+    planned.push(crate::model::lifecycle::PlannedChange {
+        op: crate::model::lifecycle::PlannedOp::RefreshIndex,
+        path: project_path.join("mind-index.yaml").to_string_lossy().to_string(),
+        old: None,
+        new: None,
+    });
+
+    if dry_run {
+        return Ok(ArticleRemoveReport {
+            verb: "remove".into(),
+            kind: "article".into(),
+            before,
+            after: None,
+            references: refs,
+            side_effects: planned,
+            force,
+            dry_run: true,
+        });
+    }
+
+    // Remove file/directory from disk
+    if abs_path.is_dir() {
+        fs::remove_dir_all(&abs_path).map_err(MfError::Io)?;
+    } else if abs_path.exists() {
+        fs::remove_file(&abs_path).map_err(MfError::Io)?;
+    }
+
+    // Remove from index
+    {
+        let articles = index.articles.as_mut().expect("already checked");
+        articles.retain(|a| a.title != title);
+    }
+    index::save(project_path, &index)?;
+
+    Ok(ArticleRemoveReport {
+        verb: "remove".into(),
+        kind: "article".into(),
+        before,
+        after: None,
+        references: refs,
+        side_effects: planned,
+        force,
+        dry_run: false,
     })
 }
 

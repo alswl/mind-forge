@@ -75,4 +75,12 @@ pub struct AssetCleanReport {
 pub struct AssetRemoveReport {
     pub removed: String,
     pub was_referenced: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub references: Vec<crate::model::lifecycle::Reference>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub side_effects: Vec<crate::model::lifecycle::PlannedChange>,
+    #[serde(default)]
+    pub force: bool,
+    #[serde(default)]
+    pub dry_run: bool,
 }

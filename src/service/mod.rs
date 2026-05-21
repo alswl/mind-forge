@@ -4,6 +4,7 @@ pub mod build;
 pub mod config;
 pub mod effective_date;
 pub mod index;
+pub mod lifecycle;
 pub mod project;
 pub mod publish;
 pub mod publisher;

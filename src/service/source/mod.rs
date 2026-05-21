@@ -7,7 +7,8 @@ pub(crate) use self::add::{classify_input, InputForm};
 pub use self::clean::clean;
 pub use self::index::reconcile;
 pub use self::list::list;
-pub use self::remove::{remove, remove_by_path};
+pub use self::remove::remove_source;
+pub use self::rename::rename_source;
 pub use self::update::{update, UpdateArgs};
 
 // ── URL validation ───────────────────────────────────────────────────────────
@@ -62,4 +63,5 @@ pub mod clean;
 pub mod index;
 pub mod list;
 pub mod remove;
+pub mod rename;
 pub mod update;

@@ -53,6 +53,13 @@ fn project_help_snapshot() {
 }
 
 #[test]
+fn project_remove_help_snapshot() {
+    let (stdout, _, code) = run(&["project", "remove", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("project_remove_help", stdout);
+}
+
+#[test]
 fn publish_help_snapshot() {
     let (stdout, _, code) = run(&["publish", "--help"]);
     assert_eq!(code, 0);
@@ -92,6 +99,13 @@ fn asset_index_help_snapshot() {
     let (stdout, _, code) = run(&["asset", "index", "--help"]);
     assert_eq!(code, 0);
     assert_snapshot!("asset_index_help", stdout);
+}
+
+#[test]
+fn asset_remove_help_snapshot() {
+    let (stdout, _, code) = run(&["asset", "remove", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("asset_remove_help", stdout);
 }
 
 #[test]
@@ -180,6 +194,13 @@ fn term_fix_help_snapshot() {
     assert_snapshot!("term_fix_help", stdout);
 }
 
+#[test]
+fn term_remove_help_snapshot() {
+    let (stdout, _, code) = run(&["term", "remove", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("term_remove_help", stdout);
+}
+
 // ── Publish target help snapshots ─────────────────
 
 #[test]
@@ -217,6 +238,13 @@ fn article_new_help_snapshot() {
     let (stdout, _, code) = run(&["article", "new", "--help"]);
     assert_eq!(code, 0);
     assert_snapshot!("article_new_help", stdout);
+}
+
+#[test]
+fn article_remove_help_snapshot() {
+    let (stdout, _, code) = run(&["article", "remove", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("article_remove_help", stdout);
 }
 
 #[test]

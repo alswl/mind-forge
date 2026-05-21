@@ -11,7 +11,8 @@ Commands:
   add     Add a source
   update  Update a source
   index   Index sources
-  remove  Remove a source
+  remove  Remove a source [aliases: rm]
+  rename  Rename a source
   clean   Clean source index
 
 Options:

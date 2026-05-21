@@ -12,7 +12,8 @@ Commands:
   update  Update assets
   index   Index assets
   clean   Clean stale asset index entries
-  remove  Remove an asset
+  remove  Remove an asset [aliases: rm]
+  rename  Rename an asset
   show    Show asset details
 
 Options:

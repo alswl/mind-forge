@@ -2,28 +2,24 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Remove a source
+Remove a project
 
-Usage: mf source remove [OPTIONS] <NAME_OR_PATH>
+Usage: mf project remove [OPTIONS] <NAME>
 
 Arguments:
-  <NAME_OR_PATH>  Source path (e.g. sources/yuque/foo.md) or source name (deprecated)
+  <NAME>  
 
 Options:
-      --keep-file
+  -f, --force
           
       --root <PATH>
           Mind Repo root directory
       --config <PATH>
           Config file path
-  -f, --force
-          
       --dry-run
           
   -v, --verbose...
           Verbose output
-  -p, --project <PROJECT>
-          
   -q, --quiet
           Silence non-error output
       --format <FORMAT>

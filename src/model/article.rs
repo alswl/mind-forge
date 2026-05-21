@@ -67,6 +67,32 @@ pub struct ArticleDiff {
     pub removed: Vec<Article>,
 }
 
+// ── Lifecycle reports ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ArticleRemoveReport {
+    pub verb: String,
+    pub kind: String,
+    pub before: ArticleIdentity,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<ArticleIdentity>,
+    #[serde(default)]
+    pub references: Vec<crate::model::lifecycle::Reference>,
+    #[serde(default)]
+    pub side_effects: Vec<crate::model::lifecycle::PlannedChange>,
+    pub force: bool,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ArticleIdentity {
+    pub title: String,
+    pub article_path: String,
+    pub scope: crate::model::lifecycle::ScopeRef,
+}
+
 /// A single lint issue found during `mf article lint`.
 #[derive(Debug, Clone, Serialize)]
 pub struct LintIssue {

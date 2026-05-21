@@ -335,3 +335,82 @@ fn source_ls_alias() {
     assert_eq!(code_list, 0);
     assert_eq!(stdout_ls, stdout_list, "source ls and list output should match");
 }
+
+// ── rm alias regression tests (T021) ───────────────────────────────────────
+
+/// Verify `rm` alias is visible and recognized on all resource groups
+#[test]
+fn rm_alias_on_all_resources() {
+    for resource in &["source", "asset", "project", "article", "term"] {
+        let (stdout, _, code) = run(&[resource, "--help"]);
+        assert_eq!(code, 0, "{resource} --help should succeed");
+        assert!(stdout.contains("remove"), "{resource} should have 'remove' subcommand");
+        // The rm alias should be visible in clap output (shown as visible_alias)
+    }
+}
+
+/// Verify `term rm` is recognized (not "unrecognized subcommand")
+#[test]
+fn term_rm_recognized() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "test-proj");
+    let (_stdout, stderr, code) = run(&["--root", &dir.path().to_string_lossy(), "term", "rm", "--help"]);
+    assert_eq!(code, 0, "term rm --help should succeed");
+    assert!(!stderr.contains("unrecognized"), "term rm should be recognized, got: {stderr:?}");
+}
+
+/// Verify `source rm` is recognized
+#[test]
+fn source_rm_recognized() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "test-proj");
+    let (_stdout, stderr, code) = run(&["--root", &dir.path().to_string_lossy(), "source", "rm", "--help"]);
+    assert_eq!(code, 0, "source rm --help should succeed");
+    assert!(!stderr.contains("unrecognized"), "source rm should be recognized, got: {stderr:?}");
+}
+
+/// Verify `asset rm` is recognized
+#[test]
+fn asset_rm_recognized() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "test-proj");
+    let (_stdout, stderr, code) = run(&["--root", &dir.path().to_string_lossy(), "asset", "rm", "--help"]);
+    assert_eq!(code, 0, "asset rm --help should succeed");
+    assert!(!stderr.contains("unrecognized"), "asset rm should be recognized, got: {stderr:?}");
+}
+
+/// Verify `article rm` is recognized
+#[test]
+fn article_rm_recognized() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "test-proj");
+    let (_stdout, stderr, code) = run(&["--root", &dir.path().to_string_lossy(), "article", "rm", "--help"]);
+    assert_eq!(code, 0, "article rm --help should succeed");
+    assert!(!stderr.contains("unrecognized"), "article rm should be recognized, got: {stderr:?}");
+}
+
+/// Verify `project rm` is recognized
+#[test]
+fn project_rm_recognized() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "test-proj");
+    let (_stdout, stderr, code) = run(&["--root", &dir.path().to_string_lossy(), "project", "rm", "--help"]);
+    assert_eq!(code, 0, "project rm --help should succeed");
+    assert!(!stderr.contains("unrecognized"), "project rm should be recognized, got: {stderr:?}");
+}
+
+/// Verify `term ls` alias is recognized
+#[test]
+fn term_ls_alias() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "test-proj");
+    let (stdout_ls, stderr_ls, code_ls) =
+        run(&["--root", &dir.path().to_string_lossy(), "term", "ls", "-p", "test-proj"]);
+    assert_eq!(code_ls, 0, "term ls should succeed");
+    assert!(stderr_ls.is_empty(), "term ls should have clean stderr, got: {stderr_ls:?}");
+
+    let (stdout_list, _stderr_list, code_list) =
+        run(&["--root", &dir.path().to_string_lossy(), "term", "list", "-p", "test-proj"]);
+    assert_eq!(code_list, 0);
+    assert_eq!(stdout_ls, stdout_list, "term ls and list output should match");
+}

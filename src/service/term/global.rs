@@ -14,12 +14,12 @@ use crate::service::term::repo_format::{self, path_for};
 // ── Load / Save ─────────────────────────────────────────────────────────────
 
 /// Load terms from `<repo_root>/minds-terms.yaml`.
-pub fn load_terms(repo_root: &Path) -> Result<Vec<Term>> {
+pub(crate) fn load_terms(repo_root: &Path) -> Result<Vec<Term>> {
     repo_format::load(repo_root)
 }
 
 /// Save terms to `<repo_root>/minds-terms.yaml`.
-fn save_terms(repo_root: &Path, terms: &[Term]) -> Result<()> {
+pub fn save_terms(repo_root: &Path, terms: &[Term]) -> Result<()> {
     repo_format::save(repo_root, terms)
 }
 

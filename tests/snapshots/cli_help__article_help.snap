@@ -12,6 +12,7 @@ Commands:
   lint    Lint articles
   index   Index articles
   rename  Rename an article
+  remove  Remove an article [aliases: rm]
   show    Show article details
 
 Options:

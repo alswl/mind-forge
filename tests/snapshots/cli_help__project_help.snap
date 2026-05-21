@@ -15,6 +15,7 @@ Commands:
   show     Show project details
   import   Import a directory as a project
   rename   Rename a project
+  remove   Remove a project [aliases: rm]
 
 Options:
       --root <PATH>

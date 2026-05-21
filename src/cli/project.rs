@@ -39,6 +39,8 @@ pub enum ProjectSubcommand {
     Import(ProjectImportArgs),
     #[command(about = "Rename a project")]
     Rename(ProjectRenameArgs),
+    #[command(about = "Remove a project", visible_alias = "rm")]
+    Remove(ProjectRemoveArgs),
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -106,6 +108,15 @@ pub struct ProjectRenameArgs {
     pub new_name: String,
 }
 
+#[derive(Debug, Clone, Args)]
+pub struct ProjectRemoveArgs {
+    pub name: String,
+    #[arg(short = 'f', long)]
+    pub force: bool,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
+}
+
 impl ProjectCmd {
     pub fn requires_repo(&self) -> RepoRequirement {
         match self.command {
@@ -136,6 +147,7 @@ pub fn dispatch(
         Some(ProjectSubcommand::Show(args)) => handle_show(args, repo_root, format),
         Some(ProjectSubcommand::Import(args)) => handle_import(args, repo_root, format),
         Some(ProjectSubcommand::Rename(args)) => handle_rename(args, repo_root, format),
+        Some(ProjectSubcommand::Remove(args)) => handle_remove(args, repo_root, format),
     }
 }
 
@@ -431,6 +443,28 @@ fn handle_rename(
                 report.old_name, report.new_name, report.from, report.to
             );
             Ok(CommandOutcome::Raw(msg, None))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Handle: mf project remove
+// ---------------------------------------------------------------------------
+
+fn handle_remove(
+    args: ProjectRemoveArgs,
+    repo_root: Option<&std::path::PathBuf>,
+    format: Format,
+) -> Result<CommandOutcome> {
+    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+    let report = svc::project::remove_project(root, &args.name, args.force, args.dry_run)?;
+
+    match format {
+        Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&report).map_err(MfError::Json)?, None)),
+        Format::Text => {
+            let prefix = if report.dry_run { "[dry-run] would remove" } else { "✓ removed" };
+            let msg = format!("{} project: {} ({})", prefix, report.before.name, report.before.path);
+            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
         }
     }
 }

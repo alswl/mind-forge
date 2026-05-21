@@ -7,12 +7,14 @@ Manage terminology
 Usage: mf term [OPTIONS] [COMMAND]
 
 Commands:
-  list    List terms
+  list    List terms [aliases: ls]
   new     Create a term
   lint    Lint term consistency in project docs
   add     Add a term correction
   update  Update term metadata
   show    Show term details
+  remove  Remove a term [aliases: rm]
+  rename  Rename a term
 
 Options:
       --root <PATH>

@@ -939,3 +939,230 @@ fn article_index_missing_declared_source_diagnostic() {
     assert!(stderr.contains("ghost-article"), "stderr must name the missing article: {stderr}");
     assert!(stderr.contains("docs/ghost-article.md"), "stderr must name the expected article path: {stderr}");
 }
+
+// ── Article remove tests ────────────────────────────────────────────────────
+
+fn seed_article(repo: &tempfile::TempDir, project_name: &str, title: &str, article_path: &str) {
+    let project_dir = repo.path().join(project_name);
+    if let Some(parent) = std::path::Path::new(article_path).parent() {
+        std::fs::create_dir_all(project_dir.join(parent)).unwrap();
+    }
+    std::fs::write(project_dir.join(article_path), format!("# {title}\n\nContent.\n")).unwrap();
+    let yaml = format!(
+        "schema_version: '1'\narticles:\n  - title: '{title}'\n    project: '{project_name}'\n    article_type: blog\n    article_path: '{article_path}'\n    status: draft\n    created_at: '2026-05-08T10:00:00Z'\n    updated_at: '2026-05-08T10:00:00Z'\n"
+    );
+    common::write_index(repo, project_name, &yaml);
+}
+
+#[test]
+fn article_remove_success() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    seed_article(&repo, "my-project", "My Article", "docs/my-article.md");
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "article", "remove", "My Article", "--project", "my-project"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    // File removed
+    assert!(!repo.path().join("my-project/docs/my-article.md").exists(), "article file should be deleted");
+
+    // Index entry removed
+    let index_content = std::fs::read_to_string(repo.path().join("my-project/mind-index.yaml")).unwrap();
+    assert!(!index_content.contains("My Article"), "article entry should be removed from index");
+}
+
+#[test]
+fn article_remove_not_found() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "article", "remove", "Nonexistent", "--project", "my-project"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("not found"), "stderr: {stderr}");
+}
+
+#[test]
+fn article_remove_json_envelope() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    seed_article(&repo, "my-project", "My Article", "docs/my-article.md");
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "remove",
+            "My Article",
+            "--project",
+            "my-project",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(v["status"], "ok");
+    assert_eq!(v["data"]["verb"], "remove");
+    assert_eq!(v["data"]["kind"], "article");
+    assert_eq!(v["data"]["before"]["title"], "My Article");
+}
+
+#[test]
+fn article_remove_dry_run() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    seed_article(&repo, "my-project", "My Article", "docs/my-article.md");
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "remove",
+            "My Article",
+            "--project",
+            "my-project",
+            "--dry-run",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    // File should still exist
+    assert!(repo.path().join("my-project/docs/my-article.md").exists(), "file should still exist after dry run");
+
+    // Entry should still exist in index
+    let index_content = std::fs::read_to_string(repo.path().join("my-project/mind-index.yaml")).unwrap();
+    assert!(index_content.contains("My Article"), "entry should still exist after dry run");
+}
+
+#[test]
+fn article_remove_rm_alias() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    seed_article(&repo, "my-project", "My Article", "docs/my-article.md");
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "article", "rm", "My Article", "--project", "my-project"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    assert!(
+        !repo.path().join("my-project/docs/my-article.md").exists(),
+        "article file should be deleted via `rm` alias"
+    );
+}
+
+// ── Article rename tests ────────────────────────────────────────────────────
+
+#[test]
+fn article_rename_success() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    seed_article(&repo, "my-project", "Old Title", "docs/old-title.md");
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "rename",
+            "Old Title",
+            "New Title",
+            "--project",
+            "my-project",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    // Old file should be renamed
+    let project = repo.path().join("my-project");
+    assert!(!project.join("docs/old-title.md").exists(), "old file should be renamed");
+    assert!(project.join("docs/new-title.md").exists(), "new file should exist");
+
+    // Index should have new title
+    let index_content = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert!(index_content.contains("New Title"), "new title should be in index: {index_content}");
+}
+
+#[test]
+fn article_rename_not_found() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "rename",
+            "Nonexistent",
+            "Whatever",
+            "--project",
+            "my-project",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("not found"), "stderr: {stderr}");
+}
+
+#[test]
+fn article_rename_json_envelope() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    seed_article(&repo, "my-project", "Old Title", "docs/old-title.md");
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "rename",
+            "Old Title",
+            "New Title",
+            "--project",
+            "my-project",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(v["status"], "ok");
+    assert_eq!(v["data"]["old_title"], "Old Title");
+    assert_eq!(v["data"]["new_title"], "New Title");
+    assert!(v["data"]["old_article_path"].as_str().is_some_and(|s| s.contains("old-title")));
+    assert!(v["data"]["new_article_path"].as_str().is_some_and(|s| s.contains("new-title")));
+}

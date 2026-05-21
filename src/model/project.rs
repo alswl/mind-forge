@@ -93,6 +93,31 @@ pub struct ProjectImportReport {
     pub article_count: u64,
 }
 
+// ── Lifecycle reports ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ProjectRemoveReport {
+    pub verb: String,
+    pub kind: String,
+    pub before: ProjectIdentity,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<ProjectIdentity>,
+    #[serde(default)]
+    pub references: Vec<crate::model::lifecycle::Reference>,
+    #[serde(default)]
+    pub side_effects: Vec<crate::model::lifecycle::PlannedChange>,
+    pub force: bool,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ProjectIdentity {
+    pub name: String,
+    pub path: String,
+}
+
 // ---------------------------------------------------------------------------
 // Lint enums
 // ---------------------------------------------------------------------------

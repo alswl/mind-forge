@@ -2,15 +2,15 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Remove a source
+Remove an article
 
-Usage: mf source remove [OPTIONS] <NAME_OR_PATH>
+Usage: mf article remove [OPTIONS] <TITLE>
 
 Arguments:
-  <NAME_OR_PATH>  Source path (e.g. sources/yuque/foo.md) or source name (deprecated)
+  <TITLE>  
 
 Options:
-      --keep-file
+  -p, --project <PROJECT>
           
       --root <PATH>
           Mind Repo root directory
@@ -22,8 +22,6 @@ Options:
           
   -v, --verbose...
           Verbose output
-  -p, --project <PROJECT>
-          
   -q, --quiet
           Silence non-error output
       --format <FORMAT>

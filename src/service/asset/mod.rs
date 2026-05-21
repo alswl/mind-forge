@@ -9,7 +9,8 @@ pub use self::add::{add, AddArgs};
 pub use self::clean::clean;
 pub use self::index::reconcile;
 pub use self::list::list;
-pub use self::remove::remove;
+pub use self::remove::remove_asset;
+pub use self::rename::rename_asset;
 pub use self::update::{set_publish_url, update_all, update_one};
 
 // ── SHA-256 file hashing ─────────────────────────────────────────────────────
@@ -197,4 +198,5 @@ pub mod clean;
 pub mod index;
 pub mod list;
 pub mod remove;
+pub mod rename;
 pub mod update;

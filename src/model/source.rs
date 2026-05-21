@@ -114,4 +114,12 @@ pub struct SourceRemoveReport {
     #[serde(flatten)]
     pub source: Source,
     pub file_deleted: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub references: Vec<crate::model::lifecycle::Reference>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub side_effects: Vec<crate::model::lifecycle::PlannedChange>,
+    #[serde(default)]
+    pub force: bool,
+    #[serde(default)]
+    pub dry_run: bool,
 }

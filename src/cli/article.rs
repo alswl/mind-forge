@@ -30,6 +30,8 @@ pub enum ArticleSubcommand {
     Index(ArticleIndexArgs),
     #[command(about = "Rename an article")]
     Rename(ArticleRenameArgs),
+    #[command(about = "Remove an article", visible_alias = "rm")]
+    Remove(ArticleRemoveArgs),
     #[command(about = "Show article details")]
     Show(ArticleShowArgs),
 }
@@ -79,6 +81,17 @@ pub struct ArticleShowArgs {
     pub title: String,
     #[arg(short = 'p', long)]
     pub project: Option<String>,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ArticleRemoveArgs {
+    pub title: String,
+    #[arg(short = 'p', long)]
+    pub project: Option<String>,
+    #[arg(short = 'f', long)]
+    pub force: bool,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -323,6 +336,22 @@ pub fn dispatch(
                         report.old_title, report.new_title, report.old_article_path, report.new_article_path
                     );
                     Ok(CommandOutcome::Raw(msg, None))
+                }
+            }
+        }
+        Some(ArticleSubcommand::Remove(args)) => {
+            let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
+            let report = article_svc::remove_article(&project_path, &args.title, args.force, args.dry_run)?;
+
+            match format {
+                Format::Json => {
+                    let data = serde_json::to_value(&report).map_err(MfError::Json)?;
+                    Ok(CommandOutcome::Success(data, None))
+                }
+                Format::Text => {
+                    let prefix = if report.dry_run { "[dry-run] would remove" } else { "✓ removed" };
+                    let msg = format!("{} article: {}", prefix, report.before.title);
+                    Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
                 }
             }
         }

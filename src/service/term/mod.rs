@@ -8,6 +8,8 @@ pub mod lint;
 pub mod list;
 pub mod lookup;
 pub mod new;
+pub mod remove;
+pub mod rename;
 pub mod repo_format;
 pub mod show;
 
@@ -21,6 +23,8 @@ pub use self::lint::{lint_file, lint_terms};
 pub use self::list::list_terms;
 pub(crate) use self::lookup::find_term_by_correct;
 pub use self::new::new_term;
+pub use self::remove::{remove_term, remove_term_global};
+pub use self::rename::rename_term;
 pub use self::show::show_term;
 
 // ── Input/patch types for new/update ─────────────────────────────────────────
