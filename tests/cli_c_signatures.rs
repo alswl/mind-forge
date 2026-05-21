@@ -35,7 +35,7 @@ fn article_new_type_title_succeeds() {
         "--template",
         "blog",
         "--file",
-        "-p",
+        "--project",
         "alpha",
     ]);
 
@@ -59,7 +59,7 @@ fn article_new_title_only_succeeds() {
 
     // TITLE is the sole positional; should succeed with default blank template
     let (_stdout, stderr, code) =
-        run(&["--root", &dir.path().to_string_lossy(), "article", "new", "MyArticle", "-p", "alpha"]);
+        run(&["--root", &dir.path().to_string_lossy(), "article", "new", "MyArticle", "--project", "alpha"]);
 
     assert_eq!(code, 0, "should succeed with default blank template: stderr={stderr:?}");
 }
@@ -90,7 +90,7 @@ fn publish_update_set_no_warning() {
         "local",
         "--set",
         "status=draft",
-        "-p",
+        "--project",
         "alpha",
     ]);
     assert!(!stderr.contains("[deprecated]"), "stderr should have NO deprecation: {stderr:?}");
@@ -117,7 +117,7 @@ fn publish_update_status_target_url_deprecated() {
         "draft",
         "--target-url",
         "https://example.com",
-        "-p",
+        "--project",
         "alpha",
     ]);
     assert!(stderr.contains("[deprecated]"), "stderr should have deprecation: {stderr:?}");
@@ -150,7 +150,7 @@ fn source_add_source_kind_no_warning() {
         "--source-kind",
         "yuque",
         "https://example.com/doc",
-        "-p",
+        "--project",
         "alpha",
     ]);
     assert_eq!(code, 0, "should succeed, stderr: {stderr:?}");
@@ -179,7 +179,7 @@ fn source_add_type_yuque_deprecated() {
         "--type",
         "auto",
         "https://example.com/doc",
-        "-p",
+        "--project",
         "alpha",
     ]);
     // Deprecation is emitted in dispatch before handle_add
@@ -207,7 +207,7 @@ fn source_add_type_pdf_deprecated() {
         "--type",
         "pdf",
         "https://example.com/doc",
-        "-p",
+        "--project",
         "alpha",
     ]);
     // Note: pdf + URL will fail the service call (pdf requires local file),
@@ -236,7 +236,7 @@ fn source_add_type_unknown_errors() {
         "--type",
         "bogus",
         "https://example.com/doc",
-        "-p",
+        "--project",
         "alpha",
     ]);
     assert_eq!(code, 2, "should error with exit 2: stderr={stderr:?}");
@@ -256,8 +256,15 @@ fn source_remove_path_no_warning() {
     common::create_project(&dir, "alpha");
 
     // PATH form (contains /) — no deprecation warning
-    let (_stdout, stderr, _code) =
-        run(&["--root", &dir.path().to_string_lossy(), "source", "remove", "sources/yuque/my-doc.md", "-p", "alpha"]);
+    let (_stdout, stderr, _code) = run(&[
+        "--root",
+        &dir.path().to_string_lossy(),
+        "source",
+        "remove",
+        "sources/yuque/my-doc.md",
+        "--project",
+        "alpha",
+    ]);
     // Even though the source doesn't exist and command will fail,
     // the deprecation decision happens before service call
     assert!(!stderr.contains("[deprecated]"), "stderr should have NO deprecation: {stderr:?}");
@@ -274,7 +281,7 @@ fn source_remove_name_deprecated() {
 
     // NAME form (no /, doesn't start with sources) — D3 deprecation
     let (_stdout, stderr, _code) =
-        run(&["--root", &dir.path().to_string_lossy(), "source", "remove", "my-doc", "-p", "alpha"]);
+        run(&["--root", &dir.path().to_string_lossy(), "source", "remove", "my-doc", "--project", "alpha"]);
     assert!(stderr.contains("[deprecated]"), "stderr should have deprecation: {stderr:?}");
     assert!(stderr.contains("NAME"), "stderr should mention NAME: {stderr:?}");
 }
@@ -307,7 +314,7 @@ fn asset_add_name_copy_tag_no_warning() {
         "my-image",
         "--tag",
         "screenshot",
-        "-p",
+        "--project",
         "alpha",
     ]);
     assert_eq!(code, 0, "should succeed, stderr: {stderr:?}");
@@ -342,7 +349,7 @@ fn asset_update_set_url_channel_succeeds() {
         "https://example.com/asset",
         "--channel",
         "yuque",
-        "-p",
+        "--project",
         "alpha",
     ]);
     assert_eq!(code, 0, "should succeed, stderr: {stderr:?}");
@@ -362,8 +369,17 @@ fn asset_update_all_succeeds() {
     let dir = common::setup_repo();
     common::create_project(&dir, "alpha");
 
-    let (stdout, stderr, code) =
-        run(&["--root", &dir.path().to_string_lossy(), "--format", "json", "asset", "update", "--all", "-p", "alpha"]);
+    let (stdout, stderr, code) = run(&[
+        "--root",
+        &dir.path().to_string_lossy(),
+        "--format",
+        "json",
+        "asset",
+        "update",
+        "--all",
+        "--project",
+        "alpha",
+    ]);
     assert_eq!(code, 0, "should succeed, stderr: {stderr:?}");
     assert!(!stderr.contains("[deprecated]"), "stderr should have NO deprecation: {stderr:?}");
 
@@ -400,7 +416,7 @@ terms:
         "Mind Repo",
         "--alias",
         "old-mr",
-        "-p",
+        "--project",
         "alpha",
     ]);
     assert_eq!(code, 0, "should succeed, stderr: {stderr:?}");
@@ -432,7 +448,7 @@ terms:
         "old-mr",
         "--correct",
         "Mind Repo",
-        "-p",
+        "--project",
         "alpha",
     ]);
     assert!(stderr.contains("[deprecated]"), "stderr should have deprecation: {stderr:?}");
@@ -473,7 +489,7 @@ terms:
 
     // Path is relative to project (alpha) root
     let (stdout, stderr, code) =
-        run(&["--root", &dir.path().to_string_lossy(), "term", "lint", "docs/test.md", "-p", "alpha"]);
+        run(&["--root", &dir.path().to_string_lossy(), "term", "lint", "docs/test.md", "--project", "alpha"]);
     assert_eq!(code, 1, "should exit 1 (findings), stderr: {stderr:?}");
     assert!(!stderr.contains("[deprecated]"), "stderr should have NO deprecation: {stderr:?}");
     assert!(stdout.contains("mindrepo"), "stdout should mention finding: {stdout}");
@@ -503,7 +519,7 @@ terms:
     std::fs::create_dir_all(&doc_path).unwrap();
     std::fs::write(doc_path.join("test.md"), "uses mindrepo here").unwrap();
 
-    let (stdout, stderr, code) = run(&["--root", &dir.path().to_string_lossy(), "term", "lint", "-p", "alpha"]);
+    let (stdout, stderr, code) = run(&["--root", &dir.path().to_string_lossy(), "term", "lint", "--project", "alpha"]);
     assert_eq!(code, 1, "should exit 1 (findings), stderr: {stderr:?}");
     assert!(!stderr.contains("[deprecated]"), "stderr should have NO deprecation: {stderr:?}");
     assert!(stdout.contains("mindrepo"), "stdout should mention finding: {stdout}");

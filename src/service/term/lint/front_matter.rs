@@ -1,11 +1,11 @@
-pub(super) enum FrontMatterDecision {
+pub(crate) enum FrontMatterDecision {
     None,
     Skip,
     Present { end_byte_offset: usize },
 }
 
 /// Parse front-matter block to detect `mf_term_lint: skip` / `mf-term-lint: skip`.
-pub(super) fn parse_front_matter_skip_flag(content: &str) -> FrontMatterDecision {
+pub(crate) fn parse_front_matter_skip_flag(content: &str) -> FrontMatterDecision {
     let bytes = content.as_bytes();
     if bytes.len() < 5 {
         return FrontMatterDecision::None;

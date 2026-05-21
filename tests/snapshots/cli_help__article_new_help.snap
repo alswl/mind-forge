@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 219
 expression: stdout
 ---
 Create an article
@@ -20,24 +19,24 @@ Options:
           Config file path
       --file
           Write a single file instead of a directory [aliases: --single-file]
-  -p, --project <PROJECT>
+      --tag <TAG>
           
   -v, --verbose...
           Verbose output
+      --draft
+          
   -q, --quiet
           Silence non-error output
-      --tag <TAG>
-          
-      --draft
+  -f, --force
           
       --format <FORMAT>
           Output format [default: text] [possible values: text, json]
-  -f, --force
-          
       --json
           Shorthand for --format json
       --no-color
           Disable colored output
+  -p, --project <NAME>
+          Project name for project-scoped operations
       --install-completion <INSTALL_COMPLETION>
           Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
       --show-completion <SHOW_COMPLETION>

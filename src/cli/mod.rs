@@ -66,6 +66,8 @@ pub struct GlobalOpts {
     pub json: bool,
     #[arg(long = "no-color", global = true, help = "Disable colored output")]
     pub no_color: bool,
+    #[arg(short = 'p', long, global = true, value_name = "NAME", help = "Project name for project-scoped operations")]
+    pub project: Option<String>,
     #[arg(long = "install-completion", global = true, value_enum, help = "Install shell completion script")]
     pub install_completion: Option<ShellKind>,
     #[arg(long = "show-completion", global = true, value_enum, help = "Show shell completion script")]
@@ -146,19 +148,28 @@ impl RootCli {
         format: Format,
         deprecation: &mut DeprecationContext,
     ) -> Result<CommandOutcome> {
+        let project = repo_root.and(self.global.project.as_deref());
         match self.command {
             None => Ok(CommandOutcome::RootHelp),
             Some(TopLevelCommand::Version) => Ok(CommandOutcome::Version),
-            Some(TopLevelCommand::Source(command)) => source::dispatch(command, repo_root, format, deprecation),
-            Some(TopLevelCommand::Asset(command)) => asset::dispatch(command, repo_root, format, deprecation),
-            Some(TopLevelCommand::Project(command)) => project::dispatch(command, repo_root, format, deprecation),
-            Some(TopLevelCommand::Article(command)) => article::dispatch(command, repo_root, format, deprecation),
-            Some(TopLevelCommand::Term(command)) => term::dispatch(command, repo_root, format, deprecation),
+            Some(TopLevelCommand::Source(command)) => {
+                source::dispatch(command, repo_root, format, project, deprecation)
+            }
+            Some(TopLevelCommand::Asset(command)) => asset::dispatch(command, repo_root, format, project, deprecation),
+            Some(TopLevelCommand::Project(command)) => {
+                project::dispatch(command, repo_root, format, project, deprecation)
+            }
+            Some(TopLevelCommand::Article(command)) => {
+                article::dispatch(command, repo_root, format, project, deprecation)
+            }
+            Some(TopLevelCommand::Term(command)) => term::dispatch(command, repo_root, format, project, deprecation),
             Some(TopLevelCommand::Completion(command)) => completion::dispatch(command),
-            Some(TopLevelCommand::Build(args)) => build::dispatch(args, repo_root, format, deprecation),
-            Some(TopLevelCommand::Publish(command)) => publish::dispatch(command, repo_root, format, deprecation),
+            Some(TopLevelCommand::Build(args)) => build::dispatch(args, repo_root, format, project, deprecation),
+            Some(TopLevelCommand::Publish(command)) => {
+                publish::dispatch(command, repo_root, format, project, deprecation)
+            }
             Some(TopLevelCommand::Config(command)) => config::dispatch(command, repo_root, format, deprecation),
-            Some(TopLevelCommand::Render(command)) => render::dispatch(command, repo_root, format),
+            Some(TopLevelCommand::Render(command)) => render::dispatch(command, repo_root, format, project),
             Some(TopLevelCommand::Init(args)) => dispatch_init(args),
         }
     }

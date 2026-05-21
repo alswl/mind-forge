@@ -14,17 +14,14 @@ Arguments:
           Article name to render
 
 Options:
-  -p, --project <PROJECT>
-          Select project context
-
       --root <PATH>
           Mind Repo root directory
 
-      --config <PATH>
-          Config file path
-
       --template <TEMPLATE>
           Render template name
+
+      --config <PATH>
+          Config file path
 
       --html-form <HTML_FORM>
           HTML output form (document or fragment)
@@ -50,6 +47,9 @@ Options:
 
       --no-color
           Disable colored output
+
+  -p, --project <NAME>
+          Project name for project-scoped operations
 
       --install-completion <INSTALL_COMPLETION>
           Install shell completion script

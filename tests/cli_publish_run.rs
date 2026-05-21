@@ -946,7 +946,7 @@ fn publish_run_declared_missing_source_returns_no_article_files() {
     let project_path = repo.path().join("q24");
 
     // Index first so declared articles are known
-    let (_, stderr, code) = json_run(&["article", "index", "-p", "q24"], project_path.as_path());
+    let (_, stderr, code) = json_run(&["article", "index", "--project", "q24"], project_path.as_path());
     assert_eq!(code, Some(0), "index: stderr={stderr}");
 
     // Try to publish legacy-blog (compat declared, no article content on disk)
@@ -983,7 +983,7 @@ fn publish_run_declared_present_succeeds_dry_run() {
     assert_eq!(out.status.code(), Some(0), "build reports: stderr={}", String::from_utf8_lossy(&out.stderr));
 
     // Index
-    let (_, stderr, code) = json_run(&["article", "index", "-p", "q24"], project_path.as_path());
+    let (_, stderr, code) = json_run(&["article", "index", "--project", "q24"], project_path.as_path());
     assert_eq!(code, Some(0), "index: stderr={stderr}");
 
     // Publish the declared article
@@ -1186,7 +1186,7 @@ fn publish_run_local_target_expands_date_and_prefix_for_generated() {
     let project_path = repo.path().join("q24");
 
     // Index to register generated articles (no build needed — source IS artifact)
-    let (_, stderr, code) = json_run(&["article", "index", "-p", "q24"], project_path.as_path());
+    let (_, stderr, code) = json_run(&["article", "index", "--project", "q24"], project_path.as_path());
     assert_eq!(code, Some(0), "index: stderr={stderr}");
 
     // Publish generated article to paas-git target with date template + prefix
@@ -1220,7 +1220,7 @@ fn publish_run_local_target_expands_date_and_prefix_for_docs() {
     let project_path = repo.path().join("q24");
 
     // Index first so `mf build` can find the article
-    let (_, stderr, code) = json_run(&["article", "index", "-p", "q24"], project_path.as_path());
+    let (_, stderr, code) = json_run(&["article", "index", "--project", "q24"], project_path.as_path());
     assert_eq!(code, Some(0), "index: stderr={stderr}");
 
     // Build artifact for the docs article

@@ -893,7 +893,7 @@ fn article_index_deterministic_article_path_repeatable() {
         let output = Command::cargo_bin("mf")
             .expect("binary exists")
             .current_dir(&project_path)
-            .args(["article", "index", "-p", "team-reports"])
+            .args(["--project", "team-reports", "article", "index"])
             .output()
             .expect("command runs");
         assert_eq!(output.status.code(), Some(0));

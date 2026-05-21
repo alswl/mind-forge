@@ -46,8 +46,6 @@ pub struct ArticleNewArgs {
     /// Write a single file instead of a directory
     #[arg(long = "file", visible_alias = "single-file", default_value_t = false)]
     pub file: bool,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
     #[arg(long = "tag")]
     pub tag: Vec<String>,
     #[arg(long, default_value_t = true)]
@@ -57,10 +55,7 @@ pub struct ArticleNewArgs {
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
-pub struct ArticleListArgs {
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
-}
+pub struct ArticleListArgs {}
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ArticleLintArgs {
@@ -70,8 +65,6 @@ pub struct ArticleLintArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ArticleIndexArgs {
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
     #[arg(long, short = 'n')]
     pub dry_run: bool,
 }
@@ -79,15 +72,11 @@ pub struct ArticleIndexArgs {
 #[derive(Debug, Clone, Args)]
 pub struct ArticleShowArgs {
     pub title: String,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleRemoveArgs {
     pub title: String,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
     #[arg(short = 'f', long)]
     pub force: bool,
     #[arg(long = "dry-run")]
@@ -100,8 +89,6 @@ pub struct ArticleRenameArgs {
     pub old_title: String,
     /// New article title
     pub new_title: String,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
     #[arg(short = 'f', long)]
     pub force: bool,
 }
@@ -110,6 +97,7 @@ pub fn dispatch(
     command: ArticleCmd,
     repo_root: Option<&PathBuf>,
     format: Format,
+    project: Option<&str>,
     _deprecation: &mut DeprecationContext,
 ) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
@@ -119,7 +107,7 @@ pub fn dispatch(
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("article")),
         Some(ArticleSubcommand::New(args)) => {
-            let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
+            let project_path = svc_util::resolve_project(root, project, &cwd)?;
 
             let result = article_svc::new_article(
                 &project_path,
@@ -150,8 +138,8 @@ pub fn dispatch(
             });
             Ok(CommandOutcome::Success(data, None))
         }
-        Some(ArticleSubcommand::List(args)) => {
-            let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
+        Some(ArticleSubcommand::List(_args)) => {
+            let project_path = svc_util::resolve_project(root, project, &cwd)?;
             let articles = article_svc::list_articles(&project_path)?;
             let config = config_svc::load_project(&project_path, Some(root))?;
 
@@ -239,7 +227,7 @@ pub fn dispatch(
             }
         }
         Some(ArticleSubcommand::Index(args)) => {
-            let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
+            let project_path = svc_util::resolve_project(root, project, &cwd)?;
             let config = config_svc::load_project(&project_path, Some(root))?;
 
             let templates_scanned = config
@@ -319,11 +307,11 @@ pub fn dispatch(
             Ok(CommandOutcome::Success(data, None))
         }
         Some(ArticleSubcommand::Show(args)) => {
-            let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
+            let project_path = svc_util::resolve_project(root, project, &cwd)?;
             handle_article_show(args, &project_path, format)
         }
         Some(ArticleSubcommand::Rename(args)) => {
-            let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
+            let project_path = svc_util::resolve_project(root, project, &cwd)?;
             let report = article_svc::rename_article(&project_path, &args.old_title, &args.new_title, args.force)?;
 
             match format {
@@ -340,7 +328,7 @@ pub fn dispatch(
             }
         }
         Some(ArticleSubcommand::Remove(args)) => {
-            let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
+            let project_path = svc_util::resolve_project(root, project, &cwd)?;
             let report = article_svc::remove_article(&project_path, &args.title, args.force, args.dry_run)?;
 
             match format {

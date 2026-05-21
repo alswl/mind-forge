@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 180
 expression: stdout
 ---
 Fix a term metadata (deprecated: use `update`)
@@ -39,10 +38,10 @@ Options:
           Disable colored output
       --tag <TAG>
           
+  -p, --project <NAME>
+          Project name for project-scoped operations
       --install-completion <INSTALL_COMPLETION>
           Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
-  -p, --project <PROJECT>
-          
       --show-completion <SHOW_COMPLETION>
           Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
   -h, --help

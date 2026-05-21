@@ -47,8 +47,6 @@ pub struct PublishRunArgs {
     pub article: String,
     #[arg(long)]
     pub target: Option<String>,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
     #[arg(short = 'f', long)]
@@ -67,8 +65,6 @@ pub struct PublishUpdateArgs {
     pub target_url: Option<String>,
     #[arg(long = "set", value_name = "KEY=VALUE")]
     pub set: Vec<String>,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
 }
@@ -156,6 +152,7 @@ pub fn dispatch(
     command: PublishCmd,
     repo_root: Option<&PathBuf>,
     format: Format,
+    project: Option<&str>,
     deprecation: &mut DeprecationContext,
 ) -> Result<CommandOutcome> {
     match command.command {
@@ -163,7 +160,7 @@ pub fn dispatch(
         Some(PublishSubcommand::Run(args)) => {
             let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
             let cwd = std::env::current_dir().map_err(MfError::Io)?;
-            let outcome = publish_svc::run(&args, root, &cwd)?;
+            let outcome = publish_svc::run(&args, root, &cwd, project)?;
             render_run_outcome(outcome, format)
         }
         Some(PublishSubcommand::Update(args)) => {
@@ -180,7 +177,7 @@ pub fn dispatch(
 
             let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
             let cwd = std::env::current_dir().map_err(MfError::Io)?;
-            let outcome = publish_svc::update(&merged_args, root, &cwd)?;
+            let outcome = publish_svc::update(&merged_args, root, &cwd, project)?;
             render_update_outcome(outcome, format)
         }
         Some(PublishSubcommand::Target(target_cmd)) => match target_cmd.command {

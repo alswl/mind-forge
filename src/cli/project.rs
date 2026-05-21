@@ -61,15 +61,10 @@ pub struct ProjectArchiveArgs {
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
-pub struct ProjectStatusArgs {
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
-}
+pub struct ProjectStatusArgs {}
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectLintArgs {
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
     #[arg(long)]
     pub fix: bool,
     #[arg(long = "rule")]
@@ -84,7 +79,7 @@ pub struct ProjectIndexArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectShowArgs {
-    pub project: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -131,6 +126,7 @@ pub fn dispatch(
     command: ProjectCmd,
     repo_root: Option<&PathBuf>,
     format: Format,
+    project: Option<&str>,
     deprecation: &mut DeprecationContext,
 ) -> Result<CommandOutcome> {
     match command.command {
@@ -140,9 +136,9 @@ pub fn dispatch(
         Some(ProjectSubcommand::Archive(args)) => handle_archive(args, repo_root, format),
         Some(ProjectSubcommand::Status(args)) => {
             deprecation.warn_subject("project status", "project show");
-            handle_status(args, repo_root, format)
+            handle_status(args, repo_root, format, project)
         }
-        Some(ProjectSubcommand::Lint(args)) => handle_lint(args, repo_root, format),
+        Some(ProjectSubcommand::Lint(args)) => handle_lint(args, repo_root, format, project),
         Some(ProjectSubcommand::Index(args)) => handle_index(args, repo_root, format),
         Some(ProjectSubcommand::Show(args)) => handle_show(args, repo_root, format),
         Some(ProjectSubcommand::Import(args)) => handle_import(args, repo_root, format),
@@ -201,10 +197,15 @@ fn handle_list(_args: ProjectListArgs, repo_root: Option<&PathBuf>, format: Form
 // US3: mf project status
 // ---------------------------------------------------------------------------
 
-fn handle_status(args: ProjectStatusArgs, repo_root: Option<&PathBuf>, _format: Format) -> Result<CommandOutcome> {
+fn handle_status(
+    _args: ProjectStatusArgs,
+    repo_root: Option<&PathBuf>,
+    _format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
-    let project_path = svc::project::resolve_project(root, args.project.as_deref(), &cwd)?;
+    let project_path = svc::project::resolve_project(root, project, &cwd)?;
     let snapshot = svc::project::status_for(root, &project_path)?;
 
     let data = serde_json::json!(snapshot);
@@ -215,7 +216,12 @@ fn handle_status(args: ProjectStatusArgs, repo_root: Option<&PathBuf>, _format: 
 // US4: mf project lint
 // ---------------------------------------------------------------------------
 
-fn handle_lint(args: ProjectLintArgs, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
+fn handle_lint(
+    args: ProjectLintArgs,
+    repo_root: Option<&PathBuf>,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
 
     // Parse --rule args into LintKind values
@@ -238,9 +244,9 @@ fn handle_lint(args: ProjectLintArgs, repo_root: Option<&PathBuf>, format: Forma
             .collect::<std::result::Result<Vec<_>, _>>()?
     };
 
-    let (issues, summary) = if let Some(ref project_name) = args.project {
+    let (issues, summary) = if let Some(project_name) = project {
         let cwd = std::env::current_dir().map_err(MfError::Io)?;
-        let project_path = svc::project::resolve_project(root, Some(project_name.as_str()), &cwd)?;
+        let project_path = svc::project::resolve_project(root, Some(project_name), &cwd)?;
         svc::project::lint_project(&project_path, &rules, args.fix)?
     } else {
         svc::project::lint_repo(root, &rules, args.fix)?
@@ -331,8 +337,8 @@ fn handle_show(
 ) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
-    let project_path = svc::project::resolve_project(root, Some(&args.project), &cwd)?;
-    let details = svc::project::show(&project_path, &args.project)?;
+    let project_path = svc::project::resolve_project(root, Some(&args.name), &cwd)?;
+    let details = svc::project::show(&project_path, &args.name)?;
 
     match format {
         Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&details).map_err(MfError::Json)?, None)),

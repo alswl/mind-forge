@@ -46,8 +46,6 @@ pub struct AssetListArgs {
     pub filter: Option<String>,
     #[arg(long = "type", value_enum)]
     pub asset_type: Option<AssetKind>,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -67,8 +65,6 @@ pub struct AssetAddArgs {
     pub link: bool,
     #[arg(short = 'f', long)]
     pub force: bool,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -84,8 +80,6 @@ pub struct AssetUpdateArgs {
     pub channel: Option<String>,
     #[arg(long)]
     pub all: bool,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -98,8 +92,6 @@ pub struct AssetIndexArgs {
     pub dry_run: bool,
     #[arg(long = "refresh-metadata")]
     pub refresh_metadata: bool,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -108,8 +100,6 @@ pub struct AssetIndexArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct AssetCleanArgs {
-    #[arg(long, short = 'p')]
-    pub project: Option<String>,
     #[arg(long)]
     pub dry_run: bool,
 }
@@ -121,8 +111,6 @@ pub struct AssetCleanArgs {
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct AssetShowArgs {
     pub name: String,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -132,8 +120,6 @@ pub struct AssetRemoveArgs {
     pub force: bool,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -144,8 +130,6 @@ pub struct AssetRenameArgs {
     pub force: bool,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +140,7 @@ pub fn dispatch(
     command: AssetCmd,
     repo_root: Option<&PathBuf>,
     format: Format,
+    project: Option<&str>,
     _deprecation: &mut DeprecationContext,
 ) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
@@ -163,14 +148,14 @@ pub fn dispatch(
 
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("asset")),
-        Some(AssetSubcommand::Add(args)) => handle_add(args, root, &cwd, format),
-        Some(AssetSubcommand::List(args)) => handle_list(args, root, &cwd, format),
-        Some(AssetSubcommand::Update(args)) => handle_update(args, root, &cwd, format),
-        Some(AssetSubcommand::Index(args)) => handle_index(args, root, &cwd, format),
-        Some(AssetSubcommand::Clean(args)) => handle_clean(args, root, format),
-        Some(AssetSubcommand::Show(args)) => handle_asset_show(args, root, &cwd, format),
-        Some(AssetSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format),
-        Some(AssetSubcommand::Rename(args)) => handle_rename(args, root, &cwd, format),
+        Some(AssetSubcommand::Add(args)) => handle_add(args, root, &cwd, format, project),
+        Some(AssetSubcommand::List(args)) => handle_list(args, root, &cwd, format, project),
+        Some(AssetSubcommand::Update(args)) => handle_update(args, root, &cwd, format, project),
+        Some(AssetSubcommand::Index(args)) => handle_index(args, root, &cwd, format, project),
+        Some(AssetSubcommand::Clean(args)) => handle_clean(args, root, format, project),
+        Some(AssetSubcommand::Show(args)) => handle_asset_show(args, root, &cwd, format, project),
+        Some(AssetSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format, project),
+        Some(AssetSubcommand::Rename(args)) => handle_rename(args, root, &cwd, format, project),
     }
 }
 
@@ -178,8 +163,14 @@ pub fn dispatch(
 // Handle: mf asset add
 // ---------------------------------------------------------------------------
 
-fn handle_add(args: AssetAddArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+fn handle_add(
+    args: AssetAddArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
     let add_args = asset_svc::AddArgs {
         source: args.path,
         name: args.name,
@@ -222,8 +213,14 @@ fn handle_add(args: AssetAddArgs, root: &Path, cwd: &Path, format: Format) -> Re
 // Handle: mf asset list
 // ---------------------------------------------------------------------------
 
-fn handle_list(args: AssetListArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+fn handle_list(
+    args: AssetListArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
     let assets = asset_svc::list(&project_path, args.filter.as_deref(), args.asset_type)?;
 
     match format {
@@ -251,8 +248,14 @@ fn handle_list(args: AssetListArgs, root: &Path, cwd: &Path, format: Format) -> 
 // Handle: mf asset update
 // ---------------------------------------------------------------------------
 
-fn handle_update(args: AssetUpdateArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+fn handle_update(
+    args: AssetUpdateArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
 
     // Mind form: --set-url + --channel (set publish URL)
     if args.set_url.is_some() || args.channel.is_some() {
@@ -356,8 +359,14 @@ fn handle_update(args: AssetUpdateArgs, root: &Path, cwd: &Path, format: Format)
 // Handle: mf asset index
 // ---------------------------------------------------------------------------
 
-fn handle_index(args: AssetIndexArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+fn handle_index(
+    args: AssetIndexArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
 
     let report = asset_svc::reconcile(&project_path, args.dry_run, args.refresh_metadata)?;
 
@@ -410,9 +419,9 @@ fn handle_index(args: AssetIndexArgs, root: &Path, cwd: &Path, format: Format) -
 // Handle: mf asset clean
 // ---------------------------------------------------------------------------
 
-fn handle_clean(args: AssetCleanArgs, root: &Path, format: Format) -> Result<CommandOutcome> {
+fn handle_clean(args: AssetCleanArgs, root: &Path, format: Format, project: Option<&str>) -> Result<CommandOutcome> {
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), &cwd)?;
+    let project_path = svc_util::resolve_project(root, project, &cwd)?;
     let report = asset_svc::clean(&project_path, args.dry_run)?;
 
     match format {
@@ -447,8 +456,14 @@ fn handle_clean(args: AssetCleanArgs, root: &Path, format: Format) -> Result<Com
 // Handle: mf asset remove
 // ---------------------------------------------------------------------------
 
-fn handle_remove(args: AssetRemoveArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+fn handle_remove(
+    args: AssetRemoveArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
     let report = asset_svc::remove_asset(&project_path, &args.file, args.force, args.dry_run)?;
 
     match format {
@@ -466,8 +481,14 @@ fn handle_remove(args: AssetRemoveArgs, root: &Path, cwd: &Path, format: Format)
 
 // ── Handle: mf asset rename ─────────────────────────────────────────────────
 
-fn handle_rename(args: AssetRenameArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+fn handle_rename(
+    args: AssetRenameArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
     let report = asset_svc::rename_asset(&project_path, &args.old_path, &args.new_path, args.force, args.dry_run)?;
 
     match format {
@@ -483,8 +504,14 @@ fn handle_rename(args: AssetRenameArgs, root: &Path, cwd: &Path, format: Format)
     }
 }
 
-fn handle_asset_show(args: AssetShowArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+fn handle_asset_show(
+    args: AssetShowArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
     let assets = asset_svc::list(&project_path, None, None)?;
 
     let resolved = assets.iter().find(|a| a.name.eq_ignore_ascii_case(&args.name));

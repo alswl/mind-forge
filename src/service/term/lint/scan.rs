@@ -2,13 +2,13 @@ use std::collections::BTreeSet;
 
 use crate::model::term::{CandidateTerm, TermFinding};
 
-pub(super) struct InternalFinding {
-    pub(super) path: String,
-    pub(super) byte_offset: usize,
-    pub(super) original_len: usize,
-    pub(super) original: String,
-    pub(super) correct: String,
-    pub(super) is_ambiguous: bool,
+pub(crate) struct InternalFinding {
+    pub(crate) path: String,
+    pub(crate) byte_offset: usize,
+    pub(crate) original_len: usize,
+    pub(crate) original: String,
+    pub(crate) correct: String,
+    pub(crate) is_ambiguous: bool,
 }
 
 pub(super) fn byte_offset_to_line_col(content: &str, byte_offset: usize) -> (u32, u32) {
@@ -28,7 +28,7 @@ pub(super) fn byte_offset_to_line_col(content: &str, byte_offset: usize) -> (u32
     (line, col)
 }
 
-pub(super) struct CorrectionRef<'a> {
+pub(crate) struct CorrectionRef<'a> {
     pub original: &'a str,
     pub correct: &'a str,
     pub term_name: &'a str,
@@ -38,7 +38,7 @@ pub(super) struct CorrectionRef<'a> {
     pub candidates: &'a [CandidateTerm],
 }
 
-pub(super) fn scan_file_for_corrections(
+pub(crate) fn scan_file_for_corrections(
     content: &str,
     sanitized: &[u8],
     corrections: &[CorrectionRef<'_>],

@@ -1,10 +1,10 @@
-pub(super) struct FixSpan {
-    pub(super) start: usize,
-    pub(super) end: usize,
-    pub(super) replacement: String,
+pub(crate) struct FixSpan {
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) replacement: String,
 }
 
-pub(super) fn apply_fixes(content: &[u8], spans: &[FixSpan]) -> Vec<u8> {
+pub(crate) fn apply_fixes(content: &[u8], spans: &[FixSpan]) -> Vec<u8> {
     let mut result = Vec::with_capacity(content.len());
     let mut last_end = 0;
     for span in spans {

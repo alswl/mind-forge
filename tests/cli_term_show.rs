@@ -42,7 +42,8 @@ terms:
 fn term_show_happy_path() {
     let repo = setup_with_term();
 
-    let (stdout, stderr, code) = run(&["--root", &repo.path().to_string_lossy(), "term", "show", "API", "-p", "alpha"]);
+    let (stdout, stderr, code) =
+        run(&["--root", &repo.path().to_string_lossy(), "term", "show", "API", "--project", "alpha"]);
 
     assert_eq!(code, 0, "should succeed, stderr: {stderr:?}");
     assert!(stderr.is_empty(), "stderr should be clean: {stderr:?}");
@@ -59,8 +60,17 @@ fn term_show_happy_path() {
 fn term_show_json() {
     let repo = setup_with_term();
 
-    let (stdout, stderr, code) =
-        run(&["--root", &repo.path().to_string_lossy(), "--format", "json", "term", "show", "API", "-p", "alpha"]);
+    let (stdout, stderr, code) = run(&[
+        "--root",
+        &repo.path().to_string_lossy(),
+        "--format",
+        "json",
+        "term",
+        "show",
+        "API",
+        "--project",
+        "alpha",
+    ]);
 
     assert_eq!(code, 0, "should succeed, stderr: {stderr:?}");
     let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
@@ -78,7 +88,7 @@ fn term_show_nonexistent_errors() {
     let repo = setup_with_term();
 
     let (_stdout, stderr, code) =
-        run(&["--root", &repo.path().to_string_lossy(), "term", "show", "NonExistent", "-p", "alpha"]);
+        run(&["--root", &repo.path().to_string_lossy(), "term", "show", "NonExistent", "--project", "alpha"]);
 
     assert_eq!(code, 2, "should error with exit code 2: stderr={stderr:?}");
     assert!(stderr.contains("not found"), "error should mention 'not found': {stderr:?}");
@@ -93,7 +103,7 @@ fn term_list_term_routes_to_show() {
     let repo = setup_with_term();
 
     let (stdout_list_term, stderr_list_term, code) =
-        run(&["--root", &repo.path().to_string_lossy(), "term", "list", "--term", "API", "-p", "alpha"]);
+        run(&["--root", &repo.path().to_string_lossy(), "term", "list", "--term", "API", "--project", "alpha"]);
 
     // Should succeed
     assert_eq!(code, 0, "should succeed, stderr: {stderr_list_term:?}");
@@ -103,7 +113,7 @@ fn term_list_term_routes_to_show() {
 
     // Output should match term show output
     let (stdout_show, _stderr_show, _code_show) =
-        run(&["--root", &repo.path().to_string_lossy(), "term", "show", "API", "-p", "alpha"]);
+        run(&["--root", &repo.path().to_string_lossy(), "term", "show", "API", "--project", "alpha"]);
 
     assert_eq!(stdout_list_term, stdout_show, "--term output should match term show output");
 }
@@ -121,7 +131,7 @@ fn term_list_term_json_shape() {
         "list",
         "--term",
         "API",
-        "-p",
+        "--project",
         "alpha",
     ]);
 

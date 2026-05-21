@@ -27,12 +27,12 @@ fn e2e_mind_user_migration_chain() {
     assert!(stdout.contains("alpha"), "show output should contain project name: {stdout}");
 
     // ---- 4. mf terms list -p alpha (A 类 alias: terms → term) ----
-    let (_stdout, stderr, code) = run_in(ds.root(), &["terms", "list", "-p", "alpha"]);
+    let (_stdout, stderr, code) = run_in(ds.root(), &["terms", "list", "--project", "alpha"]);
     assert_eq!(code, 0, "terms list failed: {stderr}");
     assert!(stderr.is_empty(), "terms alias should have clean stderr: {stderr}");
 
     // ---- 5. mf --json source list -p alpha (A 类: --json) ----
-    let (stdout, stderr, code) = run_in(ds.root(), &["--json", "source", "list", "-p", "alpha"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["--json", "source", "list", "--project", "alpha"]);
     assert_eq!(code, 0, "--json source list failed: {stderr}");
     assert!(stdout.contains("\"status\": \"ok\""), "--json output should have envelope: {stdout}");
 
@@ -51,7 +51,7 @@ fn e2e_mind_user_migration_chain() {
     assert!(!stdout.is_empty(), "config default should produce output");
 
     // ---- 8. mf --format json asset ls -p alpha (A 类: ls alias, -p short flag) ----
-    let (stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "asset", "ls", "-p", "alpha"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "asset", "ls", "--project", "alpha"]);
     assert_eq!(code, 0, "asset ls failed: {stderr}");
     assert!(stdout.contains("\"status\": \"ok\""), "json output should have envelope: {stdout}");
 
@@ -62,25 +62,45 @@ fn e2e_mind_user_migration_chain() {
 
     let (_stdout, stderr, code) = run_in(
         ds.root(),
-        &["source", "add", "--name", "test-source", "--source-kind", "yuque", "external-source.md", "-p", "alpha"],
+        &[
+            "source",
+            "add",
+            "--name",
+            "test-source",
+            "--source-kind",
+            "yuque",
+            "external-source.md",
+            "--project",
+            "alpha",
+        ],
     );
     assert_eq!(code, 0, "source add failed: {stderr}");
     assert!(!stderr.contains("[deprecated]"), "primary form should not warn: {stderr}");
 
     // ---- 10. mf source list -p alpha (verify source was added) ----
-    let (stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "source", "list", "-p", "alpha"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "source", "list", "--project", "alpha"]);
     assert_eq!(code, 0, "source list failed: {stderr}");
     assert!(stdout.contains("test-source"), "source list should show added source: {stdout}");
 
     // ---- 11. mf term new "API" --definition "..." --alias ap-i (C 类 primary form) ----
     let (_stdout, stderr, code) = run_in(
         ds.root(),
-        &["term", "new", "API", "--definition", "Application Programming Interface", "--alias", "ap-i", "-p", "alpha"],
+        &[
+            "term",
+            "new",
+            "API",
+            "--definition",
+            "Application Programming Interface",
+            "--alias",
+            "ap-i",
+            "--project",
+            "alpha",
+        ],
     );
     assert_eq!(code, 0, "term new failed: {stderr}");
 
     // ---- 12. mf term show "API" (B2.4 新命令) ----
-    let (stdout, stderr, code) = run_in(ds.root(), &["term", "show", "API", "-p", "alpha"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["term", "show", "API", "--project", "alpha"]);
     assert_eq!(code, 0, "term show failed: {stderr}");
     assert!(stdout.contains("API"), "term show should output term details: {stdout}");
 

@@ -46,8 +46,6 @@ pub struct TermListArgs {
     /// Look up a single term by name (deprecated: use `term show <NAME>`)
     #[arg(long)]
     pub term: Option<String>,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -65,8 +63,6 @@ pub struct TermNewArgs {
     pub tag: Vec<String>,
     #[arg(long = "misrecognition")]
     pub misrecognition: Vec<String>,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -76,8 +72,6 @@ pub struct TermLintArgs {
     pub fix: bool,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -94,8 +88,6 @@ pub struct TermLearnArgs {
     /// Deprecated: use --alias (variant) instead
     #[arg(long)]
     pub correct: Option<String>,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -115,8 +107,6 @@ pub struct TermFixArgs {
     pub alias: Vec<String>,
     #[arg(long = "tag")]
     pub tag: Vec<String>,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -126,17 +116,11 @@ pub struct TermFixArgs {
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct TermShowArgs {
     pub name: String,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct TermRemoveArgs {
     pub term: String,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
-    #[arg(long)]
-    pub global: bool,
     #[arg(short = 'f', long)]
     pub force: bool,
     #[arg(long = "dry-run")]
@@ -153,14 +137,13 @@ pub struct TermRenameArgs {
     pub force: bool,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 pub fn dispatch(
     command: TermCmd,
     repo_root: Option<&std::path::PathBuf>,
     format: Format,
+    project: Option<&str>,
     deprecation: &mut DeprecationContext,
 ) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
@@ -168,26 +151,26 @@ pub fn dispatch(
 
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("term")),
-        Some(TermSubcommand::New(args)) => handle_new(args, root, &cwd, format),
-        Some(TermSubcommand::List(args)) => handle_list(args, root, &cwd, format, deprecation),
-        Some(TermSubcommand::Lint(args)) => handle_lint(args, root, &cwd, format),
+        Some(TermSubcommand::New(args)) => handle_new(args, root, &cwd, format, project),
+        Some(TermSubcommand::List(args)) => handle_list(args, root, &cwd, format, project, deprecation),
+        Some(TermSubcommand::Lint(args)) => handle_lint(args, root, &cwd, format, project),
         Some(TermSubcommand::Add(args)) => {
             warn_learn_flag_deprecations(&args, deprecation);
-            handle_learn(args, root, &cwd, format)
+            handle_learn(args, root, &cwd, format, project)
         }
-        Some(TermSubcommand::Update(args)) => handle_fix(args, root, &cwd, format),
+        Some(TermSubcommand::Update(args)) => handle_fix(args, root, &cwd, format, project),
         Some(TermSubcommand::Learn(args)) => {
             deprecation.warn_subject("term learn", "term add");
             warn_learn_flag_deprecations(&args, deprecation);
-            handle_learn(args, root, &cwd, format)
+            handle_learn(args, root, &cwd, format, project)
         }
         Some(TermSubcommand::Fix(args)) => {
             deprecation.warn_subject("term fix", "term update");
-            handle_fix(args, root, &cwd, format)
+            handle_fix(args, root, &cwd, format, project)
         }
-        Some(TermSubcommand::Show(args)) => handle_show(args, root, &cwd, format),
-        Some(TermSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format),
-        Some(TermSubcommand::Rename(args)) => handle_rename(args, root, &cwd, format),
+        Some(TermSubcommand::Show(args)) => handle_show(args, root, &cwd, format, project),
+        Some(TermSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format, project),
+        Some(TermSubcommand::Rename(args)) => handle_rename(args, root, &cwd, format, project),
     }
 }
 
@@ -224,15 +207,21 @@ fn fix_update(args: &TermFixArgs) -> term_svc::TermUpdate<'_> {
 
 // ── Handle: mf term new (US1 / T017) ─────────────────────────────────────────
 
-fn handle_new(args: TermNewArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let term = if let Some(ref project) = args.project {
+fn handle_new(
+    args: TermNewArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let term = if let Some(project_name) = project {
         if !args.misrecognition.is_empty() {
             return Err(MfError::usage(
                 "--misrecognition is not supported on project-scoped term files",
                 Some("use global terms (without --project) for --misrecognition".to_string()),
             ));
         }
-        let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
+        let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         term_svc::new_term(&project_path, &args.term, new_input(&args))?
     } else {
         term_svc::global::new_term(root, &args.term, new_input(&args), &args.misrecognition)?
@@ -269,13 +258,14 @@ fn handle_list(
     root: &Path,
     cwd: &Path,
     format: Format,
+    project: Option<&str>,
     deprecation: &mut DeprecationContext,
 ) -> Result<CommandOutcome> {
     // D5: --term <X> redirects to term show
     if let Some(ref name) = args.term {
         deprecation.warn_subject("term list --term <X>", "term show <X>");
-        let term = if let Some(ref project) = args.project {
-            let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
+        let term = if let Some(project_name) = project {
+            let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
             term_svc::show_term(&project_path, name)?
         } else {
             term_svc::global::show_term(root, name)?
@@ -283,8 +273,8 @@ fn handle_list(
         return render_term_show(&term, format);
     }
 
-    let terms = if let Some(ref project) = args.project {
-        let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
+    let terms = if let Some(project_name) = project {
+        let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         term_svc::list_terms(&project_path, args.filter.as_deref())?
     } else {
         term_svc::global::list_terms(root, args.filter.as_deref())?
@@ -341,18 +331,27 @@ fn handle_list(
 
 // ── Handle: mf term lint (US3 / T027 + US4 / T033) ──────────────────────────
 
-fn handle_lint(args: TermLintArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    // Lint always requires project context — it scans project docs for term usage.
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
-
+fn handle_lint(
+    args: TermLintArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
     let effective_fix = args.fix;
     let effective_dry_run = args.fix && args.dry_run;
 
-    let report = if let Some(ref path) = args.path {
-        // Single file lint (mind primary form)
-        term_svc::lint_file(&project_path, path, effective_fix, effective_dry_run)?
+    let report = if let Some(project_name) = project {
+        let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
+        if let Some(ref path) = args.path {
+            term_svc::lint_file(&project_path, path, effective_fix, effective_dry_run)?
+        } else {
+            term_svc::lint_terms(&project_path, effective_fix, effective_dry_run)?
+        }
+    } else if let Some(ref path) = args.path {
+        term_svc::global::lint_file(root, path, effective_fix, effective_dry_run)?
     } else {
-        term_svc::lint_terms(&project_path, effective_fix, effective_dry_run)?
+        term_svc::global::lint_terms(root, effective_fix, effective_dry_run)?
     };
 
     // Determine exit code per contracts/term-lint.md §Exit Codes
@@ -468,7 +467,13 @@ fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_
 
 // ── Handle: mf term learn (US5 / T037) ───────────────────────────────────────
 
-fn handle_learn(args: TermLearnArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
+fn handle_learn(
+    args: TermLearnArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
     // The service layer's signature is (variant, canonical) — historically named
     // (original, correct). Resolve canonical/variant from either the primary
     // (--term/--alias) or the deprecated (--original/--correct) form.
@@ -482,8 +487,8 @@ fn handle_learn(args: TermLearnArgs, root: &Path, cwd: &Path, format: Format) ->
         ));
     };
 
-    let (term, appended) = if let Some(ref project) = args.project {
-        let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
+    let (term, appended) = if let Some(project_name) = project {
+        let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         term_svc::learn_correction(&project_path, variant, canonical)?
     } else {
         term_svc::global::learn_correction(root, variant, canonical)?
@@ -507,7 +512,13 @@ fn handle_learn(args: TermLearnArgs, root: &Path, cwd: &Path, format: Format) ->
 
 // ── Handle: mf term fix (US6 / T041) ─────────────────────────────────────────
 
-fn handle_fix(args: TermFixArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
+fn handle_fix(
+    args: TermFixArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
     if args.description.is_some() && args.clear_description {
         return Err(MfError::usage("--description and --clear-description are mutually exclusive", None));
     }
@@ -516,8 +527,8 @@ fn handle_fix(args: TermFixArgs, root: &Path, cwd: &Path, format: Format) -> Res
     }
 
     let update = fix_update(&args);
-    let term = if let Some(ref project) = args.project {
-        let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
+    let term = if let Some(project_name) = project {
+        let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         term_svc::fix_term(&project_path, &args.term, update)?
     } else {
         term_svc::global::fix_term(root, &args.term, update)?
@@ -583,9 +594,15 @@ fn render_term_show(term: &crate::model::term::Term, format: Format) -> Result<C
     }
 }
 
-fn handle_show(args: TermShowArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let term = if let Some(ref project) = args.project {
-        let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
+fn handle_show(
+    args: TermShowArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let term = if let Some(project_name) = project {
+        let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         term_svc::show_term(&project_path, &args.name)?
     } else {
         term_svc::global::show_term(root, &args.name)?
@@ -595,12 +612,18 @@ fn handle_show(args: TermShowArgs, root: &Path, cwd: &Path, format: Format) -> R
 
 // ── Handle: mf term remove / rm ────────────────────────────────────────────
 
-fn handle_remove(args: TermRemoveArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let report = if args.global {
-        term_svc::remove_term_global(root, &args.term, args.force, args.dry_run)?
-    } else {
-        let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+fn handle_remove(
+    args: TermRemoveArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let report = if let Some(project_name) = project {
+        let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         term_svc::remove_term(&project_path, &args.term, args.force, args.dry_run)?
+    } else {
+        term_svc::remove_term_global(root, &args.term, args.force, args.dry_run)?
     };
 
     match format {
@@ -618,16 +641,19 @@ fn handle_remove(args: TermRemoveArgs, root: &Path, cwd: &Path, format: Format) 
 
 // ── Handle: mf term rename ──────────────────────────────────────────────────
 
-fn handle_rename(args: TermRenameArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
-    let report = term_svc::rename_term(
-        &project_path,
-        &args.old_term,
-        &args.new_term,
-        args.keep_alias,
-        args.force,
-        args.dry_run,
-    )?;
+fn handle_rename(
+    args: TermRenameArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let report = if let Some(project_name) = project {
+        let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
+        term_svc::rename_term(&project_path, &args.old_term, &args.new_term, args.keep_alias, args.force, args.dry_run)?
+    } else {
+        term_svc::global::rename_term(root, &args.old_term, &args.new_term, args.keep_alias, args.force, args.dry_run)?
+    };
 
     match format {
         Format::Json => {

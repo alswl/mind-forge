@@ -20,7 +20,7 @@ use crate::service::publisher as publisher_svc;
 use crate::service::util::path_template::PathTemplate;
 use crate::service::{config as config_svc, util};
 
-pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path) -> Result<PublishRunOutcome> {
+pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path, project: Option<&str>) -> Result<PublishRunOutcome> {
     if args.article.is_empty() || args.article.contains('\\') {
         return Err(MfError::usage(
             format!("invalid article name: '{}'", args.article),
@@ -28,7 +28,7 @@ pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path) -> Result<Publis
         ));
     }
 
-    let project_path = util::resolve_project(repo_root, args.project.as_deref(), cwd)?;
+    let project_path = util::resolve_project(repo_root, project, cwd)?;
     let config = config_svc::load_project(&project_path, Some(repo_root))?.ok_or_else(|| {
         MfError::usage("project missing mind.yaml".to_string(), Some("run `mf config init` to create one".to_string()))
     })?;
@@ -74,7 +74,12 @@ pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path) -> Result<Publis
     }
 }
 
-pub fn update(args: &PublishUpdateArgs, repo_root: &Path, cwd: &Path) -> Result<PublishUpdateOutcome> {
+pub fn update(
+    args: &PublishUpdateArgs,
+    repo_root: &Path,
+    cwd: &Path,
+    project: Option<&str>,
+) -> Result<PublishUpdateOutcome> {
     if args.article.is_empty() || args.article.contains('/') || args.article.contains('\\') {
         return Err(MfError::usage(
             format!("invalid article name: '{}'", args.article),
@@ -90,7 +95,7 @@ pub fn update(args: &PublishUpdateArgs, repo_root: &Path, cwd: &Path) -> Result<
         ));
     }
 
-    let project_path = util::resolve_project(repo_root, args.project.as_deref(), cwd)?;
+    let project_path = util::resolve_project(repo_root, project, cwd)?;
     let config = config_svc::load_project(&project_path, Some(repo_root))?.ok_or_else(|| {
         MfError::usage("project missing mind.yaml".to_string(), Some("run `mf config init` to create one".to_string()))
     })?;

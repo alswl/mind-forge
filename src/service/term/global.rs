@@ -7,8 +7,13 @@ use std::path::Path;
 
 use super::fix::apply_update;
 use super::{dedup_preserve_first, sort_terms_by_name, TermInput, TermUpdate};
+use crate::defaults;
 use crate::error::{MfError, Result};
-use crate::model::term::{Correction, Term};
+use crate::model::index::IndexFile;
+use crate::model::lifecycle::{PlannedChange, ScopeRef};
+use crate::model::term::{Correction, Term, TermLintReport};
+use crate::service::lifecycle;
+use crate::service::term::lint;
 use crate::service::term::repo_format::{self, path_for};
 
 // ── Load / Save ─────────────────────────────────────────────────────────────
@@ -58,7 +63,7 @@ pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecogniti
 
     let new_entry = Term {
         term: term.to_string(),
-        definition: input.definition.and_then(|s| if s.is_empty() { None } else { Some(s.to_string()) }),
+        definition: input.definition.filter(|s| !s.is_empty()).map(String::from),
         description: input.description.map(String::from),
         confidence: input.confidence,
         aliases,
@@ -158,10 +163,10 @@ fn find_term_index(terms: &[Term], correct: &str) -> Result<usize> {
 /// Register a correction for an existing global term.
 pub fn learn_correction(repo_root: &Path, original: &str, correct: &str) -> Result<(Term, bool)> {
     if original.trim().is_empty() {
-        return Err(MfError::usage("--original cannot be empty", None));
+        return Err(MfError::usage("variant cannot be empty", None));
     }
     if correct.trim().is_empty() {
-        return Err(MfError::usage("--correct cannot be empty", None));
+        return Err(MfError::usage("canonical term cannot be empty", None));
     }
 
     let mut terms = load_terms(repo_root)?;
@@ -186,6 +191,112 @@ pub fn learn_correction(repo_root: &Path, original: &str, correct: &str) -> Resu
     sort_terms_by_name(&mut terms);
     save_terms(repo_root, &terms)?;
     Ok((result, true))
+}
+
+// ── Global term lint ──────────────────────────────────────────────────────────
+
+fn global_index(terms: Vec<Term>) -> IndexFile {
+    IndexFile {
+        terms: Some(terms),
+        schema_version: defaults::SCHEMA_VERSION.to_string(),
+        sources: None,
+        assets: None,
+        articles: None,
+        publish_records: None,
+        extra: None,
+    }
+}
+
+/// Lint a single file against global terms.
+pub fn lint_file(repo_root: &Path, file_path: &str, fix: bool, dry_run: bool) -> Result<TermLintReport> {
+    let terms = load_terms(repo_root)?;
+    if terms.is_empty() {
+        return Ok(lint::empty_report(fix, dry_run));
+    }
+    lint::lint_single_file_with_index(&global_index(terms), repo_root, file_path, fix, dry_run)
+}
+
+/// Lint all markdown files in the repo against global terms.
+pub fn lint_terms(repo_root: &Path, fix: bool, dry_run: bool) -> Result<TermLintReport> {
+    let terms = load_terms(repo_root)?;
+    if terms.is_empty() {
+        return Ok(lint::empty_report(fix, dry_run));
+    }
+    lint::lint_walk_with_index(&global_index(terms), repo_root, repo_root, None, fix, dry_run)
+}
+
+// ── Global term rename ───────────────────────────────────────────────────────
+
+/// Rename a global term.
+pub fn rename_term(
+    repo_root: &Path,
+    old_name: &str,
+    new_name: &str,
+    keep_alias: bool,
+    force: bool,
+    dry_run: bool,
+) -> Result<super::rename::TermRenameReport> {
+    if old_name.trim().is_empty() {
+        return Err(MfError::usage("old term name cannot be empty", None));
+    }
+    if new_name.trim().is_empty() {
+        return Err(MfError::usage("new term name cannot be empty", None));
+    }
+
+    let mut terms = load_terms(repo_root)?;
+
+    let pos = terms.iter().position(|t| t.term == old_name).ok_or_else(|| {
+        MfError::not_found(
+            format!("term '{old_name}' not found"),
+            Some("use 'mf term list' to see available terms".to_string()),
+        )
+    })?;
+
+    if old_name != new_name && terms.iter().any(|t| t.term == new_name) && !force {
+        return Err(MfError::usage(
+            format!("a term named '{new_name}' already exists"),
+            Some("use --force to overwrite".to_string()),
+        ));
+    }
+
+    let scope = ScopeRef { project: None, global: true };
+    let before = super::rename::TermRenameIdentity { name: old_name.to_string(), scope: scope.clone() };
+    let after = super::rename::TermRenameIdentity { name: new_name.to_string(), scope };
+
+    let planned: Vec<PlannedChange> =
+        vec![lifecycle::planned_yaml_update(&path_for(repo_root).to_string_lossy(), Some(old_name), Some(new_name))];
+
+    if dry_run {
+        return Ok(super::rename::TermRenameReport {
+            verb: "rename".into(),
+            kind: "term".into(),
+            before,
+            after,
+            references: vec![],
+            side_effects: planned,
+            force,
+            dry_run: true,
+        });
+    }
+
+    let term = &mut terms[pos];
+    if keep_alias && !term.aliases.iter().any(|a| a == old_name) {
+        term.aliases.push(old_name.to_string());
+    }
+    term.term = new_name.to_string();
+    sort_terms_by_name(&mut terms);
+    save_terms(repo_root, &terms)?;
+
+    Ok(super::rename::TermRenameReport {
+        verb: "rename".into(),
+        kind: "term".into(),
+        before,
+        after,
+        references: vec![],
+        side_effects: planned,
+        force,
+        dry_run: false,
+    })
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────

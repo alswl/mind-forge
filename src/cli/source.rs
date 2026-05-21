@@ -115,8 +115,6 @@ pub struct SourceAddArgs {
     pub link: bool,
     #[arg(short = 'f', long)]
     pub force: bool,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -129,8 +127,6 @@ pub struct SourceListArgs {
     pub filter: Option<String>,
     #[arg(short = 't', long = "type", value_enum)]
     pub kind: Option<CliSourceKind>,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -144,8 +140,6 @@ pub struct SourceUpdateArgs {
     pub rename: Option<String>,
     #[arg(long)]
     pub url: Option<String>,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -162,8 +156,6 @@ pub struct SourceRemoveArgs {
     pub force: bool,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -174,8 +166,6 @@ pub struct SourceRemoveArgs {
 pub struct SourceIndexArgs {
     #[arg(long = "dry-run")]
     pub dry_run: bool,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -186,16 +176,12 @@ pub struct SourceRenameArgs {
     pub force: bool,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceCleanArgs {
     #[arg(long = "dry-run")]
     pub dry_run: bool,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -206,6 +192,7 @@ pub fn dispatch(
     command: SourceCmd,
     repo_root: Option<&PathBuf>,
     format: Format,
+    project: Option<&str>,
     deprecation: &mut DeprecationContext,
 ) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
@@ -218,19 +205,25 @@ pub fn dispatch(
             if args.kind.is_some() {
                 deprecation.warn_subject("--type", "--file-kind or --source-kind");
             }
-            handle_add(args, root, &cwd, format)
+            handle_add(args, root, &cwd, format, project)
         }
-        Some(SourceSubcommand::List(args)) => handle_list(args, root, &cwd, format),
-        Some(SourceSubcommand::Update(args)) => handle_update(args, root, &cwd, format),
-        Some(SourceSubcommand::Index(args)) => handle_index(args, root, &cwd, format),
-        Some(SourceSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format, deprecation),
-        Some(SourceSubcommand::Rename(args)) => handle_rename(args, root, &cwd, format),
-        Some(SourceSubcommand::Clean(args)) => handle_clean(args, root, &cwd, format),
+        Some(SourceSubcommand::List(args)) => handle_list(args, root, &cwd, format, project),
+        Some(SourceSubcommand::Update(args)) => handle_update(args, root, &cwd, format, project),
+        Some(SourceSubcommand::Index(args)) => handle_index(args, root, &cwd, format, project),
+        Some(SourceSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format, project, deprecation),
+        Some(SourceSubcommand::Rename(args)) => handle_rename(args, root, &cwd, format, project),
+        Some(SourceSubcommand::Clean(args)) => handle_clean(args, root, &cwd, format, project),
     }
 }
 
-fn handle_list(args: SourceListArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+fn handle_list(
+    args: SourceListArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
 
     // Resolve type filter (CliSourceKind → model FileKind; Auto is rejected)
     let type_filter = match args.kind {
@@ -270,8 +263,14 @@ fn handle_list(args: SourceListArgs, root: &Path, cwd: &Path, format: Format) ->
     }
 }
 
-fn handle_update(args: SourceUpdateArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+fn handle_update(
+    args: SourceUpdateArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
 
     let update_args =
         svc_source::UpdateArgs { name: &args.name, rename: args.rename.as_deref(), url: args.url.as_deref() };
@@ -291,8 +290,14 @@ fn handle_update(args: SourceUpdateArgs, root: &Path, cwd: &Path, format: Format
     }
 }
 
-fn handle_index(args: SourceIndexArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+fn handle_index(
+    args: SourceIndexArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
 
     let report = svc_source::reconcile(&project_path, args.dry_run)?;
 
@@ -326,13 +331,14 @@ fn handle_remove(
     root: &Path,
     cwd: &Path,
     format: Format,
+    project: Option<&str>,
     deprecation: &mut DeprecationContext,
 ) -> Result<CommandOutcome> {
     let is_path = args.name_or_path.contains('/') || args.name_or_path.starts_with(defaults::SOURCES_DIR);
     if !is_path {
         deprecation.warn_subject("positional NAME", "full PATH (e.g., sources/yuque/foo.md)");
     }
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
     let report =
         svc_source::remove_source(&project_path, &args.name_or_path, args.keep_file, args.force, args.dry_run)?;
 
@@ -355,8 +361,14 @@ fn handle_remove(
     }
 }
 
-fn handle_clean(args: SourceCleanArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+fn handle_clean(
+    args: SourceCleanArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
 
     let report = svc_source::clean(&project_path, args.dry_run)?;
 
@@ -386,8 +398,14 @@ fn handle_clean(args: SourceCleanArgs, root: &Path, cwd: &Path, format: Format) 
 
 // ── Handle: mf source rename ────────────────────────────────────────────────
 
-fn handle_rename(args: SourceRenameArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+fn handle_rename(
+    args: SourceRenameArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
     let report = svc_source::rename_source(&project_path, &args.old_name, &args.new_name, args.force, args.dry_run)?;
 
     match format {
@@ -408,8 +426,14 @@ fn handle_rename(args: SourceRenameArgs, root: &Path, cwd: &Path, format: Format
 // Handle: mf source add
 // ---------------------------------------------------------------------------
 
-fn handle_add(args: SourceAddArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, args.project.as_deref(), cwd)?;
+fn handle_add(
+    args: SourceAddArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
 
     let input_form = svc_source::classify_input(&args.input);
 

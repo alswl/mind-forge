@@ -23,7 +23,7 @@ fn deprecation_subcommand_d3_warning() {
 
     // source remove with NAME (not PATH) triggers D3 deprecation
     let (_stdout, stderr, _code) =
-        run(&["--root", &dir.path().to_string_lossy(), "source", "remove", "some-name", "-p", "alpha"]);
+        run(&["--root", &dir.path().to_string_lossy(), "source", "remove", "some-name", "--project", "alpha"]);
     assert!(stderr.contains("[deprecated]"), "stderr should contain deprecation marker: {stderr:?}");
     assert!(stderr.contains("positional NAME"), "stderr should mention 'positional NAME': {stderr:?}");
 }
@@ -49,7 +49,7 @@ fn deprecation_flag_d1a_warning() {
         "local",
         "--status",
         "draft",
-        "-p",
+        "--project",
         "alpha",
     ]);
     assert!(stderr.contains("[deprecated]"), "stderr should contain deprecation marker: {stderr:?}");
@@ -67,7 +67,7 @@ fn deprecation_positional_d3_warning() {
     common::create_project(&dir, "alpha");
 
     let (_stdout, stderr, _code) =
-        run(&["--root", &dir.path().to_string_lossy(), "source", "remove", "some-name", "-p", "alpha"]);
+        run(&["--root", &dir.path().to_string_lossy(), "source", "remove", "some-name", "--project", "alpha"]);
     assert!(stderr.contains("[deprecated]"));
     assert!(stderr.contains("NAME"));
 }
@@ -92,7 +92,7 @@ fn deprecation_value_d2a_warning() {
         "--type",
         "auto",
         "https://example.com/doc",
-        "-p",
+        "--project",
         "alpha",
     ]);
     assert!(stderr.contains("[deprecated]"), "stderr should contain deprecation marker: {stderr:?}");
@@ -120,7 +120,7 @@ fn deprecation_multiple_warnings() {
         "draft",
         "--target-url",
         "https://example.com",
-        "-p",
+        "--project",
         "alpha",
     ]);
     // Should have two deprecation lines on stderr
@@ -155,7 +155,7 @@ fn deprecation_json_envelope_unchanged() {
         "--type",
         "auto",
         "https://example.com/doc",
-        "-p",
+        "--project",
         "alpha",
     ]);
     // Deprecation should be on stderr
@@ -190,7 +190,7 @@ fn deprecation_quiet_does_not_suppress() {
         "local",
         "--status",
         "draft",
-        "-p",
+        "--project",
         "alpha",
     ]);
     // Deprecation warning should still be on stderr even with --quiet
@@ -206,8 +206,16 @@ fn deprecation_no_color_strips_ansi() {
     let dir = common::setup_repo();
     common::create_project(&dir, "alpha");
 
-    let (_stdout, stderr, _code) =
-        run(&["--root", &dir.path().to_string_lossy(), "--no-color", "source", "remove", "some-name", "-p", "alpha"]);
+    let (_stdout, stderr, _code) = run(&[
+        "--root",
+        &dir.path().to_string_lossy(),
+        "--no-color",
+        "source",
+        "remove",
+        "some-name",
+        "--project",
+        "alpha",
+    ]);
     assert!(stderr.contains("[deprecated]"), "stderr should have deprecation: {stderr:?}");
     // With --no-color, there should be no ANSI escape sequences
     assert!(!stderr.contains('\x1b'), "stderr should not contain ANSI escapes: {stderr:?}");
@@ -232,7 +240,7 @@ fn deprecation_d1a_warning_format() {
         "local",
         "--status",
         "draft",
-        "-p",
+        "--project",
         "alpha",
     ]);
     assert!(stderr.contains("[deprecated] --status is deprecated, use --set status=<value> instead"));
@@ -253,7 +261,7 @@ fn deprecation_d1b_warning_format() {
         "local",
         "--target-url",
         "https://example.com",
-        "-p",
+        "--project",
         "alpha",
     ]);
     assert!(stderr.contains("[deprecated] --target-url is deprecated, use --set url=<value> instead"));
@@ -275,7 +283,7 @@ fn deprecation_d2_subject_warning_format() {
         "--type",
         "auto",
         "https://example.com/doc",
-        "-p",
+        "--project",
         "alpha",
     ]);
     assert!(stderr.contains("[deprecated] --type is deprecated, use --file-kind or --source-kind instead"));
@@ -287,7 +295,7 @@ fn deprecation_d3_warning_format() {
     common::create_project(&dir, "alpha");
 
     let (_stdout, stderr, _code) =
-        run(&["--root", &dir.path().to_string_lossy(), "source", "remove", "some-name", "-p", "alpha"]);
+        run(&["--root", &dir.path().to_string_lossy(), "source", "remove", "some-name", "--project", "alpha"]);
     assert!(stderr
         .contains("[deprecated] positional NAME is deprecated, use full PATH (e.g., sources/yuque/foo.md) instead"));
 }
@@ -306,7 +314,7 @@ fn deprecation_d4a_warning_format() {
         "old-term",
         "--correct",
         "Mind Repo",
-        "-p",
+        "--project",
         "alpha",
     ]);
     assert!(stderr.contains("[deprecated] --original is deprecated, use --alias <variant> instead"));
@@ -326,7 +334,7 @@ fn deprecation_d4b_warning_format() {
         "old-term",
         "--correct",
         "Mind Repo",
-        "-p",
+        "--project",
         "alpha",
     ]);
     assert!(stderr.contains("[deprecated] --correct is deprecated, use --term <canonical> instead"));
@@ -347,6 +355,6 @@ terms:
     common::write_index(&dir, "alpha", index_yaml);
 
     let (_stdout, stderr, _code) =
-        run(&["--root", &dir.path().to_string_lossy(), "term", "list", "--term", "API", "-p", "alpha"]);
+        run(&["--root", &dir.path().to_string_lossy(), "term", "list", "--term", "API", "--project", "alpha"]);
     assert!(stderr.contains("[deprecated] term list --term <X> is deprecated, use term show <X> instead"));
 }

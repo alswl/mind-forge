@@ -15,9 +15,6 @@ use super::CommandOutcome;
 pub struct RenderCmd {
     /// Article name to render
     pub article: Option<String>,
-    /// Select project context
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
     /// Render template name
     #[arg(long)]
     pub template: Option<String>,
@@ -50,20 +47,30 @@ pub enum TemplateSubcommand {
 pub struct TemplateListArgs;
 
 /// Dispatch the `mf render` command.
-pub fn dispatch(args: RenderCmd, repo_root: Option<&std::path::PathBuf>, format: Format) -> Result<CommandOutcome> {
+pub fn dispatch(
+    args: RenderCmd,
+    repo_root: Option<&std::path::PathBuf>,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
     match args.command {
         Some(RenderSubcommand::Template(tpl_cmd)) => match tpl_cmd.command {
             TemplateSubcommand::List(_) => dispatch_list_templates(repo_root, format),
         },
-        None => dispatch_render(args, repo_root, format),
+        None => dispatch_render(args, repo_root, format, project),
     }
 }
 
-fn dispatch_render(args: RenderCmd, repo_root: Option<&std::path::PathBuf>, format: Format) -> Result<CommandOutcome> {
+fn dispatch_render(
+    args: RenderCmd,
+    repo_root: Option<&std::path::PathBuf>,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
 
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
-    let (project_path, config) = render_svc::resolve_project_config(root, args.project.as_deref(), &cwd)?;
+    let (project_path, config) = render_svc::resolve_project_config(root, project, &cwd)?;
     let project_name = svc_util::dir_name(&project_path);
 
     let layout = config_svc::effective_layout(&project_path)?;

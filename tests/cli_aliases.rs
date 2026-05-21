@@ -17,12 +17,12 @@ fn terms_alias_equals_term() {
     let dir = common::setup_repo();
     common::create_project(&dir, "test-proj");
     let (stdout_mind, stderr_mind, code_mind) =
-        run(&["--root", &dir.path().to_string_lossy(), "terms", "list", "-p", "test-proj"]);
+        run(&["--root", &dir.path().to_string_lossy(), "terms", "list", "--project", "test-proj"]);
     assert_eq!(code_mind, 0, "terms alias should succeed");
     assert!(stderr_mind.is_empty(), "terms alias should produce no stderr warnings, got: {stderr_mind:?}");
 
     let (stdout_mf, stderr_mf, code_mf) =
-        run(&["--root", &dir.path().to_string_lossy(), "term", "list", "-p", "test-proj"]);
+        run(&["--root", &dir.path().to_string_lossy(), "term", "list", "--project", "test-proj"]);
     assert_eq!(code_mf, 0, "term primary should succeed");
     assert!(stderr_mf.is_empty(), "term primary should produce no stderr, got: {stderr_mf:?}");
 
@@ -50,12 +50,12 @@ fn json_flag_equals_format_json() {
     let dir = common::setup_repo();
     common::create_project(&dir, "test-proj");
     let (stdout_json_flag, stderr_json_flag, code_json_flag) =
-        run(&["--root", &dir.path().to_string_lossy(), "--json", "source", "list", "-p", "test-proj"]);
+        run(&["--root", &dir.path().to_string_lossy(), "--json", "source", "list", "--project", "test-proj"]);
     assert_eq!(code_json_flag, 0, "--json flag should succeed");
     assert!(stderr_json_flag.is_empty(), "--json flag should produce no stderr warnings, got: {stderr_json_flag:?}");
 
     let (stdout_format, stderr_format, code_format) =
-        run(&["--root", &dir.path().to_string_lossy(), "--format", "json", "source", "list", "-p", "test-proj"]);
+        run(&["--root", &dir.path().to_string_lossy(), "--format", "json", "source", "list", "--project", "test-proj"]);
     assert_eq!(code_format, 0, "--format json should succeed");
     assert!(stderr_format.is_empty(), "--format json should have clean stderr");
 
@@ -118,7 +118,7 @@ fn json_flag_wins_over_format() {
         "text",
         "source",
         "list",
-        "-p",
+        "--project",
         "test-proj",
     ]);
     assert_eq!(code, 0, "should succeed even with both --json and --format");
@@ -135,7 +135,8 @@ fn json_flag_wins_over_format() {
 fn double_alias_terms_list_clean_stderr() {
     let dir = common::setup_repo();
     common::create_project(&dir, "test-proj");
-    let (_stdout, stderr, code) = run(&["--root", &dir.path().to_string_lossy(), "terms", "list", "-p", "test-proj"]);
+    let (_stdout, stderr, code) =
+        run(&["--root", &dir.path().to_string_lossy(), "terms", "list", "--project", "test-proj"]);
     assert_eq!(code, 0, "terms list should succeed");
     assert!(stderr.is_empty(), "double alias 'terms list' should produce no warnings, got: {stderr:?}");
 }
@@ -146,7 +147,7 @@ fn short_flag_project() {
     let dir = common::setup_repo();
     common::create_project(&dir, "test-proj");
     let (_stdout_short, stderr_short, code_short) =
-        run(&["--root", &dir.path().to_string_lossy(), "source", "list", "-p", "test-proj"]);
+        run(&["--root", &dir.path().to_string_lossy(), "source", "list", "--project", "test-proj"]);
     assert_eq!(code_short, 0);
     assert!(stderr_short.is_empty() || stderr_short.contains("[deprecated]"));
 }
@@ -160,7 +161,7 @@ fn short_flag_type() {
     common::create_project(&dir, "test-proj");
     // List with -t should be equivalent to --type
     let (_stdout_short, stderr_short, code_short) =
-        run(&["--root", &dir.path().to_string_lossy(), "source", "list", "-t", "pdf", "-p", "test-proj"]);
+        run(&["--root", &dir.path().to_string_lossy(), "source", "list", "-t", "pdf", "--project", "test-proj"]);
     assert_eq!(code_short, 0);
     assert!(
         stderr_short.is_empty() || stderr_short.contains("[deprecated]"),
@@ -198,7 +199,8 @@ fn short_flag_name() {
 fn project_info_alias_removed() {
     let dir = common::setup_repo();
     common::create_project(&dir, "test-proj");
-    let (_stdout, stderr, code) = run(&["--root", &dir.path().to_string_lossy(), "project", "info", "-p", "test-proj"]);
+    let (_stdout, stderr, code) =
+        run(&["--root", &dir.path().to_string_lossy(), "project", "info", "--project", "test-proj"]);
     assert_ne!(code, 0, "project info should fail (alias removed)");
     assert!(
         stderr.contains("unrecognized subcommand 'info'"),
@@ -212,7 +214,7 @@ fn project_status_deprecated_alias() {
     let dir = common::setup_repo();
     common::create_project(&dir, "test-proj");
     let (_stdout, stderr, code) =
-        run(&["--root", &dir.path().to_string_lossy(), "project", "status", "-p", "test-proj"]);
+        run(&["--root", &dir.path().to_string_lossy(), "project", "status", "--project", "test-proj"]);
     assert_eq!(code, 0, "project status should still succeed");
     assert!(stderr.contains("[deprecated]"), "project status should emit deprecation warning, got: {stderr:?}");
     assert!(stderr.contains("project show"), "deprecation should mention project show, got: {stderr:?}");
@@ -224,12 +226,12 @@ fn asset_ls_alias() {
     let dir = common::setup_repo();
     common::create_project(&dir, "test-proj");
     let (stdout_ls, stderr_ls, code_ls) =
-        run(&["--root", &dir.path().to_string_lossy(), "asset", "ls", "-p", "test-proj"]);
+        run(&["--root", &dir.path().to_string_lossy(), "asset", "ls", "--project", "test-proj"]);
     assert_eq!(code_ls, 0, "asset ls should succeed");
     assert!(stderr_ls.is_empty(), "asset ls should have clean stderr, got: {stderr_ls:?}");
 
     let (stdout_list, _stderr_list, code_list) =
-        run(&["--root", &dir.path().to_string_lossy(), "asset", "list", "-p", "test-proj"]);
+        run(&["--root", &dir.path().to_string_lossy(), "asset", "list", "--project", "test-proj"]);
     assert_eq!(code_list, 0);
     assert_eq!(stdout_ls, stdout_list, "asset ls and list output should match");
 }
@@ -240,12 +242,12 @@ fn article_ls_alias() {
     let dir = common::setup_repo();
     common::create_project(&dir, "test-proj");
     let (stdout_ls, stderr_ls, code_ls) =
-        run(&["--root", &dir.path().to_string_lossy(), "article", "ls", "-p", "test-proj"]);
+        run(&["--root", &dir.path().to_string_lossy(), "article", "ls", "--project", "test-proj"]);
     assert_eq!(code_ls, 0, "article ls should succeed");
     assert!(stderr_ls.is_empty(), "article ls should have clean stderr, got: {stderr_ls:?}");
 
     let (stdout_list, _stderr_list, code_list) =
-        run(&["--root", &dir.path().to_string_lossy(), "article", "list", "-p", "test-proj"]);
+        run(&["--root", &dir.path().to_string_lossy(), "article", "list", "--project", "test-proj"]);
     assert_eq!(code_list, 0);
     assert_eq!(stdout_ls, stdout_list, "article ls and list output should match");
 }
@@ -326,12 +328,12 @@ fn source_ls_alias() {
     let dir = common::setup_repo();
     common::create_project(&dir, "test-proj");
     let (stdout_ls, stderr_ls, code_ls) =
-        run(&["--root", &dir.path().to_string_lossy(), "source", "ls", "-p", "test-proj"]);
+        run(&["--root", &dir.path().to_string_lossy(), "source", "ls", "--project", "test-proj"]);
     assert_eq!(code_ls, 0, "source ls should succeed");
     assert!(stderr_ls.is_empty(), "source ls should have clean stderr, got: {stderr_ls:?}");
 
     let (stdout_list, _stderr_list, code_list) =
-        run(&["--root", &dir.path().to_string_lossy(), "source", "list", "-p", "test-proj"]);
+        run(&["--root", &dir.path().to_string_lossy(), "source", "list", "--project", "test-proj"]);
     assert_eq!(code_list, 0);
     assert_eq!(stdout_ls, stdout_list, "source ls and list output should match");
 }
@@ -405,12 +407,12 @@ fn term_ls_alias() {
     let dir = common::setup_repo();
     common::create_project(&dir, "test-proj");
     let (stdout_ls, stderr_ls, code_ls) =
-        run(&["--root", &dir.path().to_string_lossy(), "term", "ls", "-p", "test-proj"]);
+        run(&["--root", &dir.path().to_string_lossy(), "term", "ls", "--project", "test-proj"]);
     assert_eq!(code_ls, 0, "term ls should succeed");
     assert!(stderr_ls.is_empty(), "term ls should have clean stderr, got: {stderr_ls:?}");
 
     let (stdout_list, _stderr_list, code_list) =
-        run(&["--root", &dir.path().to_string_lossy(), "term", "list", "-p", "test-proj"]);
+        run(&["--root", &dir.path().to_string_lossy(), "term", "list", "--project", "test-proj"]);
     assert_eq!(code_list, 0);
     assert_eq!(stdout_ls, stdout_list, "term ls and list output should match");
 }

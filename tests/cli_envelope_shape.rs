@@ -129,7 +129,8 @@ fn envelope_asset_clean_ok() {
     add_asset_entry(&repo, "test", "exists.png", true);
     add_asset_entry(&repo, "test", "missing.png", false);
 
-    let (stdout, stderr, code) = run_json(&["--root", &repo.path().to_string_lossy(), "asset", "clean", "-p", "test"]);
+    let (stdout, stderr, code) =
+        run_json(&["--root", &repo.path().to_string_lossy(), "asset", "clean", "--project", "test"]);
     assert_eq!(code, 0, "stderr: {stderr:?}");
     assert_envelope_ok(&stdout);
 
@@ -146,7 +147,7 @@ fn envelope_asset_clean_dry_run() {
     add_asset_entry(&repo, "test", "missing.png", false);
 
     let (stdout, stderr, code) =
-        run_json(&["--root", &repo.path().to_string_lossy(), "asset", "clean", "-p", "test", "--dry-run"]);
+        run_json(&["--root", &repo.path().to_string_lossy(), "asset", "clean", "--project", "test", "--dry-run"]);
     assert_eq!(code, 0, "stderr: {stderr:?}");
     assert_envelope_ok(&stdout);
 
@@ -165,7 +166,7 @@ fn envelope_asset_remove_ok() {
     add_asset_entry(&repo, "test", "logo.png", true);
 
     let (stdout, stderr, code) =
-        run_json(&["--root", &repo.path().to_string_lossy(), "asset", "remove", "logo.png", "-p", "test"]);
+        run_json(&["--root", &repo.path().to_string_lossy(), "asset", "remove", "logo.png", "--project", "test"]);
     assert_eq!(code, 0, "stderr: {stderr:?}");
     assert_envelope_ok(&stdout);
 
@@ -205,7 +206,7 @@ articles:
     std::fs::write(project_dir.join("mind-index.yaml"), index_yaml).unwrap();
 
     let (stdout, stderr, code) =
-        run_json(&["--root", &repo.path().to_string_lossy(), "asset", "remove", "logo.png", "-p", "test"]);
+        run_json(&["--root", &repo.path().to_string_lossy(), "asset", "remove", "logo.png", "--project", "test"]);
     assert_eq!(code, 2, "should error when referenced, stderr: {stderr:?}");
     // Error may be on stderr, but with --format json it's on stdout
     if stdout.trim().is_empty() {
@@ -401,7 +402,7 @@ fn envelope_term_show_ok() {
     setup_with_term(&repo);
 
     let (stdout, stderr, code) =
-        run_json(&["--root", &repo.path().to_string_lossy(), "term", "show", "API", "-p", "alpha"]);
+        run_json(&["--root", &repo.path().to_string_lossy(), "term", "show", "API", "--project", "alpha"]);
     assert_eq!(code, 0, "stderr: {stderr:?}");
     assert_envelope_ok(&stdout);
 
@@ -418,7 +419,7 @@ fn envelope_term_show_nonexistent_error() {
     common::create_project(&repo, "alpha");
 
     let (stdout, stderr, code) =
-        run_json(&["--root", &repo.path().to_string_lossy(), "term", "show", "NonExistent", "-p", "alpha"]);
+        run_json(&["--root", &repo.path().to_string_lossy(), "term", "show", "NonExistent", "--project", "alpha"]);
     assert_eq!(code, 2, "should error, stderr: {stderr:?}");
     if stdout.trim().is_empty() {
         assert!(!stderr.is_empty(), "stderr should have error message");
@@ -440,12 +441,12 @@ fn envelope_deprecated_term_list_term_json_matches_show() {
     setup_with_term(&repo);
 
     let (stdout_dep, stderr_dep, code_dep) =
-        run_json(&["--root", &repo.path().to_string_lossy(), "term", "list", "--term", "API", "-p", "alpha"]);
+        run_json(&["--root", &repo.path().to_string_lossy(), "term", "list", "--term", "API", "--project", "alpha"]);
     assert_eq!(code_dep, 0, "deprecated form, stderr: {stderr_dep:?}");
     assert!(stderr_dep.contains("[deprecated]"), "deprecated form should warn: {stderr_dep:?}");
 
     let (stdout_primary, stderr_primary, code_primary) =
-        run_json(&["--root", &repo.path().to_string_lossy(), "term", "show", "API", "-p", "alpha"]);
+        run_json(&["--root", &repo.path().to_string_lossy(), "term", "show", "API", "--project", "alpha"]);
     assert_eq!(code_primary, 0, "primary form, stderr: {stderr_primary:?}");
 
     assert_eq!(stdout_dep, stdout_primary, "deprecated --term output should match term show output byte-for-byte");
@@ -461,12 +462,12 @@ fn envelope_terms_alias_json_matches_term() {
     common::create_project(&repo, "alpha");
 
     let (stdout_terms, stderr_terms, code_terms) =
-        run_json(&["--root", &repo.path().to_string_lossy(), "terms", "list", "-p", "alpha"]);
+        run_json(&["--root", &repo.path().to_string_lossy(), "terms", "list", "--project", "alpha"]);
     assert_eq!(code_terms, 0, "stderr: {stderr_terms:?}");
     assert!(stderr_terms.is_empty(), "alias should not warn: {stderr_terms:?}");
 
     let (stdout_term, stderr_term, code_term) =
-        run_json(&["--root", &repo.path().to_string_lossy(), "term", "list", "-p", "alpha"]);
+        run_json(&["--root", &repo.path().to_string_lossy(), "term", "list", "--project", "alpha"]);
     assert_eq!(code_term, 0, "stderr: {stderr_term:?}");
 
     assert_eq!(stdout_terms, stdout_term, "terms alias should match term output");
@@ -490,7 +491,7 @@ fn envelope_render_article_json() {
     std::fs::write(project_dir.join("outputs/test-a.md"), b"# Envelope test").unwrap();
 
     let (stdout, stderr, code) =
-        run_json(&["--root", &repo.path().to_string_lossy(), "render", "test-a", "-p", "env-project"]);
+        run_json(&["--root", &repo.path().to_string_lossy(), "render", "test-a", "--project", "env-project"]);
     assert_eq!(code, 0, "stderr: {stderr:?}");
     assert_envelope_ok(&stdout);
 

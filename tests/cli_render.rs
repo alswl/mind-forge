@@ -60,7 +60,7 @@ fn setup_with_empty_output() -> (common::TempDir, String) {
 fn test_render_article_default_prompt_success() {
     let (_repo, root) = setup_with_article_output();
 
-    let (stdout, stderr, code) = run(&["--root", &root, "render", "test-article", "-p", "test-project"]);
+    let (stdout, stderr, code) = run(&["--root", &root, "render", "test-article", "--project", "test-project"]);
 
     assert_eq!(code, 0, "expected success, stderr: {stderr:?}");
     assert!(stderr.is_empty(), "stderr should be empty on success: {stderr:?}");
@@ -80,7 +80,7 @@ fn test_render_article_default_prompt_success() {
 fn test_render_article_no_html_file_created() {
     let (_repo, root) = setup_with_article_output();
 
-    let (stdout, stderr, code) = run(&["--root", &root, "render", "test-article", "-p", "test-project"]);
+    let (stdout, stderr, code) = run(&["--root", &root, "render", "test-article", "--project", "test-project"]);
 
     assert_eq!(code, 0, "stderr: {stderr:?}");
     assert!(stderr.is_empty(), "stderr should be empty: {stderr:?}");
@@ -95,7 +95,7 @@ fn test_render_article_no_html_file_created() {
 fn test_render_article_json_envelope() {
     let (_repo, root) = setup_with_article_output();
 
-    let (stdout, stderr, code) = run_json(&["--root", &root, "render", "test-article", "-p", "test-project"]);
+    let (stdout, stderr, code) = run_json(&["--root", &root, "render", "test-article", "--project", "test-project"]);
 
     assert_eq!(code, 0, "stderr: {stderr:?}");
     assert!(stderr.is_empty(), "stderr should be empty: {stderr:?}");
@@ -130,7 +130,7 @@ fn test_render_article_missing_output_error() {
     );
     let root = repo.path().to_string_lossy().to_string();
 
-    let (stdout, stderr, code) = run(&["--root", &root, "render", "nonexistent-article", "-p", "test-project"]);
+    let (stdout, stderr, code) = run(&["--root", &root, "render", "nonexistent-article", "--project", "test-project"]);
 
     assert_eq!(code, 1, "should exit with code 1 for not found");
     assert!(
@@ -143,7 +143,7 @@ fn test_render_article_missing_output_error() {
 fn test_render_article_empty_output_error() {
     let (_repo, root) = setup_with_empty_output();
 
-    let (stdout, stderr, code) = run(&["--root", &root, "render", "empty-article", "-p", "test-project"]);
+    let (stdout, stderr, code) = run(&["--root", &root, "render", "empty-article", "--project", "test-project"]);
 
     assert_eq!(code, 1, "should exit with code 1 for empty output");
     assert!(
@@ -191,9 +191,9 @@ fn test_render_template_selection_changes_prompt() {
     let (_repo, root) = setup_with_article_output();
 
     let (stdout_report, _, _) =
-        run(&["--root", &root, "render", "test-article", "-p", "test-project", "--template", "report"]);
+        run(&["--root", &root, "render", "test-article", "--project", "test-project", "--template", "report"]);
     let (stdout_paper, _, _) =
-        run(&["--root", &root, "render", "test-article", "-p", "test-project", "--template", "paper"]);
+        run(&["--root", &root, "render", "test-article", "--project", "test-project", "--template", "paper"]);
 
     // Both should succeed with different guidance
     assert!(stdout_report.contains("executive summary"), "report should mention executive summary");
@@ -261,7 +261,7 @@ fn test_render_custom_template_discovery() {
 
     // It should work as --template
     let (stdout2, stderr2, code2) =
-        run(&["--root", &root, "render", "test-article", "-p", "test-project", "--template", "team-review"]);
+        run(&["--root", &root, "render", "test-article", "--project", "test-project", "--template", "team-review"]);
     assert_eq!(code2, 0, "custom template render should succeed, stderr: {stderr2:?}");
     assert!(stdout2.contains("review page for leadership"), "custom template guidance should appear");
     assert!(stdout2.contains("mf is NOT rendering"), "standard boilerplate should still appear");
@@ -271,8 +271,16 @@ fn test_render_custom_template_discovery() {
 fn test_render_unknown_template_error() {
     let (_repo, root) = setup_with_article_output();
 
-    let (stdout, stderr, code) =
-        run(&["--root", &root, "render", "test-article", "-p", "test-project", "--template", "nonexistent-template"]);
+    let (stdout, stderr, code) = run(&[
+        "--root",
+        &root,
+        "render",
+        "test-article",
+        "--project",
+        "test-project",
+        "--template",
+        "nonexistent-template",
+    ]);
 
     assert_eq!(code, 2, "should exit with code 2 for usage error");
     assert!(
@@ -321,8 +329,16 @@ fn test_render_empty_custom_template_error_identifies_file() {
 fn test_render_invalid_template_name_error() {
     let (_repo, root) = setup_with_article_output();
 
-    let (stdout, stderr, code) =
-        run(&["--root", &root, "render", "test-article", "-p", "test-project", "--template", "path/with/slashes"]);
+    let (stdout, stderr, code) = run(&[
+        "--root",
+        &root,
+        "render",
+        "test-article",
+        "--project",
+        "test-project",
+        "--template",
+        "path/with/slashes",
+    ]);
 
     assert_eq!(code, 2, "should exit with code 2 for usage error");
     assert!(
@@ -351,7 +367,7 @@ fn test_render_project_scope_gathers_outputs() {
     let (_repo, root) = setup_with_multiple_outputs();
 
     // Project scope: omit ARTICLE, use --project
-    let (stdout, stderr, code) = run(&["--root", &root, "render", "-p", "test-project"]);
+    let (stdout, stderr, code) = run(&["--root", &root, "render", "--project", "test-project"]);
 
     assert_eq!(code, 0, "project-scope render should succeed, stderr: {stderr:?}");
     assert!(stderr.is_empty(), "stderr should be empty: {stderr:?}");
@@ -366,7 +382,7 @@ fn test_render_project_scope_gathers_outputs() {
 fn test_render_project_scope_json() {
     let (_repo, root) = setup_with_multiple_outputs();
 
-    let (stdout, stderr, code) = run_json(&["--root", &root, "render", "-p", "test-project"]);
+    let (stdout, stderr, code) = run_json(&["--root", &root, "render", "--project", "test-project"]);
 
     assert_eq!(code, 0, "stderr: {stderr:?}");
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
@@ -383,7 +399,7 @@ fn test_render_html_form_document_prompt() {
     let (_repo, root) = setup_with_article_output();
 
     let (stdout, _, code) =
-        run(&["--root", &root, "render", "test-article", "-p", "test-project", "--html-form", "document"]);
+        run(&["--root", &root, "render", "test-article", "--project", "test-project", "--html-form", "document"]);
 
     assert_eq!(code, 0, "should succeed");
     assert!(stdout.contains("complete HTML document"), "should mention 'complete HTML document'");
@@ -395,7 +411,7 @@ fn test_render_html_form_fragment_prompt() {
     let (_repo, root) = setup_with_article_output();
 
     let (stdout, _, code) =
-        run(&["--root", &root, "render", "test-article", "-p", "test-project", "--html-form", "fragment"]);
+        run(&["--root", &root, "render", "test-article", "--project", "test-project", "--html-form", "fragment"]);
 
     assert_eq!(code, 0, "should succeed");
     assert!(stdout.contains("HTML fragment"), "should mention 'HTML fragment'");
@@ -409,7 +425,7 @@ fn test_render_project_no_outputs_error() {
     let root = repo.path().to_string_lossy().to_string();
 
     // Project scope with no outputs at all
-    let (stdout, stderr, code) = run(&["--root", &root, "render", "-p", "empty-project"]);
+    let (stdout, stderr, code) = run(&["--root", &root, "render", "--project", "empty-project"]);
 
     assert_eq!(code, 1, "should exit with code 1 for not found");
     assert!(

@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 152
 expression: stdout
 ---
 Create a term
@@ -37,8 +36,8 @@ Options:
           
       --no-color
           Disable colored output
-  -p, --project <PROJECT>
-          
+  -p, --project <NAME>
+          Project name for project-scoped operations
       --install-completion <INSTALL_COMPLETION>
           Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
       --show-completion <SHOW_COMPLETION>

@@ -18,8 +18,6 @@ Options:
           Config file path
       --dry-run
           
-  -p, --project <PROJECT>
-          
   -v, --verbose...
           Verbose output
   -q, --quiet
@@ -30,6 +28,8 @@ Options:
           Shorthand for --format json
       --no-color
           Disable colored output
+  -p, --project <NAME>
+          Project name for project-scoped operations
       --install-completion <INSTALL_COMPLETION>
           Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
       --show-completion <SHOW_COMPLETION>

@@ -11,8 +11,6 @@ use crate::service::{build as build_svc, util as svc_util};
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct BuildArgs {
     pub article: String,
-    #[arg(short = 'p', long)]
-    pub project: Option<String>,
     #[arg(short = 'o', long)]
     pub output: Option<PathBuf>,
     #[arg(long = "dry-run")]
@@ -23,6 +21,7 @@ pub fn dispatch(
     args: BuildArgs,
     repo_root: Option<&PathBuf>,
     format: crate::output::Format,
+    project: Option<&str>,
     _deprecation: &mut DeprecationContext,
 ) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
@@ -46,7 +45,7 @@ pub fn dispatch(
             .unwrap_or_else(|| "article".to_string());
         (project_path, Some(article_path), article_name)
     } else {
-        (svc_util::resolve_project(root, args.project.as_deref(), &cwd)?, None, args.article.clone())
+        (svc_util::resolve_project(root, project, &cwd)?, None, args.article.clone())
     };
 
     let output = match article_path {
