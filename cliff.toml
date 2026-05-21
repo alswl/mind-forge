@@ -1,0 +1,34 @@
+# git-cliff configuration
+# https://git-cliff.org/docs/configuration
+
+[changelog]
+header = "# Changelog\n\nAll notable changes to this project will be documented in this file.\n"
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{%- for commit in commits %}
+  - {{ commit.message | upper_first | trim }}{% if commit.github.username %} (by @{{ commit.github.username }}){% endif %}\
+{%- endfor %}
+{% endfor %}\n
+"""
+
+# Trim redundant conventional commit prefixes from changelog lines
+# (e.g., "feat: " from "feat: add x" -> "Add x")
+[git]
+conventional_commits = true
+filter_unconventional = false
+commit_parsers = [
+    { message = "^feat", group = "<!-- 0 -->Features" },
+    { message = "^fix", group = "<!-- 1 -->Bug Fixes" },
+    { message = "^docs", group = "<!-- 2 -->Documentation" },
+    { message = "^refactor", group = "<!-- 3 -->Refactoring" },
+    { message = "^test", group = "<!-- 4 -->Testing" },
+    { message = "^perf", group = "<!-- 5 -->Performance" },
+    { message = "^ci", group = "<!-- 6 -->CI" },
+    { message = ".*", group = "<!-- 7 -->Miscellaneous" },
+]
