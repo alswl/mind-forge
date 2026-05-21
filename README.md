@@ -184,6 +184,26 @@ flowchart LR
 Every step is idempotent and pipe-friendly. Pass `--json` to any command to
 get a machine-readable envelope.
 
+## Global Flags
+
+| Flag | Description |
+|------|-------------|
+| `--root <PATH>` | Mind Repo root directory |
+| `--config <PATH>` | Config file path |
+| `-p`, `--project <NAME>` | Project name for project-scoped operations |
+| `-v`, `--verbose...` | Verbose output (repeatable) |
+| `-q`, `--quiet` | Silence non-error output |
+| `--format <text\|json>` | Output format (default: `text`) |
+| `--json` | Shorthand for `--format json` |
+| `--no-color` | Disable colored output |
+| `--install-completion <SHELL>` | Install shell completion script |
+| `--show-completion <SHELL>` | Show shell completion script |
+| `-h`, `--help` | Show help |
+| `-V`, `--version` | Show version |
+
+`--project` can be placed before or after the subcommand: both
+`mf --project blog article list` and `mf article list --project blog` work.
+
 ## Commands
 
 ### `mf init [PATH]`
@@ -197,13 +217,13 @@ and path traversal.
 
 | Subcommand | Description |
 |-----------|-------------|
-| `new <NAME>` | Create a project |
+| `new <NAME> [--template <T>] [--force]` | Create a project |
 | `list` (ls) | List projects |
 | `archive <NAME>` | Move project to `_archived/` |
 | `lint [--fix] [--rule <R>]` | Lint project(s); `--fix` auto-corrects |
 | `index [--dry-run]` | Index projects |
 | `show <PROJECT>` | Show project details |
-| `import <DIR>` | Import a directory as a project |
+| `import <DIR> [--type <T>] [--source <D>] [--assets <D>] [-f] [-y]` | Import a directory as a project |
 | `rename <OLD> <NEW>` | Rename a project |
 | `remove <NAME>` (rm) | Remove a project |
 
@@ -211,11 +231,11 @@ and path traversal.
 
 | Subcommand | Description |
 |-----------|-------------|
-| `new <TITLE> [-t blank\|arch\|prd\|blog] [--file]` | Create an article (directory by default; `--file` for single file). Supports `--tag`, `--draft`, `--force` |
+| `new <TITLE> [-t blank\|arch\|prd\|blog] [--file] [--tag <T>] [--draft] [-f]` | Create an article (directory by default; `--file` for single file) |
 | `list` (ls) | List articles |
 | `lint [--fix]` | Lint articles |
 | `index [--dry-run]` | Index articles |
-| `rename <OLD> <NEW>` | Rename an article |
+| `rename <OLD> <NEW> [-f]` | Rename an article |
 | `remove <TITLE>` (rm) | Remove an article (`--dry-run`, `--force`) |
 | `show <TITLE>` | Show article details |
 
@@ -223,56 +243,61 @@ and path traversal.
 
 | Subcommand | Description |
 |-----------|-------------|
-| `add <INPUT>` | Add a source. `--file-kind auto\|pdf\|file\|rss\|web`, `--source-kind yuque\|meeting\|misc`, `--link`, `--force` |
-| `list` (ls) | List sources (`--filter`, `--type`) |
-| `update <NAME>` | Update a source (`--url`) |
+| `add <INPUT> [-n <NAME>] [--file-kind <K>] [--source-kind <K>] [--link] [-f]` | Add a source |
+| `list` (ls) | List sources (`--filter`, `-t`) |
+| `update <NAME> [--url <U>]` | Update a source |
 | `index [--dry-run]` | Index sources |
-| `rename <OLD> <NEW>` | Rename a source |
+| `rename <OLD> <NEW> [-f] [--dry-run]` | Rename a source |
 | `remove <NAME>` (rm) | Remove a source (`--keep-file` keeps file on disk) |
 | `clean [--dry-run]` | Clean stale index entries |
+
+`--file-kind`: `auto`, `pdf`, `file`, `rss`, `web`.
+`--source-kind`: `yuque`, `meeting`, `misc`.
 
 ### `mf asset`
 
 | Subcommand | Description |
 |-----------|-------------|
-| `add <PATH>` | Add an asset (`--name`, `--tag`, `--copy`, `--link`, `--force`) |
-| `list` (ls) | List assets (`--filter`, `--type`) |
-| `update [PATH]` | Update assets (`--set-url`, `--channel`, `--all`) |
+| `add <PATH> [--name <N>] [--tag <T>] [--copy\|--link] [-f]` | Add an asset |
+| `list` (ls) | List assets (`--filter`, `--type image\|video\|audio\|other`) |
+| `update [PATH] [--set-url <U>] [--channel <C>] [--all]` | Update assets |
 | `index [--dry-run] [--refresh-metadata]` | Index assets |
 | `clean [--dry-run]` | Clean stale index entries |
 | `remove <FILE>` (rm) | Remove an asset (`--force`) |
-| `rename <OLD> <NEW>` | Rename an asset |
+| `rename <OLD> <NEW> [-f] [--dry-run]` | Rename an asset |
 | `show <NAME>` | Show asset details |
 
 ### `mf term` (alias: `mf terms`)
 
 | Subcommand | Description |
 |-----------|-------------|
-| `new <TERM>` | Create a term. `--definition`, `--description`, `--confidence` (0.0–1.0), `--alias`, `--tag`, `--misrecognition` (global only) |
+| `new <TERM> [--definition <T>] [--description <T>] [--confidence <N>] [--alias <A>] [--tag <T>] [--misrecognition <P>]` | Create a term |
 | `list` (ls) | List terms (`--filter`) |
 | `lint [--fix] [--dry-run]` | Lint term usage in project docs |
-| `add` | Add a term correction (`--term`, `--alias`) |
-| `update <TERM>` | Update term metadata (`--definition`, `--description`, `--confidence`, `--alias`, `--tag`) |
+| `add --term <T> --alias <A>` | Add a term correction |
+| `update <TERM> [--definition <T>] [--description <T>\|--clear-description] [--confidence <N>\|--clear-confidence] [--alias <A>] [--tag <T>]` | Update term metadata |
 | `show <NAME>` | Show term details |
 | `remove <NAME>` (rm) | Remove a term |
 | `rename <OLD> <NEW>` | Rename a term |
 
 Global terms (created without `--project`) are stored in `minds-terms.yaml` at
 the repo root. Project-scoped terms live in each project's `mind-index.yaml`.
+`--misrecognition` is for global terms only. `--confidence` is a float from 0.0
+to 1.0.
 
 ### `mf build <ARTICLE>`
 
-Build/assemble an article. `-p`, `--project <NAME>`; `-o`, `--output <PATH>`;
-`--dry-run`. `ARTICLE` may be an indexed name/slug or a repo-relative path
-prefixed with `@` (e.g. `@projects/blog/docs/2026-03-review/`). Directory
-articles are built by merging Markdown files in filename order.
+Build/assemble an article. `-o`, `--output <PATH>`; `--dry-run`. `ARTICLE` may
+be an indexed name/slug or a repo-relative path prefixed with `@` (e.g.
+`@projects/blog/docs/2026-03-review/`). Directory articles are built by merging
+Markdown files in filename order.
 
 ### `mf publish`
 
 | Subcommand | Description |
 |-----------|-------------|
-| `run <ARTICLE>` | Publish to a target (`--target`, `--dry-run`, `--force`) |
-| `update <ARTICLE>` | Update publish record (`--target`, `--set KEY=VALUE`) |
+| `run <ARTICLE> --target <T> [--dry-run] [-f]` | Publish to a target |
+| `update <ARTICLE> --target <T> [--set KEY=VALUE] [--status <S>] [--target-url <U>] [--dry-run]` | Update publish record |
 | `target list` | List publish targets and diagnostics |
 
 ### `mf render [ARTICLE]`
@@ -289,10 +314,10 @@ a render template (built-in: `report`, `paper`; or custom under
 
 | Subcommand | Description |
 |-----------|-------------|
-| `schema` | Show config JSON schema |
-| `show` | Show effective config |
-| `generate` | Generate effective config file |
-| `default` | Show default config values |
+| `schema [--output-format json\|yaml]` | Show config JSON schema |
+| `show [--output-format json\|yaml]` | Show effective config |
+| `generate [--output-format json\|yaml] [-o <PATH>]` | Generate effective config file |
+| `default [--output-format json\|yaml]` | Show default config values |
 | `init` | Deprecated — use `mf init` instead |
 
 ### `mf completion <SHELL>`
@@ -302,20 +327,6 @@ Generate shell completion script for `bash`, `zsh`, `fish`, `powershell`, or `el
 ### `mf version`
 
 Show version information. Accepts `--json` for machine-readable output.
-
-## Global Flags
-
-| Flag | Description |
-|------|-------------|
-| `--root <PATH>` | Mind Repo root directory |
-| `--config <PATH>` | Config file path |
-| `-v`, `--verbose` | Verbose output (repeatable) |
-| `-q`, `--quiet` | Silence non-error output |
-| `--format text\|json` | Output format (default: `text`) |
-| `--json` | Shorthand for `--format json` |
-| `--no-color` | Disable colored output |
-| `-h`, `--help` | Show help |
-| `-V`, `--version` | Show version |
 
 ## Features
 
@@ -348,7 +359,7 @@ Show version information. Accepts `--json` for machine-readable output.
 - **Compatibility** — reads and writes mind 0.3.0 YAML; tolerates older
   `schema_version` and list-based shapes on read
 - **Shell completion** — `mf completion <SHELL>` for bash, zsh, fish,
-  powershell, elvish
+  powershell, elvish; `--install-completion` / `--show-completion` global flags
 - **Version** — `mf version` outputs the current CLI version in text or JSON
 - **Output contract** — `text` by default, `--json` for
   `{ status, command, data }` envelopes; stable exit codes

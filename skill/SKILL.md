@@ -29,11 +29,14 @@ Use `mind` 0.3.0-compatible YAML as the canonical on-disk format:
 
 ## Global Flags
 
+All commands accept these global flags:
+
 | Flag | Description |
 |---|---|
 | `--root <PATH>` | Mind Repo root directory |
 | `--config <PATH>` | Config file path |
-| `-v`, `--verbose` | Verbose output (repeatable) |
+| `-p`, `--project <NAME>` | Project name for project-scoped operations |
+| `-v`, `--verbose...` | Verbose output (repeatable) |
 | `-q`, `--quiet` | Silence non-error output |
 | `--format <text\|json>` | Output format (default: `text`) |
 | `--json` | Shorthand for `--format json` |
@@ -42,6 +45,9 @@ Use `mind` 0.3.0-compatible YAML as the canonical on-disk format:
 | `--show-completion <SHELL>` | Show shell completion script |
 | `-h`, `--help` | Show help |
 | `-V`, `--version` | Show version |
+
+`--project` can be placed before or after the subcommand: both
+`mf --project blog article list` and `mf article list --project blog` work.
 
 ## Commands
 
@@ -68,33 +74,26 @@ Subcommands: `list` (alias `ls`), `add`, `update`, `index`, `rename`, `remove` (
 `-t`, `--type <KIND>` — Deprecated: use `--file-kind` or `--source-kind` instead
 `--link` — Symlink instead of copy (local files)
 `-f`, `--force` — Overwrite existing
-`-p`, `--project <NAME>` — Project context
 
 **`mf source list`**
 `--filter <PATTERN>` — Filter by name
-`-t`, `--type <pdf|file|rss|web>` — Filter by file kind
-`-p`, `--project <NAME>`
+`-t`, `--type <auto|pdf|file|rss|web>` — Filter by file kind
 
 **`mf source update <NAME>`**
 `--url <URL>` — Update URL
-`-p`, `--project <NAME>`
 
 **`mf source index`**
 `--dry-run` — Preview changes without writing
-`-p`, `--project <NAME>`
 
 **`mf source rename <OLD_NAME> <NEW_NAME>`**
-`-p`, `--project <NAME>`
 `-f`, `--force`
 `--dry-run`
 
 **`mf source remove <NAME_OR_PATH>`** (alias `rm`)
 `--keep-file` — Remove from index only, keep file on disk
-`-p`, `--project <NAME>`
 
 **`mf source clean`**
 `--dry-run` — Preview changes without writing
-`-p`, `--project <NAME>`
 
 ### `mf asset` — Manage project assets
 
@@ -106,53 +105,45 @@ Subcommands: `list` (alias `ls`), `add`, `update`, `index`, `clean`, `remove` (a
 `--copy` — Copy file (mutually exclusive with `--link`)
 `--link` — Symlink file (mutually exclusive with `--copy`)
 `-f`, `--force` — Overwrite existing
-`-p`, `--project <NAME>`
 
 **`mf asset list`**
 `--filter <PATTERN>` — Filter by name
-`--type <image|document|archive|other>` — Filter by kind
-`-p`, `--project <NAME>`
+`--type <image|video|audio|other>` — Filter by kind
 
 **`mf asset update [PATH]`**
 `--set-url <URL>` — Set publish URL
 `--channel <CHANNEL>` — Set publish channel
 `--all` — Update all assets (mutually exclusive with `PATH`)
-`-p`, `--project <NAME>`
 
 **`mf asset index`**
 `--dry-run` — Preview without writing
 `--refresh-metadata` — Recompute size/hash
-`-p`, `--project <NAME>`
 
 **`mf asset clean`**
-`-p`, `--project <NAME>`
 `--dry-run`
 
 **`mf asset remove <FILE>`** (alias `rm`)
 `-f`, `--force` — Skip confirmation
-`-p`, `--project <NAME>`
 
 **`mf asset rename <OLD_NAME> <NEW_NAME>`**
-`-p`, `--project <NAME>`
 `-f`, `--force`
 `--dry-run`
 
 **`mf asset show <NAME>`**
-`-p`, `--project <NAME>`
 
 ### `mf project` — Manage projects
 
 Subcommands: `new`, `list` (alias `ls`), `archive`, `lint`, `index`, `show`, `import`, `rename`, `remove` (alias `rm`)
 
 **`mf project new <NAME>`**
+`--template <TEMPLATE>` — Project template
 `--force` — Overwrite existing
 
-**`mf project list`** — No flags.
+**`mf project list`** — No extra flags.
 
 **`mf project archive <NAME_OR_PATH>`** — Move project to `_archived/`.
 
 **`mf project lint`**
-`-p`, `--project <NAME>` — Target a specific project (default: whole repo)
 `--fix` — Auto-fix issues
 `--rule <RULE>` — Filter rules (repeatable). Available: `missing_directory`, `stale_index_entry`, `name_convention`, `missing_manifest`, `duplicate_key`
 
@@ -177,7 +168,6 @@ Subcommands: `new`, `list` (alias `ls`), `archive`, `lint`, `index`, `show`, `im
 Subcommands: `new`, `list` (alias `ls`), `lint`, `index`, `rename`, `remove` (alias `rm`), `show`
 
 **`mf article new <TITLE> [--template <S>] [--file]`**
-`-p`, `--project <NAME>`
 `-t`, `--template <S>` — Built-in schema name (`blank` / `arch` / `prd` / `blog`) or path under project root (default: `blank`). Built-in names win on exact case-sensitive match; use a subdirectory prefix (e.g. `./arch`) to force path resolution.
 `--file` — Write a single file `docs/{slug}.md` instead of a directory (alias: `--single-file`)
 `--tag <TAG>` — Tag (repeatable)
@@ -186,27 +176,22 @@ Subcommands: `new`, `list` (alias `ls`), `lint`, `index`, `rename`, `remove` (al
 
 JSON envelope fields: `template`, `shape` (`directory`|`file`), `path`, `files`, `typora_front_matter_injected` (bool), `typora_copy_images_to` (string|null). When the Typora plugin is enabled, each generated file starts with a YAML front-matter block containing `typora-copy-images-to` pointing to the project assets directory.
 
-**`mf article list`**
-`-p`, `--project <NAME>`
+**`mf article list`** — No extra flags.
 
 **`mf article lint`**
 `--fix` — Auto-fix issues
 
 **`mf article index`**
-`-p`, `--project <NAME>`
 `-n`, `--dry-run` — Preview without writing
 
 **`mf article rename <OLD_TITLE> <NEW_TITLE>`**
-`-p`, `--project <NAME>`
 `-f`, `--force`
 
 **`mf article remove <TITLE>`** (alias `rm`)
-`-p`, `--project <NAME>`
 `-f`, `--force`
 `--dry-run`
 
 **`mf article show <TITLE>`**
-`-p`, `--project <NAME>`
 
 ### `mf term` / `mf terms` — Manage terminology
 
@@ -219,21 +204,20 @@ Subcommands: `list` (alias `ls`), `new`, `lint`, `add`, `update`, `show`, `remov
 `--alias <TEXT>` — Alias (repeatable)
 `--tag <TAG>` — Tag (repeatable)
 `--misrecognition <PATTERN>` — Misrecognition pattern (global terms only, repeatable)
-`-p`, `--project <NAME>` — Project-scoped term (no `--misrecognition`)
+
+Project-scoped terms (with `--project`) do not support `--misrecognition`.
 
 **`mf term list`**
 `--filter <PATTERN>` — Filter by name
-`-p`, `--project <NAME>`
+`--term <TERM>` — Look up a single term by name (deprecated: use `term show <NAME>`)
 
 **`mf term lint [PATH]`**
 `--fix` — Auto-correct term usage in docs
 `--dry-run` — Preview fixes without writing (requires `--fix`)
-`-p`, `--project <NAME>`
 
 **`mf term add`**
 `--term <CANONICAL>` — Canonical term name
 `--alias <VARIANT>` — Variant/alias
-`-p`, `--project <NAME>`
 
 **`mf term update <TERM>`**
 `--definition <TEXT>` — Update definition
@@ -243,20 +227,15 @@ Subcommands: `list` (alias `ls`), `new`, `lint`, `add`, `update`, `show`, `remov
 `--clear-confidence` — Remove confidence
 `--alias <TEXT>` — Add alias (repeatable)
 `--tag <TAG>` — Add tag (repeatable)
-`-p`, `--project <NAME>`
 
 **`mf term show <NAME>`**
-`-p`, `--project <NAME>`
 
 **`mf term remove <NAME>`** (alias `rm`)
-`-p`, `--project <NAME>`
 
 **`mf term rename <OLD> <NEW>`**
-`-p`, `--project <NAME>`
 
 ### `mf build <ARTICLE>` — Build/assemble an article
 
-`-p`, `--project <NAME>`
 `-o`, `--output <PATH>` — Output file path
 `--dry-run` — Show build plan without rendering
 
@@ -268,14 +247,14 @@ Subcommands: `run`, `update`, `target`
 
 **`mf publish run <ARTICLE>`**
 `--target <TARGET>` — Publish target (e.g. `local`, `yuque-prompt`)
-`-p`, `--project <NAME>`
 `--dry-run`
 `-f`, `--force`
 
 **`mf publish update <ARTICLE>`**
 `--target <TARGET>` — Target name (required)
+`--status <draft|published|archived>` — Set status
+`--target-url <URL>` — Set target URL
 `--set <KEY=VALUE>` — Set arbitrary field (repeatable)
-`-p`, `--project <NAME>`
 `--dry-run`
 
 **`mf publish target list`** — List publish targets and diagnostics. Use `--json` for machine-readable output.
@@ -283,7 +262,6 @@ Subcommands: `run`, `update`, `target`
 ### `mf render` — Generate render prompts
 
 `[ARTICLE]` — Article name (omit for project-scope render)
-`-p`, `--project <NAME>`
 `--template <NAME>` — Render template name
 `--html-form <document|fragment>` — HTML output form
 
@@ -332,8 +310,8 @@ mf source add paper.pdf --file-kind pdf --project my-project
 mf source list --project my-project
 mf source index --project my-project
 mf source rename old-name new-name --project my-project
-mf source remove sources/yuque/foo.md --keep-file
-mf source clean --dry-run
+mf source remove sources/yuque/foo.md --keep-file --project my-project
+mf source clean --dry-run --project my-project
 
 # Assets
 mf asset add image.png --project my-project
@@ -358,19 +336,19 @@ mf article remove "Old Post" --project my-project
 # Build & publish
 mf build my-first-post --project my-project
 mf build @projects/my-project/docs/2026-03-review/ --output ./_build/review.md
-mf build my-first-post --dry-run
+mf build my-first-post --dry-run --project my-project
 mf publish run "My First Post" --target local --project my-project
 mf publish run "My First Post" --target yuque-prompt --project my-project
-mf publish update "My First Post" --target local --set status=published
+mf publish update "My First Post" --target local --status published --project my-project
 
 # Terms
 mf term new "Zettelkasten" --definition "A note-taking method" --description "A bottom-up knowledge management approach" --confidence 0.9 --project my-project
 mf term new "API" --alias "Application Programming Interface" --tag tech
 mf term list
-mf term show Zettelkasten
-mf term add --term "API" --alias "Application Programming Interface"
-mf term update "API" --definition "Updated definition" --confidence 0.8
-mf term update "API" --clear-description
+mf term show Zettelkasten --project my-project
+mf term add --term "API" --alias "Application Programming Interface" --project my-project
+mf term update "API" --definition "Updated definition" --confidence 0.8 --project my-project
+mf term update "API" --clear-description --project my-project
 mf term lint --project my-project --fix
 mf term rename "API" "Application Programming Interface" --project my-project
 mf term remove "Old Term" --project my-project
@@ -390,6 +368,7 @@ mf version --json
 ## Notes
 
 - Commands that modify project state require a Mind Repo context. `init`, `config`, `completion`, `version`, and help can run outside repos. `project index` can also run outside repos (scans from cwd).
+- `--project` is a global flag. Place it before or after the subcommand: `mf --project blog article list` and `mf article list --project blog` are equivalent.
 - Index subcommands reconcile `mind-index.yaml` with the filesystem; run them after manual file changes.
 - Prefer `schema` over `schema_version` in docs, examples, and generated YAML.
 - Global terms (created without `--project`) are stored in `minds-terms.yaml` at the repo root. Project-scoped terms are stored in each project's `mind-index.yaml`.
