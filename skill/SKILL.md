@@ -198,6 +198,8 @@ Subcommands: `list`, `new`, `lint`, `learn`, `fix`, `show`
 
 **`mf term new <TERM>`**
 `--definition <TEXT>` — Term definition
+`--description <TEXT>` — Contextual recognition guidance
+`--confidence <NUMBER>` — Automation confidence hint (0.0–1.0, finite)
 `--alias <TEXT>` — Alias (repeatable)
 `--tag <TAG>` — Tag (repeatable)
 `--misrecognition <PATTERN>` — Misrecognition pattern (global terms only, repeatable)
@@ -222,6 +224,10 @@ Subcommands: `list`, `new`, `lint`, `learn`, `fix`, `show`
 
 **`mf term fix <TERM>`**
 `--definition <TEXT>` — Update definition
+`--description <TEXT>` — Set/update description
+`--clear-description` — Remove description
+`--confidence <NUMBER>` — Set/update confidence (0.0–1.0, finite)
+`--clear-confidence` — Remove confidence
 `--alias <TEXT>` — Add alias (repeatable)
 `--tag <TAG>` — Add tag (repeatable)
 `-p`, `--project <NAME>`
@@ -337,13 +343,14 @@ mf publish run "My First Post" --target yuque-prompt --project my-project
 mf publish update "My First Post" --target local --set status=published
 
 # Terms
-mf term new "Zettelkasten" --definition "A note-taking method" --project my-project
+mf term new "Zettelkasten" --definition "A note-taking method" --description "A bottom-up knowledge management approach" --confidence 0.9 --project my-project
 mf term new "API" --alias "Application Programming Interface" --tag tech
 mf term list
 mf term show Zettelkasten
 mf term learn --term "API" --alias "Application Programming Interface"
 mf term lint --project my-project --fix
-mf term fix "API" --definition "Updated definition"
+mf term fix "API" --definition "Updated definition" --confidence 0.8
+mf term fix "API" --clear-description
 
 # Render
 mf render "My First Post" --project my-project --template paper --html-form document

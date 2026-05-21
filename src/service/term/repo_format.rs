@@ -252,19 +252,30 @@ fn load_repository(content: &str, path: &std::path::Path) -> Result<(Vec<Term>, 
         if is_schema_key(&term_name) {
             continue;
         }
-        let corrections = if let serde_yaml::Value::Mapping(inner) = val {
-            if let Some(serde_yaml::Value::Sequence(seq)) = inner.get("misrecognitions") {
+        let (corrections, description, confidence) = if let serde_yaml::Value::Mapping(inner) = val {
+            let corrections = if let Some(serde_yaml::Value::Sequence(seq)) = inner.get("misrecognitions") {
                 seq.iter()
                     .filter_map(|v| v.as_str())
                     .map(|s| Correction { original: s.to_string(), correct: term_name.clone() })
                     .collect()
             } else {
                 vec![]
-            }
+            };
+            let description = inner.get("description").and_then(|v| v.as_str()).map(String::from);
+            let confidence = inner.get("confidence").and_then(|v| v.as_f64());
+            (corrections, description, confidence)
         } else {
-            vec![]
+            (vec![], None, None)
         };
-        terms.push(Term { term: term_name, definition: None, aliases: vec![], tags: vec![], corrections });
+        terms.push(Term {
+            term: term_name,
+            definition: None,
+            description,
+            confidence,
+            aliases: vec![],
+            tags: vec![],
+            corrections,
+        });
     }
 
     Ok((terms, TermsFileFormat::Repository))
@@ -300,7 +311,13 @@ pub fn save(repo_root: &Path, terms: &[Term], format: TermsFileFormat, on_disk_c
 /// Returns the new file content. Inserts a leading blank line if the
 /// existing content doesn't end with one. Re-parses the result to
 /// confirm it still classifies as Repository format.
-pub fn append_term_repo_format(on_disk_content: &str, term: &str, misrecognitions: &[String]) -> Result<String> {
+pub fn append_term_repo_format(
+    on_disk_content: &str,
+    term: &str,
+    misrecognitions: &[String],
+    description: Option<&str>,
+    confidence: Option<f64>,
+) -> Result<String> {
     let mut content = on_disk_content.to_string();
 
     // Ensure trailing newline then blank line for visual separation
@@ -318,6 +335,12 @@ pub fn append_term_repo_format(on_disk_content: &str, term: &str, misrecognition
     // Build the YAML block
     content.push_str(term);
     content.push_str(":\n");
+    if let Some(d) = description {
+        content.push_str(&format!("  description: {d}\n"));
+    }
+    if let Some(c) = confidence {
+        content.push_str(&format!("  confidence: {c}\n"));
+    }
     if misrecognitions.is_empty() {
         content.push_str("  misrecognitions: []\n");
     } else {
@@ -467,6 +490,160 @@ pub fn append_misrecognition_repo_format(
     }
 
     Ok(AppendResult { content: new_content, appended: true })
+}
+
+// ── Metadata surgical edits ──────────────────────────────────────────────────
+
+/// Result of updating metadata in a repo-format term entry.
+pub struct MetadataUpdateResult {
+    pub content: String,
+}
+
+/// Insert, replace, or remove `description` and/or `confidence` for a term
+/// in a repository-format `minds-terms.yaml`.
+///
+/// `description` and `confidence` hold the new value. When a value is `Some`,
+/// it replaces any existing key. When `None` is passed for a value that
+/// previously existed, the existing key is removed. When both are `None`,
+/// this is a no-op (returns the original content unchanged).
+///
+/// Unknown keys, comments, blank lines, and entry ordering are preserved
+/// for unrelated terms.
+pub fn update_term_metadata_repo_format(
+    on_disk_content: &str,
+    term: &str,
+    description: Option<&str>,
+    confidence: Option<f64>,
+) -> Result<MetadataUpdateResult> {
+    // Parse to verify term exists
+    let value: serde_yaml::Value = serde_yaml::from_str(on_disk_content).map_err(|e| MfError::ParseError {
+        kind: "yaml".to_string(),
+        path: std::path::Path::new("minds-terms.yaml").to_path_buf(),
+        detail: e.to_string(),
+    })?;
+
+    let map = match &value {
+        serde_yaml::Value::Mapping(m) => m,
+        _ => {
+            return Err(MfError::usage(
+                format!("no term registers '{term}' as its main name or alias"),
+                Some(format!("register first with 'mf term new {term}'")),
+            ));
+        }
+    };
+
+    // Verify the term exists
+    if !map.iter().any(|(k, _)| k.as_str() == Some(term)) {
+        return Err(MfError::usage(
+            format!("no term registers '{term}' as its main name or alias"),
+            Some(format!("register first with 'mf term new {term}'")),
+        ));
+    }
+
+    let lines: Vec<&str> = on_disk_content.lines().collect();
+    let has_trailing_newline = on_disk_content.ends_with('\n');
+
+    // Find the term's top-level key line
+    let term_key_line = lines
+        .iter()
+        .position(|line| match line.find(':') {
+            Some(idx) if !line.starts_with(' ') && !line.starts_with('\t') => line[..idx].trim_end() == term,
+            _ => false,
+        })
+        .ok_or_else(|| MfError::internal("term not found after parse validation"))?;
+
+    // Find the indentation of the term's block (first indented line after the key)
+    let block_indent: usize = lines
+        .iter()
+        .skip(term_key_line + 1)
+        .find(|line| !line.trim().is_empty() && !line.trim_start().starts_with('#'))
+        .map(|line| line.chars().take_while(|c| *c == ' ').count())
+        .unwrap_or(2);
+
+    // Find the end of this term's block
+    let block_end = lines
+        .iter()
+        .enumerate()
+        .skip(term_key_line + 1)
+        .find(|(_, line)| !line.is_empty() && !line.starts_with('#') && !line.starts_with(' ') && line.contains(':'))
+        .map(|(i, _)| i)
+        .unwrap_or(lines.len());
+
+    // Locate existing description and confidence lines within the block
+    let desc_key = "description:";
+    let conf_key = "confidence:";
+    let mut desc_line: Option<usize> = None;
+    let mut conf_line: Option<usize> = None;
+
+    for (i, line) in lines.iter().enumerate().take(block_end).skip(term_key_line + 1) {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with(desc_key) {
+            desc_line = Some(i);
+        } else if trimmed.starts_with(conf_key) {
+            conf_line = Some(i);
+        }
+    }
+
+    // Build the new content surgically
+    let mut result: Vec<String> = Vec::new();
+
+    // Find insertion point: after the term key line, before the first
+    // non-metadata entry line (usually misrecognitions).
+    let insertion_point = lines
+        .iter()
+        .enumerate()
+        .take(block_end)
+        .skip(term_key_line + 1)
+        .find(|(_, line)| {
+            let trimmed = line.trim_start();
+            !trimmed.is_empty()
+                && !trimmed.starts_with('#')
+                && !trimmed.starts_with(desc_key)
+                && !trimmed.starts_with(conf_key)
+        })
+        .map(|(i, _)| i)
+        .unwrap_or(block_end);
+
+    // Copy lines up to insertion point, skipping old metadata lines
+    for (i, line) in lines.iter().enumerate().take(insertion_point) {
+        if Some(i) == desc_line || Some(i) == conf_line {
+            continue;
+        }
+        result.push(line.to_string());
+    }
+
+    // Insert new metadata lines before the first non-metadata entry line
+    let indent_spaces = " ".repeat(block_indent);
+    if let Some(d) = description {
+        result.push(format!("{indent_spaces}description: {d}"));
+    }
+    if let Some(c) = confidence {
+        result.push(format!("{indent_spaces}confidence: {c}"));
+    }
+
+    // Copy remaining lines, skipping old metadata lines
+    for (i, line) in lines.iter().enumerate().skip(insertion_point) {
+        if Some(i) == desc_line || Some(i) == conf_line {
+            continue;
+        }
+        result.push(line.to_string());
+    }
+
+    let mut new_content = result.join("\n");
+    if has_trailing_newline && !new_content.ends_with('\n') {
+        new_content.push('\n');
+    }
+
+    // Defensive: re-parse to confirm valid Repository format
+    let path = std::path::Path::new("minds-terms.yaml");
+    let fmt = detect_format(&new_content, path)?;
+    if fmt != TermsFileFormat::Repository {
+        return Err(MfError::internal(
+            "update_term_metadata produced content that no longer classifies as Repository format",
+        ));
+    }
+
+    Ok(MetadataUpdateResult { content: new_content })
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -658,5 +835,69 @@ mod tests {
         let (terms, format) = load(dir.path()).unwrap();
         assert!(terms.is_empty());
         assert_eq!(format, TermsFileFormat::Repository);
+    }
+
+    // ── Metadata load ───────────────────────────────────────────────────────
+
+    #[test]
+    fn load_metadata_description_and_confidence() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = "cafed:\n  description: 咖啡店品牌名\n  confidence: 0.9\n  misrecognitions:\n    - 凯飞迪\n";
+        std::fs::write(dir.path().join("minds-terms.yaml"), content).unwrap();
+        let (terms, format) = load(dir.path()).unwrap();
+        assert_eq!(format, TermsFileFormat::Repository);
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].term, "cafed");
+        assert_eq!(terms[0].description.as_deref(), Some("咖啡店品牌名"));
+        assert_eq!(terms[0].confidence, Some(0.9));
+    }
+
+    #[test]
+    fn load_missing_metadata_is_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = read_fixture("simple.yaml");
+        std::fs::write(dir.path().join("minds-terms.yaml"), &content).unwrap();
+        let (terms, _format) = load(dir.path()).unwrap();
+        for t in &terms {
+            assert!(t.description.is_none(), "term {} had description", t.term);
+            assert!(t.confidence.is_none(), "term {} had confidence", t.term);
+        }
+    }
+
+    #[test]
+    fn load_preserves_unknown_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        // Unknown key `color` should be preserved by detect_format and load
+        // should still parse the term correctly (unknown keys are ignored).
+        let content = "cafed:\n  color: brown\n  misrecognitions:\n    - 凯飞迪\n";
+        std::fs::write(dir.path().join("minds-terms.yaml"), content).unwrap();
+        let (terms, format) = load(dir.path()).unwrap();
+        assert_eq!(format, TermsFileFormat::Repository);
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].term, "cafed");
+        // description and confidence should be None since they aren't in the file
+        assert!(terms[0].description.is_none());
+        assert!(terms[0].confidence.is_none());
+    }
+
+    #[test]
+    fn load_mixed_metadata_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = "alpha:\n  description: first term\n  confidence: 1.0\n  misrecognitions:\n    - a\nbeta:\n  misrecognitions:\n    - b\ngamma:\n  confidence: 0.5\n  misrecognitions:\n    - g\n";
+        std::fs::write(dir.path().join("minds-terms.yaml"), content).unwrap();
+        let (terms, _format) = load(dir.path()).unwrap();
+        assert_eq!(terms.len(), 3);
+        // alpha: both metadata
+        let alpha = terms.iter().find(|t| t.term == "alpha").unwrap();
+        assert_eq!(alpha.description.as_deref(), Some("first term"));
+        assert_eq!(alpha.confidence, Some(1.0));
+        // beta: no metadata
+        let beta = terms.iter().find(|t| t.term == "beta").unwrap();
+        assert!(beta.description.is_none());
+        assert!(beta.confidence.is_none());
+        // gamma: only confidence
+        let gamma = terms.iter().find(|t| t.term == "gamma").unwrap();
+        assert!(gamma.description.is_none());
+        assert_eq!(gamma.confidence, Some(0.5));
     }
 }

@@ -1,5 +1,6 @@
 ---
 source: tests/cli_help.rs
+assertion_line: 180
 expression: stdout
 ---
 Fix a term metadata (deprecated: use `update`)
@@ -14,26 +15,34 @@ Options:
           
       --root <PATH>
           Mind Repo root directory
-      --alias <ALIAS>
-          
       --config <PATH>
           Config file path
-      --tag <TAG>
+      --description <DESCRIPTION>
+          
+      --clear-description
           
   -v, --verbose...
           Verbose output
-  -p, --project <PROJECT>
+      --confidence <CONFIDENCE>
           
   -q, --quiet
           Silence non-error output
+      --clear-confidence
+          
       --format <FORMAT>
           Output format [default: text] [possible values: text, json]
+      --alias <ALIAS>
+          
       --json
           Shorthand for --format json
       --no-color
           Disable colored output
+      --tag <TAG>
+          
       --install-completion <INSTALL_COMPLETION>
           Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
+  -p, --project <PROJECT>
+          
       --show-completion <SHOW_COMPLETION>
           Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
   -h, --help

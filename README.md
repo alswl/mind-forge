@@ -199,7 +199,9 @@ get a machine-readable envelope.
 - **Sources** — `mf source add | list | update | index | remove | clean`,
   file kinds `auto`, `pdf`, `file`, `rss`, `web`
 - **Assets** — `mf asset add | list | update | index | remove | clean`
-- **Glossary** — `mf term new | list | show | lint | fix | learn`
+- **Glossary** — `mf term new | list | show | lint | fix | learn` with
+  optional `--description` and `--confidence` (0.0–1.0) metadata for richer
+  automation hints
 - **Build** — config-driven assembly, directory-article merging,
   `--dry-run`, `--output`, and `@path/`-style article addressing
 - **Publish** — `mf publish run | update` against per-target publishers

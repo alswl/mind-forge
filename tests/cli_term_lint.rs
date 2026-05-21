@@ -178,6 +178,7 @@ fn lint_conflict_first_term_claims() {
     let project = repo.path().join("alpha");
     fs::create_dir_all(project.join("docs")).unwrap();
     // Two terms both correcting "conflict" → "Correct-A" and "conflict" → "Correct-B"
+    // creates an ambiguous finding — neither should auto-replace.
     let index_yaml = r#"schema_version: '1'
 terms:
   - term: Correct-A
@@ -194,9 +195,10 @@ terms:
 
     let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
-    // Only the first term's correction should claim the finding
-    assert_eq!(stdout.matches("→ \"Correct-A\"").count(), 1, "only first term claims: {stdout}");
-    assert!(stdout.contains("Correct-A"), "first term wins: {stdout}");
+    // Ambiguous: both terms should be reported, not silently won by first
+    assert!(stdout.contains("ambiguous"), "should be ambiguous: {stdout}");
+    assert!(stdout.contains("Correct-A"), "should mention Correct-A: {stdout}");
+    assert!(stdout.contains("Correct-B"), "should mention Correct-B: {stdout}");
 }
 
 // ---------------------------------------------------------------------------
