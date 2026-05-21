@@ -55,39 +55,41 @@ repos (idempotent) are accepted. Refuses non-empty directories, malformed
 another Mind Repo. JSON envelope fields: `path`, `created`, `already_existed`,
 `created_files`, `created_directories`, `skipped`.
 
-Use `mf init` to create a Mind Repo; `mf config init` is a lower-level command
-that writes a project-level `mind.yaml`, not a repo root.
+Use `mf init` to create a Mind Repo; `mf config init` is deprecated.
 
 ### `mf source` — Manage content sources
 
-Subcommands: `list` (alias `ls`), `add`, `update`, `index`, `remove`, `clean`
+Subcommands: `list` (alias `ls`), `add`, `update`, `index`, `rename`, `remove` (alias `rm`), `clean`
 
 **`mf source add <INPUT>`**
 `-n`, `--name <NAME>` — Source name
-`--file-kind <auto\|pdf\|file\|rss\|web>` — File kind (mf primary)
-`--source-kind <yuque\|meeting\|misc>` — Source channel type (mind primary)
-`--file-kind <auto|pdf|file|rss|web>` — File kind
-`--source-kind <yuque|meeting|misc>` — Source channel type
+`--file-kind <auto|pdf|file|rss|web>` — File kind (mf primary)
+`--source-kind <yuque|meeting|misc>` — Source channel type (mind primary)
+`-t`, `--type <KIND>` — Deprecated: use `--file-kind` or `--source-kind` instead
 `--link` — Symlink instead of copy (local files)
 `-f`, `--force` — Overwrite existing
 `-p`, `--project <NAME>` — Project context
 
 **`mf source list`**
 `--filter <PATTERN>` — Filter by name
-`-t`, `--type <pdf\|file\|rss\|web>` — Filter by file kind
+`-t`, `--type <pdf|file|rss|web>` — Filter by file kind
 `-p`, `--project <NAME>`
 
 **`mf source update <NAME>`**
-`--rename <NEW>` — Rename the source
 `--url <URL>` — Update URL
-`-p`, `--project <NAME>`
-
-**`mf source remove <NAME_OR_PATH>`**
-`--keep-file` — Remove from index only, keep file on disk
 `-p`, `--project <NAME>`
 
 **`mf source index`**
 `--dry-run` — Preview changes without writing
+`-p`, `--project <NAME>`
+
+**`mf source rename <OLD_NAME> <NEW_NAME>`**
+`-p`, `--project <NAME>`
+`-f`, `--force`
+`--dry-run`
+
+**`mf source remove <NAME_OR_PATH>`** (alias `rm`)
+`--keep-file` — Remove from index only, keep file on disk
 `-p`, `--project <NAME>`
 
 **`mf source clean`**
@@ -96,7 +98,7 @@ Subcommands: `list` (alias `ls`), `add`, `update`, `index`, `remove`, `clean`
 
 ### `mf asset` — Manage project assets
 
-Subcommands: `list` (alias `ls`), `add`, `update`, `index`, `clean`, `remove`
+Subcommands: `list` (alias `ls`), `add`, `update`, `index`, `clean`, `remove` (alias `rm`), `rename`, `show`
 
 **`mf asset add <PATH>`**
 `--name <NAME>` — Asset name
@@ -108,7 +110,7 @@ Subcommands: `list` (alias `ls`), `add`, `update`, `index`, `clean`, `remove`
 
 **`mf asset list`**
 `--filter <PATTERN>` — Filter by name
-`--type <image\|document\|archive\|other>` — Filter by kind
+`--type <image|document|archive|other>` — Filter by kind
 `-p`, `--project <NAME>`
 
 **`mf asset update [PATH]`**
@@ -126,24 +128,28 @@ Subcommands: `list` (alias `ls`), `add`, `update`, `index`, `clean`, `remove`
 `-p`, `--project <NAME>`
 `--dry-run`
 
-**`mf asset remove <FILE>`**
+**`mf asset remove <FILE>`** (alias `rm`)
 `-f`, `--force` — Skip confirmation
+`-p`, `--project <NAME>`
+
+**`mf asset rename <OLD_NAME> <NEW_NAME>`**
+`-p`, `--project <NAME>`
+`-f`, `--force`
+`--dry-run`
+
+**`mf asset show <NAME>`**
 `-p`, `--project <NAME>`
 
 ### `mf project` — Manage projects
 
-Subcommands: `new`, `list` (alias `ls`), `archive`, `status` (alias `info`), `lint`, `index`, `show`, `import`, `rename`
+Subcommands: `new`, `list` (alias `ls`), `archive`, `lint`, `index`, `show`, `import`, `rename`, `remove` (alias `rm`)
 
 **`mf project new <NAME>`**
-`--template <NAME>` — Template to use
 `--force` — Overwrite existing
 
 **`mf project list`** — No flags.
 
 **`mf project archive <NAME_OR_PATH>`** — Move project to `_archived/`.
-
-**`mf project status`**
-`-p`, `--project <NAME>` — Project context
 
 **`mf project lint`**
 `-p`, `--project <NAME>` — Target a specific project (default: whole repo)
@@ -164,16 +170,18 @@ Subcommands: `new`, `list` (alias `ls`), `archive`, `status` (alias `info`), `li
 
 **`mf project rename <OLD> <NEW>`** — Rename a project.
 
+**`mf project remove <NAME>`** (alias `rm`) — Remove a project.
+
 ### `mf article` — Manage articles
 
-Subcommands: `new`, `list` (alias `ls`), `lint`, `index`, `rename`
+Subcommands: `new`, `list` (alias `ls`), `lint`, `index`, `rename`, `remove` (alias `rm`), `show`
 
-**`mf article new <TITLE> [--template <S>] [--file|--single-file]`**
+**`mf article new <TITLE> [--template <S>] [--file]`**
 `-p`, `--project <NAME>`
 `-t`, `--template <S>` — Built-in schema name (`blank` / `arch` / `prd` / `blog`) or path under project root (default: `blank`). Built-in names win on exact case-sensitive match; use a subdirectory prefix (e.g. `./arch`) to force path resolution.
-`--file`, `--single-file` — Write a single file `docs/{slug}.md` instead of a directory
+`--file` — Write a single file `docs/{slug}.md` instead of a directory (alias: `--single-file`)
 `--tag <TAG>` — Tag (repeatable)
-`--draft` — Mark as draft (default: `true`)
+`--draft` — Mark as draft
 `-f`, `--force` — Overwrite existing same-shape artefact (does not cross file/directory shapes)
 
 JSON envelope fields: `template`, `shape` (`directory`|`file`), `path`, `files`, `typora_front_matter_injected` (bool), `typora_copy_images_to` (string|null). When the Typora plugin is enabled, each generated file starts with a YAML front-matter block containing `typora-copy-images-to` pointing to the project assets directory.
@@ -192,9 +200,17 @@ JSON envelope fields: `template`, `shape` (`directory`|`file`), `path`, `files`,
 `-p`, `--project <NAME>`
 `-f`, `--force`
 
+**`mf article remove <TITLE>`** (alias `rm`)
+`-p`, `--project <NAME>`
+`-f`, `--force`
+`--dry-run`
+
+**`mf article show <TITLE>`**
+`-p`, `--project <NAME>`
+
 ### `mf term` / `mf terms` — Manage terminology
 
-Subcommands: `list`, `new`, `lint`, `learn`, `fix`, `show`
+Subcommands: `list` (alias `ls`), `new`, `lint`, `add`, `update`, `show`, `remove` (alias `rm`), `rename`
 
 **`mf term new <TERM>`**
 `--definition <TEXT>` — Term definition
@@ -208,21 +224,18 @@ Subcommands: `list`, `new`, `lint`, `learn`, `fix`, `show`
 **`mf term list`**
 `--filter <PATTERN>` — Filter by name
 `-p`, `--project <NAME>`
-`-p`, `--project <NAME>`
 
 **`mf term lint [PATH]`**
 `--fix` — Auto-correct term usage in docs
 `--dry-run` — Preview fixes without writing (requires `--fix`)
 `-p`, `--project <NAME>`
 
-**`mf term learn`**
-`--term <CANONICAL>` — Canonical term name (mind primary)
-`--alias <VARIANT>` — Variant/alias (mind primary)
+**`mf term add`**
 `--term <CANONICAL>` — Canonical term name
 `--alias <VARIANT>` — Variant/alias
 `-p`, `--project <NAME>`
 
-**`mf term fix <TERM>`**
+**`mf term update <TERM>`**
 `--definition <TEXT>` — Update definition
 `--description <TEXT>` — Set/update description
 `--clear-description` — Remove description
@@ -233,6 +246,12 @@ Subcommands: `list`, `new`, `lint`, `learn`, `fix`, `show`
 `-p`, `--project <NAME>`
 
 **`mf term show <NAME>`**
+`-p`, `--project <NAME>`
+
+**`mf term remove <NAME>`** (alias `rm`)
+`-p`, `--project <NAME>`
+
+**`mf term rename <OLD> <NEW>`**
 `-p`, `--project <NAME>`
 
 ### `mf build <ARTICLE>` — Build/assemble an article
@@ -259,34 +278,30 @@ Subcommands: `run`, `update`, `target`
 `-p`, `--project <NAME>`
 `--dry-run`
 
+**`mf publish target list`** — List publish targets and diagnostics. Use `--json` for machine-readable output.
+
 ### `mf render` — Generate render prompts
 
 `[ARTICLE]` — Article name (omit for project-scope render)
 `-p`, `--project <NAME>`
 `--template <NAME>` — Render template name
-`--html-form <document\|fragment>` — HTML output form
+`--html-form <document|fragment>` — HTML output form
 
-Subcommand: `mf render template list` — List available render templates (built-in and custom).
+**`mf render template list`** — List available render templates (built-in and custom).
 
 ### `mf config` — Manage configuration
 
-Subcommands: `schema`, `show`, `compile`, `generate`, `default`, `init`
+Subcommands: `schema`, `show`, `generate`, `default`, `init`
 
-**`mf config schema`** — `--output-format <json\|yaml>` (default: `json`)
+**`mf config schema`** — `--output-format <json|yaml>` (default: `json`)
 
-**`mf config show`** — `--output-format <json\|yaml>` (default: `yaml`)
+**`mf config show`** — `--output-format <json|yaml>` (default: `yaml`)
 
-**`mf config compile`** — Alias of `show`. `--output-format <json\|yaml>` (default: `yaml`)
+**`mf config generate`** — `--output-format <json|yaml>` (default: `yaml`), `-o`, `--output <PATH>`
 
-**`mf config generate`** — `--output-format <json\|yaml>` (default: `yaml`), `-o`, `--output <PATH>`
+**`mf config default`** — `--output-format <json|yaml>` (default: `yaml`). Generated config includes a `plugins.typora-front-matter` block with `enabled: true`.
 
-**`mf config default`** — `--output-format <json\|yaml>` (default: `yaml`). Generated config includes a `plugins.typora-front-matter` block with `enabled: true`.
-
-**`mf config init`** — `--output <PATH>`, `--target <project\|repo>` (default: `project`), `--force`
-
-### `mf publish target` — Manage publish targets
-
-Subcommand: `list` — List publish targets with status and diagnostics. Use `--json` for machine-readable output.
+**`mf config init`** — Deprecated: use `mf init` instead. `--output <PATH>`, `--target <project|repo>` (default: `project`), `--force`
 
 ### `mf completion <SHELL>` — Generate shell completion scripts
 
@@ -305,10 +320,10 @@ mf init --json                       # machine-readable envelope
 # Project management
 mf project list
 mf project new my-project
-mf project status --project my-project
 mf project lint --project my-project --fix
 mf project show my-project
 mf project rename old-name new-name
+mf project remove old-project
 mf project import /path/to/existing --force
 
 # Sources
@@ -316,6 +331,7 @@ mf source add https://example.com/article --name ref-a --file-kind web --project
 mf source add paper.pdf --file-kind pdf --project my-project
 mf source list --project my-project
 mf source index --project my-project
+mf source rename old-name new-name --project my-project
 mf source remove sources/yuque/foo.md --keep-file
 mf source clean --dry-run
 
@@ -324,15 +340,20 @@ mf asset add image.png --project my-project
 mf asset list --project my-project
 mf asset update --all --project my-project
 mf asset index --refresh-metadata --project my-project
+mf asset rename old-name new-name --project my-project
+mf asset show diagram.png --project my-project
 mf asset clean --project my-project
 
 # Articles
 mf article new "My First Post" --project my-project
 mf article new "Auth Rewrite" --template arch --project my-project
 mf article new "Quick Note" --template blog --project my-project
+mf article new "Single Page" --file --project my-project
 mf article list --project my-project
 mf article index --project my-project
+mf article show "My First Post" --project my-project
 mf article rename "Old Title" "New Title" --project my-project
+mf article remove "Old Post" --project my-project
 
 # Build & publish
 mf build my-first-post --project my-project
@@ -347,10 +368,12 @@ mf term new "Zettelkasten" --definition "A note-taking method" --description "A 
 mf term new "API" --alias "Application Programming Interface" --tag tech
 mf term list
 mf term show Zettelkasten
-mf term learn --term "API" --alias "Application Programming Interface"
+mf term add --term "API" --alias "Application Programming Interface"
+mf term update "API" --definition "Updated definition" --confidence 0.8
+mf term update "API" --clear-description
 mf term lint --project my-project --fix
-mf term fix "API" --definition "Updated definition" --confidence 0.8
-mf term fix "API" --clear-description
+mf term rename "API" "Application Programming Interface" --project my-project
+mf term remove "Old Term" --project my-project
 
 # Render
 mf render "My First Post" --project my-project --template paper --html-form document
@@ -358,8 +381,10 @@ mf render template list
 
 # Config & diagnostics
 mf config show
-mf config init
+mf config default
 mf publish target list --json
+mf completion zsh
+mf version --json
 ```
 
 ## Notes
@@ -369,3 +394,4 @@ mf publish target list --json
 - Prefer `schema` over `schema_version` in docs, examples, and generated YAML.
 - Global terms (created without `--project`) are stored in `minds-terms.yaml` at the repo root. Project-scoped terms are stored in each project's `mind-index.yaml`.
 - `term lint` requires a project context — it scans project docs for term usage.
+- `mf config init` is deprecated; use `mf init` to create a Mind Repo instead.

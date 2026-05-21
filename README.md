@@ -84,7 +84,7 @@ cargo run -- --help
 Shell completion:
 
 ```bash
-mf --install-completion zsh   # or bash | fish | powershell | elvish
+mf completion zsh   # or bash | fish | powershell | elvish
 ```
 
 ## Quick Start
@@ -166,8 +166,8 @@ flowchart LR
 
 1. **Capture** — `mf source add` and `mf asset add` pull raw material into a
    project. `mf term new` records vocabulary.
-2. **Draft** — `mf article new <TITLE> [--template <S>] [--file|--single-file]`
-   scaffolds a directory article (default) or single file (`--file`/`--single-file`) under
+2. **Draft** — `mf article new <TITLE> [--template <S>] [--file]`
+   scaffolds a directory article (default) or single file (`--file`) under
    `docs/`. The default template is `blank`; `--template arch|prd|blog`
    selects another built-in scaffold, and `--template <path>` reads a
    project-local Markdown template. New articles automatically get Typora
@@ -184,54 +184,178 @@ flowchart LR
 Every step is idempotent and pipe-friendly. Pass `--json` to any command to
 get a machine-readable envelope.
 
+## Commands
+
+### `mf init [PATH]`
+
+Initialize a directory as a Mind Repo. Creates `minds.yaml` and the default
+`projects/` container. Accepts an existing valid repo (idempotent) or an
+empty directory. Refuses non-empty directories, nested repos, file targets,
+and path traversal.
+
+### `mf project`
+
+| Subcommand | Description |
+|-----------|-------------|
+| `new <NAME>` | Create a project |
+| `list` (ls) | List projects |
+| `archive <NAME>` | Move project to `_archived/` |
+| `lint [--fix] [--rule <R>]` | Lint project(s); `--fix` auto-corrects |
+| `index [--dry-run]` | Index projects |
+| `show <PROJECT>` | Show project details |
+| `import <DIR>` | Import a directory as a project |
+| `rename <OLD> <NEW>` | Rename a project |
+| `remove <NAME>` (rm) | Remove a project |
+
+### `mf article`
+
+| Subcommand | Description |
+|-----------|-------------|
+| `new <TITLE> [-t blank\|arch\|prd\|blog] [--file]` | Create an article (directory by default; `--file` for single file). Supports `--tag`, `--draft`, `--force` |
+| `list` (ls) | List articles |
+| `lint [--fix]` | Lint articles |
+| `index [--dry-run]` | Index articles |
+| `rename <OLD> <NEW>` | Rename an article |
+| `remove <TITLE>` (rm) | Remove an article (`--dry-run`, `--force`) |
+| `show <TITLE>` | Show article details |
+
+### `mf source`
+
+| Subcommand | Description |
+|-----------|-------------|
+| `add <INPUT>` | Add a source. `--file-kind auto\|pdf\|file\|rss\|web`, `--source-kind yuque\|meeting\|misc`, `--link`, `--force` |
+| `list` (ls) | List sources (`--filter`, `--type`) |
+| `update <NAME>` | Update a source (`--url`) |
+| `index [--dry-run]` | Index sources |
+| `rename <OLD> <NEW>` | Rename a source |
+| `remove <NAME>` (rm) | Remove a source (`--keep-file` keeps file on disk) |
+| `clean [--dry-run]` | Clean stale index entries |
+
+### `mf asset`
+
+| Subcommand | Description |
+|-----------|-------------|
+| `add <PATH>` | Add an asset (`--name`, `--tag`, `--copy`, `--link`, `--force`) |
+| `list` (ls) | List assets (`--filter`, `--type`) |
+| `update [PATH]` | Update assets (`--set-url`, `--channel`, `--all`) |
+| `index [--dry-run] [--refresh-metadata]` | Index assets |
+| `clean [--dry-run]` | Clean stale index entries |
+| `remove <FILE>` (rm) | Remove an asset (`--force`) |
+| `rename <OLD> <NEW>` | Rename an asset |
+| `show <NAME>` | Show asset details |
+
+### `mf term` (alias: `mf terms`)
+
+| Subcommand | Description |
+|-----------|-------------|
+| `new <TERM>` | Create a term. `--definition`, `--description`, `--confidence` (0.0–1.0), `--alias`, `--tag`, `--misrecognition` (global only) |
+| `list` (ls) | List terms (`--filter`) |
+| `lint [--fix] [--dry-run]` | Lint term usage in project docs |
+| `add` | Add a term correction (`--term`, `--alias`) |
+| `update <TERM>` | Update term metadata (`--definition`, `--description`, `--confidence`, `--alias`, `--tag`) |
+| `show <NAME>` | Show term details |
+| `remove <NAME>` (rm) | Remove a term |
+| `rename <OLD> <NEW>` | Rename a term |
+
+Global terms (created without `--project`) are stored in `minds-terms.yaml` at
+the repo root. Project-scoped terms live in each project's `mind-index.yaml`.
+
+### `mf build <ARTICLE>`
+
+Build/assemble an article. `-p`, `--project <NAME>`; `-o`, `--output <PATH>`;
+`--dry-run`. `ARTICLE` may be an indexed name/slug or a repo-relative path
+prefixed with `@` (e.g. `@projects/blog/docs/2026-03-review/`). Directory
+articles are built by merging Markdown files in filename order.
+
+### `mf publish`
+
+| Subcommand | Description |
+|-----------|-------------|
+| `run <ARTICLE>` | Publish to a target (`--target`, `--dry-run`, `--force`) |
+| `update <ARTICLE>` | Update publish record (`--target`, `--set KEY=VALUE`) |
+| `target list` | List publish targets and diagnostics |
+
+### `mf render [ARTICLE]`
+
+Generate an Agent-facing HTML rendering prompt. `--template <NAME>` selects
+a render template (built-in: `report`, `paper`; or custom under
+`.mind-forge/renders/`). `--html-form document|fragment` chooses output shape.
+
+| Subcommand | Description |
+|-----------|-------------|
+| `template list` | List available render templates |
+
+### `mf config`
+
+| Subcommand | Description |
+|-----------|-------------|
+| `schema` | Show config JSON schema |
+| `show` | Show effective config |
+| `generate` | Generate effective config file |
+| `default` | Show default config values |
+| `init` | Deprecated — use `mf init` instead |
+
+### `mf completion <SHELL>`
+
+Generate shell completion script for `bash`, `zsh`, `fish`, `powershell`, or `elvish`.
+
+### `mf version`
+
+Show version information. Accepts `--json` for machine-readable output.
+
+## Global Flags
+
+| Flag | Description |
+|------|-------------|
+| `--root <PATH>` | Mind Repo root directory |
+| `--config <PATH>` | Config file path |
+| `-v`, `--verbose` | Verbose output (repeatable) |
+| `-q`, `--quiet` | Silence non-error output |
+| `--format text\|json` | Output format (default: `text`) |
+| `--json` | Shorthand for `--format json` |
+| `--no-color` | Disable colored output |
+| `-h`, `--help` | Show help |
+| `-V`, `--version` | Show version |
+
 ## Features
 
 - **Repo lifecycle** — `mf init [PATH]` creates a Mind Repo (`minds.yaml`
-  plus the default `projects/` container) in the current directory or a
-  target path; refuses to overwrite existing content or nest inside an
-  existing Mind Repo
-- **Project lifecycle** — `mf project new | list | status | lint | index | archive | rename | import | show`
-- **Article management** — `mf article new <TITLE> [--template <S>] [--file|--single-file]`,
-  plus `list | lint | index | rename`; new articles are directory articles by
-  default, use the `blank` template unless `--template blank|arch|prd|blog` or
-  a custom project-local template path is supplied, and `--file`/`--single-file`
-  opts into the single-file shape
-- **Sources** — `mf source add | list | update | index | remove | clean`,
-  file kinds `auto`, `pdf`, `file`, `rss`, `web`
-- **Assets** — `mf asset add | list | update | index | remove | clean`
-- **Glossary** — `mf term new | list | show | lint | fix | learn` with
-  optional `--description` and `--confidence` (0.0–1.0) metadata for richer
-  automation hints
+  plus the default `projects/` container); refuses to overwrite existing
+  content or nest inside an existing Mind Repo
+- **Project lifecycle** — `mf project new | list | archive | lint | index | show | import | rename | remove`
+- **Article management** — `mf article new | list | lint | index | show | rename | remove`;
+  directory articles by default, `--file` for single-file shape;
+  `--template blank|arch|prd|blog` or a custom project-local template path
+- **Sources** — `mf source add | list | update | index | rename | remove | clean`;
+  `--file-kind auto|pdf|file|rss|web`, `--source-kind yuque|meeting|misc`
+- **Assets** — `mf asset add | list | update | index | clean | remove | rename | show`;
+  `--copy`/`--link` for copy vs symlink
+- **Glossary** — `mf term new | list | show | lint | add | update | remove | rename`;
+  `--description` and `--confidence` (0.0–1.0) metadata for richer automation hints
 - **Build** — config-driven assembly, directory-article merging,
   `--dry-run`, `--output`, and `@path/`-style article addressing
-- **Publish** — `mf publish run | update` against per-target publishers
-  (`local`, `yuque-prompt`, …) plus repo-wide `mf publish target list`
-- **Render prompts** — `mf render <article>` emits an Agent-facing HTML
-  rendering prompt using built-in templates (`report`, `paper`) or custom
-  Markdown templates under `.mind-forge/renders/`; `--html-form` switches
-  between document and fragment output shapes
-- **Config** — `mf config schema | show | generate | default | init`,
+- **Publish** — `mf publish run | update | target list` against per-target
+  publishers (`local`, `yuque-prompt`, …)
+- **Render prompts** — `mf render` emits an Agent-facing HTML rendering prompt
+  using built-in templates (`report`, `paper`) or custom Markdown templates
+  under `.mind-forge/renders/`; `--html-form document|fragment`
+- **Config** — `mf config schema | show | generate | default`;
   centralized defaults for `docs/`, `sources/`, `assets/`, `_archived/`,
   and `outputs/`
 - **Plugins** — `mind.yaml` supports a `plugins` block for forward-compatible
   plugin configuration; the `typora-front-matter` plugin is enabled by default
-  and injects `typora-copy-images-to` front matter into new articles so Typora
-  saves pasted images to the project assets directory automatically
+  and injects `typora-copy-images-to` front matter into new articles
 - **Compatibility** — reads and writes mind 0.3.0 YAML; tolerates older
   `schema_version` and list-based shapes on read
-- **Version** — `mf version` outputs the current CLI version in text (`mf 0.1.0`) or
-  JSON (`{ status, command, data: { version } }`) format; works from any directory
-  without a Mind Repo
-- **Release workflow** — push a valid `v<MAJOR>.<MINOR>.<PATCH>` tag to trigger
-  cross-platform builds (Linux x86_64/aarch64, macOS aarch64) and create a GitHub
-  Releases draft for maintainer review before publishing
-- **Output contract** — `text` by default, `--json` for `{ status, command, data }`
-  envelopes; stable exit codes; shell completion via `mf completion <shell>`
+- **Shell completion** — `mf completion <SHELL>` for bash, zsh, fish,
+  powershell, elvish
+- **Version** — `mf version` outputs the current CLI version in text or JSON
+- **Output contract** — `text` by default, `--json` for
+  `{ status, command, data }` envelopes; stable exit codes
 
 ## Project Status
 
-See [ROADMAP](specs/002-mf-command-design/ROADMAP.md) for the feature
-evolution plan and [specs/](specs/) for detailed specifications.
+See [specs/](specs/) for detailed specifications and the feature evolution plan.
 
 ## License
 
