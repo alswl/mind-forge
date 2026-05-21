@@ -5,7 +5,7 @@ use std::path::Path;
 use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::index::IndexFile;
-use crate::model::term::{TermFinding, TermLintFailure, TermLintReport};
+use crate::model::term::{CandidateTerm, TermFinding, TermLintFailure, TermLintReport};
 use crate::service::config as config_svc;
 use crate::service::index;
 use crate::service::util::{atomic_write, canonicalize_within, rel_posix_path};
@@ -20,13 +20,54 @@ use self::fix::{apply_fixes, FixSpan};
 use self::front_matter::{parse_front_matter_skip_flag, FrontMatterDecision};
 use self::scan::{scan_file_for_corrections, InternalFinding};
 
-fn collect_corrections(index: &IndexFile) -> Vec<(String, String, String)> {
+struct CorrectionEntry {
+    original: String,
+    correct: String,
+    term_name: String,
+    description: Option<String>,
+    confidence: Option<f64>,
+}
+
+fn collect_corrections(index: &IndexFile) -> Vec<CorrectionEntry> {
     let mut result = Vec::new();
     if let Some(ref terms) = index.terms {
         for t in terms {
             for c in &t.corrections {
-                result.push((c.original.clone(), c.correct.clone(), t.term.clone()));
+                result.push(CorrectionEntry {
+                    original: c.original.clone(),
+                    correct: c.correct.clone(),
+                    term_name: t.term.clone(),
+                    description: t.description.clone(),
+                    confidence: t.confidence,
+                });
             }
+        }
+    }
+    result
+}
+
+/// Build a set of original texts that map to more than one term.
+fn build_ambiguous_originals(corrections: &[CorrectionEntry]) -> BTreeSet<String> {
+    let mut term_counts: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for c in corrections {
+        term_counts.entry(&c.original).or_default().insert(&c.term_name);
+    }
+    term_counts.into_iter().filter(|(_, terms)| terms.len() > 1).map(|(orig, _)| orig.to_string()).collect()
+}
+
+/// Build candidate lists for ambiguous originals.
+fn build_candidates(
+    corrections: &[CorrectionEntry],
+    ambiguous: &BTreeSet<String>,
+) -> BTreeMap<String, Vec<CandidateTerm>> {
+    let mut result: BTreeMap<String, Vec<CandidateTerm>> = BTreeMap::new();
+    for c in corrections {
+        if ambiguous.contains(&c.original) {
+            result.entry(c.original.clone()).or_default().push(CandidateTerm {
+                term: c.term_name.clone(),
+                correct: c.correct.clone(),
+                confidence: c.confidence,
+            });
         }
     }
     result
@@ -60,6 +101,9 @@ pub fn lint_file(project_root: &Path, file_path: &str, fix: bool, dry_run: bool)
     }
 
     let corrections = collect_corrections(&index);
+    let ambiguous = build_ambiguous_originals(&corrections);
+    let candidates = build_candidates(&corrections, &ambiguous);
+    let correction_refs = build_correction_refs(&corrections, &ambiguous, &candidates);
     let mut findings: Vec<TermFinding> = Vec::new();
     let mut internal_findings: Vec<InternalFinding> = Vec::new();
     let mut claimed: BTreeSet<(String, usize)> = BTreeSet::new();
@@ -86,12 +130,12 @@ pub fn lint_file(project_root: &Path, file_path: &str, fix: bool, dry_run: bool)
         }
     };
 
-    scan_content(&content, None, &corrections, &rel_path, &mut findings, &mut internal_findings, &mut claimed);
+    scan_content(&content, None, &correction_refs, &rel_path, &mut findings, &mut internal_findings, &mut claimed);
 
     let report = if fix && !dry_run {
         let mut spans: Vec<FixSpan> = internal_findings
             .iter()
-            .filter(|ifind| ifind.original != ifind.correct)
+            .filter(|ifind| ifind.original != ifind.correct && !ifind.is_ambiguous)
             .map(|ifind| FixSpan {
                 start: ifind.byte_offset,
                 end: ifind.byte_offset + ifind.original_len,
@@ -157,7 +201,8 @@ pub fn lint_file(project_root: &Path, file_path: &str, fix: bool, dry_run: bool)
             }
         }
     } else if fix && dry_run {
-        let wf = internal_findings.len() as u64;
+        let wf = internal_findings.iter().filter(|ifind| ifind.original != ifind.correct && !ifind.is_ambiguous).count()
+            as u64;
         TermLintReport {
             findings,
             scanned_files: 1,
@@ -195,6 +240,9 @@ pub fn lint_terms(project_root: &Path, fix: bool, dry_run: bool) -> Result<TermL
     }
 
     let corrections = collect_corrections(&index);
+    let ambiguous = build_ambiguous_originals(&corrections);
+    let candidates = build_candidates(&corrections, &ambiguous);
+    let correction_refs = build_correction_refs(&corrections, &ambiguous, &candidates);
     let mut findings: Vec<TermFinding> = Vec::new();
     let mut internal_findings: Vec<InternalFinding> = Vec::new();
     let mut scanned_files: u64 = 0;
@@ -239,7 +287,7 @@ pub fn lint_terms(project_root: &Path, fix: bool, dry_run: bool) -> Result<TermL
                 scan_content(
                     &content,
                     Some(end_byte_offset),
-                    &corrections,
+                    &correction_refs,
                     &rel_path,
                     &mut findings,
                     &mut internal_findings,
@@ -251,7 +299,7 @@ pub fn lint_terms(project_root: &Path, fix: bool, dry_run: bool) -> Result<TermL
                 scan_content(
                     &content,
                     None,
-                    &corrections,
+                    &correction_refs,
                     &rel_path,
                     &mut findings,
                     &mut internal_findings,
@@ -283,14 +331,40 @@ pub fn lint_terms(project_root: &Path, fix: bool, dry_run: bool) -> Result<TermL
 fn scan_content(
     content: &str,
     fm_end: Option<usize>,
-    corrections: &[(String, String, String)],
+    correction_refs: &[scan::CorrectionRef<'_>],
     rel_path: &str,
     findings: &mut Vec<TermFinding>,
     internal_findings: &mut Vec<InternalFinding>,
     claimed: &mut BTreeSet<(String, usize)>,
 ) {
     let sanitized = strip_exempt_regions(content, fm_end);
-    scan_file_for_corrections(content, &sanitized, corrections, rel_path, findings, internal_findings, claimed);
+    scan_file_for_corrections(content, &sanitized, correction_refs, rel_path, findings, internal_findings, claimed);
+}
+
+fn build_correction_refs<'a>(
+    corrections: &'a [CorrectionEntry],
+    ambiguous: &'a BTreeSet<String>,
+    candidates: &'a BTreeMap<String, Vec<CandidateTerm>>,
+) -> Vec<scan::CorrectionRef<'a>> {
+    corrections
+        .iter()
+        .map(|c| {
+            let is_ambiguous = ambiguous.contains(&c.original);
+            scan::CorrectionRef {
+                original: &c.original,
+                correct: &c.correct,
+                term_name: &c.term_name,
+                description: c.description.as_deref(),
+                confidence: c.confidence,
+                is_ambiguous,
+                candidates: if is_ambiguous {
+                    candidates.get(&c.original).map(|v| v.as_slice()).unwrap_or(&[])
+                } else {
+                    &[]
+                },
+            }
+        })
+        .collect()
 }
 
 fn apply_term_fixes(
@@ -334,7 +408,7 @@ fn apply_term_fixes(
         let mut per_file_fixed: u64 = 0;
         for &idx in indices {
             let ifind = &internal_findings[idx];
-            if ifind.original == ifind.correct {
+            if ifind.original == ifind.correct || ifind.is_ambiguous {
                 continue;
             }
             spans.push(FixSpan {

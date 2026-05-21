@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::model::term::TermFinding;
+use crate::model::term::{CandidateTerm, TermFinding};
 
 pub(super) struct InternalFinding {
     pub(super) path: String,
@@ -8,6 +8,7 @@ pub(super) struct InternalFinding {
     pub(super) original_len: usize,
     pub(super) original: String,
     pub(super) correct: String,
+    pub(super) is_ambiguous: bool,
 }
 
 pub(super) fn byte_offset_to_line_col(content: &str, byte_offset: usize) -> (u32, u32) {
@@ -27,54 +28,70 @@ pub(super) fn byte_offset_to_line_col(content: &str, byte_offset: usize) -> (u32
     (line, col)
 }
 
+pub(super) struct CorrectionRef<'a> {
+    pub original: &'a str,
+    pub correct: &'a str,
+    pub term_name: &'a str,
+    pub description: Option<&'a str>,
+    pub confidence: Option<f64>,
+    pub is_ambiguous: bool,
+    pub candidates: &'a [CandidateTerm],
+}
+
 pub(super) fn scan_file_for_corrections(
     content: &str,
     sanitized: &[u8],
-    corrections: &[(String, String, String)],
+    corrections: &[CorrectionRef<'_>],
     rel_path: &str,
     findings: &mut Vec<TermFinding>,
     internal_findings: &mut Vec<InternalFinding>,
     claimed: &mut BTreeSet<(String, usize)>,
 ) {
-    for (original, correct, term_name) in corrections {
-        let orig_bytes = original.as_bytes();
+    for c in corrections {
+        let orig_bytes = c.original.as_bytes();
         if orig_bytes.is_empty() {
             continue;
         }
+        let is_ambiguous = c.is_ambiguous;
         let mut search_start = 0;
         while search_start < sanitized.len() {
-            match find_subseq(&sanitized[search_start..], orig_bytes) {
-                Some(rel_offset) => {
-                    let abs_offset = search_start + rel_offset;
-                    let key = (rel_path.to_string(), abs_offset);
-                    if claimed.contains(&key) {
-                        search_start = abs_offset + 1;
-                        continue;
-                    }
-                    claimed.insert(key);
-
-                    let (line, col) = byte_offset_to_line_col(content, abs_offset);
-                    findings.push(TermFinding {
-                        path: rel_path.to_string(),
-                        line,
-                        column: col,
-                        original: original.clone(),
-                        correct: correct.clone(),
-                        term: term_name.clone(),
-                    });
-
-                    internal_findings.push(InternalFinding {
-                        path: rel_path.to_string(),
-                        byte_offset: abs_offset,
-                        original_len: orig_bytes.len(),
-                        original: original.clone(),
-                        correct: correct.clone(),
-                    });
-
-                    search_start = abs_offset + 1;
-                }
-                None => break,
+            let Some(rel_offset) = find_subseq(&sanitized[search_start..], orig_bytes) else {
+                break;
+            };
+            let abs_offset = search_start + rel_offset;
+            let key = (rel_path.to_string(), abs_offset);
+            if claimed.contains(&key) {
+                search_start = abs_offset + 1;
+                continue;
             }
+            claimed.insert(key);
+
+            let (line, col) = byte_offset_to_line_col(content, abs_offset);
+
+            findings.push(TermFinding {
+                path: rel_path.to_string(),
+                line,
+                column: col,
+                original: c.original.to_string(),
+                correct: c.correct.to_string(),
+                term: c.term_name.to_string(),
+                description: c.description.map(String::from),
+                confidence: c.confidence,
+                replacement_eligible: !is_ambiguous,
+                safety_reason: if is_ambiguous { Some("ambiguous".to_string()) } else { None },
+                candidates: if is_ambiguous { c.candidates.to_vec() } else { vec![] },
+            });
+
+            internal_findings.push(InternalFinding {
+                path: rel_path.to_string(),
+                byte_offset: abs_offset,
+                original_len: orig_bytes.len(),
+                original: c.original.to_string(),
+                correct: c.correct.to_string(),
+                is_ambiguous,
+            });
+
+            search_start = abs_offset + 1;
         }
     }
 }

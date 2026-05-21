@@ -51,6 +51,10 @@ pub struct TermNewArgs {
     pub term: String,
     #[arg(long)]
     pub definition: Option<String>,
+    #[arg(long)]
+    pub description: Option<String>,
+    #[arg(long, value_parser = clap::value_parser!(f64))]
+    pub confidence: Option<f64>,
     #[arg(long = "alias")]
     pub alias: Vec<String>,
     #[arg(long = "tag")]
@@ -95,6 +99,14 @@ pub struct TermFixArgs {
     pub term: String,
     #[arg(long)]
     pub definition: Option<String>,
+    #[arg(long)]
+    pub description: Option<String>,
+    #[arg(long)]
+    pub clear_description: bool,
+    #[arg(long, value_parser = clap::value_parser!(f64))]
+    pub confidence: Option<f64>,
+    #[arg(long)]
+    pub clear_confidence: bool,
     #[arg(long = "alias")]
     pub alias: Vec<String>,
     #[arg(long = "tag")]
@@ -155,6 +167,28 @@ fn warn_learn_flag_deprecations(args: &TermLearnArgs, deprecation: &mut Deprecat
     }
 }
 
+fn new_input(args: &TermNewArgs) -> term_svc::TermInput<'_> {
+    term_svc::TermInput {
+        definition: args.definition.as_deref(),
+        description: args.description.as_deref(),
+        confidence: args.confidence,
+        aliases: &args.alias,
+        tags: &args.tag,
+    }
+}
+
+fn fix_update(args: &TermFixArgs) -> term_svc::TermUpdate<'_> {
+    term_svc::TermUpdate {
+        definition: args.definition.as_deref(),
+        description: args.description.as_deref(),
+        clear_description: args.clear_description,
+        confidence: args.confidence,
+        clear_confidence: args.clear_confidence,
+        aliases: &args.alias,
+        tags: &args.tag,
+    }
+}
+
 // ── Handle: mf term new (US1 / T017) ─────────────────────────────────────────
 
 fn handle_new(args: TermNewArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
@@ -166,16 +200,9 @@ fn handle_new(args: TermNewArgs, root: &Path, cwd: &Path, format: Format) -> Res
             ));
         }
         let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
-        term_svc::new_term(&project_path, &args.term, args.definition.as_deref(), &args.alias, &args.tag)?
+        term_svc::new_term(&project_path, &args.term, new_input(&args))?
     } else {
-        term_svc::global::new_term(
-            root,
-            &args.term,
-            args.definition.as_deref(),
-            &args.alias,
-            &args.tag,
-            &args.misrecognition,
-        )?
+        term_svc::global::new_term(root, &args.term, new_input(&args), &args.misrecognition)?
     };
 
     match format {
@@ -347,10 +374,28 @@ fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_
             }
         }
         for f in &report.findings {
-            lines.push(format!(
-                "{}:{}:{}: \"{}\" → \"{}\" [{}]",
-                f.path, f.line, f.column, f.original, f.correct, f.term
-            ));
+            if f.safety_reason.as_deref() == Some("ambiguous") {
+                let mut seen = std::collections::BTreeSet::new();
+                let unique: Vec<&str> =
+                    f.candidates.iter().map(|c| c.term.as_str()).filter(|t| seen.insert(*t)).collect();
+                lines.push(format!(
+                    "{}:{}:{}: \"{}\" ambiguous: {}",
+                    f.path,
+                    f.line,
+                    f.column,
+                    f.original,
+                    unique.join(", ")
+                ));
+            } else {
+                let confidence_part = match f.confidence {
+                    Some(c) => format!(" [confidence={c:.2}]"),
+                    None => String::new(),
+                };
+                lines.push(format!(
+                    "{}:{}:{}: \"{}\" → \"{}\" [{}]{}",
+                    f.path, f.line, f.column, f.original, f.correct, f.term, confidence_part
+                ));
+            }
         }
     }
 
@@ -422,11 +467,19 @@ fn handle_learn(args: TermLearnArgs, root: &Path, cwd: &Path, format: Format) ->
 // ── Handle: mf term fix (US6 / T041) ─────────────────────────────────────────
 
 fn handle_fix(args: TermFixArgs, root: &Path, cwd: &Path, format: Format) -> Result<CommandOutcome> {
+    if args.description.is_some() && args.clear_description {
+        return Err(MfError::usage("--description and --clear-description are mutually exclusive", None));
+    }
+    if args.confidence.is_some() && args.clear_confidence {
+        return Err(MfError::usage("--confidence and --clear-confidence are mutually exclusive", None));
+    }
+
+    let update = fix_update(&args);
     let term = if let Some(ref project) = args.project {
         let project_path = svc_util::resolve_project(root, Some(project.as_str()), cwd)?;
-        term_svc::fix_term(&project_path, &args.term, args.definition.as_deref(), &args.alias, &args.tag)?
+        term_svc::fix_term(&project_path, &args.term, update)?
     } else {
-        term_svc::global::fix_term(root, &args.term, args.definition.as_deref(), &args.alias, &args.tag)?
+        term_svc::global::fix_term(root, &args.term, update)?
     };
 
     match format {
@@ -465,6 +518,12 @@ fn render_term_show(term: &crate::model::term::Term, format: Format) -> Result<C
             lines.push(format!("Term:        {}", term.term));
             if let Some(def) = &term.definition {
                 lines.push(format!("Definition:  {def}"));
+            }
+            if let Some(desc) = &term.description {
+                lines.push(format!("Description: {desc}"));
+            }
+            if let Some(conf) = term.confidence {
+                lines.push(format!("Confidence:  {conf:.2}"));
             }
             if !term.aliases.is_empty() {
                 lines.push(format!("Aliases:     {}", term.aliases.join(", ")));

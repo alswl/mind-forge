@@ -10,6 +10,10 @@ pub struct Correction {
 pub struct Term {
     pub term: String,
     pub definition: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
     #[serde(default)]
     pub aliases: Vec<String>,
     #[serde(default)]
@@ -29,6 +33,24 @@ pub struct TermFinding {
     pub original: String,
     pub correct: String,
     pub term: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
+    pub replacement_eligible: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub safety_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub candidates: Vec<CandidateTerm>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct CandidateTerm {
+    pub term: String,
+    pub correct: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]

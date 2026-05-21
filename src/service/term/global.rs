@@ -13,7 +13,8 @@
 
 use std::path::Path;
 
-use super::{dedup_preserve_first, sort_terms_by_name};
+use super::fix::apply_update;
+use super::{dedup_preserve_first, sort_terms_by_name, TermInput, TermUpdate};
 use crate::error::{MfError, Result};
 use crate::model::term::{Correction, Term};
 use crate::service::term::repo_format::{self, path_for, TermsFileFormat};
@@ -80,39 +81,41 @@ fn repo_field_error(field_name: &str) -> MfError {
 // ── Global term operations ────────────────────────────────────────────────
 
 /// Register a new term in the global terms file.
-pub fn new_term(
-    repo_root: &Path,
-    term: &str,
-    definition: Option<&str>,
-    aliases: &[String],
-    tags: &[String],
-    misrecognitions: &[String],
-) -> Result<Term> {
+pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecognitions: &[String]) -> Result<Term> {
     if term.trim().is_empty() {
         return Err(MfError::usage("term name cannot be empty", None));
     }
+
+    super::validate_confidence(input.confidence)?;
 
     let (mut terms, format) = load_terms_with_format(repo_root)?;
     let on_disk_content = std::fs::read_to_string(path_for(repo_root)).ok();
     let misrecognitions = dedup_preserve_first(misrecognitions);
 
+    if terms.iter().any(|t| t.term == term) {
+        return Err(MfError::usage(
+            format!("term '{term}' already exists"),
+            Some("use 'mf term fix' to modify the existing term".to_string()),
+        ));
+    }
+
     match format {
         TermsFileFormat::Repository => {
-            assert_no_unsupported_repo_fields(definition, aliases, tags)?;
+            assert_no_unsupported_repo_fields(input.definition, input.aliases, input.tags)?;
 
-            if terms.iter().any(|t| t.term == term) {
-                return Err(MfError::usage(
-                    format!("term '{term}' already exists"),
-                    Some("use 'mf term fix' to modify the existing term".to_string()),
-                ));
-            }
-
-            let new_content =
-                repo_format::append_term_repo_format(on_disk_content.as_deref().unwrap_or(""), term, &misrecognitions)?;
+            let new_content = repo_format::append_term_repo_format(
+                on_disk_content.as_deref().unwrap_or(""),
+                term,
+                &misrecognitions,
+                input.description,
+                input.confidence,
+            )?;
 
             let new_entry = Term {
                 term: term.to_string(),
                 definition: None,
+                description: input.description.map(String::from),
+                confidence: input.confidence,
                 aliases: vec![],
                 tags: vec![],
                 corrections: misrecognitions
@@ -128,15 +131,8 @@ pub fn new_term(
             Ok(new_entry)
         }
         TermsFileFormat::SchemaVersion => {
-            if terms.iter().any(|t| t.term == term) {
-                return Err(MfError::usage(
-                    format!("term '{term}' already exists"),
-                    Some("use 'mf term fix' to modify the existing term".to_string()),
-                ));
-            }
-
-            let aliases = dedup_preserve_first(aliases);
-            let tags = dedup_preserve_first(tags);
+            let aliases = dedup_preserve_first(input.aliases);
+            let tags = dedup_preserve_first(input.tags);
 
             for alias in &aliases {
                 for t in terms.iter() {
@@ -154,7 +150,9 @@ pub fn new_term(
 
             let new_entry = Term {
                 term: term.to_string(),
-                definition: definition.and_then(|s| if s.is_empty() { None } else { Some(s.to_string()) }),
+                definition: input.definition.and_then(|s| if s.is_empty() { None } else { Some(s.to_string()) }),
+                description: input.description.map(String::from),
+                confidence: input.confidence,
                 aliases,
                 tags,
                 corrections,
@@ -194,26 +192,19 @@ pub fn show_term(repo_root: &Path, name: &str) -> Result<Term> {
     })
 }
 
-/// Modify an existing global term's definition, aliases, or tags.
-pub fn fix_term(
-    repo_root: &Path,
-    term_name: &str,
-    definition: Option<&str>,
-    aliases: &[String],
-    tags: &[String],
-) -> Result<Term> {
-    if definition.is_none() && aliases.is_empty() && tags.is_empty() {
-        return Err(MfError::usage("at least one of --definition, --alias, --tag must be provided", None));
+/// Modify an existing global term's definition, aliases, tags, description, or confidence.
+pub fn fix_term(repo_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Result<Term> {
+    if !update.has_legacy_flags() && !update.has_metadata_flags() {
+        return Err(MfError::usage(
+            "at least one of --definition, --description, --confidence, --alias, --tag, --clear-description, --clear-confidence must be provided",
+            None,
+        ));
     }
+
+    super::validate_confidence(update.confidence)?;
 
     let (mut terms, format) = load_terms_with_format(repo_root)?;
-
-    if format == TermsFileFormat::Repository {
-        // Any flag is unsupported on repo-format; the "at least one"
-        // check above guarantees we hit one of the rejection branches.
-        assert_no_unsupported_repo_fields(definition, aliases, tags)?;
-        return Err(MfError::internal("fix_term: repo-format guard accepted a write — this is a bug"));
-    }
+    let on_disk_content = std::fs::read_to_string(path_for(repo_root)).ok();
 
     let pos = terms.iter().position(|t| t.term == term_name).ok_or_else(|| {
         MfError::usage(format!("term '{term_name}' not found"), Some("use 'mf term list' or 'mf term new'".to_string()))
@@ -227,31 +218,33 @@ pub fn fix_term(
         });
     }
 
-    let t = &mut terms[pos];
-    if let Some(def) = definition {
-        t.definition = if def.is_empty() { None } else { Some(def.to_string()) };
-    }
-    if !aliases.is_empty() {
-        let existing: Vec<String> = t.aliases.clone();
-        for alias in aliases {
-            if !existing.contains(alias) {
-                t.aliases.push(alias.clone());
+    match format {
+        TermsFileFormat::Repository => {
+            if update.has_legacy_flags() {
+                assert_no_unsupported_repo_fields(update.definition, update.aliases, update.tags)?;
+                return Err(MfError::internal("fix_term: repo-format guard accepted a write — this is a bug"));
             }
-        }
-    }
-    if !tags.is_empty() {
-        let existing: Vec<String> = t.tags.clone();
-        for tag in tags {
-            if !existing.contains(tag) {
-                t.tags.push(tag.clone());
-            }
-        }
-    }
 
-    let result = t.clone();
-    sort_terms_by_name(&mut terms);
-    save_terms_with_format(repo_root, &terms, TermsFileFormat::SchemaVersion, None)?;
-    Ok(result)
+            let content = on_disk_content.as_deref().unwrap_or("");
+            let desc_val = if update.clear_description { Some("") } else { update.description };
+            let conf_val = if update.clear_confidence { None } else { update.confidence };
+
+            let result = repo_format::update_term_metadata_repo_format(content, term_name, desc_val, conf_val)?;
+
+            apply_update(&mut terms[pos], &update);
+            let result_term = terms[pos].clone();
+            sort_terms_by_name(&mut terms);
+            save_terms_with_format(repo_root, &terms, TermsFileFormat::Repository, Some(&result.content))?;
+            Ok(result_term)
+        }
+        TermsFileFormat::SchemaVersion => {
+            apply_update(&mut terms[pos], &update);
+            let result = terms[pos].clone();
+            sort_terms_by_name(&mut terms);
+            save_terms_with_format(repo_root, &terms, TermsFileFormat::SchemaVersion, None)?;
+            Ok(result)
+        }
+    }
 }
 
 /// Find a global term by its main name or alias. Returns the index.
@@ -341,13 +334,25 @@ mod tests {
         std::fs::write(path_for(root), "schema_version: '1'\nterms: []\n").unwrap();
     }
 
+    fn def_input(def: &str) -> TermInput<'_> {
+        TermInput { definition: Some(def), ..TermInput::default() }
+    }
+
+    fn tags_input<'a>(def: Option<&'a str>, tags: &'a [String]) -> TermInput<'a> {
+        TermInput { definition: def, tags, ..TermInput::default() }
+    }
+
+    fn aliases_input<'a>(aliases: &'a [String]) -> TermInput<'a> {
+        TermInput { aliases, ..TermInput::default() }
+    }
+
     #[test]
     fn new_and_list() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         seed_schema_version(root);
 
-        let t = new_term(root, "api-gateway", Some("The API gateway service"), &[], &[], &[]).unwrap();
+        let t = new_term(root, "api-gateway", def_input("The API gateway service"), &[]).unwrap();
         assert_eq!(t.term, "api-gateway");
         assert_eq!(t.definition.as_deref(), Some("The API gateway service"));
 
@@ -361,8 +366,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         seed_schema_version(root);
-        new_term(root, "foo", None, &[], &[], &[]).unwrap();
-        let err = new_term(root, "foo", None, &[], &[], &[]).unwrap_err();
+        new_term(root, "foo", TermInput::default(), &[]).unwrap();
+        let err = new_term(root, "foo", TermInput::default(), &[]).unwrap_err();
         assert!(err.to_string().contains("already exists"));
     }
 
@@ -371,7 +376,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         seed_schema_version(root);
-        let err = new_term(root, "", None, &[], &[], &[]).unwrap_err();
+        let err = new_term(root, "", TermInput::default(), &[]).unwrap_err();
         assert!(err.to_string().contains("cannot be empty"));
     }
 
@@ -380,7 +385,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         seed_schema_version(root);
-        new_term(root, "rust", Some("A systems programming language"), &[], &["lang".into()], &[]).unwrap();
+        let tags = vec!["lang".to_string()];
+        new_term(root, "rust", tags_input(Some("A systems programming language"), &tags), &[]).unwrap();
 
         let t = show_term(root, "rust").unwrap();
         assert_eq!(t.term, "rust");
@@ -399,9 +405,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         seed_schema_version(root);
-        new_term(root, "k8s", Some("Kubernetes"), &[], &[], &[]).unwrap();
+        new_term(root, "k8s", def_input("Kubernetes"), &[]).unwrap();
 
-        let t = fix_term(root, "k8s", Some("Kubernetes (K8s)"), &[], &[]).unwrap();
+        let t = fix_term(root, "k8s", TermUpdate { definition: Some("Kubernetes (K8s)"), ..TermUpdate::default() })
+            .unwrap();
         assert_eq!(t.definition.as_deref(), Some("Kubernetes (K8s)"));
     }
 
@@ -410,7 +417,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         seed_schema_version(root);
-        new_term(root, "Kubernetes", None, &["k8s".into()], &[], &[]).unwrap();
+        let aliases = vec!["k8s".to_string()];
+        new_term(root, "Kubernetes", aliases_input(&aliases), &[]).unwrap();
 
         let (t, appended) = learn_correction(root, "kube", "Kubernetes").unwrap();
         assert!(appended);
@@ -422,7 +430,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         seed_schema_version(root);
-        new_term(root, "Kubernetes", None, &[], &[], &[]).unwrap();
+        new_term(root, "Kubernetes", TermInput::default(), &[]).unwrap();
         learn_correction(root, "kube", "Kubernetes").unwrap();
         let (_, appended) = learn_correction(root, "kube", "Kubernetes").unwrap();
         assert!(!appended);
@@ -433,9 +441,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         seed_schema_version(root);
-        new_term(root, "alpha", None, &[], &["test".into()], &[]).unwrap();
-        new_term(root, "beta", None, &[], &["prod".into()], &[]).unwrap();
-        new_term(root, "gamma", None, &[], &["test".into()], &[]).unwrap();
+        let test_tag = vec!["test".to_string()];
+        let prod_tag = vec!["prod".to_string()];
+        new_term(root, "alpha", tags_input(None, &test_tag), &[]).unwrap();
+        new_term(root, "beta", tags_input(None, &prod_tag), &[]).unwrap();
+        new_term(root, "gamma", tags_input(None, &test_tag), &[]).unwrap();
 
         let list = list_terms(root, Some("test")).unwrap();
         assert_eq!(list.len(), 2);
@@ -446,8 +456,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         seed_schema_version(root);
-        new_term(root, "alpha", None, &["a".into()], &[], &[]).unwrap();
-        let err = new_term(root, "beta", None, &["a".into()], &[], &[]).unwrap_err();
+        let aliases = vec!["a".to_string()];
+        new_term(root, "alpha", aliases_input(&aliases), &[]).unwrap();
+        let err = new_term(root, "beta", aliases_input(&aliases), &[]).unwrap_err();
         assert!(err.to_string().contains("conflicts"));
     }
 
