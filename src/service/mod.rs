@@ -3,6 +3,7 @@ pub mod asset;
 pub mod build;
 pub mod config;
 pub mod effective_date;
+pub mod identity;
 pub mod index;
 pub mod lifecycle;
 pub mod project;

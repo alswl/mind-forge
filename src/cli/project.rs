@@ -45,7 +45,8 @@ pub enum ProjectSubcommand {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectNewArgs {
-    pub name: String,
+    /// Project path (cwd-relative, repo-relative, or simple name).
+    pub path: String,
     #[arg(long)]
     pub template: Option<String>,
     #[arg(long)]
@@ -153,12 +154,30 @@ pub fn dispatch(
 
 fn handle_new(args: ProjectNewArgs, repo_root: Option<&PathBuf>, _format: Format) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
-    let report = svc::project::scaffold(root, &args.name, args.force)?;
-    let entry = svc::project::upsert_project_entry(root, &args.name, &report.created_at)?;
+    let cwd = std::env::current_dir().map_err(MfError::Io)?;
+
+    // Normalize the user-provided selector into a canonical project identity
+    let identity = svc::identity::normalize_project_selector(root, &args.path, &cwd)?;
+
+    // Reject if the resolved path is inside another existing project (nested).
+    // The walk starts at the target's parent, so the new project itself can
+    // never match — any `Some(...)` here is genuinely an ancestor project.
+    if let Some(parent) = identity.resolved_path.parent() {
+        if let Some(parent_project) = svc::util::detect_current_project(root, parent) {
+            return Err(MfError::usage(
+                format!("project path '{}' is inside another project '{}'", identity.path, parent_project),
+                Some("create the project outside the existing project root".to_string()),
+            ));
+        }
+    }
+
+    let report =
+        svc::project::scaffold(root, &identity.requested_path, &identity.path, &identity.resolved_path, args.force)?;
+    let entry = svc::project::upsert_project_entry(root, &identity.path, &report.created_at, args.force)?;
 
     let data = serde_json::json!({
-        "name": report.name,
-        "path": report.project_path,
+        "requested_path": report.requested_path,
+        "path": report.path,
         "created_at": entry.created_at,
         "scaffolded": report.scaffolded,
     });

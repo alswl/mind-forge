@@ -8,7 +8,7 @@ use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::model::asset::AssetKind;
 use crate::output::Format;
-use crate::service::{asset as asset_svc, util as svc_util};
+use crate::service::{asset as asset_svc, identity, util as svc_util};
 
 #[derive(Debug, Clone, Args)]
 pub struct AssetCmd {
@@ -110,7 +110,8 @@ pub struct AssetCleanArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct AssetShowArgs {
-    pub name: String,
+    /// Asset path (e.g. assets/chart.png) or name
+    pub path: String,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -464,6 +465,7 @@ fn handle_remove(
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, project, cwd)?;
+    identity::validate_entity_path(&project_path, &args.file)?;
     let report = asset_svc::remove_asset(&project_path, &args.file, args.force, args.dry_run)?;
 
     match format {
@@ -489,6 +491,8 @@ fn handle_rename(
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, project, cwd)?;
+    identity::validate_entity_path(&project_path, &args.old_path)?;
+    identity::validate_entity_path(&project_path, &args.new_path)?;
     let report = asset_svc::rename_asset(&project_path, &args.old_path, &args.new_path, args.force, args.dry_run)?;
 
     match format {
@@ -512,13 +516,18 @@ fn handle_asset_show(
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, project, cwd)?;
+    identity::validate_entity_path(&project_path, &args.path)?;
     let assets = asset_svc::list(&project_path, None, None)?;
 
-    let resolved = assets.iter().find(|a| a.name.eq_ignore_ascii_case(&args.name));
+    // Prefer exact path match, then fall back to name match (legacy)
+    let resolved = assets
+        .iter()
+        .find(|a| a.path == args.path)
+        .or_else(|| assets.iter().find(|a| a.name.eq_ignore_ascii_case(&args.path)));
 
     match resolved {
         None => Err(MfError::usage(
-            format!("asset '{}' not found", args.name),
+            format!("asset '{}' not found", args.path),
             Some("use `mf asset list` to see available assets".to_string()),
         )),
         Some(asset) => match format {

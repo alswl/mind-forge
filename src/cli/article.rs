@@ -10,7 +10,7 @@ use crate::error::{MfError, Result};
 use crate::model::article::ArticleStatus;
 use crate::model::config::TemplateMode;
 use crate::output::Format;
-use crate::service::{article as article_svc, config as config_svc, util as svc_util};
+use crate::service::{article as article_svc, config as config_svc, identity, util as svc_util};
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleCmd {
@@ -71,12 +71,14 @@ pub struct ArticleIndexArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleShowArgs {
-    pub title: String,
+    /// Article path (e.g. docs/weekly.md) or title
+    pub path: String,
 }
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleRemoveArgs {
-    pub title: String,
+    /// Article path (e.g. docs/weekly.md) or title
+    pub path: String,
     #[arg(short = 'f', long)]
     pub force: bool,
     #[arg(long = "dry-run")]
@@ -85,10 +87,10 @@ pub struct ArticleRemoveArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleRenameArgs {
-    /// Current article title
-    pub old_title: String,
-    /// New article title
-    pub new_title: String,
+    /// Current article path or title
+    pub old_path: String,
+    /// New article path or title
+    pub new_path: String,
     #[arg(short = 'f', long)]
     pub force: bool,
 }
@@ -209,7 +211,7 @@ pub fn dispatch(
             }
         }
         Some(ArticleSubcommand::Lint(args)) => {
-            let project_path = svc_util::resolve_project(root, None, &cwd)?;
+            let project_path = svc_util::resolve_project(root, project, &cwd)?;
             let issues = article_svc::lint_articles(&project_path, args.fix)?;
 
             match format {
@@ -312,7 +314,9 @@ pub fn dispatch(
         }
         Some(ArticleSubcommand::Rename(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
-            let report = article_svc::rename_article(&project_path, &args.old_title, &args.new_title, args.force)?;
+            identity::validate_entity_path(&project_path, &args.old_path)?;
+            identity::validate_entity_path(&project_path, &args.new_path)?;
+            let report = article_svc::rename_article(&project_path, &args.old_path, &args.new_path, args.force)?;
 
             match format {
                 Format::Json => {
@@ -329,7 +333,8 @@ pub fn dispatch(
         }
         Some(ArticleSubcommand::Remove(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
-            let report = article_svc::remove_article(&project_path, &args.title, args.force, args.dry_run)?;
+            identity::validate_entity_path(&project_path, &args.path)?;
+            let report = article_svc::remove_article(&project_path, &args.path, args.force, args.dry_run)?;
 
             match format {
                 Format::Json => {
@@ -347,19 +352,24 @@ pub fn dispatch(
 }
 
 fn handle_article_show(args: ArticleShowArgs, project_path: &Path, format: Format) -> Result<CommandOutcome> {
+    identity::validate_entity_path(project_path, &args.path)?;
     let config = config_svc::load_project(project_path, None)?;
     let articles = article_svc::list_articles(project_path)?;
 
-    let resolved = articles.iter().find(|a| {
-        let stem = crate::service::index::article_output_stem(&a.article_path);
-        a.title.eq_ignore_ascii_case(&args.title)
-            || stem.eq_ignore_ascii_case(&args.title)
-            || a.article_path.contains(&args.title)
+    // Prefer exact article_path match (path selector), then fall back to
+    // title/stem/contains for legacy title compatibility.
+    let resolved = articles.iter().find(|a| a.article_path == args.path).or_else(|| {
+        articles.iter().find(|a| {
+            let stem = crate::service::index::article_output_stem(&a.article_path);
+            a.title.eq_ignore_ascii_case(&args.path)
+                || stem.eq_ignore_ascii_case(&args.path)
+                || a.article_path.contains(&args.path)
+        })
     });
 
     match resolved {
         None => Err(MfError::usage(
-            format!("article '{}' not found", args.title),
+            format!("article '{}' not found", args.path),
             Some("use `mf article list` to see available articles".to_string()),
         )),
         Some(article) => {

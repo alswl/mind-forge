@@ -138,7 +138,7 @@ fn project_local_fallback() {
 
     assert_eq!(code, 0, "project-local fallback should succeed: stdout={stdout} stderr={stderr}");
 
-    let dest = ds.root().join("publisher-output").join("my-article.md");
+    let dest = project_dir.join("publisher-output").join("my-article.md");
     assert!(dest.exists(), "destination file should exist: {dest:?}");
 
     let content = fs::read_to_string(&dest).expect("read destination file");

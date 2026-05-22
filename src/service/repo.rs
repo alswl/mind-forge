@@ -93,6 +93,10 @@ fn serialize_mind_manifest(manifest: &MindsManifest) -> std::result::Result<Stri
         serde_yaml::Value::String("schema".to_string()),
         serde_yaml::Value::String(manifest.schema_version.clone()),
     );
+    map.insert(
+        serde_yaml::Value::String("projects_dir".to_string()),
+        serde_yaml::Value::String(manifest.projects_dir.clone()),
+    );
     let projects = manifest
         .projects
         .iter()
@@ -109,8 +113,9 @@ pub fn project_path_for(repo_root: &Path, name: &str) -> Result<Option<PathBuf>>
     }
     let manifest = load_manifest(&minds_path)?;
     for project in &manifest.projects {
-        if project.name == name || project_name_from_relpath(&project.path) == name {
-            return Ok(Some(repo_root.join(strip_dot_prefix(&project.path))));
+        let stripped = strip_dot_prefix(&project.path);
+        if project.name == name || project_name_from_relpath(&project.path) == name || stripped == name {
+            return Ok(Some(repo_root.join(stripped)));
         }
     }
     Ok(None)

@@ -49,23 +49,23 @@ pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path, project: Option<
         }
     };
 
-    let target = resolve_target(args, &config, repo_root)?;
+    let resolved = resolve_target(args, &config, repo_root, &project_path)?;
 
-    match target.target_type {
+    match resolved.target.target_type {
         PublishTargetType::Local => {
-            let outcome = run_local(args, &target, repo_root, &project_path, &config, &article_entry)?;
+            let outcome =
+                run_local(args, &resolved.target, &resolved.base_dir, &project_path, &config, &article_entry)?;
             Ok(PublishRunOutcome::Local(outcome))
         }
         PublishTargetType::YuquePrompt => {
-            let outcome = run_yuque_prompt(args, &target, &project_path, &config, &article_entry)?;
+            let outcome = run_yuque_prompt(args, &resolved.target, &project_path, &config, &article_entry)?;
             Ok(PublishRunOutcome::YuquePrompt(outcome))
         }
         PublishTargetType::Yuque
         | PublishTargetType::GithubPages
         | PublishTargetType::Custom
         | PublishTargetType::YuqueCc => {
-            let type_name = target_type_kebab(&target.target_type);
-            drop(target);
+            let type_name = target_type_kebab(&resolved.target.target_type);
             Err(MfError::not_implemented_with_hint(
                 format!("publish target type '{type_name}'"),
                 "tracked in upcoming ROADMAP-004; use type 'local' or 'yuque-prompt' instead",
@@ -225,7 +225,23 @@ pub fn render_prompt_text(o: &YuquePromptRunOutcome) -> String {
 // Helpers (T023–T026)
 // ---------------------------------------------------------------------------
 
-fn resolve_target(args: &PublishRunArgs, config: &MindConfig, repo_root: &Path) -> Result<PublishTarget> {
+/// Resolved target carrying the [`PublishTarget`] and the directory against
+/// which relative paths should be resolved.
+///
+/// - Project-level targets (from `mind.yaml`) use the project root as base.
+/// - Repo-level publisher files (from `.mind-forge/publisher/*.yaml`) use
+///   the repo root as base.
+pub struct ResolvedTarget {
+    pub target: PublishTarget,
+    pub base_dir: PathBuf,
+}
+
+fn resolve_target(
+    args: &PublishRunArgs,
+    config: &MindConfig,
+    repo_root: &Path,
+    project_root: &Path,
+) -> Result<ResolvedTarget> {
     let name = match args.target.as_deref() {
         Some(n) => n,
         None => config.publish.default_target.as_deref().ok_or_else(|| {
@@ -236,22 +252,24 @@ fn resolve_target(args: &PublishRunArgs, config: &MindConfig, repo_root: &Path) 
         })?,
     };
 
+    // Try file-based publisher first (repo-level, base = repo_root).
     if args.target.is_some() {
-        // When --target is explicitly specified, try file-based publisher first.
-        // Only fall back to mind.yaml on NotFound (unknown target), not on
-        // configuration errors (invalid/disabled/duplicate/secret-field).
-        match publisher_svc::resolve_target(repo_root, name, config) {
-            Ok(resolved) => return Ok(resolved.target),
-            Err(e) => {
-                if !matches!(&e, MfError::NotFound { .. }) {
-                    return Err(e);
-                }
-                // NotFound — fall through to mind.yaml check
-            }
+        let discovery = publisher_svc::discover(repo_root)?;
+        if discovery.publishers.iter().any(|p| p.name == name) {
+            let resolved = publisher_svc::resolve_target(repo_root, name, config)?;
+            return Ok(ResolvedTarget { target: resolved.target, base_dir: repo_root.to_path_buf() });
+        }
+        // Publisher has config errors (invalid name, secret field, etc.) —
+        // signal the block as a usage error for proper exit code (2).
+        if discovery.diagnostics.iter().any(|d| d.publisher_name.as_deref() == Some(name)) {
+            return Err(MfError::usage(
+                format!("publisher '{name}' has configuration errors and cannot be used"),
+                Some("run `mf publisher list` for details".to_string()),
+            ));
         }
     }
 
-    // Fall back to mind.yaml targets
+    // mind.yaml targets (project-scoped, base = project_root).
     let targets = config.publish.targets.as_deref().unwrap_or(&[]);
     let target = targets.iter().find(|t| t.name == name).ok_or_else(|| {
         let msg = if args.target.is_some() {
@@ -269,11 +287,11 @@ fn resolve_target(args: &PublishRunArgs, config: &MindConfig, repo_root: &Path) 
         ));
     }
 
-    Ok(target.clone())
+    Ok(ResolvedTarget { target: target.clone(), base_dir: project_root.to_path_buf() })
 }
 
 fn resolve_local_path(
-    repo_root: &Path,
+    base_dir: &Path,
     target: &PublishTarget,
     article: &Article,
 ) -> Result<(PathBuf, Option<EffectiveDateOut>)> {
@@ -321,7 +339,7 @@ fn resolve_local_path(
     if path.is_absolute() {
         Ok((path, effective_out))
     } else {
-        Ok((repo_root.join(path), effective_out))
+        Ok((base_dir.join(path), effective_out))
     }
 }
 
@@ -367,14 +385,14 @@ fn locate_build_artifact(project_path: &Path, config: &MindConfig, article_entry
 fn run_local(
     args: &PublishRunArgs,
     target: &PublishTarget,
-    repo_root: &Path,
+    base_dir: &Path,
     project_path: &Path,
     config: &MindConfig,
     article_entry: &Article,
 ) -> Result<LocalRunOutcome> {
     let (artifact_path, size_bytes) = locate_build_artifact(project_path, config, article_entry)?;
 
-    let (dest_dir, effective_out) = resolve_local_path(repo_root, target, article_entry)?;
+    let (dest_dir, effective_out) = resolve_local_path(base_dir, target, article_entry)?;
     let format =
         if config.build.format.is_empty() { defaults::DEFAULT_BUILD_FORMAT } else { config.build.format.as_str() };
     let prefix = target.prefix.as_deref().unwrap_or("");

@@ -3,39 +3,23 @@ use std::path::{Path, PathBuf};
 use crate::error::{MfError, Result};
 use crate::model::index::IndexFile;
 use crate::model::project::ProjectStatusSnapshot;
-use crate::service::{config, repo, util};
+use crate::service::{config, util};
 
 /// Resolve a project path within the repo root, with boundary checking.
+///
+/// Delegates to [`util::resolve_project`] for path identity resolution, then
+/// verifies the project exists and is within the repo boundary.
 pub fn resolve_project(repo_root: &Path, name: Option<&str>, cwd: &Path) -> Result<PathBuf> {
-    let projects_dir = repo::projects_dir_for(repo_root)?;
-    match name {
-        Some(name) => {
-            util::validate_project_name(name)?;
-            let target = repo::project_path_for(repo_root, name)?
-                .unwrap_or_else(|| util::project_dir_for(repo_root, &projects_dir, name));
-            // Check existence first so a missing project (or missing projects_dir
-            // entirely) yields a clean usage error rather than an IO error from
-            // canonicalize_within walking a non-existent parent.
-            if !target.join("mind.yaml").exists() {
-                return Err(MfError::usage(
-                    format!("project '{name}' not found in Mind Repo"),
-                    Some("use `mf project list` to see available projects".to_string()),
-                ));
-            }
-            util::canonicalize_within(repo_root, &target)
-        }
-        None => {
-            let detected = util::detect_current_project(repo_root, cwd).ok_or_else(|| {
-                MfError::usage(
-                    "could not detect current project; run from a project directory or specify --project",
-                    Some("use `mf project list` to see available projects".to_string()),
-                )
-            })?;
-            let target = repo::project_path_for(repo_root, &detected)?
-                .unwrap_or_else(|| util::project_dir_for(repo_root, &projects_dir, &detected));
-            util::canonicalize_within(repo_root, &target)
+    let target = util::resolve_project(repo_root, name, cwd)?;
+    if let Some(n) = name {
+        if !target.join("mind.yaml").exists() {
+            return Err(MfError::usage(
+                format!("project '{n}' not found in Mind Repo"),
+                Some("use `mf project list` to see available projects".to_string()),
+            ));
         }
     }
+    util::canonicalize_within(repo_root, &target)
 }
 
 /// Get status snapshot for a project path. `repo_root` is used to compute the

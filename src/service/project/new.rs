@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 
@@ -9,37 +9,57 @@ use crate::service::{repo, util};
 
 /// Report from a successful scaffold operation.
 pub struct ScaffoldReport {
-    pub name: String,
-    pub project_path: String,
+    pub requested_path: String,
+    pub path: String,
+    #[allow(dead_code)]
+    pub resolved_path: PathBuf,
     pub created_at: String,
     pub scaffolded: Vec<String>,
 }
 
-/// Create the standard project skeleton under `<repo_root>/<projects_dir>/<name>`.
-pub fn scaffold(repo_root: &Path, name: &str, force: bool) -> Result<ScaffoldReport> {
-    util::validate_project_name(name)?;
-
-    let projects_dir = repo::projects_dir_for(repo_root)?;
-    let trimmed = projects_dir.trim_matches('/');
-    let parent = if trimmed.is_empty() || trimmed == "." {
-        repo_root.to_path_buf()
-    } else {
-        let p = repo_root.join(trimmed);
-        if !p.exists() {
-            std::fs::create_dir_all(&p).map_err(MfError::Io)?;
-        }
-        p
-    };
-    let target = parent.join(name);
-    let resolved = util::canonicalize_within(repo_root, &target)?;
+/// Create the standard project skeleton for the given resolved project path.
+///
+/// `requested_path` is the raw user input. `canonical_path` is the
+/// repo-relative canonical project identity. `resolved_path` is the
+/// absolute path where directories and files will be created.
+pub fn scaffold(
+    repo_root: &Path,
+    requested_path: &str,
+    canonical_path: &str,
+    resolved_path: &Path,
+    force: bool,
+) -> Result<ScaffoldReport> {
+    // Verify the resolved path is within the repo boundary.
+    // Use a simple canonicalization check (not canonicalize_within which
+    // enforces kebab-case naming — the identity module already validated
+    // the path segments).
+    let repo_canonical = util::try_canonicalize(repo_root);
+    let resolved = util::try_canonicalize(resolved_path);
+    if !resolved.starts_with(&repo_canonical) {
+        return Err(MfError::usage(
+            format!("path '{}' is outside the Mind Repo root '{}'", resolved_path.display(), repo_canonical.display()),
+            Some("use a path under the repo root".to_string()),
+        ));
+    }
 
     if resolved.exists() && !force {
-        return Err(MfError::file_exists(resolved));
+        // Check if the directory is non-empty (not just a leftover empty dir)
+        let has_content = std::fs::read_dir(&resolved).ok().is_some_and(|mut d| d.next().is_some());
+        if has_content || resolved.join("mind.yaml").exists() {
+            return Err(MfError::file_exists(resolved));
+        }
     }
 
     let now = Utc::now();
     let created_at = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let mut scaffolded: Vec<String> = Vec::new();
+
+    // Create parent directories first
+    if let Some(parent) = resolved.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent).map_err(MfError::Io)?;
+        }
+    }
 
     for dir in defaults::REQUIRED_PROJECT_DIRS {
         let dir_path = resolved.join(dir);
@@ -64,15 +84,26 @@ pub fn scaffold(repo_root: &Path, name: &str, force: bool) -> Result<ScaffoldRep
     }
 
     Ok(ScaffoldReport {
-        name: name.to_string(),
-        project_path: repo::project_relpath(&projects_dir, name),
+        requested_path: requested_path.to_string(),
+        path: canonical_path.to_string(),
+        resolved_path: resolved,
         created_at,
         scaffolded,
     })
 }
 
-/// Upsert a project entry into `minds.yaml`.
-pub fn upsert_project_entry(repo_root: &Path, name: &str, created_at: &str) -> Result<ProjectEntry> {
+/// Upsert a project entry into `minds.yaml` by canonical path identity.
+///
+/// The project is registered using its repo-relative canonical path as both
+/// the `name` and `path` in the manifest. When `force` is false, duplicate
+/// path identities are rejected before writes. When `force` is true, an
+/// existing matching entry is returned unchanged (idempotent re-creation).
+pub fn upsert_project_entry(
+    repo_root: &Path,
+    canonical_path: &str,
+    created_at: &str,
+    force: bool,
+) -> Result<ProjectEntry> {
     let minds_path = repo_root.join("minds.yaml");
     let mut manifest = if minds_path.exists() {
         repo::load_manifest(&minds_path)?
@@ -80,26 +111,29 @@ pub fn upsert_project_entry(repo_root: &Path, name: &str, created_at: &str) -> R
         crate::model::manifest::MindsManifest::create_default()
     };
 
-    let entry_path = repo::project_relpath(&manifest.projects_dir, name);
-    let existing = manifest.projects.iter_mut().find(|p| p.name == name);
-    let entry = match existing {
-        Some(existing_entry) => {
-            if existing_entry.path != entry_path {
-                existing_entry.path = entry_path;
-            }
-            existing_entry.clone()
+    // Check for duplicate path identity
+    let existing = manifest
+        .projects
+        .iter()
+        .position(|p| p.name == canonical_path || p.path == canonical_path || p.path == format!("./{canonical_path}"));
+    if let Some(idx) = existing {
+        if force {
+            return Ok(manifest.projects[idx].clone());
         }
-        None => {
-            let entry = ProjectEntry {
-                name: name.to_string(),
-                path: entry_path,
-                created_at: created_at.to_string(),
-                archived_at: None,
-            };
-            manifest.projects.push(entry.clone());
-            entry
-        }
+        return Err(MfError::usage(
+            format!("project path '{}' is already registered as '{}'", canonical_path, manifest.projects[idx].name),
+            Some("project paths must be unique; use a different path".to_string()),
+        ));
+    }
+
+    let entry_path = format!("./{canonical_path}");
+    let entry = ProjectEntry {
+        name: canonical_path.to_string(),
+        path: entry_path,
+        created_at: created_at.to_string(),
+        archived_at: None,
     };
+    manifest.projects.push(entry.clone());
 
     repo::save_manifest(&manifest, &minds_path)?;
     Ok(entry)
