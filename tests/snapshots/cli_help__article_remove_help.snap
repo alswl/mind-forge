@@ -4,10 +4,10 @@ expression: stdout
 ---
 Remove an article
 
-Usage: mf article remove [OPTIONS] <TITLE>
+Usage: mf article remove [OPTIONS] <PATH>
 
 Arguments:
-  <TITLE>  
+  <PATH>  Article path (e.g. docs/weekly.md) or title
 
 Options:
   -f, --force

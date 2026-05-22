@@ -10,7 +10,7 @@ use crate::error::{MfError, Result};
 use crate::model::source::{FileKind, SourceKind};
 use crate::output::Format;
 use crate::service::source::InputForm;
-use crate::service::{source as svc_source, util as svc_util};
+use crate::service::{identity, source as svc_source, util as svc_util};
 
 #[derive(Debug, Clone, Args)]
 pub struct SourceCmd {
@@ -135,7 +135,8 @@ pub struct SourceListArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceUpdateArgs {
-    pub name: String,
+    /// Source path (e.g. sources/meeting/notes.md) or name
+    pub path: String,
     #[arg(long)]
     pub rename: Option<String>,
     #[arg(long)]
@@ -170,8 +171,10 @@ pub struct SourceIndexArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceRenameArgs {
-    pub old_name: String,
-    pub new_name: String,
+    /// Current source path or name
+    pub old_path: String,
+    /// New source path or name
+    pub new_path: String,
     #[arg(short = 'f', long)]
     pub force: bool,
     #[arg(long = "dry-run")]
@@ -271,9 +274,10 @@ fn handle_update(
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, project, cwd)?;
+    identity::validate_entity_path(&project_path, &args.path)?;
 
     let update_args =
-        svc_source::UpdateArgs { name: &args.name, rename: args.rename.as_deref(), url: args.url.as_deref() };
+        svc_source::UpdateArgs { name: &args.path, rename: args.rename.as_deref(), url: args.url.as_deref() };
 
     let source = svc_source::update(&project_path, &update_args)?;
 
@@ -339,6 +343,7 @@ fn handle_remove(
         deprecation.warn_subject("positional NAME", "full PATH (e.g., sources/yuque/foo.md)");
     }
     let project_path = svc_util::resolve_project(root, project, cwd)?;
+    identity::validate_entity_path(&project_path, &args.name_or_path)?;
     let report =
         svc_source::remove_source(&project_path, &args.name_or_path, args.keep_file, args.force, args.dry_run)?;
 
@@ -406,7 +411,9 @@ fn handle_rename(
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, project, cwd)?;
-    let report = svc_source::rename_source(&project_path, &args.old_name, &args.new_name, args.force, args.dry_run)?;
+    identity::validate_entity_path(&project_path, &args.old_path)?;
+    identity::validate_entity_path(&project_path, &args.new_path)?;
+    let report = svc_source::rename_source(&project_path, &args.old_path, &args.new_path, args.force, args.dry_run)?;
 
     match format {
         Format::Json => {

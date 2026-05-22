@@ -1255,3 +1255,202 @@ fn publish_run_local_target_expands_date_and_prefix_for_docs() {
         "FR-009: destination should expand date and prefix for docs article, got: {dest}"
     );
 }
+
+// ── Phase 5 US3: Project-local publish path resolution ──────────────────────
+
+// T041: Project-level mind.yaml local target resolving relative path under project root (dry-run)
+#[test]
+fn project_level_publish_relative_path_resolves_from_project_root_dry_run() {
+    let repo = common::setup_repo();
+    let project_name = "my-project";
+    let project_path = repo.path().join(project_name);
+    fs::create_dir_all(&project_path).unwrap();
+
+    // Use a relative path in the target; should resolve from project root
+    let mind_yaml = format!(
+        "schema_version: '1'\n\
+project:\n  name: {project_name}\n\
+build:\n  output_dir: _build\n  format: md\n\
+publish:\n  targets:\n    - name: local-out\n      type: local\n      enabled: true\n      path: outputs/published\n"
+    );
+    fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
+
+    let index_yaml = "schema_version: '1'\n\
+articles:\n  - title: My Article\n    project: my-project\n    type: blog\n    article_path: docs/my-article.md\n    status: draft\n    created_at: '2026-05-21T00:00:00Z'\n    updated_at: '2026-05-21T00:00:00Z'\n";
+    fs::write(project_path.join("mind-index.yaml"), index_yaml).unwrap();
+
+    fs::create_dir_all(project_path.join("docs")).unwrap();
+    fs::write(project_path.join("docs/my-article.md"), ARTICLE_BODY).unwrap();
+    fs::create_dir_all(project_path.join("_build")).unwrap();
+    fs::write(project_path.join("_build/my-article.md"), ARTICLE_BODY).unwrap();
+
+    // Dry-run from project dir
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(&project_path)
+        .args(["--json", "publish", "run", ARTICLE, "--target", "local-out", "--dry-run"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(output.status.success(), "stderr: {stderr}");
+
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let dest = v["data"]["destination"].as_str().unwrap();
+    // Should resolve under project root, not repo root.
+    // Use canonical paths because /tmp may be a symlink to /private/tmp on macOS.
+    let project_canonical = fs::canonicalize(&project_path).unwrap();
+    let expected_prefix = project_canonical.join("outputs/published");
+    assert!(
+        Path::new(dest).starts_with(&expected_prefix),
+        "project-level target should resolve under project root: {dest}\n  expected prefix: {expected_prefix:?}"
+    );
+}
+
+// T042: Real publish creates files under project root for project-level target
+#[test]
+fn project_level_publish_writes_under_project_root() {
+    let repo = common::setup_repo();
+    let project_name = "my-project";
+    let project_path = repo.path().join(project_name);
+    fs::create_dir_all(&project_path).unwrap();
+
+    let mind_yaml = format!(
+        "schema_version: '1'\n\
+project:\n  name: {project_name}\n\
+build:\n  output_dir: _build\n  format: md\n\
+publish:\n  targets:\n    - name: local-out\n      type: local\n      enabled: true\n      path: outputs/published\n"
+    );
+    fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
+
+    let index_yaml = "schema_version: '1'\n\
+articles:\n  - title: My Article\n    project: my-project\n    type: blog\n    article_path: docs/my-article.md\n    status: draft\n    created_at: '2026-05-21T00:00:00Z'\n    updated_at: '2026-05-21T00:00:00Z'\n";
+    fs::write(project_path.join("mind-index.yaml"), index_yaml).unwrap();
+
+    fs::create_dir_all(project_path.join("docs")).unwrap();
+    fs::write(project_path.join("docs/my-article.md"), ARTICLE_BODY).unwrap();
+    fs::create_dir_all(project_path.join("_build")).unwrap();
+    fs::write(project_path.join("_build/my-article.md"), ARTICLE_BODY).unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(&project_path)
+        .args(["publish", "run", ARTICLE, "--target", "local-out", "--force"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(output.status.success(), "stderr: {stderr}");
+
+    // File should exist under project root, not repo root
+    let project_canonical = fs::canonicalize(&project_path).unwrap();
+    let dest_file = project_canonical.join("outputs/published/my-article.md");
+    assert!(dest_file.exists(), "file should exist at project-relative path: {dest_file:?}");
+    assert_eq!(fs::read(&dest_file).unwrap(), ARTICLE_BODY);
+}
+
+// T043: Repo-level publisher relative path still resolves from repo root (regression)
+#[test]
+fn repo_level_publisher_relative_path_resolves_from_repo_root() {
+    let repo = setup_repo_with_targets("");
+
+    let relative_dest = "repo-publisher-output";
+    common::write_publisher_yaml(
+        &repo,
+        "blog",
+        &format!("type: local\nenabled: true\nconfig:\n  path: {relative_dest}\n"),
+    );
+
+    let out = run_publish(&repo, &["publish", "run", ARTICLE, "--target", "blog"]);
+    assert_eq!(out.status.code(), Some(0));
+
+    // Destination should be at repo-root/<path>, not project-root/<path>
+    let dest_file = repo.path().join(relative_dest).join("my-article.md");
+    assert!(dest_file.exists(), "repo-level publisher should resolve from repo root: {dest_file:?}");
+}
+
+// T044: Absolute local publish paths are not rebased
+#[test]
+fn absolute_publish_path_not_rebased() {
+    let repo = common::setup_repo();
+    let project_name = "my-project";
+    let project_path = repo.path().join(project_name);
+    fs::create_dir_all(&project_path).unwrap();
+
+    let dest_dir = tempfile::tempdir().unwrap();
+    let abs_dest = dest_dir.path().join("published").display().to_string();
+
+    let mind_yaml = format!(
+        "schema_version: '1'\n\
+project:\n  name: {project_name}\n\
+build:\n  output_dir: _build\n  format: md\n\
+publish:\n  targets:\n    - name: abs-out\n      type: local\n      enabled: true\n      path: {abs_dest}\n"
+    );
+    fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
+
+    let index_yaml = "schema_version: '1'\n\
+articles:\n  - title: My Article\n    project: my-project\n    type: blog\n    article_path: docs/my-article.md\n    status: draft\n    created_at: '2026-05-21T00:00:00Z'\n    updated_at: '2026-05-21T00:00:00Z'\n";
+    fs::write(project_path.join("mind-index.yaml"), index_yaml).unwrap();
+
+    fs::create_dir_all(project_path.join("docs")).unwrap();
+    fs::write(project_path.join("docs/my-article.md"), ARTICLE_BODY).unwrap();
+    fs::create_dir_all(project_path.join("_build")).unwrap();
+    fs::write(project_path.join("_build/my-article.md"), ARTICLE_BODY).unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(&project_path)
+        .args(["--json", "publish", "run", ARTICLE, "--target", "abs-out", "--dry-run"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(output.status.success(), "stderr: {stderr}");
+
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let dest = v["data"]["destination"].as_str().unwrap();
+    assert!(dest.starts_with(&abs_dest), "absolute path should not be rebased: {dest}\n  expected prefix: {abs_dest}");
+}
+
+// T045: JSON envelope destination matches the selected declaration base
+#[test]
+fn project_level_publish_json_destination_matches_declaration_base() {
+    let repo = common::setup_repo();
+    let project_name = "my-project";
+    let project_path = repo.path().join(project_name);
+    fs::create_dir_all(&project_path).unwrap();
+
+    let mind_yaml = format!(
+        "schema_version: '1'\n\
+project:\n  name: {project_name}\n\
+build:\n  output_dir: _build\n  format: md\n\
+publish:\n  targets:\n    - name: project-out\n      type: local\n      enabled: true\n      path: dist/out\n"
+    );
+    fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
+
+    let index_yaml = "schema_version: '1'\n\
+articles:\n  - title: My Article\n    project: my-project\n    type: blog\n    article_path: docs/my-article.md\n    status: draft\n    created_at: '2026-05-21T00:00:00Z'\n    updated_at: '2026-05-21T00:00:00Z'\n";
+    fs::write(project_path.join("mind-index.yaml"), index_yaml).unwrap();
+
+    fs::create_dir_all(project_path.join("docs")).unwrap();
+    fs::write(project_path.join("docs/my-article.md"), ARTICLE_BODY).unwrap();
+    fs::create_dir_all(project_path.join("_build")).unwrap();
+    fs::write(project_path.join("_build/my-article.md"), ARTICLE_BODY).unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(&project_path)
+        .args(["--json", "publish", "run", ARTICLE, "--target", "project-out", "--dry-run"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(output.status.success(), "stderr: {stderr}");
+
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(v["status"], "ok");
+
+    let dest = v["data"]["destination"].as_str().unwrap();
+    let project_canonical = fs::canonicalize(&project_path).unwrap();
+    let expected = project_canonical.join("dist/out/my-article.md").to_string_lossy().to_string();
+    assert_eq!(dest, expected, "destination should match project-relative declaration base");
+}

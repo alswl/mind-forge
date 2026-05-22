@@ -4,10 +4,10 @@ expression: stdout
 ---
 Update a source
 
-Usage: mf source update [OPTIONS] <NAME>
+Usage: mf source update [OPTIONS] <PATH>
 
 Arguments:
-  <NAME>  
+  <PATH>  Source path (e.g. sources/meeting/notes.md) or name
 
 Options:
       --rename <RENAME>

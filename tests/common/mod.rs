@@ -284,3 +284,111 @@ pub fn assert_no_article_key(articles_map: &serde_yaml::Value, key: &str) {
         key
     );
 }
+
+// ── T002: Unicode/emoji workspace fixture helpers ──
+
+/// Create a nested workspace-style project at the given repo-relative path,
+/// e.g. `workspaces/E_团队周报/projects/2026-W21_iSee团队周报`.
+/// Creates all parent directories, writes `mind.yaml` in the leaf directory,
+/// and registers the project path in `minds.yaml`.
+#[allow(dead_code)]
+pub fn create_nested_project(repo: &TempDir, project_path: &str) {
+    let full_path = repo.path().join(project_path);
+    fs::create_dir_all(&full_path).unwrap();
+    fs::write(full_path.join("mind.yaml"), "schema_version: '1'\n").unwrap();
+
+    // Update minds.yaml with the project path
+    let minds_content = format!(
+        "schema_version: '1'\nprojects_dir: '.'\nprojects:\n  - name: '{}'\n    path: ./{}\n    created_at: '2026-05-21T00:00:00Z'\n",
+        project_path, project_path
+    );
+    fs::write(repo.path().join("minds.yaml"), minds_content).unwrap();
+}
+
+/// Set up a repo with a nested workspace project for Unicode path testing.
+/// Returns the repo and the repo-relative project path.
+#[allow(dead_code)]
+pub fn setup_unicode_workspace_repo() -> (TempDir, String) {
+    let repo = setup_repo();
+    let project_path = "workspaces/E_团队周报/projects/2026-W21_iSee团队周报";
+    create_nested_project(&repo, project_path);
+    (repo, project_path.to_string())
+}
+
+/// Set up a repo with an emoji workspace project for Unicode path testing.
+#[allow(dead_code)]
+pub fn setup_emoji_workspace_repo() -> (TempDir, String) {
+    let repo = setup_repo();
+    let project_path = "workspaces/📊周报/projects/2026-W21_团队复盘🚀";
+    create_nested_project(&repo, project_path);
+    (repo, project_path.to_string())
+}
+
+/// Create a nested directory structure under the repo without registering a project.
+/// Useful for testing cwd-relative operations.
+#[allow(dead_code)]
+pub fn create_nested_dirs(repo: &TempDir, rel_path: &str) -> PathBuf {
+    let full_path = repo.path().join(rel_path);
+    fs::create_dir_all(&full_path).unwrap();
+    full_path
+}
+
+// ── T003: Helper assertions for canonical path output ──
+
+/// Assert that `stdout` JSON envelope has `data.path` equal to `expected_path`.
+#[allow(dead_code)]
+pub fn assert_json_path(stdout: &str, expected_path: &str) {
+    let v: serde_json::Value = serde_json::from_str(stdout).expect("valid JSON envelope");
+    let data_path = v["data"]["path"].as_str().unwrap_or_else(|| panic!("data.path missing in JSON: {stdout}"));
+    assert_eq!(data_path, expected_path, "canonical path mismatch in: {stdout}");
+}
+
+/// Assert that `stdout` JSON envelope has `data.requested_path` equal to `expected`.
+#[allow(dead_code)]
+pub fn assert_json_requested_path(stdout: &str, expected: &str) {
+    let v: serde_json::Value = serde_json::from_str(stdout).expect("valid JSON envelope");
+    let requested =
+        v["data"]["requested_path"].as_str().unwrap_or_else(|| panic!("data.requested_path missing in JSON: {stdout}"));
+    assert_eq!(requested, expected, "requested_path mismatch in: {stdout}");
+}
+
+/// Assert that `stdout` text output contains the line `expected_line`.
+#[allow(dead_code)]
+pub fn assert_text_contains_line(stdout: &str, expected_line: &str) {
+    for line in stdout.lines() {
+        if line.trim() == expected_line.trim() {
+            return;
+        }
+    }
+    panic!("expected line not found:\n  expected: {expected_line}\n  stdout:\n{stdout}");
+}
+
+/// Assert that `stderr` contains the given diagnostic substring.
+#[allow(dead_code)]
+pub fn assert_stderr_contains(stderr: &str, expected: &str) {
+    assert!(
+        stderr.contains(expected),
+        "stderr does not contain expected text.\n  expected: {expected}\n  stderr:\n{stderr}"
+    );
+}
+
+/// Extract the `data.path` field from a JSON envelope on stdout.
+#[allow(dead_code)]
+pub fn json_data_path(stdout: &str) -> String {
+    let v: serde_json::Value = serde_json::from_str(stdout).expect("valid JSON envelope");
+    v["data"]["path"].as_str().expect("data.path field").to_string()
+}
+
+/// Assert JSON envelope status is "ok".
+#[allow(dead_code)]
+pub fn assert_json_ok(stdout: &str) {
+    let v: serde_json::Value = serde_json::from_str(stdout).expect("valid JSON envelope");
+    assert_eq!(v["status"].as_str().unwrap_or(""), "ok", "expected status=ok in: {stdout}");
+}
+
+/// Assert JSON envelope status is "error".
+#[allow(dead_code)]
+pub fn assert_json_error(stdout: &str) {
+    let v: serde_json::Value = serde_json::from_str(stdout).expect("valid JSON envelope");
+    assert_eq!(v["status"].as_str().unwrap_or(""), "error", "expected status=error in: {stdout}");
+}

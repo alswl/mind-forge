@@ -104,17 +104,17 @@ pub fn rel_posix_path(project_path: &Path, abs: &Path) -> Result<String> {
     Ok(rel.to_string_lossy().replace('\\', "/"))
 }
 
-/// Detect the current project name from `cwd` within a `repo_root`.
+/// Detect the current project from `cwd` within a `repo_root`.
 ///
 /// Walks up from `cwd` looking for `mind.yaml`, stopping at the `repo_root`
-/// boundary. Returns the directory name containing `mind.yaml`, or `None`.
+/// boundary. Returns the repo-relative canonical project path, or `None`.
 pub fn detect_current_project(repo_root: &Path, cwd: &Path) -> Option<String> {
     let repo = try_canonicalize(repo_root);
     let mut current = try_canonicalize(cwd);
 
     loop {
         if current.join("mind.yaml").exists() {
-            return current.file_name().map(|s| s.to_string_lossy().to_string());
+            return Some(repo_relative_path(&repo, &current));
         }
         if current == repo {
             return None;
@@ -174,31 +174,42 @@ pub fn repo_relative_path(repo_root: &Path, file_path: &Path) -> String {
 
 /// Resolve a project path within a repo root.
 ///
-/// If `project` is `Some(name)`, joins it under `repo_root/<projects_dir>/<name>`,
-/// where `projects_dir` is read from `minds.yaml` (default `"projects"`).
-/// If `None`, detects the current project from `cwd` by walking up for `mind.yaml`
-/// (returning the absolute project directory regardless of `projects_dir`).
+/// If `project` is `Some(selector)`, tries in order:
+/// 1. Manifest lookup by name or path.
+/// 2. If the selector contains `/` or `\`, resolve it as a cwd-relative or
+///    repo-relative path through the identity layer.
+/// 3. Fall back to `<repo_root>/<projects_dir>/<selector>`.
+///
+/// If `project` is `None`, auto-detects the current project from `cwd` by
+/// walking up for `mind.yaml`.
 pub fn resolve_project(repo_root: &Path, project: Option<&str>, cwd: &Path) -> Result<PathBuf> {
     let projects_dir = crate::service::repo::projects_dir_for(repo_root)?;
     match project {
-        Some(name) => {
-            if let Some(path) = crate::service::repo::project_path_for(repo_root, name)? {
-                Ok(path)
-            } else {
-                Ok(project_dir_for(repo_root, &projects_dir, name))
+        Some(selector) => {
+            // 1. Manifest lookup by name, path basename, or full path
+            if let Some(path) = crate::service::repo::project_path_for(repo_root, selector)? {
+                return Ok(path);
             }
+            // 2. If the selector looks like a path, resolve through identity layer
+            if selector.contains('/') || selector.contains('\\') {
+                return crate::service::identity::normalize_project_selector(repo_root, selector, cwd)
+                    .map(|id| id.resolved_path);
+            }
+            // 3. Fall back to projects_dir-relative
+            Ok(project_dir_for(repo_root, &projects_dir, selector))
         }
         None => {
-            let name = detect_current_project(repo_root, cwd).ok_or_else(|| {
+            let detected = detect_current_project(repo_root, cwd).ok_or_else(|| {
                 MfError::usage(
                     "could not detect current project; run from a project directory or specify --project",
                     Some("use `mf project list` to see available projects".to_string()),
                 )
             })?;
-            if let Some(path) = crate::service::repo::project_path_for(repo_root, &name)? {
+            // detected is a repo-relative path; join it directly under repo_root
+            if let Some(path) = crate::service::repo::project_path_for(repo_root, &detected)? {
                 Ok(path)
             } else {
-                Ok(project_dir_for(repo_root, &projects_dir, &name))
+                Ok(repo_root.join(&detected))
             }
         }
     }
