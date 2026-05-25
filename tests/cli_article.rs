@@ -134,8 +134,8 @@ fn article_list_shows_articles() {
         .expect("command runs");
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Article One"));
-    assert!(stdout.contains("Article Two"));
+    assert!(stdout.contains("docs/article-one"));
+    assert!(stdout.contains("docs/article-two"));
 }
 
 #[test]
@@ -330,7 +330,7 @@ fn article_index_adds_new_file() {
         .output()
         .expect("command runs");
     let list_stdout = String::from_utf8(list_output.stdout).unwrap();
-    assert!(list_stdout.contains("manual article")); // title derived from filename
+    assert!(list_stdout.contains("docs/manual-article.md")); // canonical path identity
 }
 
 #[test]
@@ -431,6 +431,37 @@ fn article_list_shows_default_article_dir() {
 }
 
 #[test]
+fn article_list_text_is_path_centered() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema_version: '1'\nbuild:\n  articles:\n    component-meta-core: {}\n    component-meta-spec: {}\n",
+    );
+    std::fs::create_dir_all(repo.path().join("my-project/docs/component-meta-core")).unwrap();
+    std::fs::write(repo.path().join("my-project/docs/component-meta-core/01-intro.md"), "# Intro\n").unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.starts_with("PATH"));
+    assert!(!stdout.contains("ORIGIN"), "human list should not expose discovery origin column: {stdout}");
+    assert!(stdout.contains("docs/component-meta-core"));
+    assert!(stdout.contains("BLOCKED"), "directory/block article should use writing content label: {stdout}");
+    assert!(stdout.contains("docs/component-meta-spec.md"));
+    assert!(stdout.contains("Missing"), "missing declared content should be explicit: {stdout}");
+    assert!(!stdout.contains("component meta core"), "list should not expose slug-derived titles: {stdout}");
+    assert!(!stdout.contains("directory"), "list should not expose filesystem primitive labels: {stdout}");
+}
+
+#[test]
 fn article_list_json_shows_article_dir_field() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
@@ -457,8 +488,37 @@ fn article_list_json_shows_article_dir_field() {
     let first = &articles[0];
     // The JSON should include a article_dir field per contract
     assert!(first.get("article_dir").is_some(), "article JSON should include article_dir field");
+    assert!(first.get("identity").is_some(), "article JSON should include path identity");
+    assert_eq!(first["identity"], first["article_path"]);
+    assert_eq!(first["path"], first["article_path"]);
+    assert!(first.get("content_kind").is_some(), "article JSON should include content kind");
     let article_dir = first["article_dir"].as_str().unwrap_or("");
     assert!(article_dir.contains("docs/"), "default article_dir should contain docs/: {article_dir}");
+}
+
+#[test]
+fn article_list_text_shows_single_file_content_shape() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "new", "Single File Article", "--file"])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("docs/single-file-article.md"));
+    assert!(stdout.contains("Single File"), "single-file article should use writing content label: {stdout}");
 }
 
 #[test]

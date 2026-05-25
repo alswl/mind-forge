@@ -187,6 +187,13 @@ pub fn dispatch(
 
                     // Article content existence
                     v["article_present"] = serde_json::Value::Bool(project_path.join(&a.article_path).exists());
+                    let content_kind = article_content_kind(&project_path, &a.article_path);
+                    v["content_kind"] = serde_json::Value::String(content_kind.to_string());
+
+                    // Path identity contract. Keep article_path/id/title for
+                    // compatibility, but make the canonical selector explicit.
+                    v["identity"] = serde_json::Value::String(a.article_path.clone());
+                    v["path"] = serde_json::Value::String(a.article_path.clone());
 
                     v
                 })
@@ -198,15 +205,7 @@ pub fn dispatch(
                     if enriched.is_empty() {
                         return Ok(CommandOutcome::Success(serde_json::json!("No articles found."), None));
                     }
-                    let mut lines = Vec::new();
-                    for v in &enriched {
-                        let title = v["title"].as_str().unwrap_or("");
-                        let article_path = v["article_path"].as_str().unwrap_or("");
-                        let article_dir = v["article_dir"].as_str().unwrap_or("");
-                        let status = v["status"].as_str().unwrap_or("draft");
-                        lines.push(format!("{title}  {article_path}  {article_dir}  {status}"));
-                    }
-                    Ok(CommandOutcome::Raw(lines.join("\n"), None))
+                    Ok(CommandOutcome::Raw(render_article_list_text(&project_path, &enriched), None))
                 }
             }
         }
@@ -349,6 +348,68 @@ pub fn dispatch(
             }
         }
     }
+}
+
+fn render_article_list_text(project_path: &Path, articles: &[serde_json::Value]) -> String {
+    let rows: Vec<[String; 3]> = articles
+        .iter()
+        .map(|v| {
+            let identity = v["identity"].as_str().or_else(|| v["article_path"].as_str()).unwrap_or("").to_string();
+            let content = v["content_kind"]
+                .as_str()
+                .map(article_content_label)
+                .unwrap_or_else(|| article_content_label(article_content_kind(project_path, &identity)))
+                .to_string();
+            let status = v["status"].as_str().unwrap_or("draft").to_string();
+            [identity, content, status]
+        })
+        .collect();
+
+    let headers = ["PATH", "CONTENT", "STATUS"];
+    let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
+    for row in &rows {
+        for (idx, value) in row.iter().enumerate() {
+            widths[idx] = widths[idx].max(value.len());
+        }
+    }
+
+    let mut lines = Vec::with_capacity(rows.len() + 1);
+    lines.push(format_article_list_row(&headers, &widths));
+    for row in rows {
+        lines.push(format_article_list_row(&row, &widths));
+    }
+    lines.join("\n")
+}
+
+fn article_content_kind(project_path: &Path, article_path: &str) -> &'static str {
+    let path = project_path.join(article_path);
+    if path.is_dir() {
+        "blocked"
+    } else if path.is_file() {
+        "single_file"
+    } else {
+        "missing"
+    }
+}
+
+fn article_content_label(kind: &str) -> &'static str {
+    match kind {
+        "blocked" => "BLOCKED",
+        "single_file" => "Single File",
+        "missing" => "Missing",
+        _ => "Unknown",
+    }
+}
+
+fn format_article_list_row<S: AsRef<str>>(columns: &[S], widths: &[usize]) -> String {
+    columns
+        .iter()
+        .enumerate()
+        .map(|(idx, value)| format!("{:<width$}", value.as_ref(), width = widths[idx]))
+        .collect::<Vec<_>>()
+        .join("  ")
+        .trim_end()
+        .to_string()
 }
 
 fn handle_article_show(args: ArticleShowArgs, project_path: &Path, format: Format) -> Result<CommandOutcome> {

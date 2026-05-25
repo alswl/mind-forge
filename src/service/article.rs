@@ -593,7 +593,7 @@ fn resolve_docs_article_path(project_root: &Path, key: &str, articles_dir: &str)
 /// it), but the user is told to fix it.
 fn warn_if_source_missing(project_root: &Path, id: &str, article_path: &str) {
     if !project_root.join(article_path).exists() {
-        eprintln!("warning: declared article '{id}' has no article content on disk (expected at '{article_path}')");
+        eprintln!("warning: declared article identity '{article_path}' has no content on disk (configured as '{id}')");
     }
 }
 
