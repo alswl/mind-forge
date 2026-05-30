@@ -89,7 +89,7 @@ mf completion zsh   # or bash | fish | powershell | elvish
 ```bash
 # 1. Create a Mind Repo
 mkdir my-repo && cd my-repo
-mf config init                         # creates minds.yaml
+mf init                                # creates minds.yaml + projects/
 
 # 2. Create a project (path-based identity, Unicode/emoji/dates supported)
 mf project new blog
@@ -197,65 +197,90 @@ These flags are available on most commands:
 | `-h`, `--help` | Show help |
 | `-V`, `--version` | Show version |
 
+Shared flag families (uniform across all commands they apply to):
+
+| Flag family | Applies to | Description |
+|------|------|------|
+| `--dry-run` | every mutating command (`new`, `add`, `rename`, `remove`, `archive`, `update`, `index`, lint `--fix`) | Preview without writing |
+| `-f`, `--force` | every `new`/`add`/`rename`/`remove`/`archive` | Overwrite or skip safety checks |
+| `-y`, `--yes` | every `remove` and `archive` | Confirm destructive action non-interactively |
+| `--no-headers`, `--no-trunc` | every `list` | Suppress table header / disable column truncation |
+| `--fix`, `--rule <RULE>`, `--severity <LEVEL>`, `--max-warnings <N>` | every `lint` | Auto-fix, restrict rule, filter severity, fail on warnings > N |
+
 `--project` is available on project-scoped commands (`article`, `asset`,
 `source`, `term`, `build`, `publish run`, etc.) and accepts repo-relative
 paths or project names. When running inside a project directory,
 `--project` can be omitted — the CLI auto-detects the current project.
 
+### `mf init [PATH]` — Initialize a Mind Repo
+
+Bootstrap a directory as a Mind Repo (creates `minds.yaml` and the
+default `projects/` container). Defaults to the current directory.
+
 ### `mf project` — Manage projects
 
 | Subcommand | Description |
 |-----------|-------------|
-| `new <PATH>` | Create a project. Accepts cwd-relative or repo-relative paths with Unicode, emoji, dates, spaces. `--template <TEMPLATE>`, `--force` |
+| `new <PATH>` | Create a project. Accepts cwd-relative or repo-relative paths with Unicode, emoji, dates, spaces. `--template <TEMPLATE>` |
 | `list` (ls) | List projects |
-| `archive <NAME_OR_PATH>` | Move a project to `_archived/` |
-| `status` (info) | Show project status. Requires `-p, --project <PROJECT>` |
-| `lint` | Lint project(s). `--fix`, `--rule <RULE>` (repeatable: `missing_directory`, `stale_index_entry`, `name_convention`, `missing_manifest`, `duplicate_key`). Requires `-p, --project <PROJECT>` |
-| `index` | Index projects (mf extension). `--dry-run` |
-| `show <PROJECT>` | Show project details |
-| `import <DIRECTORY>` | Import a directory as a project. `--type <TYPE>`, `--source <DIR>`, `--assets <DIR>`, `-f`, `-y, --non-interactive` |
+| `show <NAME>` | Show project details |
+| `rename <OLD> <NEW>` | Rename a project |
+| `remove <NAME>` (rm) | Remove a project (interactive confirmation in TTY) |
+| `archive <NAME_OR_PATH>` | Archive a project to `_archived/` (interactive confirmation in TTY) |
+| `lint` | Lint project(s). Rules: `missing_directory`, `stale_index_entry`, `name_convention`, `missing_manifest`, `duplicate_key`. Requires `-p, --project <PROJECT>` |
+| `index` | Index projects (mf extension) |
+| `import <DIRECTORY>` | Import a directory as a project. `--type <TYPE>`, `--source <DIR>`, `--assets <DIR>`, `-y, --non-interactive` |
 
 ### `mf article` — Manage articles
 
 | Subcommand | Description |
 |-----------|-------------|
-| `new <TYPE> <TITLE>` | Create an article. `-t, --template blank\|arch\|prd\|blog\|<path>`, `--file`, `--tag <TAG>`, `--draft`, `-f` |
+| `new <TITLE>` | Create an article. `-t, --template blank\|arch\|prd\|blog\|<path>`, `--file`, `--tag <TAG>`, `--draft` |
 | `list` (ls) | List articles |
-| `lint` | Lint articles. `--fix` |
-| `index` | Index articles (mf extension). `-n, --dry-run` |
+| `show <PATH>` | Show article details |
+| `rename <OLD_PATH> <NEW_PATH>` | Rename an article |
+| `remove <PATH>` (rm) | Remove an article (interactive confirmation in TTY) |
+| `lint` | Lint articles |
+| `index` | Index articles (mf extension). Also `-n` short for `--dry-run` |
 
 ### `mf source` — Manage content sources
 
 | Subcommand | Description |
 |-----------|-------------|
-| `add <INPUT>` | Add a source. `-n, --name <NAME>`, `--file-kind auto\|pdf\|file\|rss\|web`, `--source-kind yuque\|meeting\|misc`, `--link`, `-f` |
+| `add <INPUT>` | Add a source. `-n, --name <NAME>`, `--file-kind auto\|pdf\|file\|rss\|web`, `--source-kind yuque\|meeting\|misc`, `--link` |
 | `list` (ls) | List sources. `--filter <PATTERN>`, `-t, --type <KIND>` |
+| `show <NAME>` | Show source details |
 | `update <NAME>` | Update a source (mf extension). `--url <URL>`, `--rename <NAME>` |
-| `index` | Index sources (mf extension). `--dry-run` |
+| `rename <OLD_PATH> <NEW_PATH>` | Rename a source |
 | `remove <NAME_OR_PATH>` (rm) | Remove a source. `--keep-file` |
-| `clean` | Clean stale index entries. `--dry-run` |
+| `index` | Index sources (mf extension) |
+| `clean` | Clean stale index entries |
 
 ### `mf asset` — Manage project assets
 
 | Subcommand | Description |
 |-----------|-------------|
-| `add <PATH>` | Add an asset. `--name <NAME>`, `--tag <TAG>`, `--copy`/`--link`, `-f` |
+| `add <PATH>` | Add an asset. `--name <NAME>`, `--tag <TAG>`, `--copy`/`--link` |
 | `list` (ls) | List assets. `--filter <PATTERN>`, `--type image\|video\|audio\|other` |
+| `show <NAME>` | Show asset details |
 | `update [PATH]` | Update assets. `--set-url <URL>`, `--channel <CHANNEL>`, `--all` |
-| `index` | Index assets (mf extension). `--dry-run`, `--refresh-metadata` |
-| `clean` | Clean stale index entries. `--dry-run` |
-| `remove <FILE>` (rm) | Remove an asset. `-f` |
+| `rename <OLD_PATH> <NEW_PATH>` | Rename an asset |
+| `remove <FILE>` (rm) | Remove an asset |
+| `index` | Index assets (mf extension). `--refresh-metadata` |
+| `clean` | Clean stale index entries |
 
 ### `mf term` (alias: `mf terms`) — Manage terminology
 
 | Subcommand | Description |
 |-----------|-------------|
-| `new <TERM>` | Create a term (mf extension). `--definition <TEXT>`, `--alias <TEXT>`, `--tag <TAG>` |
+| `new <TERM>` | Create a term (mf extension). `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--misrecognition <TEXT>` |
 | `list` (ls) | List terms. `--filter <PATTERN>`, `--term <NAME>` (deprecated: use `show`) |
-| `lint [PATH]` | Lint term consistency in project docs. `--fix`, `--dry-run` |
-| `learn` | Learn a term correction. `--term <CANONICAL>`, `--alias <VARIANT>` |
-| `fix <TERM>` | Fix a term metadata (mf extension). `--definition <TEXT>`, `--alias <TEXT>`, `--tag <TAG>` |
 | `show <NAME>` | Show term details |
+| `add` | Add a term correction (mind primary; previously `learn`). `--term <CANONICAL>`, `--alias <VARIANT>` |
+| `update <TERM>` | Update term metadata (mf extension; previously `fix`). `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--clear-description`, `--clear-confidence` |
+| `rename <OLD> <NEW>` | Rename a term. `--keep-alias` keeps the old name as an alias |
+| `remove <TERM>` (rm) | Remove a term (interactive confirmation in TTY) |
+| `lint [PATH]` | Lint term consistency in project docs |
 
 Global terms (created without `--project`) are stored in `minds-terms.yaml` at
 the repo root. Project-scoped terms live in each project's `mind-index.yaml`.
@@ -266,29 +291,31 @@ the repo root. Project-scoped terms live in each project's `mind-index.yaml`.
 a repo-relative path prefixed with `@` (e.g. `@projects/blog/docs/2026-03-review/`).
 Directory articles are built by merging Markdown files in filename order.
 
-### `mf publish` — Publish articles
+### `mf publish` — Publish articles & manage targets
 
 | Subcommand | Description |
 |-----------|-------------|
-| `run <ARTICLE>` | Publish to a target (supported: `local`, `yuque-prompt`). `--target <TARGET>`, `--dry-run`, `-f` |
-| `update <ARTICLE>` | Update a publish record. `--target <TARGET>` (required), `--status draft\|published\|archived`, `--target-url <URL>`, `--set <KEY=VALUE>`, `--dry-run` |
+| `run <ARTICLE>` | Publish to a target (supported: `local`, `yuque-prompt`). `--target <TARGET>` |
+| `update <ARTICLE>` | Update a publish record. `--target <TARGET>` (required), `--status draft\|published\|archived`, `--target-url <URL>`, `--set <KEY=VALUE>` |
+| `target list` | List publish targets and diagnostics |
+| `target show <NAME>` | Show publish target details |
 
-### `mf publisher` — Manage repo-wide publishers
+### `mf render template` — Render templates
 
 | Subcommand | Description |
 |-----------|-------------|
-| `list` | List publishers and diagnostics |
+| `list` | List built-in and project-local render templates |
+| `show <NAME>` | Show template details + preview |
 
 ### `mf config` — Manage configuration
 
 | Subcommand | Description |
 |-----------|-------------|
 | `schema` | Show config JSON schema. `--output-format json\|yaml` (default: `json`) |
-| `show` | Show effective config. `--output-format json\|yaml` (default: `yaml`) |
-| `compile` | Alias of `show` |
+| `show` | Show effective config (canonical JSON envelope). `--output-format json\|yaml` (default: `yaml`) |
 | `generate` | Generate effective config file. `--output-format json\|yaml` (default: `yaml`), `-o, --output <PATH>` |
 | `default` | Show default config values. `--output-format json\|yaml` (default: `yaml`) |
-| `init` | Initialize config file (mf extension). `--output <PATH>`, `--target project\|repo` (default: `project`), `--force` |
+| `init` | **Deprecated:** use `mf init`. `--output <PATH>`, `--target project\|repo` (default: `project`), `--force` |
 
 ### `mf completion <SHELL>` — Generate shell completion
 
@@ -296,25 +323,27 @@ Supported shells: `bash`, `zsh`, `fish`, `powershell`, `elvish`
 
 ### `mf version` — Show version information
 
-Accepts `--json` for machine-readable output.
+Text output includes commit / build_date / rustc. JSON envelope adds
+`target_triple`. Pass `--json` for the machine-readable form.
 
 ## Features
 
-- **Project lifecycle** — `mf project new | list | archive | status | lint | index | show | import`; path-based identity supports Unicode, emoji, dates, spaces
+- **Repo bootstrap** — `mf init [PATH]` creates `minds.yaml` and `.mind/`
+- **Project lifecycle** — `mf project new | list | show | rename | remove | archive | lint | index | import`; path-based identity supports Unicode, emoji, dates, spaces
 - **Project auto-detection** — running inside a project directory auto-injects `--project`; cwd-relative paths normalized to repo-relative canonical identity
-- **Article management** — `mf article new | list | lint | index`; directory articles by default, `--file` for single-file shape; `--template blank|arch|prd|blog` or custom project-local template path
-- **Sources** — `mf source add | list | update | index | remove | clean`; `--file-kind auto|pdf|file|rss|web`, `--source-kind yuque|meeting|misc`
-- **Assets** — `mf asset add | list | update | index | clean | remove`; `--copy`/`--link` for copy vs symlink
-- **Glossary** — `mf term new | list | show | lint | learn | fix`; global terms in `minds-terms.yaml`, project-scoped terms in `mind-index.yaml`
+- **Article management** — `mf article new | list | show | rename | remove | lint | index`; directory articles by default, `--file` for single-file shape; `--template blank|arch|prd|blog` or custom project-local template path
+- **Sources** — `mf source add | list | show | update | rename | remove | index | clean`; `--file-kind auto|pdf|file|rss|web`, `--source-kind yuque|meeting|misc`
+- **Assets** — `mf asset add | list | show | update | rename | remove | index | clean`; `--copy`/`--link` for copy vs symlink
+- **Glossary** — `mf term new | list | show | add | update | rename | remove | lint`; global terms in `minds-terms.yaml`, project-scoped in `mind-index.yaml`
 - **Build** — config-driven assembly, directory-article merging, `--dry-run`, `--output`, and `@path/`-style article addressing
-- **Publish** — `mf publish run | update` against per-target publishers (`local`, `yuque-prompt`); project-level local targets resolve relative paths from project root
-- **Publishers** — `mf publisher list` for repo-wide publisher diagnostics
-- **Config** — `mf config schema | show | compile | generate | default | init`; centralized defaults for `docs/`, `sources/`, `assets/`, `_archived/`, and `outputs/`
+- **Publish** — `mf publish run | update | target list | target show` against per-target publishers (`local`, `yuque-prompt`); project-level local targets resolve relative paths from project root
+- **Render templates** — `mf render template list | show` covers built-in and project-local templates
+- **Config** — `mf config schema | show | generate | default`; centralized defaults for `docs/`, `sources/`, `assets/`, `_archived/`, and `outputs/`
 - **Plugins** — `mind.yaml` supports a `plugins` block for forward-compatible plugin configuration; the `typora-front-matter` plugin is enabled by default and injects `typora-copy-images-to` front matter into new articles
 - **Compatibility** — reads and writes mind 0.3.0 YAML; tolerates older `schema_version` and list-based shapes on read
 - **Shell completion** — `mf completion <SHELL>` for bash, zsh, fish, powershell, elvish
-- **Version** — `mf version` outputs the current CLI version in text or JSON
-- **Output contract** — `text` by default, `--json` for `{ status, command, data }` envelopes; stable exit codes
+- **Version** — `mf version` includes commit / build_date / rustc / target_triple
+- **Output contracts** — `text` by default, `--json` for `{ status, command, data }` envelopes; canonical per-verb shapes; identity round-trip between list and show; remove/archive use a TTY confirmation protocol; stable exit codes
 
 ## Output Contracts
 
