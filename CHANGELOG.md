@@ -3,6 +3,30 @@
 All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
+### Breaking Changes (JSON Envelope)
+
+All breaking changes are documented with before/after examples below.
+
+#### `term list --json` envelope
+- **Before**: `{ "status": "ok", "command": "mf", "data": [{"term": "RAG", ...}] }`
+- **After**: `{ "status": "ok", "command": "mf", "data": { "terms": [{"term": "RAG", "identity": "RAG", ...}] } }`
+
+#### `config show --json` envelope
+- **Before**: `{ "status": "ok", "command": "mf", "data": "<yaml string>" }`
+- **After**: `{ "status": "ok", "command": "mf", "data": { "projects_dir": "projects", ...structured config... } }`
+
+#### `source index --json` envelope
+- **Before**: `{ "status": "ok", "command": "mf", "data": "kept: N entries" }`
+- **After**: `{ "status": "ok", "command": "mf", "data": { "kind": "source", "added": [...], "removed": [...], "kept_count": N, "scanned_count": N, "dry_run": false } }`
+
+#### `asset index --json` envelope
+- **Before**: `{ "status": "ok", "command": "mf", "data": "N kept" }`
+- **After**: `{ "status": "ok", "command": "mf", "data": { "kind": "asset", "added": [...], "removed": [...], "kept_count": N, "scanned_count": N, "dry_run": false } }`
+
+#### Remove/archive confirmation in non-TTY
+- **Before**: `mf project remove demo | cat` → proceeded silently (exit 0)
+- **After**: `mf project remove demo | cat` → exits 1 with `pass --yes to confirm` hint
+
 ### Features
 - Default article new to directory blocks (by @alswl)
 - Add Typora front-matter plugin with config and article injection (by @alswl)

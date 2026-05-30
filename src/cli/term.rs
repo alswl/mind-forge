@@ -4,8 +4,18 @@ use clap::{Args, Subcommand};
 use serde::Serialize;
 
 use crate::cli::deprecation::DeprecationContext;
+use crate::cli::shared_flags::LintFlags;
+use crate::cli::shared_flags::NoHeadersFlag;
+use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
+use crate::model::Resource;
+use crate::output::confirm::{require_confirmation, ConfirmArgs};
+use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
+use crate::output::show::{
+    json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowSection, ShowValue,
+};
+use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, Verb, VerbResult};
 use crate::output::Format;
 use crate::service::{term as term_svc, util as svc_util};
 
@@ -46,6 +56,10 @@ pub struct TermListArgs {
     /// Look up a single term by name (deprecated: use `term show <NAME>`)
     #[arg(long)]
     pub term: Option<String>,
+    #[command(flatten)]
+    pub no_headers: NoHeadersFlag,
+    #[command(flatten)]
+    pub no_trunc: NoTruncFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -63,15 +77,15 @@ pub struct TermNewArgs {
     pub tag: Vec<String>,
     #[arg(long = "misrecognition")]
     pub misrecognition: Vec<String>,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct TermLintArgs {
     pub path: Option<String>,
-    #[arg(long)]
-    pub fix: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub lint: LintFlags,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -88,6 +102,8 @@ pub struct TermLearnArgs {
     /// Deprecated: use --alias (variant) instead
     #[arg(long)]
     pub correct: Option<String>,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -123,6 +139,8 @@ pub struct TermRemoveArgs {
     pub term: String,
     #[arg(short = 'f', long)]
     pub force: bool,
+    #[arg(short = 'y', long)]
+    pub yes: bool,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
 }
@@ -214,6 +232,22 @@ fn handle_new(
     format: Format,
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
+    if args.dry_run {
+        let result = VerbResult {
+            verb: Verb::Create,
+            kind: "term",
+            identity: args.term.clone(),
+            old_identity: None,
+            path: None,
+            dry_run: true,
+            details: serde_json::json!({"definition": args.definition, "aliases": args.alias, "tags": args.tag}),
+        };
+        return match format {
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        };
+    }
+
     let term = if let Some(project_name) = project {
         if !args.misrecognition.is_empty() {
             return Err(MfError::usage(
@@ -227,27 +261,18 @@ fn handle_new(
         term_svc::global::new_term(root, &args.term, new_input(&args), &args.misrecognition)?
     };
 
+    let result = VerbResult {
+        verb: Verb::Create,
+        kind: "term",
+        identity: term.term.clone(),
+        old_identity: None,
+        path: None,
+        dry_run: false,
+        details: serde_json::to_value(&term).map_err(MfError::Json)?,
+    };
     match format {
-        Format::Json => {
-            let data = serde_json::to_value(&term).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
-        }
-        Format::Text => {
-            let alias_count = term.aliases.len();
-            let tag_count = term.tags.len();
-            let misrecog_count = term.corrections.len();
-            let msg = format!(
-                "✓ added term: {} ({} alias{}, {} tag{}, {} misrecognition{})",
-                term.term,
-                alias_count,
-                if alias_count == 1 { "" } else { "es" },
-                tag_count,
-                if tag_count == 1 { "" } else { "s" },
-                misrecog_count,
-                if misrecog_count == 1 { "" } else { "s" },
-            );
-            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
-        }
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
     }
 }
 
@@ -280,51 +305,46 @@ fn handle_list(
         term_svc::global::list_terms(root, args.filter.as_deref())?
     };
 
+    let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc);
+
     match format {
         Format::Json => {
-            let data = serde_json::to_value(&terms).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
+            let items: Vec<serde_json::Value> = terms
+                .iter()
+                .map(|t| {
+                    let mut v = serde_json::to_value(t).map_err(MfError::Json)?;
+                    if let Some(obj) = v.as_object_mut() {
+                        obj.insert("identity".to_string(), serde_json::Value::String(t.identity()));
+                    }
+                    Ok(v)
+                })
+                .collect::<Result<Vec<_>>>()?;
+            Ok(CommandOutcome::Success(json_collection("terms", items), None))
         }
         Format::Text => {
-            if terms.is_empty() {
-                return Ok(CommandOutcome::Success(serde_json::Value::String("No terms found.".to_string()), None));
-            }
-            let mut lines = Vec::new();
-            lines.push(format!(
-                "{:<32} {:<60} {:<20} {:<20} {}",
-                "TERM", "DEFINITION", "ALIASES", "TAGS", "CORRECTIONS"
-            ));
+            let mut rows = Vec::with_capacity(terms.len());
             for t in &terms {
-                let def = t.definition.as_deref().unwrap_or("-");
-                let def_display = if def.len() > 60 {
-                    let mut end = 60;
-                    while !def.is_char_boundary(end) {
-                        end -= 1;
-                    }
-                    format!("{}…", &def[..end])
-                } else {
-                    def.to_string()
-                };
-                let alias_display = if t.aliases.is_empty() {
-                    "0".to_string()
-                } else {
-                    let count = t.aliases.len();
-                    let first_few: Vec<&str> = t.aliases.iter().take(3).map(|s| s.as_str()).collect();
-                    let joined = first_few.join(", ");
-                    if count > 3 {
-                        format!("{count} ({joined}…)")
-                    } else {
-                        format!("{count} ({joined})")
-                    }
-                };
-                let tags_display = t.tags.join(", ");
-                let corr_count = t.corrections.len();
-                lines.push(format!(
-                    "{:<32} {:<60} {:<20} {:<20} {}",
-                    t.term, def_display, alias_display, tags_display, corr_count
-                ));
+                let def = t.definition.as_deref().unwrap_or("-").to_string();
+                let alias_display = if t.aliases.is_empty() { "-".to_string() } else { t.aliases.join(", ") };
+                let tags_display = if t.tags.is_empty() { "-".to_string() } else { t.tags.join(", ") };
+                let corr_display =
+                    if t.corrections.is_empty() { "-".to_string() } else { t.corrections.len().to_string() };
+                rows.push(ListRow {
+                    cells: vec![
+                        ListCell::Text(t.term.clone()),
+                        ListCell::Text(def),
+                        ListCell::Text(alias_display),
+                        ListCell::Text(tags_display),
+                        ListCell::Text(corr_display),
+                    ],
+                });
             }
-            Ok(CommandOutcome::Raw(lines.join("\n"), None))
+            let view = ListView {
+                headers: &["TERM", "DEFINITION", "ALIASES", "TAGS", "CORRECTIONS"],
+                rows,
+                plural_noun: "terms",
+            };
+            Ok(CommandOutcome::Raw(render_text(&view, &opts), None))
         }
     }
 }
@@ -338,8 +358,8 @@ fn handle_lint(
     format: Format,
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
-    let effective_fix = args.fix;
-    let effective_dry_run = args.fix && args.dry_run;
+    let effective_fix = args.lint.fix;
+    let effective_dry_run = args.lint.fix && args.lint.dry_run;
 
     let report = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
@@ -354,17 +374,31 @@ fn handle_lint(
         term_svc::global::lint_terms(root, effective_fix, effective_dry_run)?
     };
 
-    // Determine exit code per contracts/term-lint.md §Exit Codes
-    let exit_code = compute_lint_exit_code(&report, effective_fix, effective_dry_run);
+    // Determine exit code
+    let base_exit = compute_lint_exit_code(&report, effective_fix, effective_dry_run);
+    let warnings_count = report.findings.len() as i32;
+    let exit_code =
+        if args.lint.max_warnings.is_some_and(|max| warnings_count > max) { Some(1) } else { Some(base_exit) };
 
     match format {
         Format::Json => {
-            let data = serde_json::to_value(&report).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, Some(exit_code)))
+            let report_value = serde_json::to_value(&report).map_err(MfError::Json)?;
+            let mut data = serde_json::Map::new();
+            data.insert("kind".to_string(), serde_json::Value::String("term".to_string()));
+            data.insert("dry_run".to_string(), serde_json::Value::Bool(effective_dry_run));
+            // Flatten report fields into data
+            if let serde_json::Value::Object(obj) = report_value {
+                for (k, v) in obj {
+                    if k != "kind" && k != "dry_run" {
+                        data.insert(k, v);
+                    }
+                }
+            }
+            Ok(CommandOutcome::Success(serde_json::Value::Object(data), exit_code))
         }
         Format::Text => {
             let output = format_lint_text(&report, effective_fix, effective_dry_run);
-            Ok(CommandOutcome::Raw(output, Some(exit_code)))
+            Ok(CommandOutcome::Raw(output, exit_code))
         }
     }
 }
@@ -483,30 +517,45 @@ fn handle_learn(
     let (Some(canonical), Some(variant)) = (canonical, variant) else {
         return Err(MfError::usage(
             "requires --term <canonical> and --alias <variant> (or deprecated --original/--correct)",
-            Some("use 'mf term learn --term <canonical> --alias <variant>'".to_string()),
+            Some("use `mf term learn --term <canonical> --alias <variant>`".to_string()),
         ));
     };
 
-    let (term, appended) = if let Some(project_name) = project {
+    if args.dry_run {
+        let result = VerbResult {
+            verb: Verb::Add,
+            kind: "term_correction",
+            identity: format!("{canonical}::{variant}"),
+            old_identity: None,
+            path: None,
+            dry_run: true,
+            details: serde_json::json!({"canonical": canonical, "variant": variant}),
+        };
+        return match format {
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        };
+    }
+
+    let (term, _appended) = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         term_svc::learn_correction(&project_path, variant, canonical)?
     } else {
         term_svc::global::learn_correction(root, variant, canonical)?
     };
 
+    let result = VerbResult {
+        verb: Verb::Add,
+        kind: "term_correction",
+        identity: format!("{}::{}", term.term, variant),
+        old_identity: None,
+        path: None,
+        dry_run: false,
+        details: serde_json::to_value(&term).map_err(MfError::Json)?,
+    };
     match format {
-        Format::Json => {
-            let data = serde_json::to_value(&term).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
-        }
-        Format::Text => {
-            let msg = if appended {
-                format!("✓ learned correction: \"{variant}\" → \"{canonical}\" (term: {})", term.term)
-            } else {
-                format!("correction already exists: \"{variant}\" → \"{canonical}\" (term: {})", term.term)
-            };
-            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
-        }
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
     }
 }
 
@@ -534,63 +583,95 @@ fn handle_fix(
         term_svc::global::fix_term(root, &args.term, update)?
     };
 
+    let mut changes = serde_json::Map::new();
+    if args.definition.is_some() {
+        changes.insert("definition".to_string(), serde_json::json!({"changed": true}));
+    }
+    if args.description.is_some() || args.clear_description {
+        changes.insert("description".to_string(), serde_json::json!({"changed": true}));
+    }
+    if args.confidence.is_some() || args.clear_confidence {
+        changes.insert("confidence".to_string(), serde_json::json!({"changed": true}));
+    }
+    if !args.alias.is_empty() {
+        changes.insert("aliases".to_string(), serde_json::json!({"added": args.alias}));
+    }
+    if !args.tag.is_empty() {
+        changes.insert("tags".to_string(), serde_json::json!({"added": args.tag}));
+    }
+
+    let result = VerbResult {
+        verb: Verb::Update,
+        kind: "term",
+        identity: term.term.clone(),
+        old_identity: None,
+        path: None,
+        dry_run: false,
+        details: serde_json::json!({"changes": changes}),
+    };
     match format {
-        Format::Json => {
-            let data = serde_json::to_value(&term).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
-        }
-        Format::Text => {
-            let alias_count = args.alias.len();
-            let tag_count = args.tag.len();
-            let def_status = if args.definition.is_some() { "definition changed" } else { "definition unchanged" };
-            let msg = format!(
-                "✓ updated term: {} ({}, +{} alias{}, +{} tag{})",
-                term.term,
-                def_status,
-                alias_count,
-                if alias_count == 1 { "" } else { "es" },
-                tag_count,
-                if tag_count == 1 { "" } else { "s" },
-            );
-            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
-        }
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
     }
 }
 
 // ── Handle: mf term show (US3b / FR-019) ────────────────────────────────────
 
 fn render_term_show(term: &crate::model::term::Term, format: Format) -> Result<CommandOutcome> {
+    let corr_count = term.corrections.len();
+    let fields = vec![
+        ShowField { label: "Term", value: ShowValue::Text(term.term.clone()) },
+        ShowField { label: "Definition", value: ShowValue::Optional(term.definition.clone()) },
+        ShowField { label: "Description", value: ShowValue::Optional(term.description.clone()) },
+        ShowField {
+            label: "Aliases",
+            value: if term.aliases.is_empty() {
+                ShowValue::Text("-".to_string())
+            } else {
+                ShowValue::Text(term.aliases.join(", "))
+            },
+        },
+        ShowField {
+            label: "Tags",
+            value: if term.tags.is_empty() {
+                ShowValue::Text("-".to_string())
+            } else {
+                ShowValue::Text(term.tags.join(", "))
+            },
+        },
+        ShowField { label: "Confidence", value: ShowValue::Optional(term.confidence.map(|c| format!("{c:.2}"))) },
+        ShowField {
+            label: "Corrections",
+            value: if corr_count == 0 {
+                ShowValue::Text("-".to_string())
+            } else {
+                ShowValue::Text(corr_count.to_string())
+            },
+        },
+    ];
+
+    let mut sections = Vec::new();
+    if !term.corrections.is_empty() {
+        let corr_fields: Vec<ShowField> = term
+            .corrections
+            .iter()
+            .map(|c| ShowField {
+                label: "Correction",
+                value: ShowValue::Text(format!("\"{}\" → \"{}\"", c.original, c.correct)),
+            })
+            .collect();
+        sections.push(ShowSection { heading: "Corrections", fields: corr_fields });
+    }
+
+    let block = ShowBlock { kind: "term", identity: term.term.clone(), fields, sections };
+
     match format {
         Format::Json => {
-            let data = serde_json::to_value(term).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
+            let term_json = serde_json::to_value(term).map_err(MfError::Json)?;
+            let extra = term_json.as_object().cloned().unwrap_or_default();
+            Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
         }
-        Format::Text => {
-            let mut lines = Vec::new();
-            lines.push(format!("Term:        {}", term.term));
-            if let Some(def) = &term.definition {
-                lines.push(format!("Definition:  {def}"));
-            }
-            if let Some(desc) = &term.description {
-                lines.push(format!("Description: {desc}"));
-            }
-            if let Some(conf) = term.confidence {
-                lines.push(format!("Confidence:  {conf:.2}"));
-            }
-            if !term.aliases.is_empty() {
-                lines.push(format!("Aliases:     {}", term.aliases.join(", ")));
-            }
-            if !term.tags.is_empty() {
-                lines.push(format!("Tags:        {}", term.tags.join(", ")));
-            }
-            if !term.corrections.is_empty() {
-                lines.push("Corrections:".to_string());
-                for c in &term.corrections {
-                    lines.push(format!("  \"{}\" → \"{}\"", c.original, c.correct));
-                }
-            }
-            Ok(CommandOutcome::Raw(lines.join("\n"), None))
-        }
+        Format::Text => Ok(CommandOutcome::Raw(render_show_text(&block), None)),
     }
 }
 
@@ -619,6 +700,14 @@ fn handle_remove(
     format: Format,
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
+    require_confirmation(&ConfirmArgs {
+        verb_label: "removal",
+        kind: "term",
+        identity: &args.term,
+        yes: args.yes,
+        force: args.force,
+    })?;
+
     let report = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         term_svc::remove_term(&project_path, &args.term, args.force, args.dry_run)?
@@ -626,16 +715,18 @@ fn handle_remove(
         term_svc::remove_term_global(root, &args.term, args.force, args.dry_run)?
     };
 
+    let result = VerbResult {
+        verb: Verb::Remove,
+        kind: "term",
+        identity: report.before.name.clone(),
+        old_identity: None,
+        path: None,
+        dry_run: args.dry_run,
+        details: serde_json::json!({"removed": true}),
+    };
     match format {
-        Format::Json => {
-            let data = serde_json::to_value(&report).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
-        }
-        Format::Text => {
-            let prefix = if report.dry_run { "[dry-run] would remove" } else { "✓ removed" };
-            let msg = format!("{} term: {}", prefix, report.before.name);
-            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
-        }
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
     }
 }
 
@@ -648,23 +739,40 @@ fn handle_rename(
     format: Format,
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
+    if args.dry_run {
+        let result = VerbResult {
+            verb: Verb::Rename,
+            kind: "term",
+            identity: args.new_term.clone(),
+            old_identity: Some(args.old_term.clone()),
+            path: None,
+            dry_run: true,
+            details: serde_json::json!({"keep_alias": args.keep_alias}),
+        };
+        return match format {
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        };
+    }
+
     let report = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
-        term_svc::rename_term(&project_path, &args.old_term, &args.new_term, args.keep_alias, args.force, args.dry_run)?
+        term_svc::rename_term(&project_path, &args.old_term, &args.new_term, args.keep_alias, args.force, false)?
     } else {
-        term_svc::global::rename_term(root, &args.old_term, &args.new_term, args.keep_alias, args.force, args.dry_run)?
+        term_svc::global::rename_term(root, &args.old_term, &args.new_term, args.keep_alias, args.force, false)?
     };
 
+    let result = VerbResult {
+        verb: Verb::Rename,
+        kind: "term",
+        identity: report.after.name.clone(),
+        old_identity: Some(report.before.name.clone()),
+        path: None,
+        dry_run: false,
+        details: serde_json::json!({"keep_alias": args.keep_alias}),
+    };
     match format {
-        Format::Json => {
-            let data = serde_json::to_value(&report).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
-        }
-        Format::Text => {
-            let prefix = if report.dry_run { "[dry-run] would rename" } else { "✓ renamed" };
-            let alias_note = if args.keep_alias { " (old name kept as alias)" } else { "" };
-            let msg = format!("{} term: {} → {}{}", prefix, report.before.name, report.after.name, alias_note);
-            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
-        }
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
     }
 }

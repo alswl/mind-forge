@@ -4,11 +4,16 @@ use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 
 use crate::cli::deprecation::DeprecationContext;
+use crate::cli::shared_flags::NoHeadersFlag;
+use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::model::index::PublishStatus;
 use crate::model::publish::{LocalRunOutcome, PublishRunOutcome, PublishUpdateOutcome, UpdateAction};
 use crate::model::publisher::PublishersOutcome;
+use crate::model::Resource;
+use crate::output::list::{render_text, ListCell, ListOpts, ListRow, ListView};
+use crate::output::show::{json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowValue};
 use crate::output::Format;
 use crate::service::publish as publish_svc;
 use crate::service::publisher as publisher_svc;
@@ -38,7 +43,22 @@ pub struct PublishTargetCmd {
 #[derive(Debug, Clone, Subcommand)]
 pub enum PublishTargetSubcommand {
     #[command(about = "List publishers and diagnostics")]
-    List,
+    List(PublishTargetListArgs),
+    #[command(about = "Show publish target details")]
+    Show(PublishTargetShowArgs),
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct PublishTargetListArgs {
+    #[command(flatten)]
+    pub no_headers: NoHeadersFlag,
+    #[command(flatten)]
+    pub no_trunc: NoTruncFlag,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct PublishTargetShowArgs {
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -89,63 +109,77 @@ impl From<PublishStatusArg> for PublishStatus {
 }
 
 /// Handle `publish target list` (moved from removed top-level `publisher list`).
-fn handle_target_list(repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
+fn handle_target_list(
+    repo_root: Option<&PathBuf>,
+    format: Format,
+    args: &PublishTargetListArgs,
+) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
 
     let report = publisher_svc::discover(root)?;
     let outcome = PublishersOutcome::from_report(&report, root);
 
+    let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc);
+
     match format {
         Format::Json => {
-            let data = serde_json::to_value(&outcome)?;
+            let items: Vec<serde_json::Value> = outcome
+                .publishers
+                .iter()
+                .map(|p| {
+                    let mut v = serde_json::to_value(p).map_err(MfError::Json)?;
+                    if let Some(obj) = v.as_object_mut() {
+                        obj.insert("identity".to_string(), serde_json::Value::String(p.identity()));
+                    }
+                    Ok(v)
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let diagnostics: Vec<serde_json::Value> = outcome
+                .diagnostics
+                .iter()
+                .map(|d| serde_json::to_value(d).map_err(MfError::Json))
+                .collect::<Result<Vec<_>>>()?;
+            let data = serde_json::json!({
+                "publish_targets": items,
+                "diagnostics": diagnostics,
+            });
             Ok(CommandOutcome::Success(data, None))
         }
-        Format::Text => Ok(CommandOutcome::Raw(render_target_list_text(&outcome), None)),
-    }
-}
-
-fn render_target_list_text(outcome: &PublishersOutcome) -> String {
-    let mut lines = Vec::new();
-
-    if outcome.publishers.is_empty() && outcome.diagnostics.is_empty() {
-        return "No publishers found.".to_string();
-    }
-
-    if !outcome.publishers.is_empty() {
-        lines.push(format!("{:<24} {:<12} STATUS", "NAME", "TYPE"));
-        for p in &outcome.publishers {
-            let status = p.status.as_str();
-            let label = p.label.as_deref().unwrap_or("-");
-            lines.push(format!("{:<24} {:<12} {}", p.name, p.target_type, status));
-            if label != "-" {
-                lines.push(format!("  label:       {label}"));
+        Format::Text => {
+            // Emit diagnostics to stderr before the table
+            let mut diag_text = String::new();
+            if !outcome.diagnostics.is_empty() {
+                for d in &outcome.diagnostics {
+                    let path_str = d.path.as_deref().unwrap_or("-");
+                    let name_str = d.publisher_name.as_deref().unwrap_or("-");
+                    diag_text.push_str(&format!(
+                        "[{kind}] {path} ({name}): {msg}\n",
+                        kind = d.kind,
+                        path = path_str,
+                        name = name_str,
+                        msg = d.message
+                    ));
+                }
             }
-            if let Some(ref desc) = p.description {
-                lines.push(format!("  description: {desc}"));
+
+            let mut rows = Vec::with_capacity(outcome.publishers.len());
+            for p in &outcome.publishers {
+                rows.push(ListRow {
+                    cells: vec![
+                        ListCell::Text(p.name.clone()),
+                        ListCell::Text(p.target_type.clone()),
+                        ListCell::Text(p.status.clone()),
+                    ],
+                });
             }
-            lines.push(format!("  source:      {}", p.source_path));
-            lines.push(format!("  inputs:      [{}]", p.required_inputs.join(", ")));
+            let view = ListView { headers: &["NAME", "TYPE", "STATUS"], rows, plural_noun: "publish targets" };
+            let table = render_text(&view, &opts);
+            // Prepend diagnostics text (stderr) to the combined output
+            // The caller will print this to stdout; diagnostics should ideally go to stderr
+            // but for now we embed them since CommandOutcome only has a single text output.
+            Ok(CommandOutcome::Raw(if diag_text.is_empty() { table } else { format!("{diag_text}{table}") }, None))
         }
     }
-
-    if !outcome.diagnostics.is_empty() {
-        if !outcome.publishers.is_empty() {
-            lines.push(String::new());
-        }
-        lines.push("Diagnostics:".to_string());
-        for d in &outcome.diagnostics {
-            let path_str = d.path.as_deref().unwrap_or("-");
-            let name_str = d.publisher_name.as_deref().unwrap_or("-");
-            let hint_str = d.hint.as_deref().unwrap_or("");
-            lines.push(format!("  [{kind}] {path} ({name})", kind = d.kind, path = path_str, name = name_str));
-            lines.push(format!("    {msg}", msg = d.message));
-            if !hint_str.is_empty() {
-                lines.push(format!("    hint: {hint_str}"));
-            }
-        }
-    }
-
-    lines.join("\n")
 }
 
 pub fn dispatch(
@@ -182,7 +216,8 @@ pub fn dispatch(
         }
         Some(PublishSubcommand::Target(target_cmd)) => match target_cmd.command {
             None => Ok(CommandOutcome::GroupHelp("publish target")),
-            Some(PublishTargetSubcommand::List) => handle_target_list(repo_root, format),
+            Some(PublishTargetSubcommand::List(args)) => handle_target_list(repo_root, format, &args),
+            Some(PublishTargetSubcommand::Show(args)) => handle_target_show(repo_root, format, &args),
         },
     }
 }
@@ -214,6 +249,50 @@ fn merge_set_values(args: PublishUpdateArgs) -> PublishUpdateArgs {
     }
 
     merged
+}
+
+fn handle_target_show(
+    repo_root: Option<&PathBuf>,
+    format: Format,
+    args: &PublishTargetShowArgs,
+) -> Result<CommandOutcome> {
+    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+    let report = publisher_svc::discover(root)?;
+    let outcome = PublishersOutcome::from_report(&report, root);
+
+    let publisher = outcome.publishers.iter().find(|p| p.name.eq_ignore_ascii_case(&args.name)).ok_or_else(|| {
+        MfError::usage(
+            format!("publish target '{}' not found", args.name),
+            Some("use `mf publish target list` to see available targets".to_string()),
+        )
+    })?;
+
+    let required =
+        if publisher.required_inputs.is_empty() { "-".to_string() } else { publisher.required_inputs.join(", ") };
+
+    let block = ShowBlock {
+        kind: "publish_target",
+        identity: publisher.name.clone(),
+        fields: vec![
+            ShowField { label: "Name", value: ShowValue::Text(publisher.name.clone()) },
+            ShowField { label: "Type", value: ShowValue::Text(publisher.target_type.clone()) },
+            ShowField { label: "Status", value: ShowValue::Text(publisher.status.clone()) },
+            ShowField { label: "Label", value: ShowValue::Optional(publisher.label.clone()) },
+            ShowField { label: "Description", value: ShowValue::Optional(publisher.description.clone()) },
+            ShowField { label: "Source", value: ShowValue::Text(publisher.source_path.clone()) },
+            ShowField { label: "Required inputs", value: ShowValue::Text(required) },
+        ],
+        sections: vec![],
+    };
+
+    match format {
+        Format::Json => {
+            let pub_json = serde_json::to_value(publisher).map_err(MfError::Json)?;
+            let extra = pub_json.as_object().cloned().unwrap_or_default();
+            Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
+        }
+        Format::Text => Ok(CommandOutcome::Raw(render_show_text(&block), None)),
+    }
 }
 
 fn render_run_outcome(outcome: PublishRunOutcome, format: Format) -> Result<CommandOutcome> {

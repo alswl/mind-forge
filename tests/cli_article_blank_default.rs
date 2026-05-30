@@ -50,11 +50,11 @@ fn json_envelope_has_new_fields() {
     let envelope: serde_json::Value = serde_json::from_str(&stdout).unwrap();
 
     assert_eq!(envelope["status"], "ok");
-    assert_eq!(envelope["data"]["template"], "blank");
-    assert_eq!(envelope["data"]["shape"], "directory");
-    assert_eq!(envelope["data"]["path"], "docs/probe-two/");
-    assert_eq!(envelope["data"]["files"].as_array().unwrap().len(), 1);
-    assert_eq!(envelope["data"]["files"][0], "01-opening.md");
+    assert_eq!(envelope["data"]["details"]["template"], "blank");
+    assert_eq!(envelope["data"]["details"]["shape"], "directory");
+    assert_eq!(envelope["data"]["details"]["path"], "docs/probe-two/");
+    assert_eq!(envelope["data"]["details"]["files"].as_array().unwrap().len(), 1);
+    assert_eq!(envelope["data"]["details"]["files"][0], "01-opening.md");
     // FR-011: legacy data.type is absent
     assert!(envelope["data"]["type"].is_null(), "legacy data.type must be absent");
 }
@@ -79,8 +79,8 @@ fn json_envelope_uses_configured_docs_dir() {
     assert!(!project.join("docs/configured-docs").exists());
 
     let envelope: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(envelope["data"]["path"], "notes/configured-docs/");
-    assert_eq!(envelope["data"]["files"].as_array().unwrap().len(), 5);
+    assert_eq!(envelope["data"]["details"]["path"], "notes/configured-docs/");
+    assert_eq!(envelope["data"]["details"]["files"].as_array().unwrap().len(), 5);
 
     let index_content = fs::read_to_string(project.join("mind-index.yaml")).unwrap();
     assert!(index_content.contains("article_path: notes/configured-docs"));
@@ -288,10 +288,10 @@ fn arch_template_json_envelope() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let envelope: serde_json::Value = serde_json::from_str(&stdout).unwrap();
 
-    assert_eq!(envelope["data"]["template"], "arch");
-    assert_eq!(envelope["data"]["shape"], "directory");
-    assert_eq!(envelope["data"]["path"], "docs/auth-rewrite/");
-    let files = envelope["data"]["files"].as_array().unwrap();
+    assert_eq!(envelope["data"]["details"]["template"], "arch");
+    assert_eq!(envelope["data"]["details"]["shape"], "directory");
+    assert_eq!(envelope["data"]["details"]["path"], "docs/auth-rewrite/");
+    let files = envelope["data"]["details"]["files"].as_array().unwrap();
     assert_eq!(files.len(), 5);
     assert!(files.iter().any(|f| f.as_str() == Some("01-opening.md")));
 }
@@ -394,10 +394,10 @@ fn file_mode_creates_single_file() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let envelope: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(envelope["data"]["template"], "blog");
-    assert_eq!(envelope["data"]["shape"], "file");
-    assert_eq!(envelope["data"]["path"], "docs/quick-note.md");
-    assert_eq!(envelope["data"]["files"][0], "quick-note.md");
+    assert_eq!(envelope["data"]["details"]["template"], "blog");
+    assert_eq!(envelope["data"]["details"]["shape"], "file");
+    assert_eq!(envelope["data"]["details"]["path"], "docs/quick-note.md");
+    assert_eq!(envelope["data"]["details"]["files"][0], "quick-note.md");
 
     // FR-008: article_path is docs/quick-note.md
     let index_content = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
@@ -437,7 +437,7 @@ fn custom_template_creates_monthly_review_blocks_from_h2_headings() {
 
     let envelope: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(
-        envelope["data"]["files"],
+        envelope["data"]["details"]["files"],
         serde_json::json!([
             "01-opening.md",
             "02-what-done.md",
@@ -574,9 +574,9 @@ fn custom_template_directory_layout() {
     // JSON envelope
     let stdout = String::from_utf8_lossy(&output.stdout);
     let envelope: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(envelope["data"]["template"], "templates/postmortem.md");
-    assert_eq!(envelope["data"]["shape"], "directory");
-    assert_eq!(envelope["data"]["path"], "docs/q2-outage/");
+    assert_eq!(envelope["data"]["details"]["template"], "templates/postmortem.md");
+    assert_eq!(envelope["data"]["details"]["shape"], "directory");
+    assert_eq!(envelope["data"]["details"]["path"], "docs/q2-outage/");
 
     // Index records article_type as blank for custom templates
     let index_content = fs::read_to_string(repo.path().join("demo/mind-index.yaml")).unwrap();
@@ -617,9 +617,9 @@ fn custom_template_file_mode() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let envelope: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(envelope["data"]["template"], "templates/simple.md");
-    assert_eq!(envelope["data"]["shape"], "file");
-    assert_eq!(envelope["data"]["path"], "docs/quick-memo.md");
+    assert_eq!(envelope["data"]["details"]["template"], "templates/simple.md");
+    assert_eq!(envelope["data"]["details"]["shape"], "file");
+    assert_eq!(envelope["data"]["details"]["path"], "docs/quick-memo.md");
 }
 
 // ── T032: unknown template rejection ──

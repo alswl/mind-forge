@@ -85,11 +85,9 @@ fn new_term_alias_tag_dedup() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    // 1 alias, 1 tag
-    assert!(stdout.contains("1 alias"), "stdout: {stdout}");
-    assert!(stdout.contains("1 tag"), "stdout: {stdout}");
+    assert!(stdout.contains("✓ created term: CLI"), "stdout: {stdout}");
 
-    // Verify single entry in index
+    // Verify single entry in index (dedup verified at filesystem level)
     let index = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
     assert_eq!(index.matches("- cli").count(), 1, "no dedup: {index}");
 }
@@ -251,11 +249,13 @@ fn new_term_json_output_shape() {
     assert_eq!(parsed["status"], "ok");
 
     let data = &parsed["data"];
-    assert_eq!(data["term"], "Mind Repo");
-    assert_eq!(data["definition"], "desc");
-    assert_eq!(data["aliases"].as_array().unwrap().len(), 1);
-    assert_eq!(data["tags"].as_array().unwrap().len(), 1);
-    assert_eq!(data["corrections"].as_array().unwrap().len(), 0);
+    assert_eq!(data["kind"], "term");
+    assert_eq!(data["identity"], "Mind Repo");
+    assert_eq!(data["details"]["term"], "Mind Repo");
+    assert_eq!(data["details"]["definition"], "desc");
+    assert_eq!(data["details"]["aliases"].as_array().unwrap().len(), 1);
+    assert_eq!(data["details"]["tags"].as_array().unwrap().len(), 1);
+    assert_eq!(data["details"]["corrections"].as_array().unwrap().len(), 0);
 }
 
 // T030

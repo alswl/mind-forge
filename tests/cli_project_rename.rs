@@ -104,10 +104,11 @@ fn rename_project_json_envelope() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok");
-    assert_eq!(v["data"]["old_name"], "alpha");
-    assert_eq!(v["data"]["new_name"], "gamma");
-    assert!(v["data"]["from"].as_str().is_some_and(|s| s.contains("alpha")));
-    assert!(v["data"]["to"].as_str().is_some_and(|s| s.contains("gamma")));
+    assert_eq!(v["data"]["kind"], "project");
+    assert_eq!(v["data"]["old_identity"], "alpha");
+    assert_eq!(v["data"]["identity"], "gamma");
+    assert!(v["data"]["details"]["from"].as_str().is_some_and(|s| s.contains("alpha")));
+    assert!(v["data"]["details"]["to"].as_str().is_some_and(|s| s.contains("gamma")));
 }
 
 // ---------------------------------------------------------------------------

@@ -44,14 +44,14 @@ pub fn rename_asset(
     let assets = index.assets.as_ref().ok_or_else(|| {
         MfError::not_found(
             format!("asset at '{old_path}' not found"),
-            Some("use 'mf asset list' to see available assets".to_string()),
+            Some("use `mf asset list` to see available assets".to_string()),
         )
     })?;
 
-    let pos = assets.iter().position(|a| a.path == old_path).ok_or_else(|| {
+    let pos = assets.iter().position(|a| a.path == old_path || a.name == old_path).ok_or_else(|| {
         MfError::not_found(
             format!("asset at '{old_path}' not found"),
-            Some("use 'mf asset list' to see available assets".to_string()),
+            Some("use `mf asset list` to see available assets".to_string()),
         )
     })?;
 

@@ -124,7 +124,7 @@ fn index_json_output_format() {
 
     let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(parsed["status"], "ok");
-    assert!(parsed["data"]["projects_count"].is_number());
+    assert!(parsed["data"]["kept_count"].is_number());
 }
 
 /// E2E: 连续两次 index 是幂等的

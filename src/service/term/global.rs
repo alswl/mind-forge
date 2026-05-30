@@ -46,7 +46,7 @@ pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecogniti
     if terms.iter().any(|t| t.term == term) {
         return Err(MfError::usage(
             format!("term '{term}' already exists"),
-            Some("use 'mf term fix' to modify the existing term".to_string()),
+            Some("use `mf term fix` to modify the existing term".to_string()),
         ));
     }
 
@@ -99,7 +99,7 @@ pub fn list_terms(repo_root: &Path, filter: Option<&str>) -> Result<Vec<Term>> {
 pub fn show_term(repo_root: &Path, name: &str) -> Result<Term> {
     let terms = load_terms(repo_root)?;
     terms.iter().find(|t| t.term == name).cloned().ok_or_else(|| {
-        MfError::usage(format!("term '{name}' not found"), Some("use 'mf term list' to see all terms".to_string()))
+        MfError::usage(format!("term '{name}' not found"), Some("use `mf term list` to see all terms".to_string()))
     })
 }
 
@@ -117,7 +117,7 @@ pub fn fix_term(repo_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Re
     let mut terms = load_terms(repo_root)?;
 
     let pos = terms.iter().position(|t| t.term == term_name).ok_or_else(|| {
-        MfError::usage(format!("term '{term_name}' not found"), Some("use 'mf term list' or 'mf term new'".to_string()))
+        MfError::usage(format!("term '{term_name}' not found"), Some("use `mf term list` or `mf term new`".to_string()))
     })?;
 
     if terms.iter().filter(|t| t.term == term_name).count() > 1 {
@@ -147,14 +147,14 @@ fn find_term_index(terms: &[Term], correct: &str) -> Result<usize> {
     match matches.len() {
         0 => Err(MfError::usage(
             format!("no term registers '{correct}' as its main name or alias"),
-            Some(format!("register first with 'mf term new {correct}' or 'mf term fix --alias {correct}'")),
+            Some(format!("register first with `mf term new {correct}` or `mf term fix --alias {correct}`")),
         )),
         1 => Ok(matches[0]),
         _ => {
             let candidates: Vec<&str> = matches.iter().map(|&i| terms[i].term.as_str()).collect();
             Err(MfError::usage(
                 format!("multiple terms claim '{correct}': {candidates:?}"),
-                Some("disambiguate by editing 'mf term fix' for the chosen term".to_string()),
+                Some("disambiguate by editing `mf term fix` for the chosen term".to_string()),
             ))
         }
     }
@@ -273,7 +273,7 @@ pub fn rename_term(
     let pos = terms.iter().position(|t| t.term == old_name).ok_or_else(|| {
         MfError::not_found(
             format!("term '{old_name}' not found"),
-            Some("use 'mf term list' to see available terms".to_string()),
+            Some("use `mf term list` to see available terms".to_string()),
         )
     })?;
 

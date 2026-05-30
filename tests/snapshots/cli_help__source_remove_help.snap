@@ -18,10 +18,12 @@ Options:
           Config file path
   -f, --force
           
-      --dry-run
-          
   -v, --verbose...
           Verbose output
+  -y, --yes
+          
+      --dry-run
+          
   -q, --quiet
           Silence non-error output
       --format <FORMAT>

@@ -11,6 +11,23 @@ pub fn setup_repo() -> TempDir {
     dir
 }
 
+/// 创建一个 git 初始化的临时 Mind Repo（用于需要 git 的测试，如 archive）
+#[allow(dead_code)]
+pub fn setup_git_repo() -> TempDir {
+    let dir = setup_repo();
+    std::process::Command::new("git").args(["init"]).current_dir(dir.path()).output().unwrap();
+    // Set user identity for git operations
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git").args(["config", "user.name", "Test"]).current_dir(dir.path()).output().unwrap();
+    // Stage minds.yaml so git mv works
+    std::process::Command::new("git").args(["add", "minds.yaml"]).current_dir(dir.path()).output().unwrap();
+    dir
+}
+
 /// 在 repo 中创建一个项目目录（含 mind.yaml）
 #[allow(dead_code)]
 pub fn create_project(repo: &TempDir, name: &str) {

@@ -227,7 +227,7 @@ pub fn resolve(
         if has_blocking {
             return Err(MfError::usage(
                 format!("publisher '{name}' has configuration errors and cannot be used"),
-                Some("run `mf publisher list` for details".to_string()),
+                Some("run `mf publish target list` for details".to_string()),
             ));
         }
         match pub_entry.status {
@@ -247,7 +247,7 @@ pub fn resolve(
     if report.diagnostics.iter().any(|d| d.publisher_name.as_deref() == Some(name)) {
         return Err(MfError::usage(
             format!("publisher '{name}' has configuration errors and cannot be used"),
-            Some("run `mf publisher list` for details".to_string()),
+            Some("run `mf publish target list` for details".to_string()),
         ));
     }
 

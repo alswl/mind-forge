@@ -15,8 +15,12 @@ Options:
           Config file path
   -t, --type <KIND>
           [possible values: auto, pdf, file, rss, web]
+      --no-headers
+          Suppress the table header row
   -v, --verbose...
           Verbose output
+      --no-trunc
+          Disable column truncation
   -q, --quiet
           Silence non-error output
       --format <FORMAT>

@@ -111,7 +111,7 @@ fn e2e_list_empty_manifest() {
     let (stdout, _, code) = run_in(ds.root(), &["project", "list"]);
 
     assert_eq!(code, 0);
-    assert!(stdout.contains("no project") || stdout.contains("(no project)"), "should show empty hint: {stdout}");
+    assert!(stdout.contains("No projects"), "should show empty hint: {stdout}");
 }
 
 /// E2E: 多项目按名称排序输出（FR-102, FR-103, SC-005）
@@ -297,7 +297,7 @@ fn e2e_lint_clean_project_no_issues() {
     let (stdout, _, code) = run_in(ds.root(), &["project", "lint", "--project", "alpha"]);
 
     assert_eq!(code, 0, "clean project should pass lint");
-    assert!(stdout.contains("no issues") || stdout.contains("(no issues)"), "should report no issues: {stdout}");
+    assert!(stdout.contains("0 errors, 0 warnings, 0 info"), "should report no issues: {stdout}");
 }
 
 // ---------------------------------------------------------------------------
@@ -314,8 +314,8 @@ fn e2e_archive_in_non_git_repo() {
     assert_eq!(code, 2, "should error with useful message: {stderr}");
     let all = stdout + &stderr;
     assert!(
-        all.contains("not a git repository") || all.contains("not found"),
-        "should say not a git repo or project not found: {all}"
+        all.contains("not a git repository") || all.contains("not found") || all.contains("pass --yes to confirm"),
+        "should say not a git repo, project not found, or ask for confirmation: {all}"
     );
 }
 

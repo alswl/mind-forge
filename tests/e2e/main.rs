@@ -1,9 +1,11 @@
 mod article_blank_default;
+mod boundary_contracts;
 mod config;
 mod datasets;
 mod error_envelope;
 mod global_flags;
 mod helpers;
+mod list_show_modify_chain;
 mod mind_migration;
 mod mind_yaml;
 mod placeholders;
@@ -12,3 +14,4 @@ mod project_lifecycle;
 mod publisher;
 mod repo_lifecycle;
 mod term_global;
+mod unified_output_contracts;

@@ -30,7 +30,7 @@ pub fn rename_project(repo_root: &Path, old_name: &str, new_name: &str) -> Resul
         if !p.exists() {
             return Err(MfError::usage(
                 format!("projects directory '{}' not found", trimmed),
-                Some("use 'mf project list' to see available projects".to_string()),
+                Some("use `mf project list` to see available projects".to_string()),
             ));
         }
         p
@@ -40,7 +40,7 @@ pub fn rename_project(repo_root: &Path, old_name: &str, new_name: &str) -> Resul
     if !old_path.exists() {
         return Err(MfError::usage(
             format!("project '{old_name}' not found at {}", old_path.display()),
-            Some("use 'mf project list' to see available projects".to_string()),
+            Some("use `mf project list` to see available projects".to_string()),
         ));
     }
 

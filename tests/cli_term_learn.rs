@@ -47,7 +47,7 @@ fn learn_basic_append() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("learned"), "stdout: {stdout}");
+    assert!(stdout.contains("✓ added term_correction: Mind Repo::old-mindrepo"), "stdout: {stdout}");
 
     // Verify index was updated
     let index = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
@@ -75,7 +75,7 @@ fn learn_idempotent_when_pair_exists() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("already exists"), "idempotent: {stdout}");
+    assert!(stdout.contains("✓ added term_correction: Mind Repo::mr-old"), "idempotent: {stdout}");
 }
 
 // ---------------------------------------------------------------------------
@@ -201,8 +201,9 @@ fn learn_json_shape() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(parsed["status"], "ok");
-    assert_eq!(parsed["data"]["term"], "Mind Repo");
-    assert!(!parsed["data"]["corrections"].as_array().unwrap().is_empty());
+    assert_eq!(parsed["data"]["kind"], "term_correction");
+    assert!(parsed["data"]["identity"].as_str().is_some_and(|s| s.starts_with("Mind Repo::")));
+    assert!(!parsed["data"]["details"]["corrections"].as_array().unwrap().is_empty());
 }
 
 // ---------------------------------------------------------------------------

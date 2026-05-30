@@ -4,10 +4,17 @@ use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 
 use crate::cli::deprecation::DeprecationContext;
+use crate::cli::shared_flags::NoHeadersFlag;
+use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::CommandOutcome;
 use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::source::{FileKind, SourceKind};
+use crate::model::Resource;
+use crate::output::confirm::{require_confirmation, ConfirmArgs};
+use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
+use crate::output::show::{json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowValue};
+use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, Verb, VerbResult};
 use crate::output::Format;
 use crate::service::source::InputForm;
 use crate::service::{identity, source as svc_source, util as svc_util};
@@ -34,6 +41,8 @@ pub enum SourceSubcommand {
     Rename(SourceRenameArgs),
     #[command(about = "Clean source index")]
     Clean(SourceCleanArgs),
+    #[command(about = "Show source details")]
+    Show(SourceShowArgs),
 }
 
 // ---------------------------------------------------------------------------
@@ -115,6 +124,8 @@ pub struct SourceAddArgs {
     pub link: bool,
     #[arg(short = 'f', long)]
     pub force: bool,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +138,10 @@ pub struct SourceListArgs {
     pub filter: Option<String>,
     #[arg(short = 't', long = "type", value_enum)]
     pub kind: Option<CliSourceKind>,
+    #[command(flatten)]
+    pub no_headers: NoHeadersFlag,
+    #[command(flatten)]
+    pub no_trunc: NoTruncFlag,
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +156,8 @@ pub struct SourceUpdateArgs {
     pub rename: Option<String>,
     #[arg(long)]
     pub url: Option<String>,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +172,8 @@ pub struct SourceRemoveArgs {
     pub keep_file: bool,
     #[arg(short = 'f', long)]
     pub force: bool,
+    #[arg(short = 'y', long)]
+    pub yes: bool,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
 }
@@ -187,6 +206,12 @@ pub struct SourceCleanArgs {
     pub dry_run: bool,
 }
 
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct SourceShowArgs {
+    /// Source path (e.g. sources/meeting/notes.md) or name
+    pub path: String,
+}
+
 // ---------------------------------------------------------------------------
 // T017: Dispatch — replaced by user story tasks
 // ---------------------------------------------------------------------------
@@ -216,6 +241,7 @@ pub fn dispatch(
         Some(SourceSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format, project, deprecation),
         Some(SourceSubcommand::Rename(args)) => handle_rename(args, root, &cwd, format, project),
         Some(SourceSubcommand::Clean(args)) => handle_clean(args, root, &cwd, format, project),
+        Some(SourceSubcommand::Show(args)) => handle_source_show(args, root, &cwd, format, project),
     }
 }
 
@@ -245,23 +271,36 @@ fn handle_list(
 
     let sources = svc_source::list(&project_path, args.filter.as_deref(), type_filter)?;
 
+    let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc);
+
     match format {
         Format::Json => {
-            let data = serde_json::to_value(&sources).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
+            let items: Vec<serde_json::Value> = sources
+                .iter()
+                .map(|s| {
+                    let mut v = serde_json::to_value(s).map_err(MfError::Json)?;
+                    if let Some(obj) = v.as_object_mut() {
+                        obj.insert("identity".to_string(), serde_json::Value::String(s.identity()));
+                    }
+                    Ok(v)
+                })
+                .collect::<Result<Vec<_>>>()?;
+            Ok(CommandOutcome::Success(json_collection("sources", items), None))
         }
         Format::Text => {
-            if sources.is_empty() {
-                return Ok(CommandOutcome::Success(serde_json::Value::String("No sources found.".to_string()), None));
-            }
-            let mut lines = Vec::new();
-            lines.push(format!("{:<24} {:<8} LOCATION", "NAME", "TYPE"));
+            let mut rows = Vec::with_capacity(sources.len());
             for s in &sources {
-                let kind_str = s.kind.as_str();
-                let location = s.path.as_deref().or(s.url.as_deref()).unwrap_or("-");
-                lines.push(format!("{:<24} {:<8} {}", s.name, kind_str, location));
+                let location = s.path.as_deref().or(s.url.as_deref()).unwrap_or("-").to_string();
+                rows.push(ListRow {
+                    cells: vec![
+                        ListCell::Text(s.name.clone()),
+                        ListCell::Text(s.kind.as_str().to_string()),
+                        ListCell::Text(location),
+                    ],
+                });
             }
-            Ok(CommandOutcome::Raw(lines.join("\n"), None))
+            let view = ListView { headers: &["NAME", "TYPE", "LOCATION"], rows, plural_noun: "sources" };
+            Ok(CommandOutcome::Raw(render_text(&view, &opts), None))
         }
     }
 }
@@ -276,21 +315,58 @@ fn handle_update(
     let project_path = svc_util::resolve_project(root, project, cwd)?;
     identity::validate_entity_path(&project_path, &args.path)?;
 
+    if args.dry_run {
+        let mut changes = serde_json::Map::new();
+        if let Some(ref rename) = args.rename {
+            changes.insert("rename".to_string(), serde_json::json!({"from": args.path, "to": rename}));
+        }
+        if let Some(ref url) = args.url {
+            changes.insert("url".to_string(), serde_json::json!({"to": url}));
+        }
+        let identity = args.rename.as_ref().unwrap_or(&args.path).clone();
+        let old_identity = args.rename.as_ref().map(|_| args.path.clone());
+        let result = VerbResult {
+            verb: Verb::Update,
+            kind: "source",
+            identity,
+            old_identity,
+            path: None,
+            dry_run: true,
+            details: serde_json::json!({"changes": changes}),
+        };
+        return match format {
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        };
+    }
+
     let update_args =
         svc_source::UpdateArgs { name: &args.path, rename: args.rename.as_deref(), url: args.url.as_deref() };
 
     let source = svc_source::update(&project_path, &update_args)?;
 
+    let mut changes = serde_json::Map::new();
+    if let Some(ref rename) = args.rename {
+        changes.insert("rename".to_string(), serde_json::json!({"from": args.path, "to": rename}));
+    }
+    if let Some(ref url) = args.url {
+        changes.insert("url".to_string(), serde_json::json!({"to": url}));
+    }
+
+    let identity = args.rename.as_ref().unwrap_or(&args.path).clone();
+    let old_identity = args.rename.as_ref().map(|_| args.path.clone());
+    let result = VerbResult {
+        verb: Verb::Update,
+        kind: "source",
+        identity,
+        old_identity,
+        path: None,
+        dry_run: false,
+        details: serde_json::json!({"changes": changes, "source": source}),
+    };
     match format {
-        Format::Json => {
-            let data = serde_json::to_value(&source).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
-        }
-        Format::Text => {
-            let kind_str = source.kind.as_str();
-            let msg = format!("✓ updated source: {} ({kind_str})", source.name);
-            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
-        }
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
     }
 }
 
@@ -305,27 +381,37 @@ fn handle_index(
 
     let report = svc_source::reconcile(&project_path, args.dry_run)?;
 
+    let scanned_count = report.added.len() + report.removed.len() + report.kept_count as usize;
+
     match format {
         Format::Json => {
-            let data = serde_json::to_value(&report).map_err(MfError::Json)?;
+            let data = serde_json::json!({
+                "kind": "source",
+                "added": report.added,
+                "removed": report.removed,
+                "kept_count": report.kept_count,
+                "scanned_count": scanned_count,
+                "dry_run": args.dry_run,
+            });
             Ok(CommandOutcome::Success(data, None))
         }
         Format::Text => {
-            let mut lines = Vec::new();
-            let prefix = if args.dry_run { "[dry-run] " } else { "" };
-
-            for entry in &report.added {
-                let kind_str = entry.kind.as_str();
-                lines.push(format!("{}+ added: {} ({})", prefix, entry.name, kind_str));
-            }
-            for entry in &report.removed {
-                let kind_str = entry.kind.as_str();
-                lines.push(format!("{}- removed: {} ({})", prefix, entry.name, kind_str));
-            }
-            lines.push(format!("{}kept: {} entries", prefix, report.kept_count));
-
-            let output = lines.join("\n");
-            Ok(CommandOutcome::Success(serde_json::Value::String(output), None))
+            let details = serde_json::json!({
+                "added": report.added,
+                "removed": report.removed,
+                "kept_count": report.kept_count,
+                "scanned_count": scanned_count,
+            });
+            let result = VerbResult {
+                verb: Verb::Index,
+                kind: "source",
+                identity: String::new(),
+                old_identity: None,
+                path: None,
+                dry_run: args.dry_run,
+                details,
+            };
+            Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None))
         }
     }
 }
@@ -344,25 +430,30 @@ fn handle_remove(
     }
     let project_path = svc_util::resolve_project(root, project, cwd)?;
     identity::validate_entity_path(&project_path, &args.name_or_path)?;
+
+    require_confirmation(&ConfirmArgs {
+        verb_label: "removal",
+        kind: "source",
+        identity: &args.name_or_path,
+        yes: args.yes,
+        force: args.force,
+    })?;
+
     let report =
         svc_source::remove_source(&project_path, &args.name_or_path, args.keep_file, args.force, args.dry_run)?;
 
+    let result = VerbResult {
+        verb: Verb::Remove,
+        kind: "source",
+        identity: report.source.name.clone(),
+        old_identity: None,
+        path: report.source.path.clone(),
+        dry_run: args.dry_run,
+        details: serde_json::json!({"removed": true}),
+    };
     match format {
-        Format::Json => {
-            let data = serde_json::to_value(&report).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
-        }
-        Format::Text => {
-            let prefix = if report.dry_run { "[dry-run] would remove" } else { "✓ removed" };
-            let kind_str = report.source.kind.as_str();
-            let mut lines = vec![format!("{prefix} source: {} ({kind_str})", report.source.name)];
-            if report.file_deleted {
-                if let Some(ref p) = report.source.path {
-                    lines.push(format!("  deleted file: {p}"));
-                }
-            }
-            Ok(CommandOutcome::Success(serde_json::Value::String(lines.join("\n")), None))
-        }
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
     }
 }
 
@@ -413,18 +504,91 @@ fn handle_rename(
     let project_path = svc_util::resolve_project(root, project, cwd)?;
     identity::validate_entity_path(&project_path, &args.old_path)?;
     identity::validate_entity_path(&project_path, &args.new_path)?;
-    let report = svc_source::rename_source(&project_path, &args.old_path, &args.new_path, args.force, args.dry_run)?;
 
+    if args.dry_run {
+        let result = VerbResult {
+            verb: Verb::Rename,
+            kind: "source",
+            identity: args.new_path.clone(),
+            old_identity: Some(args.old_path.clone()),
+            path: None,
+            dry_run: true,
+            details: serde_json::json!({}),
+        };
+        return match format {
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        };
+    }
+
+    let report = svc_source::rename_source(&project_path, &args.old_path, &args.new_path, args.force, false)?;
+
+    let result = VerbResult {
+        verb: Verb::Rename,
+        kind: "source",
+        identity: report.after.name.clone(),
+        old_identity: Some(report.before.name.clone()),
+        path: report.after.path.clone(),
+        dry_run: false,
+        details: serde_json::json!({}),
+    };
     match format {
-        Format::Json => {
-            let data = serde_json::to_value(&report).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
-        }
-        Format::Text => {
-            let prefix = if report.dry_run { "[dry-run] would rename" } else { "✓ renamed" };
-            let kind_str = report.before.file_kind.as_str();
-            let msg = format!("{} source: {} → {} ({})", prefix, report.before.name, report.after.name, kind_str);
-            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Handle: mf source show
+// ---------------------------------------------------------------------------
+
+fn handle_source_show(
+    args: SourceShowArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
+    identity::validate_entity_path(&project_path, &args.path)?;
+    let sources = svc_source::list(&project_path, None, None)?;
+
+    let resolved = sources
+        .iter()
+        .find(|s| s.path.as_deref() == Some(&args.path))
+        .or_else(|| sources.iter().find(|s| s.name.eq_ignore_ascii_case(&args.path)));
+
+    match resolved {
+        None => Err(MfError::usage(
+            format!("source '{}' not found", args.path),
+            Some("use `mf source list` to see available sources".to_string()),
+        )),
+        Some(source) => {
+            let file_kind = source.kind.as_str().to_string();
+            let type_str =
+                if let Some(ref sk) = source.source_kind { format!("{} ({})", file_kind, sk) } else { file_kind };
+            let location = source.path.as_deref().or(source.url.as_deref()).unwrap_or("-").to_string();
+
+            let block = ShowBlock {
+                kind: "source",
+                identity: source.name.clone(),
+                fields: vec![
+                    ShowField { label: "Name", value: ShowValue::Text(source.name.clone()) },
+                    ShowField { label: "Type", value: ShowValue::Text(type_str) },
+                    ShowField { label: "Location", value: ShowValue::Text(location) },
+                    ShowField { label: "Added", value: ShowValue::Text(source.added_at.clone()) },
+                ],
+                sections: vec![],
+            };
+
+            match format {
+                Format::Json => {
+                    let source_json = serde_json::to_value(source).map_err(MfError::Json)?;
+                    let extra = source_json.as_object().cloned().unwrap_or_default();
+                    Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
+                }
+                Format::Text => Ok(CommandOutcome::Raw(render_show_text(&block), None)),
+            }
         }
     }
 }
@@ -449,15 +613,12 @@ fn handle_add(
         let model_kind = fk.resolve(&input_form)?;
         Some(model_kind)
     } else if args.source_kind.is_some() {
-        // --source-kind resolves to an auto-inferred FileKind based on input form
-        // For URL inputs: Web; for Path inputs: File (store, not infer)
         let model_kind = match &input_form {
             svc_source::InputForm::Url => FileKind::Web,
             svc_source::InputForm::Path => FileKind::File,
         };
         Some(model_kind)
     } else if let Some(k) = args.kind {
-        // Deprecated --type fallback
         let model_kind = k.resolve(&input_form)?;
         Some(model_kind)
     } else {
@@ -466,6 +627,26 @@ fn handle_add(
 
     // Resolve source_kind
     let source_kind = args.source_kind.map(SourceKind::from);
+
+    if args.dry_run {
+        let name = args.name.as_deref().unwrap_or_else(|| {
+            let p = std::path::Path::new(&args.input);
+            p.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown")
+        });
+        let result = VerbResult {
+            verb: Verb::Add,
+            kind: "source",
+            identity: name.to_string(),
+            old_identity: None,
+            path: Some(name.to_string()),
+            dry_run: true,
+            details: serde_json::json!({"input": args.input}),
+        };
+        return match format {
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        };
+    }
 
     let add_args = svc_source::AddArgs {
         input: &args.input,
@@ -478,32 +659,30 @@ fn handle_add(
 
     let outcome = svc_source::add(&project_path, cwd, &add_args)?;
 
-    match format {
-        Format::Json => {
-            let mode_str = match outcome.mode {
+    let result = VerbResult {
+        verb: Verb::Add,
+        kind: "source",
+        identity: outcome.source.name.clone(),
+        old_identity: None,
+        path: outcome.source.path.clone(),
+        dry_run: false,
+        details: serde_json::json!({
+            "name": outcome.source.name,
+            "type": outcome.source.kind.as_str(),
+            "url": outcome.source.url,
+            "path": outcome.source.path,
+            "added_at": outcome.source.added_at,
+            "updated_at": outcome.source.updated_at,
+            "mode": match outcome.mode {
                 svc_source::AddMode::Copy => "copy",
                 svc_source::AddMode::Link => "link",
                 svc_source::AddMode::Url => "url",
-            };
-            let kind_str = outcome.source.kind.as_str();
-            let data = serde_json::json!({
-                "name": outcome.source.name,
-                "type": kind_str,
-                "url": outcome.source.url,
-                "path": outcome.source.path,
-                "added_at": outcome.source.added_at,
-                "updated_at": outcome.source.updated_at,
-                "mode": mode_str,
-                "replaced": outcome.replaced,
-            });
-            Ok(CommandOutcome::Success(data, None))
-        }
-        Format::Text => {
-            let location = outcome.source.path.as_deref().or(outcome.source.url.as_deref()).unwrap_or("unknown");
-            let kind_str = outcome.source.kind.as_str();
-            let prefix = if outcome.replaced { "replaced source" } else { "added source" };
-            let msg = format!("✓ {prefix}: {} ({kind_str}, {location})", outcome.source.name);
-            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
-        }
+            },
+            "replaced": outcome.replaced,
+        }),
+    };
+    match format {
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
     }
 }

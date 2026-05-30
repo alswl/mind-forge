@@ -18,6 +18,8 @@ Options:
           Config file path
       --url <URL>
           
+      --dry-run
+          
   -v, --verbose...
           Verbose output
   -q, --quiet

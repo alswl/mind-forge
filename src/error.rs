@@ -99,7 +99,7 @@ pub enum MfError {
 }
 
 impl MfError {
-    pub const INIT_REPO_HINT: &str = "Run 'mf config init --target project' to initialize a new project";
+    pub const INIT_REPO_HINT: &str = "Run `mf init` to initialize a new project";
 
     pub fn usage(message: impl Into<String>, hint: Option<String>) -> Self {
         Self::Usage { message: message.into(), hint }
@@ -200,7 +200,7 @@ impl MfError {
         match self {
             Self::Usage { hint, .. } => hint.as_deref(),
             Self::NotInMindRepo { hint } => hint.as_deref(),
-            Self::IncompatibleSchema { .. } => Some("run 'mf upgrade' or update schema_version manually"),
+            Self::IncompatibleSchema { .. } => Some("run `mf upgrade` or update schema_version manually"),
             Self::ParseError { .. } => Some("check the file format and try again"),
             Self::FileExists { .. } => Some("pass --force to overwrite"),
             Self::NotImplemented { hint, .. } => hint.as_deref().or(Some("tracked for future ROADMAP iteration")),

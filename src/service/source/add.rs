@@ -175,7 +175,7 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
     if util::canonicalize_within(&sources_dir, &source_canonical).is_ok() {
         return Err(MfError::usage(
             format!("source file is already inside the project's {}/ directory", layout.sources),
-            Some("use 'mf source update <NAME>' to modify metadata".to_string()),
+            Some("use `mf source update <NAME>` to modify metadata".to_string()),
         ));
     }
 

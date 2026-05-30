@@ -95,7 +95,7 @@ fn empty_minds_yaml_treated_as_default() {
     // project list 在空 manifest 上应输出 "(no projects)"，退出 0
     let (stdout, _, code) = run_in(ds.root(), &["project", "list"]);
     assert_eq!(code, 0, "empty manifest treated as default");
-    assert!(stdout.contains("no projects"), "stdout: {stdout}");
+    assert!(stdout.contains("No projects"), "stdout: {stdout}");
 
     // project index 同样应成功（对空 repo 是 no-op）
     let (_, _, code) = run_in(ds.root(), &["project", "index"]);

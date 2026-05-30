@@ -15,8 +15,12 @@ Options:
           Config file path
       --type <ASSET_TYPE>
           [possible values: image, video, audio, other]
+      --no-headers
+          Suppress the table header row
   -v, --verbose...
           Verbose output
+      --no-trunc
+          Disable column truncation
   -q, --quiet
           Silence non-error output
       --format <FORMAT>

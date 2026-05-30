@@ -22,6 +22,8 @@ Options:
           
   -v, --verbose...
           Verbose output
+      --dry-run
+          
   -q, --quiet
           Silence non-error output
       --format <FORMAT>

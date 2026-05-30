@@ -31,6 +31,8 @@ Options:
           
       --format <FORMAT>
           Output format [default: text] [possible values: text, json]
+      --dry-run
+          
       --json
           Shorthand for --format json
       --no-color

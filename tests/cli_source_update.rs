@@ -284,6 +284,7 @@ fn update_json_envelope() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok");
-    assert_eq!(v["data"]["name"], "paper-v2");
-    assert_eq!(v["data"]["type"], "pdf");
+    assert_eq!(v["data"]["kind"], "source");
+    assert_eq!(v["data"]["identity"], "paper-v2");
+    assert!(v["data"]["details"]["changes"].is_object(), "should have changes map");
 }

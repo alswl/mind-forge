@@ -80,16 +80,16 @@ pub struct ConfigDefaultArgs {
 pub fn dispatch(
     command: ConfigCmd,
     repo_root: Option<&PathBuf>,
-    _format: Format,
+    format: Format,
     deprecation: &mut DeprecationContext,
 ) -> Result<CommandOutcome> {
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("config")),
         Some(ConfigSubcommand::Schema(args)) => handle_schema(args),
-        Some(ConfigSubcommand::Show(args)) => handle_show(args, repo_root),
+        Some(ConfigSubcommand::Show(args)) => handle_show(args, repo_root, format),
         Some(ConfigSubcommand::Compile(args)) => {
             deprecation.warn_subject("config compile", "config show");
-            handle_show(ConfigShowArgs { output_format: args.output_format }, repo_root)
+            handle_show(ConfigShowArgs { output_format: args.output_format }, repo_root, format)
         }
         Some(ConfigSubcommand::Generate(args)) => handle_generate(args, repo_root),
         Some(ConfigSubcommand::Default(args)) => handle_default(args),
@@ -105,11 +105,19 @@ fn handle_schema(args: ConfigSchemaArgs) -> Result<CommandOutcome> {
     Ok(CommandOutcome::Raw(output, None))
 }
 
-fn handle_show(args: ConfigShowArgs, repo_root: Option<&PathBuf>) -> Result<CommandOutcome> {
+fn handle_show(args: ConfigShowArgs, repo_root: Option<&PathBuf>, global_format: Format) -> Result<CommandOutcome> {
     let cwd = std::env::current_dir()
         .map_err(|e| crate::error::MfError::usage(format!("failed to get current directory: {e}"), None))?;
-    let output = service::config::show_effective(&cwd, repo_root.map(|p| p.as_path()), &args.output_format)?;
-    Ok(CommandOutcome::Raw(output, None))
+    // When global format is JSON, force internal JSON to return structured object
+    // so data is a JSON object, not an embedded YAML/JSON string (FR-066 / FR-070).
+    let internal_format = if global_format == Format::Json { "json" } else { args.output_format.as_str() };
+    let output = service::config::show_effective(&cwd, repo_root.map(|p| p.as_path()), internal_format)?;
+    if global_format == Format::Json {
+        let data: serde_json::Value = serde_json::from_str(&output).map_err(crate::error::MfError::Json)?;
+        Ok(CommandOutcome::Success(data, None))
+    } else {
+        Ok(CommandOutcome::Raw(output, None))
+    }
 }
 
 // ── B2 thin alias: config generate (show + write to file) ───────────────────

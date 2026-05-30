@@ -8,6 +8,7 @@ Usage: mf publish target [OPTIONS] [COMMAND]
 
 Commands:
   list  List publishers and diagnostics
+  show  Show publish target details
 
 Options:
       --root <PATH>

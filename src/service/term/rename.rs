@@ -45,14 +45,14 @@ pub fn rename_term(
     let terms = index.terms.as_ref().ok_or_else(|| {
         MfError::not_found(
             format!("term '{old_name}' not found"),
-            Some("use 'mf term list' to see available terms".to_string()),
+            Some("use `mf term list` to see available terms".to_string()),
         )
     })?;
 
     let pos = terms.iter().position(|t| t.term == old_name).ok_or_else(|| {
         MfError::not_found(
             format!("term '{old_name}' not found"),
-            Some("use 'mf term list' to see available terms".to_string()),
+            Some("use `mf term list` to see available terms".to_string()),
         )
     })?;
 

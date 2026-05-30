@@ -46,14 +46,14 @@ fn lifecycle_remove(
     let sources = index.sources.as_ref().ok_or_else(|| {
         MfError::usage(
             format!("source '{name}' not found"),
-            Some("use 'mf source list' to see available sources".to_string()),
+            Some("use `mf source list` to see available sources".to_string()),
         )
     })?;
 
     let entry = sources.iter().find(|s| s.name == name).cloned().ok_or_else(|| {
         MfError::usage(
             format!("source '{name}' not found"),
-            Some("use 'mf source list' to see available sources".to_string()),
+            Some("use `mf source list` to see available sources".to_string()),
         )
     })?;
 
@@ -127,7 +127,7 @@ fn lifecycle_remove_by_path(
     let sources = index.sources.as_ref().ok_or_else(|| {
         MfError::usage(
             format!("source with path '{path}' not found"),
-            Some("use 'mf source list' to see available sources".to_string()),
+            Some("use `mf source list` to see available sources".to_string()),
         )
     })?;
 
@@ -135,7 +135,7 @@ fn lifecycle_remove_by_path(
         sources.iter().find(|s| s.path.as_deref() == Some(path) || s.name == path).cloned().ok_or_else(|| {
             MfError::usage(
                 format!("source with path or name '{path}' not found"),
-                Some("use 'mf source list' to see available sources".to_string()),
+                Some("use `mf source list` to see available sources".to_string()),
             )
         })?;
 

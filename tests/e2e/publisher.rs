@@ -44,10 +44,10 @@ fn publisher_list_json() {
         .unwrap_or_else(|e| panic!("stdout should be valid JSON: {e}\nstdout={stdout}\nstderr={stderr}"));
 
     assert_eq!(parsed["status"], "ok", "JSON status should be ok: {parsed}");
-    assert!(parsed["data"]["publishers"].is_array(), "data.publishers should be an array: {parsed}");
+    assert!(parsed["data"]["publish_targets"].is_array(), "data.publishers should be an array: {parsed}");
     assert!(parsed["data"]["diagnostics"].is_array(), "data.diagnostics should be an array: {parsed}");
 
-    let publishers = parsed["data"]["publishers"].as_array().unwrap();
+    let publishers = parsed["data"]["publish_targets"].as_array().unwrap();
     assert!(!publishers.is_empty(), "should list at least one publisher: {parsed}");
 
     let has_blog = publishers.iter().any(|p| p["name"].as_str() == Some("blog"));

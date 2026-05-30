@@ -7,10 +7,14 @@ List publishers and diagnostics
 Usage: mf publish target list [OPTIONS]
 
 Options:
+      --no-headers
+          Suppress the table header row
       --root <PATH>
           Mind Repo root directory
       --config <PATH>
           Config file path
+      --no-trunc
+          Disable column truncation
   -v, --verbose...
           Verbose output
   -q, --quiet

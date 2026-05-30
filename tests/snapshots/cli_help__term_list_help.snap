@@ -15,8 +15,12 @@ Options:
           Config file path
       --term <TERM>
           Look up a single term by name (deprecated: use `term show <NAME>`)
+      --no-headers
+          Suppress the table header row
   -v, --verbose...
           Verbose output
+      --no-trunc
+          Disable column truncation
   -q, --quiet
           Silence non-error output
       --format <FORMAT>

@@ -20,7 +20,7 @@ pub fn new_term(project_root: &Path, term: &str, input: TermInput<'_>) -> Result
     if terms.iter().any(|t| t.term == term) {
         return Err(MfError::usage(
             format!("term '{term}' already exists"),
-            Some("use 'mf term fix' to modify the existing term".to_string()),
+            Some("use `mf term fix` to modify the existing term".to_string()),
         ));
     }
 

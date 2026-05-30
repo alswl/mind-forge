@@ -22,14 +22,14 @@ pub fn fix_term(project_root: &Path, term_name: &str, update: TermUpdate<'_>) ->
         let terms = index.terms.as_mut().ok_or_else(|| {
             MfError::usage(
                 format!("term '{term_name}' not found"),
-                Some("use 'mf term list' or 'mf term new'".to_string()),
+                Some("use `mf term list` or `mf term new`".to_string()),
             )
         })?;
 
         let pos = terms.iter().position(|t| t.term == term_name).ok_or_else(|| {
             MfError::usage(
                 format!("term '{term_name}' not found"),
-                Some("use 'mf term list' or 'mf term new'".to_string()),
+                Some("use `mf term list` or `mf term new`".to_string()),
             )
         })?;
 

@@ -53,6 +53,7 @@ fn remove_asset_success() {
             "assets/images/diagram.png",
             "--project",
             "alpha",
+            "--yes",
         ])
         .output()
         .unwrap();
@@ -77,7 +78,16 @@ fn remove_asset_not_found() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "asset", "remove", "nonexistent.pdf", "--project", "alpha"])
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "asset",
+            "remove",
+            "nonexistent.pdf",
+            "--project",
+            "alpha",
+            "--yes",
+        ])
         .output()
         .unwrap();
 
@@ -106,6 +116,7 @@ fn remove_asset_json_envelope() {
             "alpha",
             "--format",
             "json",
+            "--yes",
         ])
         .output()
         .unwrap();
@@ -114,11 +125,8 @@ fn remove_asset_json_envelope() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok");
-    assert!(
-        v["data"]["removed"].as_str().is_some_and(|s| s.contains("diagram")),
-        "removed field should reference the asset"
-    );
-    assert_eq!(v["data"]["was_referenced"], false);
+    assert!(v["data"]["removed"].as_bool().unwrap_or(false), "removed should be true");
+    assert_eq!(v["data"]["kind"], "asset");
     assert_eq!(v["data"]["dry_run"], false);
 }
 
@@ -141,6 +149,7 @@ fn remove_asset_dry_run() {
             "--project",
             "alpha",
             "--dry-run",
+            "--yes",
         ])
         .output()
         .unwrap();
@@ -173,6 +182,7 @@ fn remove_asset_rm_alias() {
             "assets/images/diagram.png",
             "--project",
             "alpha",
+            "--yes",
         ])
         .output()
         .unwrap();

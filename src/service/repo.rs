@@ -276,6 +276,7 @@ pub fn reconcile(mut manifest: MindsManifest, diff: IndexDiff) -> MindsManifest 
 // ---------------------------------------------------------------------------
 
 /// Render an `IndexDiff` as human-readable text.
+#[allow(dead_code)]
 pub fn render_diff_text(diff: &IndexDiff) -> String {
     let mut lines = Vec::new();
     if diff.added.is_empty() && diff.removed.is_empty() && diff.updated.is_empty() {
@@ -407,7 +408,7 @@ pub fn validate_not_nested(target: &Path) -> Result<()> {
     if let Some(root) = detect_repo_root(parent_or_cwd(target), 50) {
         return Err(MfError::usage(
             format!("cannot initialize '{}' inside an existing Mind Repo at '{}'", target.display(), root.display()),
-            Some("use 'mf project new' to create a project inside a Mind Repo".to_string()),
+            Some("use `mf project new` to create a project inside a Mind Repo".to_string()),
         ));
     }
     Ok(())

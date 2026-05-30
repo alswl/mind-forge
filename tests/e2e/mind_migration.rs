@@ -116,7 +116,7 @@ fn e2e_mind_user_migration_chain() {
     std::process::Command::new("git").args(["add", "-A"]).current_dir(ds.root()).output().unwrap();
     std::process::Command::new("git").args(["commit", "-m", "initial"]).current_dir(ds.root()).output().unwrap();
 
-    let (stdout, stderr, code) = run_in(ds.root(), &["project", "archive", "alpha"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["project", "archive", "alpha", "--yes"]);
     assert_eq!(code, 0, "project archive failed: {stderr}");
-    assert!(stdout.contains("Archived"), "archive should confirm: {stdout}");
+    assert!(stdout.contains("archived project:"), "archive should confirm: {stdout}");
 }

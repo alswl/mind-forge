@@ -24,7 +24,7 @@ fn missing_publisher_dir_returns_empty_json() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["status"], "ok");
     let data = &v["data"];
-    assert_eq!(data["publishers"], serde_json::json!([]));
+    assert_eq!(data["publish_targets"], serde_json::json!([]));
     assert_eq!(data["diagnostics"], serde_json::json!([]));
 }
 
@@ -52,7 +52,7 @@ fn file_stem_is_default_name_json() {
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let publishers = &v["data"]["publishers"];
+    let publishers = &v["data"]["publish_targets"];
     assert_eq!(publishers.as_array().unwrap().len(), 1);
     assert_eq!(publishers[0]["name"], "foo");
     assert_eq!(publishers[0]["target_type"], "local");
@@ -80,7 +80,7 @@ fn sorted_publishers_json() {
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let publishers = &v["data"]["publishers"];
+    let publishers = &v["data"]["publish_targets"];
     assert_eq!(publishers.as_array().unwrap().len(), 3);
     assert_eq!(publishers[0]["name"], "alpha");
     assert_eq!(publishers[1]["name"], "beta");
@@ -106,7 +106,7 @@ fn malformed_yaml_returns_diagnostic_valid_still_listed() {
     let data = &v["data"];
 
     // Valid publisher should still be listed
-    let publishers = data["publishers"].as_array().unwrap();
+    let publishers = data["publish_targets"].as_array().unwrap();
     assert_eq!(publishers.len(), 1);
     assert_eq!(publishers[0]["name"], "good");
 
@@ -205,7 +205,7 @@ fn duplicate_name_returns_duplicate_name_diagnostic() {
     let dup: Vec<_> = diagnostics.as_array().unwrap().iter().filter(|d| d["kind"] == "duplicate_name").collect();
     assert!(!dup.is_empty(), "should have duplicate_name diagnostic");
     // At most one publisher named "blog" should be usable
-    let publishers = &v["data"]["publishers"];
+    let publishers = &v["data"]["publish_targets"];
     let blog_publishers: Vec<_> = publishers.as_array().unwrap().iter().filter(|p| p["name"] == "blog").collect();
     assert_eq!(blog_publishers.len(), 1, "only one blog publisher should be listed");
 }
@@ -219,7 +219,7 @@ fn disabled_publisher_shows_disabled_status() {
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let publishers = &v["data"]["publishers"];
+    let publishers = &v["data"]["publish_targets"];
     assert_eq!(publishers.as_array().unwrap().len(), 1);
     assert_eq!(publishers[0]["name"], "offline");
     assert_eq!(publishers[0]["status"], "disabled");
@@ -267,7 +267,7 @@ fn secret_field_blocks_publisher_listing() {
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     // Secret-bearing publisher should not be in the publishers list
-    let publishers = &v["data"]["publishers"];
+    let publishers = &v["data"]["publish_targets"];
     assert!(
         !publishers.as_array().unwrap().iter().any(|p| p["name"] == "leaky"),
         "publisher with secret field should not be listed as available"
@@ -296,7 +296,7 @@ fn discover_10_publishers_performance() {
 
     assert_eq!(out.status.code(), Some(0));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let publishers = v["data"]["publishers"].as_array().unwrap();
+    let publishers = v["data"]["publish_targets"].as_array().unwrap();
     assert_eq!(publishers.len(), 10);
 
     // Discovery should complete well under 100ms for 10 files

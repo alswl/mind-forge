@@ -256,9 +256,10 @@ fn check_name_convention(project_path: &Path, issues: &mut Vec<ProjectLintIssue>
     };
 
     for article in index.articles.iter().flatten() {
-        let filename =
-            Path::new(&article.article_path).file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        if util::to_filename(&filename) != filename {
+        let path = Path::new(&article.article_path);
+        let filename = path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        if util::to_filename(&stem) != stem {
             issues.push(ProjectLintIssue {
                 severity: LintSeverity::Warning,
                 kind: LintKind::NameConvention,

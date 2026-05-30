@@ -4,8 +4,6 @@ use tempfile::TempDir;
 mod common;
 
 fn seed_terms(repo: &TempDir, project_name: &str) {
-    // write_term_index wraps in "  - {text}" so continuation lines need 4-space indent
-    // to align under the mapping key after the "- " list marker.
     common::write_term_index(
         repo,
         project_name,
@@ -30,7 +28,7 @@ fn remove_term_success() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "term", "remove", "Mind Repo", "--project", "alpha"])
+        .args(["--root", repo.path().to_str().unwrap(), "term", "remove", "Mind Repo", "--project", "alpha", "--yes"])
         .output()
         .unwrap();
 
@@ -50,7 +48,7 @@ fn remove_term_not_found() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "term", "remove", "Nonexistent", "--project", "alpha"])
+        .args(["--root", repo.path().to_str().unwrap(), "term", "remove", "Nonexistent", "--project", "alpha", "--yes"])
         .output()
         .unwrap();
 
@@ -60,7 +58,7 @@ fn remove_term_not_found() {
 }
 
 // ---------------------------------------------------------------------------
-// 3. remove_term_json_envelope — JSON output with full envelope
+// 3. remove_term_json_envelope — JSON output with verb-style envelope
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -77,6 +75,7 @@ fn remove_term_json_envelope() {
             "Mind Repo",
             "--project",
             "alpha",
+            "--yes",
             "--format",
             "json",
         ])
@@ -87,10 +86,9 @@ fn remove_term_json_envelope() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok");
-    assert_eq!(v["data"]["verb"], "remove");
     assert_eq!(v["data"]["kind"], "term");
-    assert_eq!(v["data"]["before"]["name"], "Mind Repo");
-    assert_eq!(v["data"]["force"], false);
+    assert_eq!(v["data"]["identity"], "Mind Repo");
+    assert_eq!(v["data"]["removed"], true);
     assert_eq!(v["data"]["dry_run"], false);
 }
 
@@ -113,6 +111,7 @@ fn remove_term_dry_run() {
             "--project",
             "alpha",
             "--dry-run",
+            "--yes",
         ])
         .output()
         .unwrap();
@@ -134,7 +133,7 @@ fn remove_term_rm_alias() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "term", "rm", "Mind Repo", "--project", "alpha"])
+        .args(["--root", repo.path().to_str().unwrap(), "term", "rm", "Mind Repo", "--project", "alpha", "--yes"])
         .output()
         .unwrap();
 

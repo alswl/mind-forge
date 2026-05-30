@@ -178,7 +178,7 @@ fn article_lint_no_issues() {
         .expect("command runs");
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("No issues found"));
+    assert!(stdout.contains("0 errors, 0 warnings, 0 info"));
 }
 
 #[test]
@@ -243,7 +243,7 @@ fn article_lint_empty_file() {
         .args(["article", "lint"])
         .output()
         .expect("command runs");
-    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("empty_file"));
 }
@@ -267,7 +267,9 @@ fn article_lint_json_output() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(parsed["status"], "ok");
-    assert!(parsed["data"].is_array());
+    assert!(parsed["data"].is_object());
+    assert_eq!(parsed["data"]["kind"], "article");
+    assert!(parsed["data"]["issues"].is_array());
 }
 
 // ---------------------------------------------------------------------------
@@ -320,7 +322,7 @@ fn article_index_adds_new_file() {
     // Run index — should pick up the new file
     let (parsed, output) = json_index(&[], &repo.path().join("my-project"));
     assert_eq!(output.status.code(), Some(0));
-    assert!(parsed["data"]["articles_count"].as_u64().unwrap_or(0) >= 1);
+    assert!(parsed["data"]["kept_count"].as_u64().unwrap_or(0) >= 1);
 
     // Verify the article appears in list
     let list_output = Command::cargo_bin("mf")
@@ -372,7 +374,7 @@ fn article_index_empty_docs() {
 
     let (parsed, output) = json_index(&[], &repo.path().join("my-project"));
     assert_eq!(output.status.code(), Some(0));
-    assert_eq!(parsed["data"]["articles_count"], 0);
+    assert_eq!(parsed["data"]["kept_count"], 0);
 }
 
 #[test]
@@ -399,7 +401,7 @@ fn article_index_with_project_flag() {
 
     let (parsed, output) = json_index(&["--project", "my-project"], repo.path());
     assert_eq!(output.status.code(), Some(0), "should succeed with --project flag");
-    assert!(parsed["data"]["articles_count"].as_u64().unwrap_or(0) >= 1);
+    assert!(parsed["data"]["kept_count"].as_u64().unwrap_or(0) >= 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -451,7 +453,7 @@ fn article_list_text_is_path_centered() {
 
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.starts_with("PATH"));
+    // Headers may be absent in pipe mode (non-TTY), so check data content instead
     assert!(!stdout.contains("ORIGIN"), "human list should not expose discovery origin column: {stdout}");
     assert!(stdout.contains("docs/component-meta-core"));
     assert!(stdout.contains("BLOCKED"), "directory/block article should use writing content label: {stdout}");
@@ -569,7 +571,7 @@ fn article_index_scans_configured_article_dir() {
     let (parsed, output) = json_index(&[], &repo.path().join("my-project"));
     assert_eq!(output.status.code(), Some(0), "index should succeed");
     assert!(
-        parsed["data"]["articles_count"].as_u64().unwrap_or(0) >= 2,
+        parsed["data"]["kept_count"].as_u64().unwrap_or(0) >= 2,
         "should index articles from both docs/ and specs/"
     );
 
@@ -756,7 +758,7 @@ fn article_index_same_article_in_docs_and_article_dir_dedup() {
 
     let (parsed, output) = json_index(&[], &repo.path().join("my-project"));
     assert_eq!(output.status.code(), Some(0));
-    let articles_count = parsed["data"]["articles_count"].as_u64().unwrap_or(0);
+    let articles_count = parsed["data"]["kept_count"].as_u64().unwrap_or(0);
     assert_eq!(articles_count, 1, "should index article exactly once despite duplicate article_dir config: {parsed}");
 }
 
@@ -773,7 +775,7 @@ fn article_index_skips_missing_article_dir() {
 
     let (parsed, output) = json_index(&[], &repo.path().join("my-project"));
     assert_eq!(output.status.code(), Some(0), "index should succeed even with missing article_dir");
-    assert!(parsed["data"]["articles_count"].as_u64().unwrap_or(0) >= 1);
+    assert!(parsed["data"]["kept_count"].as_u64().unwrap_or(0) >= 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -1022,7 +1024,16 @@ fn article_remove_success() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "article", "remove", "My Article", "--project", "my-project"])
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "remove",
+            "My Article",
+            "--project",
+            "my-project",
+            "--yes",
+        ])
         .output()
         .unwrap();
 
@@ -1043,7 +1054,16 @@ fn article_remove_not_found() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "article", "remove", "Nonexistent", "--project", "my-project"])
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "remove",
+            "Nonexistent",
+            "--project",
+            "my-project",
+            "--yes",
+        ])
         .output()
         .unwrap();
 
@@ -1070,6 +1090,7 @@ fn article_remove_json_envelope() {
             "my-project",
             "--format",
             "json",
+            "--yes",
         ])
         .output()
         .unwrap();
@@ -1078,9 +1099,8 @@ fn article_remove_json_envelope() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok");
-    assert_eq!(v["data"]["verb"], "remove");
     assert_eq!(v["data"]["kind"], "article");
-    assert_eq!(v["data"]["before"]["title"], "My Article");
+    assert_eq!(v["data"]["removed"], true);
 }
 
 #[test]
@@ -1100,6 +1120,7 @@ fn article_remove_dry_run() {
             "--project",
             "my-project",
             "--dry-run",
+            "--yes",
         ])
         .output()
         .unwrap();
@@ -1122,7 +1143,16 @@ fn article_remove_rm_alias() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "article", "rm", "My Article", "--project", "my-project"])
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "rm",
+            "My Article",
+            "--project",
+            "my-project",
+            "--yes",
+        ])
         .output()
         .unwrap();
 
@@ -1221,8 +1251,8 @@ fn article_rename_json_envelope() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok");
-    assert_eq!(v["data"]["old_title"], "Old Title");
-    assert_eq!(v["data"]["new_title"], "New Title");
-    assert!(v["data"]["old_article_path"].as_str().is_some_and(|s| s.contains("old-title")));
-    assert!(v["data"]["new_article_path"].as_str().is_some_and(|s| s.contains("new-title")));
+    assert_eq!(v["data"]["details"]["old_title"], "Old Title");
+    assert_eq!(v["data"]["details"]["new_title"], "New Title");
+    assert!(v["data"]["old_identity"].as_str().is_some_and(|s| s.contains("old-title")));
+    assert!(v["data"]["identity"].as_str().is_some_and(|s| s.contains("new-title")));
 }

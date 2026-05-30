@@ -148,7 +148,7 @@ fn asset_remove_deletes_file_and_entry() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "asset", "remove", "logo.png", "--project", "test"])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "remove", "logo.png", "--project", "test", "--yes"])
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(0), "stderr: {}", String::from_utf8_lossy(&output.stderr));
@@ -171,7 +171,7 @@ fn asset_remove_referenced_errors_without_force() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "asset", "remove", "logo.png", "--project", "test"])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "remove", "logo.png", "--project", "test", "--yes"])
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(2), "should error: {}", String::from_utf8_lossy(&output.stderr));
@@ -270,12 +270,12 @@ fn project_archive_in_git_repo_succeeds() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", dir.path().to_str().unwrap(), "project", "archive", "my-project"])
+        .args(["--root", dir.path().to_str().unwrap(), "project", "archive", "my-project", "--yes"])
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(0), "stderr: {}", String::from_utf8_lossy(&output.stderr));
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Archived"), "should confirm archive: {stdout}");
+    assert!(stdout.contains("archived project:"), "should confirm archive: {stdout}");
     assert!(!project_dir.exists(), "original project dir should be moved");
     assert!(dir.path().join("_archived/my-project").exists(), "archived dir should exist");
 }
@@ -291,7 +291,7 @@ fn project_archive_non_git_repo_errors() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "project", "archive", "my-project"])
+        .args(["--root", repo.path().to_str().unwrap(), "project", "archive", "my-project", "--yes"])
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(2), "should error: {}", String::from_utf8_lossy(&output.stderr));

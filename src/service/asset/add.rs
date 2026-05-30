@@ -43,7 +43,7 @@ pub fn add(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<Asset> {
     if source_canonical.starts_with(&assets_canonical) {
         return Err(MfError::usage(
             format!("source file is already inside the project's {}/ directory", layout.assets),
-            Some("use 'mf asset update <PATH>' to refresh metadata".to_string()),
+            Some("use `mf asset update <PATH>` to refresh metadata".to_string()),
         ));
     }
 

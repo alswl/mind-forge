@@ -165,14 +165,22 @@ fn envelope_asset_remove_ok() {
     setup_project(&repo, "test");
     add_asset_entry(&repo, "test", "logo.png", true);
 
-    let (stdout, stderr, code) =
-        run_json(&["--root", &repo.path().to_string_lossy(), "asset", "remove", "logo.png", "--project", "test"]);
+    let (stdout, stderr, code) = run_json(&[
+        "--root",
+        &repo.path().to_string_lossy(),
+        "asset",
+        "remove",
+        "logo.png",
+        "--project",
+        "test",
+        "--yes",
+    ]);
     assert_eq!(code, 0, "stderr: {stderr:?}");
     assert_envelope_ok(&stdout);
 
     let data = extract_data(&stdout);
-    assert!(data["removed"].is_string(), "removed should be string");
-    assert_eq!(data["was_referenced"], false, "was_referenced should be false");
+    assert_eq!(data["removed"], true, "removed should be true");
+    assert_eq!(data["kind"], "asset", "kind should be asset");
 }
 
 #[test]
@@ -205,8 +213,16 @@ articles:
 "#;
     std::fs::write(project_dir.join("mind-index.yaml"), index_yaml).unwrap();
 
-    let (stdout, stderr, code) =
-        run_json(&["--root", &repo.path().to_string_lossy(), "asset", "remove", "logo.png", "--project", "test"]);
+    let (stdout, stderr, code) = run_json(&[
+        "--root",
+        &repo.path().to_string_lossy(),
+        "asset",
+        "remove",
+        "logo.png",
+        "--project",
+        "test",
+        "--yes",
+    ]);
     assert_eq!(code, 2, "should error when referenced, stderr: {stderr:?}");
     // Error may be on stderr, but with --format json it's on stdout
     if stdout.trim().is_empty() {
@@ -279,13 +295,14 @@ fn envelope_project_archive_ok() {
     std::process::Command::new("git").args(["commit", "-m", "initial"]).current_dir(dir.path()).output().unwrap();
 
     let (stdout, stderr, code) =
-        run_json(&["--root", &dir.path().to_string_lossy(), "project", "archive", "my-project"]);
+        run_json(&["--root", &dir.path().to_string_lossy(), "project", "archive", "my-project", "--yes"]);
     assert_eq!(code, 0, "stderr: {stderr:?}");
     assert_envelope_ok(&stdout);
 
     let data = extract_data(&stdout);
-    assert!(data["from"].is_string(), "from should be present");
-    assert!(data["to"].is_string(), "to should be present");
+    assert!(data["path"].is_string(), "path should be present");
+    assert!(data["details"]["from"].is_string(), "details.from should be present");
+    assert!(data["details"]["to"].is_string(), "details.to should be present");
 }
 
 #[test]
@@ -294,7 +311,7 @@ fn envelope_project_archive_non_git_error() {
     common::create_project(&repo, "my-project");
 
     let (stdout, stderr, code) =
-        run_json(&["--root", &repo.path().to_string_lossy(), "project", "archive", "my-project"]);
+        run_json(&["--root", &repo.path().to_string_lossy(), "project", "archive", "my-project", "--yes"]);
     assert_eq!(code, 2, "should error outside git repo, stderr: {stderr:?}");
     // Error may go to stderr or stdout depending on dispatch path
     if stdout.trim().is_empty() {

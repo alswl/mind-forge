@@ -23,6 +23,8 @@ Options:
           Deprecated: use --alias (variant) instead
   -q, --quiet
           Silence non-error output
+      --dry-run
+          
       --format <FORMAT>
           Output format [default: text] [possible values: text, json]
       --json

@@ -8,8 +8,10 @@ pub mod project;
 pub mod prompt;
 pub mod publish;
 pub mod render;
+pub mod shared_flags;
 pub mod source;
 pub mod term;
+pub mod version;
 
 use std::path::PathBuf;
 
@@ -124,8 +126,6 @@ pub enum CommandOutcome {
     RootHelp,
     GroupHelp(&'static str),
     Completion(clap_complete::Shell),
-    /// Show version information
-    Version,
     /// Successful command execution. The optional exit code overrides the default 0
     /// (used by commands like `lint` that signal issues via non-zero exit codes).
     Success(serde_json::Value, Option<u8>),
@@ -149,9 +149,10 @@ impl RootCli {
         deprecation: &mut DeprecationContext,
     ) -> Result<CommandOutcome> {
         let project = repo_root.and(self.global.project.as_deref());
-        match self.command {
-            None => Ok(CommandOutcome::RootHelp),
-            Some(TopLevelCommand::Version) => Ok(CommandOutcome::Version),
+        let quiet = self.global.quiet;
+        let outcome = match self.command {
+            None => return Ok(CommandOutcome::RootHelp),
+            Some(TopLevelCommand::Version) => version::handle_version(format),
             Some(TopLevelCommand::Source(command)) => {
                 source::dispatch(command, repo_root, format, project, deprecation)
             }
@@ -171,7 +172,20 @@ impl RootCli {
             Some(TopLevelCommand::Config(command)) => config::dispatch(command, repo_root, format, deprecation),
             Some(TopLevelCommand::Render(command)) => render::dispatch(command, repo_root, format, project),
             Some(TopLevelCommand::Init(args)) => dispatch_init(args),
+        }?;
+        // FR-080: in quiet mode, suppress success stdout (non-error data).
+        if quiet {
+            match &outcome {
+                CommandOutcome::Success(_, _) => {
+                    return Ok(CommandOutcome::Success(serde_json::Value::String(String::new()), None));
+                }
+                CommandOutcome::Raw(_, _) => {
+                    return Ok(CommandOutcome::Raw(String::new(), None));
+                }
+                _ => {}
+            }
         }
+        Ok(outcome)
     }
 }
 

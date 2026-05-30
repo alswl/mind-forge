@@ -316,6 +316,25 @@ Accepts `--json` for machine-readable output.
 - **Version** — `mf version` outputs the current CLI version in text or JSON
 - **Output contract** — `text` by default, `--json` for `{ status, command, data }` envelopes; stable exit codes
 
+## Output Contracts
+
+Every `mf` command adheres to shared text-layout and JSON-envelope contracts. These are documented in the feature specification:
+
+| Contract | Description |
+|----------|-------------|
+| [List layout](specs/039-list-output-redesign/contracts/list-layout.md) | Unified table format for all `mf <noun> list` commands |
+| [Show layout](specs/039-list-output-redesign/contracts/show-layout.md) | Unified key-value block format for all `mf <noun> show` commands |
+| [Verb envelopes](specs/039-list-output-redesign/contracts/verb-envelopes.md) | Per-verb JSON shapes (create, rename, remove, update, index, lint) |
+| [Flag conventions](specs/039-list-output-redesign/contracts/flag-conventions.md) | Required flags every command must accept |
+| [Confirmation protocol](specs/039-list-output-redesign/contracts/confirmation-protocol.md) | TTY-only interactive prompt for destructive verbs |
+
+Key rules:
+- `data` is always a JSON object — no bare arrays, strings, or `null`
+- Text output adapts to TTY (headers + ANSI) vs pipe (no headers, no ANSI, same row shape)
+- Every resource carries an `identity` field that round-trips between list and show
+- `--dry-run` is available on every mutating command
+- Remove and archive require confirmation in TTY; non-TTY exits 1 without `--yes`/`--force`
+
 ## Project Status
 
 See [specs/](specs/) for detailed specifications and the feature evolution plan.

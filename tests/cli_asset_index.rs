@@ -43,9 +43,9 @@ fn index_reconcile_added_removed() {
 
     assert
         .success()
-        .stdout(predicate::str::contains("+ added"))
-        .stdout(predicate::str::contains("diagram.svg"))
-        .stdout(predicate::str::contains("kept"));
+        .stdout(predicate::str::contains("indexed asset:"))
+        .stdout(predicate::str::contains("+1"))
+        .stdout(predicate::str::contains("=1"));
 }
 
 // ---------------------------------------------------------------------------
@@ -74,8 +74,7 @@ fn index_idempotent() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(!stdout.contains("+ added"));
-    assert!(!stdout.contains("- removed"));
+    assert!(stdout.contains("+0 =2 -0"), "expected idempotent run: {stdout}");
 
     // Index file should be byte-identical
     let after_second = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
@@ -103,7 +102,7 @@ fn index_dry_run() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("[dry-run]"));
-    assert!(stdout.contains("diagram.svg"));
+    assert!(stdout.contains("indexed asset:"));
 
     // Index should NOT have been modified
     let after = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
@@ -144,7 +143,7 @@ fn index_subdirectory() {
         .args(["--root", repo.path().to_str().unwrap(), "asset", "index", "--project", "alpha"])
         .assert();
 
-    assert.success().stdout(predicate::str::contains("+ added")).stdout(predicate::str::contains("diagrams/flow.svg"));
+    assert.success().stdout(predicate::str::contains("indexed asset:")).stdout(predicate::str::contains("+2"));
 }
 
 // ---------------------------------------------------------------------------
@@ -185,7 +184,7 @@ fn index_symlink_handling() {
         .args(["--root", repo.path().to_str().unwrap(), "asset", "index", "--project", "alpha"])
         .assert();
 
-    assert.success().stdout(predicate::str::contains("+ added")).stdout(predicate::str::contains("linked.png"));
+    assert.success().stdout(predicate::str::contains("indexed asset:")).stdout(predicate::str::contains("+2"));
 }
 
 // ---------------------------------------------------------------------------
@@ -220,7 +219,7 @@ fn index_refresh_metadata() {
 
     // Instead of looking for "refreshed" text, just check the command succeeded
     // since the refresh prefixes can vary
-    assert!(stdout.contains("kept"));
+    assert!(stdout.contains("=") && stdout.contains("indexed asset:"));
 }
 
 // ---------------------------------------------------------------------------

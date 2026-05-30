@@ -34,7 +34,7 @@ fn remove_project_success() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "project", "remove", "alpha"])
+        .args(["--root", repo.path().to_str().unwrap(), "project", "remove", "alpha", "--yes"])
         .output()
         .unwrap();
 
@@ -59,7 +59,7 @@ fn remove_project_not_found() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "project", "remove", "nonexistent"])
+        .args(["--root", repo.path().to_str().unwrap(), "project", "remove", "nonexistent", "--yes"])
         .output()
         .unwrap();
 
@@ -78,7 +78,7 @@ fn remove_project_json_envelope() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "project", "remove", "alpha", "--format", "json"])
+        .args(["--root", repo.path().to_str().unwrap(), "project", "remove", "alpha", "--format", "json", "--yes"])
         .output()
         .unwrap();
 
@@ -86,10 +86,9 @@ fn remove_project_json_envelope() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok");
-    assert_eq!(v["data"]["verb"], "remove");
     assert_eq!(v["data"]["kind"], "project");
-    assert_eq!(v["data"]["before"]["name"], "alpha");
-    assert_eq!(v["data"]["force"], false);
+    assert_eq!(v["data"]["identity"], "alpha");
+    assert_eq!(v["data"]["removed"], true);
     assert_eq!(v["data"]["dry_run"], false);
 }
 
@@ -104,7 +103,7 @@ fn remove_project_dry_run() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "project", "remove", "alpha", "--dry-run"])
+        .args(["--root", repo.path().to_str().unwrap(), "project", "remove", "alpha", "--dry-run", "--yes"])
         .output()
         .unwrap();
 
@@ -129,7 +128,7 @@ fn remove_project_rm_alias() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "project", "rm", "alpha"])
+        .args(["--root", repo.path().to_str().unwrap(), "project", "rm", "alpha", "--yes"])
         .output()
         .unwrap();
 

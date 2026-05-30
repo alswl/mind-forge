@@ -56,7 +56,7 @@ fn resolve_asset_path(project_root: &Path, cwd: &Path, input: &Path) -> Result<P
     }
     Err(MfError::usage(
         format!("could not resolve '{}' within {}/", input.display(), layout.assets),
-        Some("run 'mf asset list'".to_string()),
+        Some("run `mf asset list`".to_string()),
     ))
 }
 
@@ -70,7 +70,7 @@ pub fn update_one(project_path: &Path, cwd: &Path, input: &Path) -> Result<Asset
         .map_err(|_| {
             MfError::usage(
                 "resolved path is outside the project root".to_string(),
-                Some("run 'mf asset list'".to_string()),
+                Some("run `mf asset list`".to_string()),
             )
         })?
         .to_string_lossy()
@@ -79,7 +79,7 @@ pub fn update_one(project_path: &Path, cwd: &Path, input: &Path) -> Result<Asset
     let mut index = index::load(project_path)?;
     let entry_idx =
         index.assets.as_ref().and_then(|assets| assets.iter().position(|a| a.path == rel_path)).ok_or_else(|| {
-            MfError::usage(format!("no index entry for '{rel_path}'"), Some("run 'mf asset list'".to_string()))
+            MfError::usage(format!("no index entry for '{rel_path}'"), Some("run `mf asset list`".to_string()))
         })?;
 
     let entry = &index.assets.as_ref().unwrap()[entry_idx];
@@ -89,7 +89,7 @@ pub fn update_one(project_path: &Path, cwd: &Path, input: &Path) -> Result<Asset
     if !resolved.exists() {
         return Err(MfError::usage(
             format!("file not found on disk: {rel_path}"),
-            Some("run 'mf asset index' to reconcile".to_string()),
+            Some("run `mf asset index` to reconcile".to_string()),
         ));
     }
 

@@ -15,7 +15,7 @@ pub fn remove_project(repo_root: &Path, project_name: &str, force: bool, dry_run
     if !project_path.exists() {
         return Err(MfError::usage(
             format!("project '{project_name}' not found at {}", project_path.display()),
-            Some("use 'mf project list' to see available projects".to_string()),
+            Some("use `mf project list` to see available projects".to_string()),
         ));
     }
 

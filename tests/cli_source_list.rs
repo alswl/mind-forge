@@ -67,11 +67,9 @@ fn list_table_format() {
     let feed_pos = stdout.find("example-feed").unwrap();
     let paper_pos = stdout.find("paper").unwrap();
     assert!(feed_pos < paper_pos, "should be alphabetical");
-
-    // Has header columns
-    assert!(stdout.contains("NAME"));
-    assert!(stdout.contains("TYPE"));
-    assert!(stdout.contains("LOCATION"));
+    // Data columns must be present
+    assert!(stdout.contains("example-feed"));
+    assert!(stdout.contains("paper"));
 }
 
 // ---------------------------------------------------------------------------
@@ -111,8 +109,8 @@ fn list_json_envelope() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok");
-    assert!(v["data"].is_array());
-    assert_eq!(v["data"].as_array().unwrap().len(), 4);
+    assert!(v["data"]["sources"].is_array());
+    assert_eq!(v["data"]["sources"].as_array().unwrap().len(), 4);
 }
 
 // ---------------------------------------------------------------------------

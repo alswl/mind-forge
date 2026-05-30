@@ -4,9 +4,18 @@ use clap::{Args, Subcommand};
 use serde::Serialize;
 
 use crate::cli::deprecation::DeprecationContext;
+use crate::cli::shared_flags::NoHeadersFlag;
+use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::model::asset::AssetKind;
+use crate::model::Resource;
+use crate::output::confirm::{require_confirmation, ConfirmArgs};
+use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
+use crate::output::show::{
+    json_envelope as show_json, render_text as render_show_text, ShowBlock, ShowField, ShowValue,
+};
+use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, Verb, VerbResult};
 use crate::output::Format;
 use crate::service::{asset as asset_svc, identity, util as svc_util};
 
@@ -46,6 +55,10 @@ pub struct AssetListArgs {
     pub filter: Option<String>,
     #[arg(long = "type", value_enum)]
     pub asset_type: Option<AssetKind>,
+    #[command(flatten)]
+    pub no_headers: NoHeadersFlag,
+    #[command(flatten)]
+    pub no_trunc: NoTruncFlag,
 }
 
 // ---------------------------------------------------------------------------
@@ -65,6 +78,8 @@ pub struct AssetAddArgs {
     pub link: bool,
     #[arg(short = 'f', long)]
     pub force: bool,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +95,8 @@ pub struct AssetUpdateArgs {
     pub channel: Option<String>,
     #[arg(long)]
     pub all: bool,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +136,8 @@ pub struct AssetRemoveArgs {
     pub file: String,
     #[arg(short = 'f', long)]
     pub force: bool,
+    #[arg(short = 'y', long)]
+    pub yes: bool,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
 }
@@ -172,6 +191,25 @@ fn handle_add(
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, project, cwd)?;
+
+    if args.dry_run {
+        let name =
+            args.name.as_deref().unwrap_or_else(|| args.path.file_name().and_then(|s| s.to_str()).unwrap_or("unknown"));
+        let result = VerbResult {
+            verb: Verb::Add,
+            kind: "asset",
+            identity: name.to_string(),
+            old_identity: None,
+            path: Some(name.to_string()),
+            dry_run: true,
+            details: serde_json::json!({"source": args.path.to_string_lossy()}),
+        };
+        return match format {
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        };
+    }
+
     let add_args = asset_svc::AddArgs {
         source: args.path,
         name: args.name,
@@ -182,31 +220,27 @@ fn handle_add(
     let asset = asset_svc::add(&project_path, cwd, &add_args)?;
     let mode = if add_args.link_mode { "link" } else { "copy" };
 
+    let result = VerbResult {
+        verb: Verb::Add,
+        kind: "asset",
+        identity: asset.path.clone(),
+        old_identity: None,
+        path: Some(asset.path.clone()),
+        dry_run: false,
+        details: serde_json::json!({
+            "name": asset.name,
+            "type": asset.kind,
+            "path": asset.path,
+            "size": asset.size,
+            "hash": asset.hash,
+            "tags": asset.tags,
+            "added_at": asset.added_at,
+            "mode": mode,
+        }),
+    };
     match format {
-        Format::Json => {
-            let data = serde_json::json!({
-                "name": asset.name,
-                "type": asset.kind,
-                "path": asset.path,
-                "size": asset.size,
-                "hash": asset.hash,
-                "tags": asset.tags,
-                "added_at": asset.added_at,
-                "mode": mode,
-            });
-            Ok(CommandOutcome::Success(data, None))
-        }
-        Format::Text => {
-            let msg = format!(
-                "✓ added asset: {} ({}, {} bytes)",
-                asset.path,
-                serde_json::to_value(asset.kind)
-                    .map(|v| v.as_str().unwrap_or("unknown").to_string())
-                    .unwrap_or_else(|_| "unknown".to_string()),
-                asset.size,
-            );
-            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
-        }
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
     }
 }
 
@@ -224,23 +258,38 @@ fn handle_list(
     let project_path = svc_util::resolve_project(root, project, cwd)?;
     let assets = asset_svc::list(&project_path, args.filter.as_deref(), args.asset_type)?;
 
+    let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc);
+
     match format {
         Format::Json => {
-            let data = serde_json::to_value(&assets).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
+            let items: Vec<serde_json::Value> = assets
+                .iter()
+                .map(|a| {
+                    let mut v = serde_json::to_value(a).map_err(MfError::Json)?;
+                    if let Some(obj) = v.as_object_mut() {
+                        obj.insert("identity".to_string(), serde_json::Value::String(a.identity()));
+                    }
+                    Ok(v)
+                })
+                .collect::<Result<Vec<_>>>()?;
+            Ok(CommandOutcome::Success(json_collection("assets", items), None))
         }
         Format::Text => {
-            if assets.is_empty() {
-                return Ok(CommandOutcome::Success(serde_json::Value::String("No assets found.".to_string()), None));
-            }
-            let mut lines = Vec::new();
-            lines.push(format!("{:<24} {:<8} {:<28} {}", "NAME", "TYPE", "PATH", "SIZE"));
+            let mut rows = Vec::with_capacity(assets.len());
             for a in &assets {
                 let kind_str =
                     serde_json::to_value(a.kind).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
-                lines.push(format!("{:<24} {:<8} {:<28} {}", a.name, kind_str, a.path, a.size,));
+                rows.push(ListRow {
+                    cells: vec![
+                        ListCell::Text(a.name.clone()),
+                        ListCell::Text(kind_str),
+                        ListCell::Text(a.path.clone()),
+                        ListCell::Number(a.size.to_string()),
+                    ],
+                });
             }
-            Ok(CommandOutcome::Raw(lines.join("\n"), None))
+            let view = ListView { headers: &["NAME", "TYPE", "PATH", "SIZE"], rows, plural_noun: "assets" };
+            Ok(CommandOutcome::Raw(render_text(&view, &opts), None))
         }
     }
 }
@@ -298,27 +347,44 @@ fn handle_update(
     }
 
     if let Some(path) = args.path {
-        let result = asset_svc::update_one(&project_path, cwd, &path)?;
+        if args.dry_run {
+            let result = VerbResult {
+                verb: Verb::Update,
+                kind: "asset",
+                identity: path.to_string_lossy().to_string(),
+                old_identity: None,
+                path: None,
+                dry_run: true,
+                details: serde_json::json!({"changes": {}}),
+            };
+            return match format {
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+            };
+        }
+
+        let update_result = asset_svc::update_one(&project_path, cwd, &path)?;
+        let changes = if update_result.changed {
+            serde_json::json!({
+                "size": {"from": update_result.old_size, "to": update_result.new_size},
+                "hash": {"from": update_result.old_hash, "to": update_result.new_hash},
+            })
+        } else {
+            serde_json::json!({})
+        };
+        let path_str = update_result.path.clone();
+        let result = VerbResult {
+            verb: Verb::Update,
+            kind: "asset",
+            identity: path_str.clone(),
+            old_identity: None,
+            path: Some(path_str),
+            dry_run: false,
+            details: serde_json::json!({"changes": changes, "changed": update_result.changed}),
+        };
         match format {
-            Format::Json => {
-                let data = serde_json::to_value(&result).map_err(MfError::Json)?;
-                Ok(CommandOutcome::Success(data, None))
-            }
-            Format::Text => {
-                let msg = if result.changed {
-                    format!(
-                        "✓ updated {} (size {} → {}, hash {} → {})",
-                        result.path,
-                        result.old_size,
-                        result.new_size,
-                        &result.old_hash[..8.min(result.old_hash.len())],
-                        &result.new_hash[..8.min(result.new_hash.len())],
-                    )
-                } else {
-                    format!("= unchanged {}", result.path)
-                };
-                Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
-            }
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
         }
     } else {
         // --all mode
@@ -371,47 +437,41 @@ fn handle_index(
 
     let report = asset_svc::reconcile(&project_path, args.dry_run, args.refresh_metadata)?;
 
+    let scanned_count = report.added.len() + report.removed.len() + report.kept_count as usize;
+
     match format {
         Format::Json => {
-            let mut data = serde_json::json!({
+            let data = serde_json::json!({
+                "kind": "asset",
                 "added": report.added,
                 "removed": report.removed,
                 "kept_count": report.kept_count,
-                "refreshed": report.refreshed,
+                "scanned_count": scanned_count,
+                "dry_run": args.dry_run,
+                "details": {
+                    "refreshed": report.refreshed,
+                },
             });
-            if args.dry_run {
-                if let Some(m) = data.as_object_mut() {
-                    m.insert("dry_run".to_string(), serde_json::Value::Bool(true));
-                }
-            }
             Ok(CommandOutcome::Success(data, None))
         }
         Format::Text => {
-            let mut lines = Vec::new();
-            let dry_run_prefix = if args.dry_run { "[dry-run] " } else { "" };
-            for a in &report.added {
-                lines.push(format!("{dry_run_prefix}+ added   {}", a.path));
-            }
-            for r in &report.removed {
-                lines.push(format!("{dry_run_prefix}- removed {}", r.path));
-            }
-            if let Some(ref refreshed) = report.refreshed {
-                for r in refreshed {
-                    if r.changed {
-                        lines.push(format!(
-                            "{dry_run_prefix}~ refreshed {} (size {} → {})",
-                            r.path, r.old_size, r.new_size,
-                        ));
-                    }
-                }
-            }
-            let kept_msg = if args.dry_run {
-                format!("{dry_run_prefix}{} kept (no changes written)", report.kept_count)
-            } else {
-                format!("{} kept", report.kept_count)
+            let details = serde_json::json!({
+                "added": report.added,
+                "removed": report.removed,
+                "kept_count": report.kept_count,
+                "scanned_count": scanned_count,
+                "refreshed": report.refreshed,
+            });
+            let result = VerbResult {
+                verb: Verb::Index,
+                kind: "asset",
+                identity: String::new(),
+                old_identity: None,
+                path: None,
+                dry_run: args.dry_run,
+                details,
             };
-            lines.push(kept_msg);
-            Ok(CommandOutcome::Raw(lines.join("\n"), None))
+            Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None))
         }
     }
 }
@@ -466,18 +526,29 @@ fn handle_remove(
 ) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, project, cwd)?;
     identity::validate_entity_path(&project_path, &args.file)?;
-    let report = asset_svc::remove_asset(&project_path, &args.file, args.force, args.dry_run)?;
 
+    require_confirmation(&ConfirmArgs {
+        verb_label: "removal",
+        kind: "asset",
+        identity: &args.file,
+        yes: args.yes,
+        force: args.force,
+    })?;
+
+    let _report = asset_svc::remove_asset(&project_path, &args.file, args.force, args.dry_run)?;
+
+    let result = VerbResult {
+        verb: Verb::Remove,
+        kind: "asset",
+        identity: args.file.clone(),
+        old_identity: None,
+        path: None,
+        dry_run: args.dry_run,
+        details: serde_json::json!({"removed": true}),
+    };
     match format {
-        Format::Json => {
-            let data = serde_json::to_value(&report).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
-        }
-        Format::Text => {
-            let prefix = if report.dry_run { "[dry-run] would remove" } else { "✓ removed" };
-            let msg = format!("{prefix} asset: {} (referenced: {})", report.removed, report.was_referenced);
-            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
-        }
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
     }
 }
 
@@ -493,18 +564,37 @@ fn handle_rename(
     let project_path = svc_util::resolve_project(root, project, cwd)?;
     identity::validate_entity_path(&project_path, &args.old_path)?;
     identity::validate_entity_path(&project_path, &args.new_path)?;
-    let report = asset_svc::rename_asset(&project_path, &args.old_path, &args.new_path, args.force, args.dry_run)?;
 
+    if args.dry_run {
+        let result = VerbResult {
+            verb: Verb::Rename,
+            kind: "asset",
+            identity: args.new_path.clone(),
+            old_identity: Some(args.old_path.clone()),
+            path: None,
+            dry_run: true,
+            details: serde_json::json!({}),
+        };
+        return match format {
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        };
+    }
+
+    let report = asset_svc::rename_asset(&project_path, &args.old_path, &args.new_path, args.force, false)?;
+
+    let result = VerbResult {
+        verb: Verb::Rename,
+        kind: "asset",
+        identity: report.after.path.clone(),
+        old_identity: Some(report.before.path.clone()),
+        path: Some(report.after.path.clone()),
+        dry_run: false,
+        details: serde_json::json!({}),
+    };
     match format {
-        Format::Json => {
-            let data = serde_json::to_value(&report).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
-        }
-        Format::Text => {
-            let prefix = if report.dry_run { "[dry-run] would rename" } else { "✓ renamed" };
-            let msg = format!("{} asset: {} → {}", prefix, report.before.path, report.after.path);
-            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
-        }
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
     }
 }
 
@@ -530,26 +620,33 @@ fn handle_asset_show(
             format!("asset '{}' not found", args.path),
             Some("use `mf asset list` to see available assets".to_string()),
         )),
-        Some(asset) => match format {
-            Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(asset).map_err(MfError::Json)?, None)),
-            Format::Text => {
-                let kind_str = serde_json::to_value(asset.kind)
-                    .ok()
-                    .and_then(|v| v.as_str().map(String::from))
-                    .unwrap_or_default();
-                let mut lines = Vec::new();
-                lines.push(format!("Name: {}", asset.name));
-                lines.push(format!("Type: {kind_str}"));
-                lines.push(format!("Path: {}", asset.path));
-                lines.push(format!("Size: {} bytes", asset.size));
-                if !asset.hash.is_empty() {
-                    lines.push(format!("Hash: {}", asset.hash));
-                }
-                if !asset.tags.is_empty() {
-                    lines.push(format!("Tags: {}", asset.tags.join(", ")));
-                }
-                Ok(CommandOutcome::Raw(lines.join("\n"), None))
+        Some(asset) => {
+            let kind_str =
+                serde_json::to_value(asset.kind).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
+            let mut fields = vec![
+                ShowField { label: "Name", value: ShowValue::Text(asset.name.clone()) },
+                ShowField { label: "Type", value: ShowValue::Text(kind_str) },
+                ShowField { label: "Path", value: ShowValue::Text(asset.path.clone()) },
+                ShowField { label: "Size", value: ShowValue::Text(format!("{} bytes", asset.size)) },
+            ];
+            if !asset.hash.is_empty() {
+                fields.push(ShowField { label: "Hash", value: ShowValue::Text(asset.hash.clone()) });
             }
-        },
+            if !asset.tags.is_empty() {
+                fields.push(ShowField { label: "Tags", value: ShowValue::Text(asset.tags.join(", ")) });
+            }
+            fields.push(ShowField { label: "Added", value: ShowValue::Text(asset.added_at.clone()) });
+
+            let block = ShowBlock { kind: "asset", identity: asset.path.clone(), fields, sections: vec![] };
+
+            match format {
+                Format::Json => {
+                    let asset_json = serde_json::to_value(asset).map_err(MfError::Json)?;
+                    let extra = asset_json.as_object().cloned().unwrap_or_default();
+                    Ok(CommandOutcome::Success(show_json(&block, extra), None))
+                }
+                Format::Text => Ok(CommandOutcome::Raw(render_show_text(&block), None)),
+            }
+        }
     }
 }

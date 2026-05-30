@@ -1,8 +1,14 @@
 use clap::{Args, Parser, Subcommand};
 use serde_json::json;
 
+use crate::cli::shared_flags::NoHeadersFlag;
+use crate::cli::shared_flags::NoTruncFlag;
 use crate::error::{MfError, Result};
 use crate::model::render::{HtmlForm, RenderRequest, RenderScope};
+use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
+use crate::output::show::{
+    json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowSection, ShowValue,
+};
 use crate::output::Format;
 use crate::service::config as config_svc;
 use crate::service::render as render_svc;
@@ -41,10 +47,22 @@ pub struct TemplateArgs {
 pub enum TemplateSubcommand {
     /// List available render templates
     List(TemplateListArgs),
+    /// Show template details
+    Show(TemplateShowArgs),
 }
 
 #[derive(Debug, Clone, Args)]
-pub struct TemplateListArgs;
+pub struct TemplateListArgs {
+    #[command(flatten)]
+    pub no_headers: NoHeadersFlag,
+    #[command(flatten)]
+    pub no_trunc: NoTruncFlag,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct TemplateShowArgs {
+    pub name: String,
+}
 
 /// Dispatch the `mf render` command.
 pub fn dispatch(
@@ -55,7 +73,8 @@ pub fn dispatch(
 ) -> Result<CommandOutcome> {
     match args.command {
         Some(RenderSubcommand::Template(tpl_cmd)) => match tpl_cmd.command {
-            TemplateSubcommand::List(_) => dispatch_list_templates(repo_root, format),
+            TemplateSubcommand::List(tpl_args) => dispatch_list_templates(repo_root, format, tpl_args),
+            TemplateSubcommand::Show(args) => handle_template_show(repo_root, format, args),
         },
         None => dispatch_render(args, repo_root, format, project),
     }
@@ -136,48 +155,131 @@ fn dispatch_render(
     }
 }
 
-fn dispatch_list_templates(repo_root: Option<&std::path::PathBuf>, format: Format) -> Result<CommandOutcome> {
+fn handle_template_show(
+    repo_root: Option<&std::path::PathBuf>,
+    format: Format,
+    args: TemplateShowArgs,
+) -> Result<CommandOutcome> {
+    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+    let built_ins = render_svc::built_in_templates();
+    let custom = render_svc::discover_custom_templates(root)?;
+
+    // Find template and its body
+    let (template, body): (crate::model::render::RenderTemplate, Option<String>) =
+        if let Some(t) = built_ins.iter().find(|t| t.name.eq_ignore_ascii_case(&args.name)) {
+            let body = match t.name.as_str() {
+                "report" => Some(render_svc::built_in_report_body().to_string()),
+                "paper" => Some(render_svc::built_in_paper_body().to_string()),
+                _ => None,
+            };
+            (t.clone(), body)
+        } else if let Some((t, b)) = custom.iter().find(|(t, _)| t.name.eq_ignore_ascii_case(&args.name)) {
+            (t.clone(), Some(b.clone()))
+        } else {
+            return Err(MfError::usage(
+                format!("template '{}' not found", args.name),
+                Some("use `mf render template list` to see available templates".to_string()),
+            ));
+        };
+
+    let source_str = match template.source {
+        crate::model::render::TemplateSource::BuiltIn => "built_in",
+        crate::model::render::TemplateSource::Custom => "custom",
+    };
+
+    let fields = vec![
+        ShowField { label: "Name", value: ShowValue::Text(template.name.clone()) },
+        ShowField { label: "Label", value: ShowValue::Text(template.label.clone()) },
+        ShowField { label: "Description", value: ShowValue::Text(template.description.clone()) },
+        ShowField { label: "Source", value: ShowValue::Text(source_str.to_string()) },
+        ShowField { label: "Path", value: ShowValue::Optional(template.path.clone()) },
+        ShowField { label: "Default", value: ShowValue::Text(template.default.to_string()) },
+    ];
+
+    let mut sections = Vec::new();
+    if let Some(body_text) = body {
+        let preview: String = body_text.lines().take(10).collect::<Vec<_>>().join("\n");
+        sections.push(ShowSection {
+            heading: "Preview",
+            fields: vec![ShowField { label: "Body", value: ShowValue::Multiline(preview) }],
+        });
+    }
+
+    let block = ShowBlock { kind: "render_template", identity: template.name.clone(), fields, sections };
+
+    match format {
+        Format::Json => {
+            let tpl_json = serde_json::to_value(&template).map_err(MfError::Json)?;
+            let extra = tpl_json.as_object().cloned().unwrap_or_default();
+            Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
+        }
+        Format::Text => Ok(CommandOutcome::Raw(render_show_text(&block), None)),
+    }
+}
+
+fn dispatch_list_templates(
+    repo_root: Option<&std::path::PathBuf>,
+    format: Format,
+    args: TemplateListArgs,
+) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
 
     let built_ins = render_svc::built_in_templates();
     let custom = render_svc::discover_custom_templates(root)?;
 
+    let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc);
+
     match format {
         Format::Json => {
-            let mut templates_json: Vec<serde_json::Value> = Vec::new();
+            let mut items: Vec<serde_json::Value> = Vec::new();
             for t in &built_ins {
-                templates_json.push(json!({
+                items.push(json!({
+                    "identity": t.name,
                     "name": t.name,
                     "label": t.label,
                     "description": t.description,
-                    "source": t.source,
-                    "path": None::<String>,
+                    "source": "built_in",
+                    "path": serde_json::Value::Null,
                     "default": t.default,
                 }));
             }
             for (t, _) in &custom {
-                templates_json.push(json!({
+                items.push(json!({
+                    "identity": t.name,
                     "name": t.name,
                     "label": t.label,
                     "description": t.description,
-                    "source": t.source,
+                    "source": "custom",
                     "path": t.path,
                     "default": t.default,
                 }));
             }
-            let data = json!({ "templates": templates_json });
-            Ok(CommandOutcome::Success(data, None))
+            Ok(CommandOutcome::Success(json_collection("templates", items), None))
         }
         Format::Text => {
-            let mut lines = vec!["Available render templates:".to_string()];
+            let mut rows = Vec::new();
             for t in &built_ins {
-                lines.push(format!("  {}  {} (built_in)", t.name, t.description));
+                rows.push(ListRow {
+                    cells: vec![
+                        ListCell::Text(t.name.clone()),
+                        ListCell::Text(t.label.clone()),
+                        ListCell::Text("built_in".to_string()),
+                        ListCell::Text(t.default.to_string()),
+                    ],
+                });
             }
             for (t, _) in &custom {
-                let source_info = format!("custom: {}", t.path.as_deref().unwrap_or(""));
-                lines.push(format!("  {}  {} ({})", t.name, t.description, source_info));
+                rows.push(ListRow {
+                    cells: vec![
+                        ListCell::Text(t.name.clone()),
+                        ListCell::Text(t.label.clone()),
+                        ListCell::Text("custom".to_string()),
+                        ListCell::Text(t.default.to_string()),
+                    ],
+                });
             }
-            Ok(CommandOutcome::Raw(lines.join("\n"), None))
+            let view = ListView { headers: &["NAME", "LABEL", "SOURCE", "DEFAULT"], rows, plural_noun: "templates" };
+            Ok(CommandOutcome::Raw(render_text(&view, &opts), None))
         }
     }
 }

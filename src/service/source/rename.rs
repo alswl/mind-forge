@@ -48,14 +48,14 @@ pub fn rename_source(
     let sources = index.sources.as_ref().ok_or_else(|| {
         MfError::not_found(
             format!("source '{old_name}' not found"),
-            Some("use 'mf source list' to see available sources".to_string()),
+            Some("use `mf source list` to see available sources".to_string()),
         )
     })?;
 
     let pos = sources.iter().position(|s| s.name == old_name).ok_or_else(|| {
         MfError::not_found(
             format!("source '{old_name}' not found"),
-            Some("use 'mf source list' to see available sources".to_string()),
+            Some("use `mf source list` to see available sources".to_string()),
         )
     })?;
 

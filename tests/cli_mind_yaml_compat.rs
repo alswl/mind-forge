@@ -129,7 +129,7 @@ fn cli_compat_source_list_dictionary_index() {
     let (value, stderr, code) = run_json(&dir, &["source", "list", "--project", "2026-ai-sites-build", "--json"]);
     assert_eq!(code, 0, "source list: {stderr}");
     assert_eq!(value["status"], "ok");
-    let sources = value["data"].as_array().expect("sources array");
+    let sources = value["data"]["sources"].as_array().expect("sources array");
     assert!(sources.iter().any(|source| source["path"] == "docs/api-spec.md"));
 }
 
@@ -139,7 +139,7 @@ fn cli_compat_source_list_reads_files_dictionary() {
     let (value, stderr, code) = run_json(&dir, &["source", "list", "--project", "2026-blogs", "--json"]);
     assert_eq!(code, 0, "source list files dictionary: {stderr}");
     assert_eq!(value["status"], "ok");
-    let sources = value["data"].as_array().expect("sources array");
+    let sources = value["data"]["sources"].as_array().expect("sources array");
     assert!(sources.iter().any(|source| source["path"] == "docs/getting-started-with-rust.md"));
     assert!(sources.iter().any(|source| source["path"] == "docs/advanced-patterns.md"));
 }
@@ -150,7 +150,7 @@ fn cli_compat_asset_list_dictionary_index() {
     let (value, stderr, code) = run_json(&dir, &["asset", "list", "--project", "2026-03-hid-prd", "--json"]);
     assert_eq!(code, 0, "asset list: {stderr}");
     assert_eq!(value["status"], "ok");
-    assert!(value["data"].as_array().expect("assets array").iter().any(|asset| asset["name"] == "logo.png"));
+    assert!(value["data"]["assets"].as_array().expect("assets array").iter().any(|asset| asset["name"] == "logo.png"));
 }
 
 // ---------------------------------------------------------------------------

@@ -209,11 +209,10 @@ fn test_render_template_list_text() {
 
     assert_eq!(code, 0, "stderr: {stderr:?}");
     assert!(stderr.is_empty(), "stderr should be empty: {stderr:?}");
-    assert!(stdout.contains("Available render templates"), "should have header");
     assert!(stdout.contains("report"), "should list 'report'");
     assert!(stdout.contains("paper"), "should list 'paper'");
-    assert!(stdout.contains("Work/reporting presentation"), "report description");
-    assert!(stdout.contains("Academic/paper-style presentation"), "paper description");
+    assert!(stdout.contains("Work report"), "report label");
+    assert!(stdout.contains("Paper"), "paper label");
 }
 
 #[test]
@@ -256,8 +255,8 @@ fn test_render_custom_template_discovery() {
     let (stdout, stderr, code) = run(&["--root", &root, "render", "template", "list"]);
     assert_eq!(code, 0, "stderr: {stderr:?}");
     assert!(stdout.contains("team-review"), "custom template should appear in list");
-    assert!(stdout.contains("Internal review page for leadership"), "description should appear");
-    assert!(stdout.contains("custom:"), "custom source indicator should appear");
+    assert!(stdout.contains("Team Review"), "custom template label should appear");
+    assert!(stdout.contains("custom"), "custom source indicator should appear");
 
     // It should work as --template
     let (stdout2, stderr2, code2) =

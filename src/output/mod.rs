@@ -1,3 +1,9 @@
+pub mod confirm;
+pub mod list;
+pub mod show;
+pub mod tty;
+pub mod verb;
+
 use std::io::Write;
 
 use serde::Serialize;
@@ -68,7 +74,7 @@ pub(super) fn render_success_inner(writer: &mut dyn Write, format: Format, data:
 ///
 /// In text mode the string is printed as-is.
 /// In JSON mode the string is parsed as JSON (if valid) and embedded
-/// directly into the `{ status, data }` envelope,避免 double-encoding.
+/// directly into the `{ status, data }` envelope, avoiding double-encoding.
 pub(super) fn render_raw_inner(writer: &mut dyn Write, format: Format, content: &str) -> Result<()> {
     match format {
         Format::Text => {
@@ -95,7 +101,7 @@ pub(super) fn render_error_inner(writer: &mut dyn Write, format: Format, error: 
                 writeln!(writer, "Hint: {hint}")?;
             }
             writeln!(writer)?;
-            writeln!(writer, "Run 'mf --help' for usage.")?;
+            writeln!(writer, "Run `mf --help` for usage.")?;
         }
         Format::Json => {
             let envelope = ErrorEnvelope {

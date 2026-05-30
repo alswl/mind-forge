@@ -37,7 +37,7 @@ pub fn archive_project(repo_root: &Path, project_name: &str) -> Result<ProjectAr
     if !from_path.exists() {
         return Err(MfError::usage(
             format!("project '{project_name}' not found at {}", from_path.display()),
-            Some("use 'mf project list' to see available projects".to_string()),
+            Some("use `mf project list` to see available projects".to_string()),
         ));
     }
 

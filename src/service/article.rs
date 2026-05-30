@@ -1026,16 +1026,17 @@ pub fn rename_article(
     let articles = index.articles.as_mut().ok_or_else(|| {
         MfError::not_found(
             format!("article '{old_title}' not found"),
-            Some("use 'mf article list --project <project>' to see available articles".to_string()),
+            Some("use `mf article list --project <project>` to see available articles".to_string()),
         )
     })?;
 
-    let article = articles.iter_mut().find(|a| a.title == old_title).ok_or_else(|| {
-        MfError::not_found(
-            format!("article '{old_title}' not found"),
-            Some("use 'mf article list --project <project>' to see available articles".to_string()),
-        )
-    })?;
+    let article =
+        articles.iter_mut().find(|a| a.title == old_title || a.article_path == old_title).ok_or_else(|| {
+            MfError::not_found(
+                format!("article '{old_title}' not found"),
+                Some("use `mf article list --project <project>` to see available articles".to_string()),
+            )
+        })?;
 
     let old_article_path = article.article_path.clone();
     let new_article_path = format!("{}/{}.{}", layout.articles, new_filename, defaults::MARKDOWN_EXTENSION);
@@ -1048,7 +1049,7 @@ pub fn rename_article(
         if !old_full.exists() {
             return Err(MfError::not_found(
                 format!("article file not found at {}", old_full.display()),
-                Some("the index may be out of date; try 'mf article index'".to_string()),
+                Some("the index may be out of date; try `mf article index`".to_string()),
             ));
         }
 
@@ -1094,14 +1095,14 @@ pub fn remove_article(project_path: &Path, title: &str, force: bool, dry_run: bo
     let articles = index.articles.as_ref().ok_or_else(|| {
         MfError::not_found(
             format!("article '{title}' not found"),
-            Some("use 'mf article list --project <project>' to see available articles".to_string()),
+            Some("use `mf article list --project <project>` to see available articles".to_string()),
         )
     })?;
 
-    let article = articles.iter().find(|a| a.title == title).ok_or_else(|| {
+    let article = articles.iter().find(|a| a.title == title || a.article_path == title).ok_or_else(|| {
         MfError::not_found(
             format!("article '{title}' not found"),
-            Some("use 'mf article list --project <project>' to see available articles".to_string()),
+            Some("use `mf article list --project <project>` to see available articles".to_string()),
         )
     })?;
 

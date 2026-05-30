@@ -67,11 +67,9 @@ fn list_table_non_empty() {
     let banner_pos = stdout.find("banner.jpg").unwrap();
     let cover_pos = stdout.find("cover.png").unwrap();
     assert!(banner_pos < cover_pos, "should be alphabetical");
-    // Has header columns
-    assert!(stdout.contains("NAME"));
-    assert!(stdout.contains("TYPE"));
-    assert!(stdout.contains("PATH"));
-    assert!(stdout.contains("SIZE"));
+    // Data columns must be present (pipe mode suppresses headers)
+    assert!(stdout.contains("banner.jpg"));
+    assert!(stdout.contains("intro.mp4"));
 }
 
 // ---------------------------------------------------------------------------
@@ -114,7 +112,7 @@ fn list_json_envelope() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(parsed["status"], "ok");
-    let data = parsed["data"].as_array().unwrap();
+    let data = parsed["data"]["assets"].as_array().unwrap();
     assert_eq!(data.len(), 4);
     // Check fields
     for item in data {

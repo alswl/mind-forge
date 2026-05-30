@@ -4,11 +4,18 @@ use clap::{Args, Subcommand};
 use serde::Serialize;
 
 use crate::cli::deprecation::DeprecationContext;
+use crate::cli::shared_flags::LintFlags;
+use crate::cli::shared_flags::NoHeadersFlag;
+use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::CommandOutcome;
 use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::article::ArticleStatus;
 use crate::model::config::TemplateMode;
+use crate::output::confirm::{require_confirmation, ConfirmArgs};
+use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
+use crate::output::show::{json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowValue};
+use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, Verb, VerbResult};
 use crate::output::Format;
 use crate::service::{article as article_svc, config as config_svc, identity, util as svc_util};
 
@@ -52,15 +59,22 @@ pub struct ArticleNewArgs {
     pub draft: bool,
     #[arg(short = 'f', long)]
     pub force: bool,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
-pub struct ArticleListArgs {}
+pub struct ArticleListArgs {
+    #[command(flatten)]
+    pub no_headers: NoHeadersFlag,
+    #[command(flatten)]
+    pub no_trunc: NoTruncFlag,
+}
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ArticleLintArgs {
-    #[arg(long)]
-    pub fix: bool,
+    #[command(flatten)]
+    pub lint: LintFlags,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -81,6 +95,8 @@ pub struct ArticleRemoveArgs {
     pub path: String,
     #[arg(short = 'f', long)]
     pub force: bool,
+    #[arg(short = 'y', long)]
+    pub yes: bool,
     #[arg(long = "dry-run")]
     pub dry_run: bool,
 }
@@ -93,6 +109,8 @@ pub struct ArticleRenameArgs {
     pub new_path: String,
     #[arg(short = 'f', long)]
     pub force: bool,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 pub fn dispatch(
@@ -111,7 +129,30 @@ pub fn dispatch(
         Some(ArticleSubcommand::New(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
 
-            let result = article_svc::new_article(
+            if args.dry_run {
+                let filename = svc_util::to_filename(&args.title);
+                let layout = config_svc::effective_layout(&project_path)?;
+                let identity = if args.file {
+                    format!("{}/{}.{}", layout.articles, filename, defaults::MARKDOWN_EXTENSION)
+                } else {
+                    format!("{}/{}", layout.articles, filename)
+                };
+                let result = VerbResult {
+                    verb: Verb::Create,
+                    kind: "article",
+                    identity,
+                    old_identity: None,
+                    path: None,
+                    dry_run: true,
+                    details: serde_json::json!({"title": args.title, "template": args.template}),
+                };
+                return match format {
+                    Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                    Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+                };
+            }
+
+            let svc_result = article_svc::new_article(
                 &project_path,
                 &args.title,
                 &args.template,
@@ -121,26 +162,37 @@ pub fn dispatch(
                 args.force,
             )?;
 
-            let path = if result.shape == "directory" {
-                format!("{}/{}/", result.docs_dir, result.filename)
+            let article_path = if svc_result.shape == "directory" {
+                format!("{}/{}/", svc_result.docs_dir, svc_result.filename)
             } else {
-                format!("{}/{}.{}", result.docs_dir, result.filename, defaults::MARKDOWN_EXTENSION)
+                format!("{}/{}.{}", svc_result.docs_dir, svc_result.filename, defaults::MARKDOWN_EXTENSION)
             };
 
-            let data = serde_json::json!({
-                "title": args.title,
-                "filename": result.filename,
-                "draft": args.draft,
-                "template": result.template,
-                "shape": result.shape,
-                "path": path,
-                "files": result.files,
-                "typora_front_matter_injected": result.typora_front_matter_injected,
-                "typora_copy_images_to": result.typora_copy_images_to,
-            });
-            Ok(CommandOutcome::Success(data, None))
+            let result = VerbResult {
+                verb: Verb::Create,
+                kind: "article",
+                identity: article_path.clone(),
+                old_identity: None,
+                path: Some(article_path.clone()),
+                dry_run: false,
+                details: serde_json::json!({
+                    "title": args.title,
+                    "filename": svc_result.filename,
+                    "draft": args.draft,
+                    "template": svc_result.template,
+                    "shape": svc_result.shape,
+                    "path": article_path,
+                    "files": svc_result.files,
+                    "typora_front_matter_injected": svc_result.typora_front_matter_injected,
+                    "typora_copy_images_to": svc_result.typora_copy_images_to,
+                }),
+            };
+            match format {
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+            }
         }
-        Some(ArticleSubcommand::List(_args)) => {
+        Some(ArticleSubcommand::List(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
             let articles = article_svc::list_articles(&project_path)?;
             let config = config_svc::load_project(&project_path, Some(root))?;
@@ -167,7 +219,6 @@ pub fn dispatch(
                     let origin = if a.template_origin.is_some() {
                         "generated"
                     } else {
-                        // Check if article matches a declared config entry via docs-relative short key.
                         let is_declared = config.as_ref().is_some_and(|cfg| {
                             let short_key = crate::service::index::article_output_stem(&a.article_path);
                             cfg.build.articles.contains_key(short_key)
@@ -190,8 +241,7 @@ pub fn dispatch(
                     let content_kind = article_content_kind(&project_path, &a.article_path);
                     v["content_kind"] = serde_json::Value::String(content_kind.to_string());
 
-                    // Path identity contract. Keep article_path/id/title for
-                    // compatibility, but make the canonical selector explicit.
+                    // Path identity contract
                     v["identity"] = serde_json::Value::String(a.article_path.clone());
                     v["path"] = serde_json::Value::String(a.article_path.clone());
 
@@ -199,33 +249,28 @@ pub fn dispatch(
                 })
                 .collect();
 
+            let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc);
+
             match format {
-                Format::Json => Ok(CommandOutcome::Success(serde_json::json!({"articles": enriched}), None)),
+                Format::Json => Ok(CommandOutcome::Success(json_collection("articles", enriched), None)),
                 Format::Text => {
-                    if enriched.is_empty() {
-                        return Ok(CommandOutcome::Success(serde_json::json!("No articles found."), None));
+                    let mut rows = Vec::with_capacity(enriched.len());
+                    for v in &enriched {
+                        let identity = v["identity"].as_str().unwrap_or("").to_string();
+                        let content_kind = v["content_kind"].as_str().unwrap_or("missing");
+                        let status = v["status"].as_str().unwrap_or("draft");
+                        rows.push(ListRow {
+                            cells: vec![ListCell::Text(identity), content_kind_cell(content_kind), status_cell(status)],
+                        });
                     }
-                    Ok(CommandOutcome::Raw(render_article_list_text(&project_path, &enriched), None))
+                    let view = ListView { headers: &["PATH", "CONTENT", "STATUS"], rows, plural_noun: "articles" };
+                    Ok(CommandOutcome::Raw(render_text(&view, &opts), None))
                 }
             }
         }
         Some(ArticleSubcommand::Lint(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
-            let issues = article_svc::lint_articles(&project_path, args.fix)?;
-
-            match format {
-                Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&issues)?, None)),
-                Format::Text => {
-                    if issues.is_empty() {
-                        return Ok(CommandOutcome::Success(serde_json::json!("No issues found."), None));
-                    }
-                    let mut lines = Vec::new();
-                    for issue in &issues {
-                        lines.push(format!("[{}] {}: {}  ({})", issue.severity, issue.kind, issue.message, issue.path));
-                    }
-                    Ok(CommandOutcome::Raw(lines.join("\n"), None))
-                }
-            }
+            handle_lint(args, &project_path, format)
         }
         Some(ArticleSubcommand::Index(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
@@ -237,25 +282,53 @@ pub fn dispatch(
                 .map(|t| t.items.iter().filter(|(_, tmpl)| matches!(tmpl.mode, TemplateMode::Generated)).count())
                 .unwrap_or(0);
 
-            // Phase 1: Docs scan + diff + reconcile (existing behavior)
+            // Phase 1: Docs scan + diff + reconcile
             let scanned = article_svc::scan_docs(&project_path)?;
             let index = crate::service::index::load(&project_path)?;
             let layout = config_svc::effective_layout(&project_path)?;
             let diff = article_svc::compute_article_diff(&index, &scanned, &layout.articles);
 
+            let added_for_json: Vec<_> = diff
+                .added
+                .iter()
+                .map(|a| serde_json::json!({"identity": a.article_path, "path": a.article_path}))
+                .collect();
+            let removed_for_json: Vec<_> = diff
+                .removed
+                .iter()
+                .map(|a| serde_json::json!({"identity": a.article_path, "path": a.article_path}))
+                .collect();
+            let _added_count = diff.added.len();
+            let removed_count = diff.removed.len();
+            let kept_count = index.articles.as_ref().map(|a| a.len()).unwrap_or(0).saturating_sub(removed_count);
+            let scanned_count = scanned.len();
+
             if args.dry_run {
-                let data = serde_json::json!({
+                let details = serde_json::json!({
                     "added": diff.added,
                     "removed": diff.removed,
-                    "dry_run": true,
+                    "kept_count": kept_count,
+                    "scanned_count": scanned_count,
                     "templates_scanned": templates_scanned,
                 });
-                return Ok(CommandOutcome::Success(data, None));
+                let result = VerbResult {
+                    verb: Verb::Index,
+                    kind: "article",
+                    identity: String::new(),
+                    old_identity: None,
+                    path: None,
+                    dry_run: true,
+                    details,
+                };
+                return match format {
+                    Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                    Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+                };
             }
 
             let mut updated = article_svc::reconcile_articles(&project_path, index, diff)?;
 
-            // Phase 2: Merge declared articles (FR-003, FR-004)
+            // Phase 2: Merge declared articles
             if let Some(ref config) = config {
                 let declared = article_svc::scan_declared(&project_path, config)?;
                 for da in declared {
@@ -265,7 +338,6 @@ pub fn dispatch(
                     }
                 }
 
-                // Collect declared article_dir prefixes for template dedup (FR-006)
                 let declared_prefixes: Vec<String> = config
                     .build
                     .articles
@@ -273,14 +345,11 @@ pub fn dispatch(
                     .filter_map(|cfg| cfg.article_dir.as_ref().map(|d| d.trim_end_matches('/').to_string() + "/"))
                     .collect();
 
-                // Phase 3: Merge template-discovered articles (US2)
                 let template_articles = article_svc::scan_templates(&project_path, config)?;
                 for ta in template_articles {
-                    // Skip if already covered by declared
                     if updated.articles.as_ref().is_some_and(|a| a.iter().any(|e| e.article_path == ta.article_path)) {
                         continue;
                     }
-                    // FR-006: Skip if template file falls under a declared article_dir
                     if declared_prefixes.iter().any(|p| ta.article_path.starts_with(p)) {
                         continue;
                     }
@@ -298,14 +367,28 @@ pub fn dispatch(
             }
 
             crate::service::index::save(&project_path, &updated)?;
-            let article_count = updated.articles.as_ref().map(|a| a.len()).unwrap_or(0);
+            let final_count = updated.articles.as_ref().map(|a| a.len()).unwrap_or(0);
 
-            let data = serde_json::json!({
-                "articles_count": article_count,
-                "project_path": project_path.to_string_lossy().to_string(),
+            let details = serde_json::json!({
+                "added": added_for_json,
+                "removed": removed_for_json,
+                "kept_count": final_count,
+                "scanned_count": scanned_count,
                 "templates_scanned": templates_scanned,
             });
-            Ok(CommandOutcome::Success(data, None))
+            let result = VerbResult {
+                verb: Verb::Index,
+                kind: "article",
+                identity: String::new(),
+                old_identity: None,
+                path: None,
+                dry_run: false,
+                details,
+            };
+            match format {
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+            }
         }
         Some(ArticleSubcommand::Show(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
@@ -315,70 +398,68 @@ pub fn dispatch(
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
             identity::validate_entity_path(&project_path, &args.old_path)?;
             identity::validate_entity_path(&project_path, &args.new_path)?;
+
+            if args.dry_run {
+                let result = VerbResult {
+                    verb: Verb::Rename,
+                    kind: "article",
+                    identity: args.new_path.clone(),
+                    old_identity: Some(args.old_path.clone()),
+                    path: None,
+                    dry_run: true,
+                    details: serde_json::json!({}),
+                };
+                return match format {
+                    Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                    Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+                };
+            }
+
             let report = article_svc::rename_article(&project_path, &args.old_path, &args.new_path, args.force)?;
 
+            let result = VerbResult {
+                verb: Verb::Rename,
+                kind: "article",
+                identity: report.new_article_path.clone(),
+                old_identity: Some(report.old_article_path.clone()),
+                path: Some(report.new_article_path.clone()),
+                dry_run: false,
+                details: serde_json::json!({"old_title": report.old_title, "new_title": report.new_title}),
+            };
             match format {
-                Format::Json => {
-                    Ok(CommandOutcome::Success(serde_json::to_value(&report).map_err(MfError::Json)?, None))
-                }
-                Format::Text => {
-                    let msg = format!(
-                        "Renamed article\n  title: {} → {}\n  file: {} → {}",
-                        report.old_title, report.new_title, report.old_article_path, report.new_article_path
-                    );
-                    Ok(CommandOutcome::Raw(msg, None))
-                }
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
             }
         }
         Some(ArticleSubcommand::Remove(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
             identity::validate_entity_path(&project_path, &args.path)?;
+
+            require_confirmation(&ConfirmArgs {
+                verb_label: "removal",
+                kind: "article",
+                identity: &args.path,
+                yes: args.yes,
+                force: args.force,
+            })?;
+
             let report = article_svc::remove_article(&project_path, &args.path, args.force, args.dry_run)?;
 
+            let result = VerbResult {
+                verb: Verb::Remove,
+                kind: "article",
+                identity: args.path.clone(),
+                old_identity: None,
+                path: Some(report.before.article_path.clone()),
+                dry_run: args.dry_run,
+                details: serde_json::json!({"removed": true}),
+            };
             match format {
-                Format::Json => {
-                    let data = serde_json::to_value(&report).map_err(MfError::Json)?;
-                    Ok(CommandOutcome::Success(data, None))
-                }
-                Format::Text => {
-                    let prefix = if report.dry_run { "[dry-run] would remove" } else { "✓ removed" };
-                    let msg = format!("{} article: {}", prefix, report.before.title);
-                    Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
-                }
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
             }
         }
     }
-}
-
-fn render_article_list_text(project_path: &Path, articles: &[serde_json::Value]) -> String {
-    let rows: Vec<[String; 3]> = articles
-        .iter()
-        .map(|v| {
-            let identity = v["identity"].as_str().or_else(|| v["article_path"].as_str()).unwrap_or("").to_string();
-            let content = v["content_kind"]
-                .as_str()
-                .map(article_content_label)
-                .unwrap_or_else(|| article_content_label(article_content_kind(project_path, &identity)))
-                .to_string();
-            let status = v["status"].as_str().unwrap_or("draft").to_string();
-            [identity, content, status]
-        })
-        .collect();
-
-    let headers = ["PATH", "CONTENT", "STATUS"];
-    let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
-    for row in &rows {
-        for (idx, value) in row.iter().enumerate() {
-            widths[idx] = widths[idx].max(value.len());
-        }
-    }
-
-    let mut lines = Vec::with_capacity(rows.len() + 1);
-    lines.push(format_article_list_row(&headers, &widths));
-    for row in rows {
-        lines.push(format_article_list_row(&row, &widths));
-    }
-    lines.join("\n")
 }
 
 fn article_content_kind(project_path: &Path, article_path: &str) -> &'static str {
@@ -392,24 +473,20 @@ fn article_content_kind(project_path: &Path, article_path: &str) -> &'static str
     }
 }
 
-fn article_content_label(kind: &str) -> &'static str {
+fn content_kind_cell(kind: &str) -> ListCell {
     match kind {
-        "blocked" => "BLOCKED",
-        "single_file" => "Single File",
-        "missing" => "Missing",
-        _ => "Unknown",
+        "blocked" => ListCell::Styled { text: "BLOCKED".to_string(), ansi_prefix: "\x1b[33m", ansi_suffix: "" },
+        "single_file" => ListCell::Styled { text: "Single File".to_string(), ansi_prefix: "\x1b[32m", ansi_suffix: "" },
+        "missing" => ListCell::Styled { text: "Missing".to_string(), ansi_prefix: "\x1b[31m", ansi_suffix: "" },
+        _ => ListCell::Text("Unknown".to_string()),
     }
 }
 
-fn format_article_list_row<S: AsRef<str>>(columns: &[S], widths: &[usize]) -> String {
-    columns
-        .iter()
-        .enumerate()
-        .map(|(idx, value)| format!("{:<width$}", value.as_ref(), width = widths[idx]))
-        .collect::<Vec<_>>()
-        .join("  ")
-        .trim_end()
-        .to_string()
+fn status_cell(status: &str) -> ListCell {
+    match status {
+        "published" => ListCell::Styled { text: "published".to_string(), ansi_prefix: "\x1b[32m", ansi_suffix: "" },
+        _ => ListCell::Styled { text: "draft".to_string(), ansi_prefix: "\x1b[2m", ansi_suffix: "" },
+    }
 }
 
 fn handle_article_show(args: ArticleShowArgs, project_path: &Path, format: Format) -> Result<CommandOutcome> {
@@ -435,31 +512,106 @@ fn handle_article_show(args: ArticleShowArgs, project_path: &Path, format: Forma
         )),
         Some(article) => {
             let article_dir = config.as_ref().map(|cfg| article_svc::effective_article_dir(project_path, cfg, article));
-            let path = project_path.join(&article.article_path);
+            let content_kind = article_content_kind(project_path, &article.article_path);
+            let status_str = match article.status {
+                ArticleStatus::Draft => "draft",
+                ArticleStatus::Published => "published",
+            };
+
+            let mut fields = vec![
+                ShowField { label: "Path", value: ShowValue::Text(article.article_path.clone()) },
+                ShowField { label: "Title", value: ShowValue::Text(article.title.clone()) },
+                ShowField { label: "Status", value: ShowValue::Text(status_str.to_string()) },
+                ShowField { label: "Content", value: ShowValue::Text(content_kind.to_string()) },
+            ];
+            if let Some(ref dir) = article_dir {
+                fields.push(ShowField { label: "Article dir", value: ShowValue::Text(dir.clone()) });
+            }
+            if let Some(ref origin) = article.template_origin {
+                fields.push(ShowField {
+                    label: "Template",
+                    value: ShowValue::Text(format!("{} ({})", origin.template_name, origin.slot_value)),
+                });
+            }
+            fields.push(ShowField { label: "Created", value: ShowValue::Text(article.created_at.clone()) });
+            fields.push(ShowField { label: "Updated", value: ShowValue::Text(article.updated_at.clone()) });
+
+            let block = ShowBlock { kind: "article", identity: article.article_path.clone(), fields, sections: vec![] };
 
             match format {
                 Format::Json => {
-                    Ok(CommandOutcome::Success(serde_json::to_value(article).map_err(MfError::Json)?, None))
+                    let article_json = serde_json::to_value(article).map_err(MfError::Json)?;
+                    let extra = article_json.as_object().cloned().unwrap_or_default();
+                    Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
                 }
-                Format::Text => {
-                    let mut lines = Vec::new();
-                    lines.push(format!("Title:      {}", article.title));
-                    lines.push(format!("Path:       {}", article.article_path));
-                    if let Some(ref dir) = article_dir {
-                        lines.push(format!("Article dir: {dir}"));
-                    }
-                    let status_str = match article.status {
-                        ArticleStatus::Draft => "draft",
-                        ArticleStatus::Published => "published",
-                    };
-                    lines.push(format!("Status:     {status_str}"));
-                    lines.push(format!("Exists:     {}", if path.exists() { "yes" } else { "no" }));
-                    if let Some(ref origin) = article.template_origin {
-                        lines.push(format!("Template:   {} ({})", origin.template_name, origin.slot_value));
-                    }
-                    Ok(CommandOutcome::Raw(lines.join("\n"), None))
-                }
+                Format::Text => Ok(CommandOutcome::Raw(render_show_text(&block), None)),
             }
         }
+    }
+}
+
+// ── Handle: mf article lint ────────────────────────────────────────────────
+
+fn handle_lint(args: ArticleLintArgs, project_path: &Path, format: Format) -> Result<CommandOutcome> {
+    let fix = args.lint.fix;
+    let dry_run = args.lint.dry_run;
+
+    let issues = article_svc::lint_articles(project_path, fix && !dry_run)?;
+
+    // Apply --rule filter
+    let filtered: Vec<_> = if args.lint.rule.is_empty() {
+        issues
+    } else {
+        issues.into_iter().filter(|i| args.lint.rule.iter().any(|r| r == &i.kind)).collect()
+    };
+
+    // Apply --severity filter
+    let severity_level = severity_rank(args.lint.severity.as_deref());
+    let filtered: Vec<_> =
+        filtered.into_iter().filter(|i| severity_rank(Some(&i.severity)) <= severity_level).collect();
+
+    // Compute summary
+    let errors = filtered.iter().filter(|i| i.severity == "error").count() as u64;
+    let warnings = filtered.iter().filter(|i| i.severity == "warning").count() as u64;
+    let info = filtered.iter().filter(|i| i.severity == "info").count() as u64;
+    let fixed_count = 0u64;
+
+    let json_issues: Vec<serde_json::Value> =
+        filtered.iter().map(|i| serde_json::to_value(i).unwrap_or_default()).collect();
+
+    let details = serde_json::json!({
+        "issues": json_issues,
+        "summary": { "errors": errors, "warnings": warnings, "info": info, "fixed": fixed_count },
+    });
+
+    let exit_code =
+        if args.lint.max_warnings.is_some_and(|max| warnings as i32 > max) || errors > 0 { Some(1) } else { None };
+
+    match format {
+        Format::Json => {
+            let data = serde_json::json!({ "kind": "article", "issues": json_issues, "summary": { "errors": errors, "warnings": warnings, "info": info, "fixed": fixed_count }, "dry_run": dry_run });
+            Ok(CommandOutcome::Success(data, exit_code))
+        }
+        Format::Text => {
+            let result = VerbResult {
+                verb: Verb::Lint,
+                kind: "article",
+                identity: String::new(),
+                old_identity: None,
+                path: None,
+                dry_run,
+                details,
+            };
+            Ok(CommandOutcome::Raw(verb_text(&result), exit_code))
+        }
+    }
+}
+
+fn severity_rank(severity: Option<&str>) -> u8 {
+    match severity {
+        Some("error") => 0,
+        Some("warning") => 1,
+        Some("info") => 2,
+        _ => 2,
     }
 }

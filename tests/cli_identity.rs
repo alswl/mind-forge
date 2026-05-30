@@ -207,14 +207,14 @@ fn asset_remove_path_selector_dry_run() {
     let project_dir = repo.path().join("my-project");
 
     let (stdout, stderr, code) =
-        run_json_at(&repo, &project_dir, &["asset", "remove", "assets/chart.png", "--dry-run"]);
+        run_json_at(&repo, &project_dir, &["asset", "remove", "assets/chart.png", "--dry-run", "--yes"]);
     assert_eq!(code, 0, "stderr: {stderr}");
 
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok");
     // Should report canonical asset path
-    let removed = v["data"]["removed"].as_str().unwrap_or("");
-    assert!(removed.contains("assets/chart.png"), "removed path: {removed}");
+    assert_eq!(v["data"]["kind"], "asset");
+    assert_eq!(v["data"]["identity"], "assets/chart.png");
 }
 
 // ── T030: Source remove path selector ───────────────────────────────────────

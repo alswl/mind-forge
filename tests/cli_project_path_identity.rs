@@ -48,7 +48,7 @@ fn project_new_unicode_path_from_repo_root() {
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok");
     assert_eq!(v["data"]["path"], "workspaces/E_团队周报/projects/2026-W21_iSee团队周报");
-    assert_eq!(v["data"]["requested_path"], "workspaces/E_团队周报/projects/2026-W21_iSee团队周报");
+    assert_eq!(v["data"]["details"]["requested_path"], "workspaces/E_团队周报/projects/2026-W21_iSee团队周报");
 
     // Verify directory was created
     let project_dir = repo.path().join("workspaces/E_团队周报/projects/2026-W21_iSee团队周报");
@@ -76,7 +76,7 @@ fn project_new_cwd_relative() {
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok");
     assert_eq!(v["data"]["path"], "workspaces/E_团队周报/projects/2026-W21_iSee团队周报");
-    assert_eq!(v["data"]["requested_path"], "2026-W21_iSee团队周报");
+    assert_eq!(v["data"]["details"]["requested_path"], "2026-W21_iSee团队周报");
 }
 
 // ── T018: Create project with emoji path ─────────────────────────────────
@@ -109,10 +109,10 @@ fn project_new_json_envelope() {
     assert_eq!(v["command"], "mf");
 
     let data = &v["data"];
-    assert!(data["path"].is_string(), "data.path missing: {data}");
-    assert!(data["requested_path"].is_string(), "data.requested_path missing: {data}");
-    assert!(data["created_at"].is_string(), "data.created_at missing: {data}");
-    assert!(data["scaffolded"].is_array(), "data.scaffolded missing or not array: {data}");
+    assert!(data["details"]["path"].is_string(), "data.details.path missing: {data}");
+    assert!(data["details"]["requested_path"].is_string(), "data.details.requested_path missing: {data}");
+    assert!(data["details"]["created_at"].is_string(), "data.details.created_at missing: {data}");
+    assert!(data["details"]["scaffolded"].is_array(), "data.details.scaffolded missing or not array: {data}");
 }
 
 // ── T020: Error cases ────────────────────────────────────────────────────

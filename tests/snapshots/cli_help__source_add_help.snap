@@ -36,6 +36,8 @@ Options:
           
       --json
           Shorthand for --format json
+      --dry-run
+          
       --no-color
           Disable colored output
   -p, --project <NAME>

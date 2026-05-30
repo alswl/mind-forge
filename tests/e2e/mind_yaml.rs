@@ -105,7 +105,7 @@ fn e2e_mind_yaml_index_dictionary_commands_complete() {
     assert_eq!(code, 0, "source list failed: {stderr}");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(value["status"], "ok");
-    let sources = value["data"].as_array().expect("sources array");
+    let sources = value["data"]["sources"].as_array().expect("sources array");
     assert!(sources.iter().any(|source| source["path"] == "docs/api-spec.md"));
 
     // Source list also accepts legacy files dictionaries as source entries.
@@ -113,7 +113,7 @@ fn e2e_mind_yaml_index_dictionary_commands_complete() {
     assert_eq!(code, 0, "source list files dictionary failed: {stderr}");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(value["status"], "ok");
-    let sources = value["data"].as_array().expect("sources array");
+    let sources = value["data"]["sources"].as_array().expect("sources array");
     assert!(sources.iter().any(|source| source["path"] == "docs/getting-started-with-rust.md"));
 
     // Asset list against filename-keyed dictionary index
@@ -121,7 +121,7 @@ fn e2e_mind_yaml_index_dictionary_commands_complete() {
     assert_eq!(code, 0, "asset list failed: {stderr}");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(value["status"], "ok");
-    assert!(value["data"].as_array().expect("assets array").iter().any(|asset| asset["name"] == "logo.png"));
+    assert!(value["data"]["assets"].as_array().expect("assets array").iter().any(|asset| asset["name"] == "logo.png"));
 }
 
 /// Read-only commands must NOT modify fixture YAML files.

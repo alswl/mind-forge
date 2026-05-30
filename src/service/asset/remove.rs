@@ -23,14 +23,14 @@ fn remove_impl(project_path: &Path, file: &str, force: bool, dry_run: bool) -> R
         let assets = index.assets.as_ref().ok_or_else(|| {
             MfError::usage(
                 format!("asset '{file}' not found"),
-                Some("use 'mf asset list -p <project>' to see available assets".to_string()),
+                Some("use `mf asset list -p <project>` to see available assets".to_string()),
             )
         })?;
 
         let entry = assets.iter().find(|a| a.path == file || a.name == file).ok_or_else(|| {
             MfError::usage(
                 format!("asset '{file}' not found"),
-                Some("use 'mf asset list -p <project>' to see available assets".to_string()),
+                Some("use `mf asset list -p <project>` to see available assets".to_string()),
             )
         })?;
 

@@ -56,7 +56,7 @@ fn remove_pdf_deletes_file_and_entry() {
     let (repo, project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "source", "remove", "paper", "--project", "alpha"])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "remove", "paper", "--project", "alpha", "--yes"])
         .output()
         .unwrap();
 
@@ -88,6 +88,7 @@ fn remove_with_keep_file() {
             "--project",
             "alpha",
             "--keep-file",
+            "--yes",
         ])
         .output()
         .unwrap();
@@ -111,7 +112,16 @@ fn remove_url_source_only_index() {
     let (repo, project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "source", "remove", "research-blog", "--project", "alpha"])
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "remove",
+            "research-blog",
+            "--project",
+            "alpha",
+            "--yes",
+        ])
         .output()
         .unwrap();
 
@@ -134,7 +144,7 @@ fn remove_dirty_entry_succeeds() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "source", "remove", "paper", "--project", "alpha"])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "remove", "paper", "--project", "alpha", "--yes"])
         .output()
         .unwrap();
 
@@ -154,7 +164,16 @@ fn remove_unknown_name() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "source", "remove", "nonexistent", "--project", "alpha"])
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "remove",
+            "nonexistent",
+            "--project",
+            "alpha",
+            "--yes",
+        ])
         .output()
         .unwrap();
 
@@ -182,6 +201,7 @@ fn remove_json_envelope() {
             "alpha",
             "--format",
             "json",
+            "--yes",
         ])
         .output()
         .unwrap();
@@ -190,7 +210,7 @@ fn remove_json_envelope() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok");
-    assert_eq!(v["data"]["name"], "paper");
-    assert_eq!(v["data"]["type"], "pdf");
-    assert_eq!(v["data"]["file_deleted"], true);
+    assert_eq!(v["data"]["kind"], "source");
+    assert_eq!(v["data"]["identity"], "paper");
+    assert_eq!(v["data"]["removed"], true);
 }

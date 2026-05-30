@@ -18,14 +18,14 @@ pub fn remove_term(project_path: &Path, term_name: &str, force: bool, dry_run: b
     let terms = index.terms.as_ref().ok_or_else(|| {
         MfError::usage(
             format!("term '{term_name}' not found"),
-            Some("use 'mf term list -p <project>' to see available terms".to_string()),
+            Some("use `mf term list -p <project>` to see available terms".to_string()),
         )
     })?;
 
     if !terms.iter().any(|t| t.term == term_name) {
         return Err(MfError::usage(
             format!("term '{term_name}' not found"),
-            Some("use 'mf term list -p <project>' to see available terms".to_string()),
+            Some("use `mf term list -p <project>` to see available terms".to_string()),
         ));
     }
 
@@ -90,7 +90,7 @@ pub fn remove_term_global(repo_root: &Path, term_name: &str, force: bool, dry_ru
     if !terms.iter().any(|t| t.term == term_name) {
         return Err(MfError::usage(
             format!("term '{term_name}' not found in global terms"),
-            Some("use 'mf term list --global' to see available terms".to_string()),
+            Some("use `mf term list --global` to see available terms".to_string()),
         ));
     }
 

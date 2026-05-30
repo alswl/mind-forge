@@ -95,7 +95,7 @@ pub fn reconcile(project_path: &Path, dry_run: bool) -> Result<SourceIndexReport
     if !sources_dir.exists() {
         return Err(MfError::usage(
             format!("project has no {}/ directory at '{}'", layout.sources, sources_dir.display()),
-            Some("use 'mf project lint --fix' to create missing directories".to_string()),
+            Some("use `mf project lint --fix` to create missing directories".to_string()),
         ));
     }
 

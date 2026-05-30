@@ -46,7 +46,7 @@ pub fn reconcile(project_path: &Path, dry_run: bool, refresh_metadata: bool) -> 
     if !assets_dir.exists() {
         return Err(MfError::usage(
             format!("assets directory not found at '{}'", assets_dir.display()),
-            Some("run 'mf project lint --fix' to create missing directories".to_string()),
+            Some("run `mf project lint --fix` to create missing directories".to_string()),
         ));
     }
 

@@ -44,8 +44,8 @@ fn article_new_type_title_succeeds() {
 
     let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(parsed["status"], "ok");
-    assert_eq!(parsed["data"]["template"], "blog");
-    assert!(parsed["data"]["filename"].as_str().unwrap_or("").contains("my-article"));
+    assert_eq!(parsed["data"]["details"]["template"], "blog");
+    assert!(parsed["data"]["details"]["filename"].as_str().unwrap_or("").contains("my-article"));
 }
 
 // ---------------------------------------------------------------------------
@@ -322,7 +322,7 @@ fn asset_add_name_copy_tag_no_warning() {
 
     let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(parsed["status"], "ok");
-    assert_eq!(parsed["data"]["name"], "my-image");
+    assert_eq!(parsed["data"]["details"]["name"], "my-image");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

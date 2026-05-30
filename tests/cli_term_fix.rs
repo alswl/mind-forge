@@ -47,7 +47,7 @@ fn fix_term_replace_definition() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("definition changed"), "stdout: {stdout}");
+    assert!(stdout.contains("✓ updated term:"), "stdout: {stdout}");
 
     // Verify index
     let index = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
@@ -68,8 +68,7 @@ fn fix_term_append_alias_and_tag() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("+1 alias"), "stdout: {stdout}");
-    assert!(stdout.contains("+1 tag"), "stdout: {stdout}");
+    assert!(stdout.contains("✓ updated term: Mind Repo (2 fields)"), "stdout: {stdout}");
 
     let index = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
     assert!(index.contains("new-alias"), "alias added: {index}");
@@ -185,11 +184,10 @@ fn fix_term_json_shape() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(parsed["status"], "ok");
-    assert_eq!(parsed["data"]["term"], "Mind Repo");
-    assert_eq!(parsed["data"]["definition"], "json-test");
-    assert!(parsed["data"].get("aliases").is_some());
-    assert!(parsed["data"].get("tags").is_some());
-    assert!(parsed["data"].get("corrections").is_some());
+    assert_eq!(parsed["data"]["kind"], "term");
+    assert_eq!(parsed["data"]["identity"], "Mind Repo");
+    assert!(parsed["data"]["details"]["changes"].is_object());
+    assert!(!parsed["data"]["dry_run"].as_bool().unwrap());
 }
 
 // T052
@@ -208,7 +206,7 @@ fn fix_schema_version_unchanged() {
 
     assert!(output.status.success(), "exit 0: {:?}", output.status.code());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("definition changed"), "stdout: {stdout}");
+    assert!(stdout.contains("✓ updated term:"), "stdout: {stdout}");
 
     let content = fs::read_to_string(repo.path().join("minds-terms.yaml")).unwrap();
     assert!(content.contains("the cafed thing"), "definition updated: {content}");

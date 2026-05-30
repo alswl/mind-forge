@@ -191,10 +191,8 @@ fn rename_asset_json_envelope() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok");
-    assert_eq!(v["data"]["verb"], "rename");
     assert_eq!(v["data"]["kind"], "asset");
-    assert_eq!(v["data"]["before"]["path"], "assets/images/diagram.png");
-    assert_eq!(v["data"]["after"]["path"], "assets/images/architecture.png");
-    assert_eq!(v["data"]["force"], false);
+    assert_eq!(v["data"]["old_identity"], "assets/images/diagram.png");
+    assert_eq!(v["data"]["identity"], "assets/images/architecture.png");
     assert_eq!(v["data"]["dry_run"], false);
 }

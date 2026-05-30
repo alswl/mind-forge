@@ -60,8 +60,9 @@ fn index_added_and_removed_summary() {
 
     assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("+ added:"), "should report added, got: {stdout}");
-    assert!(stdout.contains("- removed:"), "should report removed, got: {stdout}");
+    assert!(stdout.contains("indexed source:"), "should use indexed format, got: {stdout}");
+    assert!(stdout.contains("+1"), "should report 1 added, got: {stdout}");
+    assert!(stdout.contains("-1"), "should report 1 removed, got: {stdout}");
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +159,7 @@ fn index_ignores_unknown_subdirs() {
     assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
     let stdout = String::from_utf8(output.stdout).unwrap();
     // Should have 0 added since raw/ is not scanned
-    assert!(stdout.contains("kept: 0 entries"), "stdout: {stdout}");
+    assert!(stdout.contains("=0"), "stdout: {stdout}");
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +185,7 @@ fn index_ignores_hidden_files() {
     assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(!stdout.contains("gitkeep"), "should not index hidden files, got: {stdout}");
-    assert!(stdout.contains("kept: 0 entries"), "stdout: {stdout}");
+    assert!(stdout.contains("=0"), "stdout: {stdout}");
 }
 
 // ---------------------------------------------------------------------------
@@ -208,7 +209,8 @@ fn index_recursive_file_subdir() {
 
     assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("bar"), "stdout: {stdout}");
+    assert!(stdout.contains("indexed source:"), "stdout: {stdout}");
+    assert!(stdout.contains("+1"), "should report 1 added, got: {stdout}");
 
     // Index should have the entry with path including subdirectory
     let index_content = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();

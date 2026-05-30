@@ -28,9 +28,9 @@ fn directory_article_injects_typora_front_matter() {
     let data = &json["data"];
 
     // JSON contract
-    assert_eq!(data["typora_front_matter_injected"], true);
-    assert!(data["typora_copy_images_to"].is_string());
-    assert!(!data["typora_copy_images_to"].as_str().unwrap().is_empty());
+    assert_eq!(data["details"]["typora_front_matter_injected"], true);
+    assert!(data["details"]["typora_copy_images_to"].is_string());
+    assert!(!data["details"]["typora_copy_images_to"].as_str().unwrap().is_empty());
 
     // File content
     let md_path = repo.path().join("my-project/docs/my-post/01-opening.md");
@@ -46,9 +46,9 @@ fn directory_article_injects_typora_front_matter_into_every_block() {
     common::create_project(&repo, "my-project");
 
     let json = article_new_json(&repo, "my-project", &["Architecture Note", "--template", "arch"]);
-    let files = json["data"]["files"].as_array().expect("files should be an array");
+    let files = json["data"]["details"]["files"].as_array().expect("files should be an array");
     assert!(files.len() > 1, "arch template should create multiple block files");
-    assert_eq!(json["data"]["typora_copy_images_to"], "../../assets");
+    assert_eq!(json["data"]["details"]["typora_copy_images_to"], "../../assets");
 
     for file in files {
         let file = file.as_str().expect("file entry should be a string");
@@ -72,8 +72,8 @@ fn file_article_injects_typora_front_matter() {
     let json = article_new_json(&repo, "my-project", &["Flash Note", "--file"]);
     let data = &json["data"];
 
-    assert_eq!(data["typora_front_matter_injected"], true);
-    assert!(data["typora_copy_images_to"].is_string());
+    assert_eq!(data["details"]["typora_front_matter_injected"], true);
+    assert!(data["details"]["typora_copy_images_to"].is_string());
 
     let md_path = repo.path().join("my-project/docs/flash-note.md");
     let content = std::fs::read_to_string(&md_path).unwrap();
@@ -92,8 +92,8 @@ fn json_envelope_includes_typora_fields() {
     let json = article_new_json(&repo, "my-project", &["JSON Test"]);
     let data = &json["data"];
 
-    assert_eq!(data["typora_front_matter_injected"], true);
-    let path_val = data["typora_copy_images_to"].as_str().unwrap();
+    assert_eq!(data["details"]["typora_front_matter_injected"], true);
+    let path_val = data["details"]["typora_copy_images_to"].as_str().unwrap();
     assert!(path_val.contains("assets"), "typora_copy_images_to should reference assets dir");
 }
 
@@ -111,8 +111,8 @@ fn custom_assets_path_used_in_front_matter() {
     let json = article_new_json(&repo, "my-project", &["Daily Note"]);
     let data = &json["data"];
 
-    assert_eq!(data["typora_front_matter_injected"], true);
-    assert_eq!(data["typora_copy_images_to"], "../../media");
+    assert_eq!(data["details"]["typora_front_matter_injected"], true);
+    assert_eq!(data["details"]["typora_copy_images_to"], "../../media");
 
     let md_path = repo.path().join("my-project/docs/daily-note/01-opening.md");
     let content = std::fs::read_to_string(&md_path).unwrap();
@@ -183,8 +183,8 @@ fn disabled_plugin_omits_typora_front_matter() {
     let json = article_new_with_config(&repo, "my-project", config, &["No Typora"]);
     let data = &json["data"];
 
-    assert_eq!(data["typora_front_matter_injected"], false);
-    assert!(data["typora_copy_images_to"].is_null());
+    assert_eq!(data["details"]["typora_front_matter_injected"], false);
+    assert!(data["details"]["typora_copy_images_to"].is_null());
 
     let md_path = repo.path().join("my-project/docs/no-typora/01-opening.md");
     let content = std::fs::read_to_string(&md_path).unwrap();
@@ -202,8 +202,8 @@ fn explicit_enabled_true_matches_default() {
     let json = article_new_with_config(&repo, "my-project", config, &["Explicit Enable"]);
     let data = &json["data"];
 
-    assert_eq!(data["typora_front_matter_injected"], true);
-    assert!(data["typora_copy_images_to"].is_string());
+    assert_eq!(data["details"]["typora_front_matter_injected"], true);
+    assert!(data["details"]["typora_copy_images_to"].is_string());
 
     let md_path = repo.path().join("my-project/docs/explicit-enable/01-opening.md");
     let content = std::fs::read_to_string(&md_path).unwrap();
@@ -225,8 +225,8 @@ fn unknown_plugin_preserves_typora_default() {
     let data = &json["data"];
 
     // Default behavior: Typora is enabled when its config is absent
-    assert_eq!(data["typora_front_matter_injected"], true);
-    assert!(data["typora_copy_images_to"].is_string());
+    assert_eq!(data["details"]["typora_front_matter_injected"], true);
+    assert!(data["details"]["typora_copy_images_to"].is_string());
 
     let md_path = repo.path().join("my-project/docs/unknown-plugin/01-opening.md");
     let content = std::fs::read_to_string(&md_path).unwrap();

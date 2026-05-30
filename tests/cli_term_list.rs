@@ -103,9 +103,9 @@ fn list_terms_json_shape() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(parsed["status"], "ok");
-    let data = parsed["data"].as_array().unwrap();
-    assert_eq!(data.len(), 3);
-    for item in data {
+    let terms = parsed["data"]["terms"].as_array().unwrap();
+    assert_eq!(terms.len(), 3);
+    for item in terms {
         assert!(item.get("term").is_some());
         assert!(item.get("definition").is_some());
         assert!(item.get("aliases").is_some());

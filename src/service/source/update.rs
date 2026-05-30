@@ -27,14 +27,14 @@ pub fn update(project_path: &Path, args: &UpdateArgs) -> Result<Source> {
     let sources = index.sources.as_mut().ok_or_else(|| {
         MfError::usage(
             format!("source '{}' not found", args.name),
-            Some("use 'mf source list' to see available sources".to_string()),
+            Some("use `mf source list` to see available sources".to_string()),
         )
     })?;
 
     let idx = sources.iter().position(|s| s.name == args.name).ok_or_else(|| {
         MfError::usage(
             format!("source '{}' not found", args.name),
-            Some("use 'mf source list' to see available sources".to_string()),
+            Some("use `mf source list` to see available sources".to_string()),
         )
     })?;
 
