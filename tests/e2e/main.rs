@@ -13,5 +13,6 @@ mod project_index;
 mod project_lifecycle;
 mod publisher;
 mod repo_lifecycle;
+mod source_index;
 mod term_global;
 mod unified_output_contracts;

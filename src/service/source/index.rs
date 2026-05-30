@@ -5,7 +5,7 @@ use chrono::Utc;
 
 use super::infer_kind_from_path;
 use crate::error::{MfError, Result};
-use crate::model::source::{FileKind, Source, SourceIndexEntry, SourceIndexReport};
+use crate::model::source::{FileKind, Source, SourceIndexEntry, SourceIndexReport, SourceKind};
 use crate::service::config as config_svc;
 use crate::service::index;
 use crate::service::util;
@@ -67,7 +67,21 @@ fn scan_recursive_dir(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(entries)
 }
 
-fn scan_disk_sources(project_path: &Path) -> Result<Vec<PathBuf>> {
+#[derive(Debug, Clone)]
+struct DiskSource {
+    path: String,
+    source_kind: Option<SourceKind>,
+}
+
+fn source_kind_dir_name(source_kind: &SourceKind) -> &'static str {
+    match source_kind {
+        SourceKind::Yuque => "yuque",
+        SourceKind::Meeting => "meeting",
+        SourceKind::Misc => "misc",
+    }
+}
+
+fn scan_disk_sources(project_path: &Path) -> Result<Vec<DiskSource>> {
     let layout = config_svc::effective_layout(project_path)?;
     let sources_dir = project_path.join(&layout.sources);
     let mut files = Vec::new();
@@ -75,16 +89,24 @@ fn scan_disk_sources(project_path: &Path) -> Result<Vec<PathBuf>> {
     let pdf_dir = sources_dir.join("pdf");
     for abs_path in scan_shallow_dir(&pdf_dir)? {
         let portable = util::rel_posix_path(project_path, &abs_path)?;
-        files.push(PathBuf::from(portable));
+        files.push(DiskSource { path: portable, source_kind: None });
     }
 
     let file_dir = sources_dir.join("file");
     for abs_path in scan_recursive_dir(&file_dir)? {
         let portable = util::rel_posix_path(project_path, &abs_path)?;
-        files.push(PathBuf::from(portable));
+        files.push(DiskSource { path: portable, source_kind: None });
     }
 
-    files.sort();
+    for source_kind in [SourceKind::Yuque, SourceKind::Meeting, SourceKind::Misc] {
+        let source_kind_dir = sources_dir.join(source_kind_dir_name(&source_kind));
+        for abs_path in scan_recursive_dir(&source_kind_dir)? {
+            let portable = util::rel_posix_path(project_path, &abs_path)?;
+            files.push(DiskSource { path: portable, source_kind: Some(source_kind.clone()) });
+        }
+    }
+
+    files.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(files)
 }
 
@@ -119,8 +141,9 @@ pub fn reconcile(project_path: &Path, dry_run: bool) -> Result<SourceIndexReport
     }
 
     let disk_files = scan_disk_sources(project_path)?;
-    let disk_paths: std::collections::BTreeSet<String> =
-        disk_files.iter().map(|p| p.to_string_lossy().to_string()).collect();
+    let disk_sources: std::collections::BTreeMap<String, Option<SourceKind>> =
+        disk_files.into_iter().map(|source| (source.path, source.source_kind)).collect();
+    let disk_paths: std::collections::BTreeSet<String> = disk_sources.keys().cloned().collect();
 
     let mut added: Vec<SourceIndexEntry> = Vec::new();
     let mut kept_file_paths: Vec<String> = Vec::new();
@@ -167,7 +190,7 @@ pub fn reconcile(project_path: &Path, dry_run: bool) -> Result<SourceIndexReport
             new_sources.push(Source {
                 name: entry.name.clone(),
                 kind: entry.kind.clone(),
-                source_kind: None,
+                source_kind: disk_sources.get(&entry.path).cloned().flatten(),
                 url: None,
                 path: Some(entry.path.clone()),
                 tags: vec![],
