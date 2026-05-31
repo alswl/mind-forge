@@ -166,7 +166,10 @@ pub fn dispatch(
                 return match format {
                     Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
                     Format::Text => Ok(CommandOutcome::Success(
-                        serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                        serde_json::Value::String(verb_text(
+                            &result,
+                            &VerbOpts::from_repo_root(Some(project_path.as_path())),
+                        )),
                         None,
                     )),
                 };
@@ -210,7 +213,10 @@ pub fn dispatch(
             match format {
                 Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
                 Format::Text => Ok(CommandOutcome::Success(
-                    serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                    serde_json::Value::String(verb_text(
+                        &result,
+                        &VerbOpts::from_repo_root(Some(project_path.as_path())),
+                    )),
                     None,
                 )),
             }
@@ -273,7 +279,7 @@ pub fn dispatch(
                 .collect();
 
             let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
-                .with_repo_root(Some(root.clone()));
+                .with_repo_root(Some(project_path.clone()));
 
             match format {
                 Format::Json => Ok(CommandOutcome::Success(json_collection("articles", enriched), None)),
@@ -294,7 +300,7 @@ pub fn dispatch(
         }
         Some(ArticleSubcommand::Lint(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
-            handle_lint(args, &project_path, root, format)
+            handle_lint(args, &project_path, format)
         }
         Some(ArticleSubcommand::Index(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
@@ -347,7 +353,10 @@ pub fn dispatch(
                 return match format {
                     Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
                     Format::Text => Ok(CommandOutcome::Success(
-                        serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                        serde_json::Value::String(verb_text(
+                            &result,
+                            &VerbOpts::from_repo_root(Some(project_path.as_path())),
+                        )),
                         None,
                     )),
                 };
@@ -415,14 +424,17 @@ pub fn dispatch(
             match format {
                 Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
                 Format::Text => Ok(CommandOutcome::Success(
-                    serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                    serde_json::Value::String(verb_text(
+                        &result,
+                        &VerbOpts::from_repo_root(Some(project_path.as_path())),
+                    )),
                     None,
                 )),
             }
         }
         Some(ArticleSubcommand::Show(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
-            handle_article_show(args, &project_path, root, format)
+            handle_article_show(args, &project_path, format)
         }
         Some(ArticleSubcommand::Rename(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
@@ -442,7 +454,10 @@ pub fn dispatch(
                 return match format {
                     Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
                     Format::Text => Ok(CommandOutcome::Success(
-                        serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                        serde_json::Value::String(verb_text(
+                            &result,
+                            &VerbOpts::from_repo_root(Some(project_path.as_path())),
+                        )),
                         None,
                     )),
                 };
@@ -462,7 +477,10 @@ pub fn dispatch(
             match format {
                 Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
                 Format::Text => Ok(CommandOutcome::Success(
-                    serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                    serde_json::Value::String(verb_text(
+                        &result,
+                        &VerbOpts::from_repo_root(Some(project_path.as_path())),
+                    )),
                     None,
                 )),
             }
@@ -493,7 +511,10 @@ pub fn dispatch(
             match format {
                 Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
                 Format::Text => Ok(CommandOutcome::Success(
-                    serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                    serde_json::Value::String(verb_text(
+                        &result,
+                        &VerbOpts::from_repo_root(Some(project_path.as_path())),
+                    )),
                     None,
                 )),
             }
@@ -529,12 +550,7 @@ fn status_cell(status: &str) -> ListCell {
     }
 }
 
-fn handle_article_show(
-    args: ArticleShowArgs,
-    project_path: &Path,
-    repo_root: &Path,
-    format: Format,
-) -> Result<CommandOutcome> {
+fn handle_article_show(args: ArticleShowArgs, project_path: &Path, format: Format) -> Result<CommandOutcome> {
     identity::validate_entity_path(project_path, &args.path)?;
     let config = config_svc::load_project(project_path, None)?;
     let articles = article_svc::list_articles(project_path)?;
@@ -589,9 +605,10 @@ fn handle_article_show(
                     let extra = article_json.as_object().cloned().unwrap_or_default();
                     Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
                 }
-                Format::Text => {
-                    Ok(CommandOutcome::Raw(render_show_text(&block, &ShowOpts::from_repo_root(Some(repo_root))), None))
-                }
+                Format::Text => Ok(CommandOutcome::Raw(
+                    render_show_text(&block, &ShowOpts::from_repo_root(Some(project_path))),
+                    None,
+                )),
             }
         }
     }
@@ -599,7 +616,7 @@ fn handle_article_show(
 
 // ── Handle: mf article lint ────────────────────────────────────────────────
 
-fn handle_lint(args: ArticleLintArgs, project_path: &Path, repo_root: &Path, format: Format) -> Result<CommandOutcome> {
+fn handle_lint(args: ArticleLintArgs, project_path: &Path, format: Format) -> Result<CommandOutcome> {
     let fix = args.lint.fix;
     let dry_run = args.lint.dry_run;
 
@@ -649,7 +666,7 @@ fn handle_lint(args: ArticleLintArgs, project_path: &Path, repo_root: &Path, for
                 dry_run,
                 details,
             };
-            Ok(CommandOutcome::Raw(verb_text(&result, &VerbOpts::from_repo_root(Some(repo_root))), exit_code))
+            Ok(CommandOutcome::Raw(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path))), exit_code))
         }
     }
 }
