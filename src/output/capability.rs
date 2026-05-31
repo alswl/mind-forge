@@ -95,20 +95,85 @@ fn detect_truecolor(term: &Option<String>, colorterm: &Option<String>) -> (bool,
 }
 
 fn detect_hyperlinks(term: &Option<String>, term_program: &Option<String>) -> bool {
-    // Known modern terminals that support OSC 8
+    // Opt-out via MF_NO_HYPERLINKS
+    let no_hyperlinks = std::env::var("MF_NO_HYPERLINKS").map(|v| !v.is_empty()).unwrap_or(false);
+    if no_hyperlinks {
+        return false;
+    }
+
+    // Opt-in via MF_FORCE_HYPERLINKS
+    let force = std::env::var("MF_FORCE_HYPERLINKS").map(|v| !v.is_empty()).unwrap_or(false);
+    if force {
+        return true;
+    }
+
+    // Terminfo 'Ms' capability indicates OSC 8 support
+    if check_terminfo_ms() {
+        return true;
+    }
+
+    let known = [
+        // TERM_PROGRAM values
+        "ghostty",
+        "kitty",
+        "wezterm",
+        "alacritty",
+        "iterm.app",
+        "iterm2",
+        "vscode",
+        "warpterminal",
+        "warp",
+        "apple_terminal",
+        "hyper",
+        "rio",
+        "tabby",
+        "windsurf",
+        "cursor",
+        "contour",
+        "foot",
+    ];
+
     if let Some(ref tp) = term_program {
         let tp_lower = tp.to_lowercase();
-        if tp_lower.contains("ghostty") || tp_lower.contains("kitty") || tp_lower.contains("wezterm") {
+        if known.iter().any(|k| tp_lower.contains(k)) {
             return true;
         }
     }
     if let Some(ref t) = term {
         let t_lower = t.to_lowercase();
-        if t_lower.contains("ghostty") || t_lower.contains("kitty") || t_lower.contains("wezterm") {
+        if known.iter().any(|k| t_lower.contains(k)) {
             return true;
         }
     }
-    // No terminfo standard for hyperlinks, so only enable for known terminals
+
+    // tmux 3.3+ supports OSC 8 passthrough
+    if let Some(ref t) = term {
+        if t.starts_with("tmux") || t.starts_with("screen") {
+            // In tmux, the outer terminal determines support. Check TERM_PROGRAM
+            // and TERM outside, or trust the passthrough if force env is set.
+            let outside_term = std::env::var("TERM_PROGRAM").ok();
+            if let Some(ref ot) = outside_term {
+                let ot_lower = ot.to_lowercase();
+                if known.iter().any(|k| ot_lower.contains(k)) {
+                    return true;
+                }
+            }
+            // If we can't detect the outer terminal, default to true for tmux
+            // 3.3+ which is widely deployed. Opt-out still available.
+            return true;
+        }
+    }
+
+    false
+}
+
+fn check_terminfo_ms() -> bool {
+    if let Ok(output) = std::process::Command::new("infocmp").arg("-1").output() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.lines().any(|l| l.trim() == "Ms") {
+            return true;
+        }
+    }
     false
 }
 

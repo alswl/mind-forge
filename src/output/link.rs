@@ -30,8 +30,44 @@ pub fn render_path_link(path: &str, base_dir: Option<&Path>, emit_hyperlinks: bo
         return path.to_string();
     }
     let abs = base.join(path);
-    let uri = format!("file://{}", abs.display());
+    let uri = format!("file://{}", encode_file_path(&abs));
     render_link(path, &uri, true)
+}
+
+/// Percent-encode a file path for use in a `file://` URI.
+/// Preserves `/` separators and unreserved characters; encodes everything else.
+fn encode_file_path(path: &Path) -> String {
+    let mut out = String::new();
+    for b in path.as_os_str().as_encoded_bytes() {
+        match b {
+            b'/' => out.push('/'),
+            b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'-'
+            | b'.'
+            | b'_'
+            | b'~'
+            | b':'
+            | b'@'
+            | b'!'
+            | b'$'
+            | b'&'
+            | b'\''
+            | b'('
+            | b')'
+            | b'*'
+            | b'+'
+            | b','
+            | b';'
+            | b'=' => out.push(*b as char),
+            _ => {
+                use std::fmt::Write;
+                let _ = write!(out, "%{:02X}", b);
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -71,7 +107,7 @@ mod tests {
 
     #[test]
     fn path_link_absolute_path_passthrough() {
-        let base = Path::new("/repo"); // ignored when path is absolute
+        let base = Path::new("/repo");
         let result = render_path_link("/etc/hosts", Some(base), true);
         assert!(result.contains("file:///etc/hosts"));
         assert!(result.contains("/etc/hosts"));
@@ -90,5 +126,29 @@ mod tests {
             let result = render_link("click here: https://example.com", "https://example.com", emit);
             assert!(result.contains("click here: https://example.com"));
         }
+    }
+
+    #[test]
+    fn encode_file_path_spaces() {
+        let result = encode_file_path(Path::new("/tmp/my file.md"));
+        assert_eq!(result, "/tmp/my%20file.md");
+    }
+
+    #[test]
+    fn encode_file_path_unicode() {
+        let result = encode_file_path(Path::new("/tmp/设计.md"));
+        // Each UTF-8 byte of the CJK chars is percent-encoded
+        assert!(result.starts_with("/tmp/"));
+        assert!(result.ends_with(".md"));
+        assert!(!result.contains("设计"), "unicode chars must be percent-encoded");
+    }
+
+    #[test]
+    fn path_link_encodes_spaces_in_uri() {
+        let base = Path::new("/home/user");
+        let result = render_path_link("my docs/read me.md", Some(base), true);
+        assert!(result.contains("file:///home/user/my%20docs/read%20me.md"));
+        // visible text is unchanged
+        assert!(result.contains("my docs/read me.md"));
     }
 }
