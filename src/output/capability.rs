@@ -81,6 +81,15 @@ fn detect_truecolor(term: &Option<String>, colorterm: &Option<String>) -> (bool,
         if t.contains("-direct") || t.contains("truecolor") {
             return (true, Some(DetectionSource::Terminfo));
         }
+        // tmux 3.2+ supports truecolor passthrough.
+        if t.starts_with("tmux") {
+            return (true, Some(DetectionSource::TerminalIdentity));
+        }
+        // screen-256color is commonly used by tmux. Only default to truecolor
+        // when the TMUX env var confirms a tmux session is active.
+        if t.starts_with("screen") && std::env::var("TMUX").map(|v| !v.is_empty()).unwrap_or(false) {
+            return (true, Some(DetectionSource::TerminalIdentity));
+        }
     }
 
     // Check for terminfo database evidence via infocmp/tic
