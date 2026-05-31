@@ -7,6 +7,7 @@ pub mod project;
 pub mod publish;
 pub mod source;
 pub mod term;
+pub mod terminal;
 
 pub mod manifest;
 pub mod publisher;

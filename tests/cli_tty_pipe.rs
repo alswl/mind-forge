@@ -306,3 +306,71 @@ fn mf_force_tty_only_affects_formatting_not_functionality() {
     assert!(pipe_out.contains("research-paper"), "pipe output should contain research-paper: {pipe_out:?}");
     assert!(tty_out.contains("research-paper"), "tty output should contain research-paper: {tty_out:?}");
 }
+
+// =============================================================================
+// T046: Regression — no OSC 8 or ANSI escape leakage in pipe/non-TTY contexts
+// =============================================================================
+
+fn has_osc8(s: &str) -> bool {
+    s.contains("\x1b]8;")
+}
+
+#[test]
+fn pipe_list_has_no_osc8_escapes() {
+    let (_repo, root) = setup();
+    let (stdout, stderr, code) = run(&["--root", &root, "article", "list", "--project", "alpha"]);
+    assert_eq!(code, 0, "stderr: {stderr:?}");
+    assert!(!has_osc8(&stdout), "pipe mode must not emit OSC 8 escapes");
+}
+
+#[test]
+fn pipe_source_list_has_no_ansi() {
+    let (_repo, root) = setup();
+    let (stdout, stderr, code) = run(&["--root", &root, "source", "list", "--project", "alpha"]);
+    assert_eq!(code, 0, "stderr: {stderr:?}");
+    assert!(!has_ansi(&stdout), "pipe source list must not have ANSI");
+}
+
+#[test]
+fn pipe_asset_list_has_no_ansi() {
+    let (_repo, root) = setup();
+    let (stdout, stderr, code) = run(&["--root", &root, "asset", "list", "--project", "alpha"]);
+    assert_eq!(code, 0, "stderr: {stderr:?}");
+    assert!(!has_ansi(&stdout), "pipe asset list must not have ANSI");
+}
+
+#[test]
+fn pipe_term_list_has_no_ansi() {
+    let (_repo, root) = setup();
+    let (stdout, stderr, code) = run(&["--root", &root, "term", "list", "--project", "alpha"]);
+    assert_eq!(code, 0, "stderr: {stderr:?}");
+    assert!(!has_ansi(&stdout), "pipe term list must not have ANSI");
+}
+
+#[test]
+fn pipe_config_terminal_has_no_ansi() {
+    let (_repo, root) = setup();
+    let (stdout, stderr, code) = run(&["--root", &root, "config", "terminal"]);
+    assert_eq!(code, 0, "stderr: {stderr:?}");
+    assert!(!has_ansi(&stdout), "pipe config terminal must not have ANSI");
+}
+
+#[test]
+fn tty_no_color_suppresses_ansi_everywhere() {
+    let (_repo, root) = setup();
+    let tests: &[(&[&str], &str)] = &[
+        (&["article", "list", "--project", "alpha"], "article list"),
+        (&["source", "list", "--project", "alpha"], "source list"),
+        (&["asset", "list", "--project", "alpha"], "asset list"),
+        (&["term", "list", "--project", "alpha"], "term list"),
+        (&["config", "terminal"], "config terminal"),
+    ];
+    for (args, label) in tests {
+        let mut full_args = vec!["--root", &root];
+        full_args.extend_from_slice(args);
+        let (stdout, _, code) = run_with_env(&full_args, &[("MF_FORCE_TTY", "1"), ("NO_COLOR", "1")]);
+        assert_eq!(code, 0, "{label} failed");
+        assert!(!has_ansi(&stdout), "{label} with NO_COLOR must not have ANSI");
+        assert!(!has_osc8(&stdout), "{label} with NO_COLOR must not have OSC 8");
+    }
+}

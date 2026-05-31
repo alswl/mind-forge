@@ -1,0 +1,25 @@
+FROM rust:1.85.0-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ncurses-bin \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Layer 1: Cache dependency compilation
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir -p src && echo "fn main() {}" > src/main.rs && \
+    mkdir -p tests/e2e && echo "" > tests/e2e/main.rs && \
+    mkdir -p tests && echo "" > tests/common.rs && \
+    echo "" > tests/cli_help.rs && \
+    cargo build --release -p mf 2>&1; \
+    rm -rf src tests
+
+# Layer 2: Copy real source and build
+COPY . .
+RUN cargo build --release -p mf && \
+    cp target/release/mf /usr/local/bin/mf
+
+ENV CARGO_BIN_EXE_mf=/usr/local/bin/mf
+
+CMD ["cargo", "test", "--test", "e2e", "terminal_capabilities", "--", "--nocapture"]

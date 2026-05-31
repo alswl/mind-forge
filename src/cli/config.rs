@@ -6,6 +6,8 @@ use serde::Serialize;
 use crate::cli::deprecation::DeprecationContext;
 use crate::cli::CommandOutcome;
 use crate::error::Result;
+use crate::model::terminal::{CapabilityDiagnosticReport, DiagnosticCheck, OutputFormat};
+use crate::output::capability::{build_environment_summary, build_policy, build_profile};
 use crate::output::Format;
 use crate::service;
 
@@ -29,6 +31,8 @@ pub enum ConfigSubcommand {
     Default(ConfigDefaultArgs),
     #[command(about = "Initialize config file (deprecated: use `mf init`)")]
     Init(ConfigInitArgs),
+    #[command(about = "Show terminal capability diagnostics")]
+    Terminal,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -97,6 +101,7 @@ pub fn dispatch(
             deprecation.warn_subject("config init", "mf init");
             handle_init(args)
         }
+        Some(ConfigSubcommand::Terminal) => handle_terminal(format),
     }
 }
 
@@ -155,4 +160,101 @@ fn handle_init(args: ConfigInitArgs) -> Result<CommandOutcome> {
         }),
         None,
     ))
+}
+
+fn handle_terminal(format: Format) -> Result<CommandOutcome> {
+    let profile = build_profile();
+    let output_format = match format {
+        Format::Text => OutputFormat::Text,
+        Format::Json => OutputFormat::Json,
+    };
+    let policy = build_policy(&profile, output_format);
+    let environment = build_environment_summary();
+
+    let checks = build_diagnostic_checks(&profile);
+    let recommendations = build_recommendations(&profile);
+
+    let report = CapabilityDiagnosticReport { profile, policy, environment, checks, recommendations };
+
+    match format {
+        Format::Text => {
+            let text = render_terminal_text(&report);
+            Ok(CommandOutcome::Raw(text, None))
+        }
+        Format::Json => {
+            let data = serde_json::to_value(&report).map_err(crate::error::MfError::Json)?;
+            Ok(CommandOutcome::Success(data, None))
+        }
+    }
+}
+
+fn build_diagnostic_checks(profile: &crate::model::terminal::TerminalCapabilityProfile) -> Vec<DiagnosticCheck> {
+    let mut checks = Vec::new();
+
+    checks.push(DiagnosticCheck {
+        name: "stdout_tty".into(),
+        status: if profile.stdout_is_tty { "pass".into() } else { "fail".into() },
+        detail: Some(if profile.stdout_is_tty {
+            "stdout is interactive".into()
+        } else {
+            "stdout is not a terminal".into()
+        }),
+    });
+
+    checks.push(DiagnosticCheck {
+        name: "truecolor".into(),
+        status: if profile.truecolor { "pass".into() } else { "info".into() },
+        detail: if profile.truecolor {
+            Some("truecolor support detected".into())
+        } else {
+            Some("no truecolor evidence found".into())
+        },
+    });
+
+    checks.push(DiagnosticCheck {
+        name: "hyperlinks".into(),
+        status: if profile.hyperlinks { "pass".into() } else { "info".into() },
+        detail: if profile.hyperlinks {
+            Some("OSC 8 hyperlinks supported".into())
+        } else {
+            Some("OSC 8 hyperlinks not detected".into())
+        },
+    });
+
+    checks
+}
+
+fn build_recommendations(profile: &crate::model::terminal::TerminalCapabilityProfile) -> Vec<String> {
+    let mut recs = Vec::new();
+    if let Some(ref reason) = profile.fallback_reason {
+        recs.push(format!("Fallback active: {reason}"));
+    }
+    if !profile.stdout_is_tty {
+        recs.push("Run with MF_FORCE_TTY=1 to test terminal behavior in pipes".into());
+    }
+    if !profile.truecolor && profile.stdout_is_tty {
+        recs.push("Set COLORTERM=truecolor for richer color output".into());
+    }
+    recs
+}
+
+fn render_terminal_text(report: &CapabilityDiagnosticReport) -> String {
+    let p = &report.profile;
+    let mut out = String::new();
+
+    out.push_str(&format!("Terminal: {}\n", p.term.as_deref().unwrap_or("unknown")));
+    out.push_str(&format!("TTY: {}\n", if p.stdout_is_tty { "yes" } else { "no" }));
+    out.push_str(&format!(
+        "Color: {}\n",
+        match p.color_mode {
+            crate::model::terminal::ColorMode::None => "none",
+            crate::model::terminal::ColorMode::Ansi16 => "16-color",
+            crate::model::terminal::ColorMode::Ansi256 => "256-color",
+            crate::model::terminal::ColorMode::Truecolor => "truecolor",
+        }
+    ));
+    out.push_str(&format!("Hyperlinks: {}\n", if p.hyperlinks { "yes" } else { "no" }));
+    out.push_str(&format!("Fallback: {}\n", p.fallback_reason.as_deref().unwrap_or("-")));
+
+    out
 }

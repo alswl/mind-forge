@@ -1,5 +1,7 @@
 use unicode_width::UnicodeWidthStr;
 
+use crate::model::terminal::{OutputFormat, OutputRenderingPolicy};
+
 pub struct ListView<'a> {
     pub headers: &'a [&'static str],
     pub rows: Vec<ListRow>,
@@ -21,17 +23,37 @@ pub struct ListOpts {
     pub no_headers: bool,
     pub no_trunc: bool,
     pub color_enabled: bool,
+    #[allow(dead_code)]
+    pub emit_hyperlinks: bool,
     pub terminal_width: usize,
 }
 
 impl ListOpts {
     pub fn from_flags(no_headers: bool, no_trunc: bool) -> Self {
-        let t = super::tty::probe();
+        let profile = super::capability::build_profile();
+        let policy = OutputRenderingPolicy::from_profile(&profile, OutputFormat::Text);
         Self {
-            no_headers: no_headers || !t.stdout_is_tty,
-            no_trunc: no_trunc || !t.stdout_is_tty,
-            color_enabled: t.color_enabled,
-            terminal_width: if t.stdout_is_tty { t.width } else { usize::MAX },
+            no_headers: no_headers || !profile.stdout_is_tty,
+            no_trunc: no_trunc || !profile.stdout_is_tty,
+            color_enabled: policy.emit_ansi_color,
+            emit_hyperlinks: policy.emit_hyperlinks,
+            terminal_width: if profile.stdout_is_tty { profile.terminal_width } else { usize::MAX },
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn from_policy(
+        no_headers: bool,
+        no_trunc: bool,
+        policy: &OutputRenderingPolicy,
+        terminal_width: usize,
+    ) -> Self {
+        Self {
+            no_headers: no_headers || policy.plain_output,
+            no_trunc: no_trunc || policy.plain_output,
+            color_enabled: policy.emit_ansi_color,
+            emit_hyperlinks: policy.emit_hyperlinks,
+            terminal_width: if policy.plain_output { usize::MAX } else { terminal_width },
         }
     }
 }
@@ -229,7 +251,13 @@ mod tests {
     #[test]
     fn empty_list_shows_placeholder() {
         let view = ListView { headers: &["NAME", "DOCS"], rows: vec![], plural_noun: "projects" };
-        let opts = ListOpts { no_headers: false, no_trunc: false, color_enabled: false, terminal_width: 80 };
+        let opts = ListOpts {
+            no_headers: false,
+            no_trunc: false,
+            color_enabled: false,
+            emit_hyperlinks: false,
+            terminal_width: 80,
+        };
         let result = render_text(&view, &opts);
         assert_eq!(result, "No projects found.\n");
     }
@@ -241,7 +269,13 @@ mod tests {
             rows: vec![ListRow { cells: vec![ListCell::Text("demo".into()), ListCell::Number("4".into())] }],
             plural_noun: "projects",
         };
-        let opts = ListOpts { no_headers: false, no_trunc: false, color_enabled: false, terminal_width: 80 };
+        let opts = ListOpts {
+            no_headers: false,
+            no_trunc: false,
+            color_enabled: false,
+            emit_hyperlinks: false,
+            terminal_width: 80,
+        };
         let result = render_text(&view, &opts);
         let lines: Vec<&str> = result.lines().collect();
         assert_eq!(lines.len(), 2);
@@ -256,7 +290,13 @@ mod tests {
             rows: vec![ListRow { cells: vec![ListCell::Text("demo2".into()), ListCell::Optional(None)] }],
             plural_noun: "projects",
         };
-        let opts = ListOpts { no_headers: false, no_trunc: false, color_enabled: false, terminal_width: 80 };
+        let opts = ListOpts {
+            no_headers: false,
+            no_trunc: false,
+            color_enabled: false,
+            emit_hyperlinks: false,
+            terminal_width: 80,
+        };
         let result = render_text(&view, &opts);
         assert!(result.contains(" -"), "expected - placeholder");
     }
@@ -273,7 +313,13 @@ mod tests {
             }],
             plural_noun: "terms",
         };
-        let opts = ListOpts { no_headers: false, no_trunc: false, color_enabled: false, terminal_width: 30 };
+        let opts = ListOpts {
+            no_headers: false,
+            no_trunc: false,
+            color_enabled: false,
+            emit_hyperlinks: false,
+            terminal_width: 30,
+        };
         let result = render_text(&view, &opts);
         assert!(result.contains("RAG"), "identity column must not be truncated");
         assert!(result.contains("…") || result.contains("..."), "truncation ellipsis expected");
@@ -295,7 +341,13 @@ mod tests {
             }],
             plural_noun: "terms",
         };
-        let opts = ListOpts { no_headers: false, no_trunc: false, color_enabled: false, terminal_width: 80 };
+        let opts = ListOpts {
+            no_headers: false,
+            no_trunc: false,
+            color_enabled: false,
+            emit_hyperlinks: false,
+            terminal_width: 80,
+        };
         let result = render_text(&view, &opts);
         // CJK chars are 2 display width each
         let lines: Vec<&str> = result.lines().collect();

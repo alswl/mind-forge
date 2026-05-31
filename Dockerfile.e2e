@@ -1,0 +1,16 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ncurses-bin \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY target/aarch64-unknown-linux-gnu/release/mf /app/mf
+COPY tests/e2e_terminal.sh /app/e2e_terminal.sh
+
+RUN chmod +x /app/e2e_terminal.sh
+
+ENV MF_BIN=/app/mf
+
+CMD ["/app/e2e_terminal.sh"]

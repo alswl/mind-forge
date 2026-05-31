@@ -2,17 +2,9 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Manage configuration
+Show terminal capability diagnostics
 
-Usage: mf config [OPTIONS] [COMMAND]
-
-Commands:
-  schema    Show config schema
-  show      Show effective config
-  generate  Generate effective config file
-  default   Show default config values
-  init      Initialize config file (deprecated: use `mf init`)
-  terminal  Show terminal capability diagnostics
+Usage: mf config terminal [OPTIONS]
 
 Options:
       --root <PATH>

@@ -46,6 +46,13 @@ fn config_help_snapshot() {
 }
 
 #[test]
+fn config_terminal_help_snapshot() {
+    let (stdout, _, code) = run(&["config", "terminal", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("config_terminal_help", stdout);
+}
+
+#[test]
 fn project_help_snapshot() {
     let (stdout, _, code) = run(&["project", "--help"]);
     assert_eq!(code, 0);

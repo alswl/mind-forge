@@ -1,0 +1,11 @@
+target/
+!target/aarch64-unknown-linux-gnu/release/mf
+.git/
+.idea/
+.vscode/
+.DS_Store
+.claude/
+.specify/
+specs/
+*.tmp
+*.log

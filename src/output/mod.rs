@@ -1,7 +1,8 @@
+pub mod capability;
 pub mod confirm;
+pub mod link;
 pub mod list;
 pub mod show;
-pub mod tty;
 pub mod verb;
 
 use std::io::Write;
