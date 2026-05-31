@@ -4,7 +4,13 @@ use std::path::PathBuf;
 mod common;
 
 fn run(args: &[&str]) -> (String, String, i32) {
-    let output = Command::cargo_bin("mf").expect("binary exists").args(args).output().expect("command runs");
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .env_remove("MF_FORCE_TTY")
+        .env_remove("NO_COLOR")
+        .args(args)
+        .output()
+        .expect("command runs");
     (
         String::from_utf8(output.stdout).expect("stdout utf8"),
         String::from_utf8(output.stderr).expect("stderr utf8"),
@@ -14,6 +20,7 @@ fn run(args: &[&str]) -> (String, String, i32) {
 
 fn run_with_env(args: &[&str], env_vars: &[(&str, &str)]) -> (String, String, i32) {
     let mut cmd = Command::cargo_bin("mf").expect("binary exists");
+    cmd.env_remove("MF_FORCE_TTY").env_remove("NO_COLOR");
     for (k, v) in env_vars {
         cmd.env(k, v);
     }

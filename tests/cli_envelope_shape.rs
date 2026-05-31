@@ -547,3 +547,435 @@ fn envelope_render_article_error_usage() {
         assert_envelope_err(&stdout);
     }
 }
+
+// ==========================================================================
+// Article Convert: JSON envelope shape
+// ==========================================================================
+
+#[test]
+fn envelope_article_convert_to_single_file_json() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Create a directory article
+    let article_dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-opening.md"), b"# My Article\n\nContent.\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let (stdout, stderr, code) = run_json(&[
+        "--root",
+        &repo.path().to_string_lossy(),
+        "article",
+        "convert",
+        "--to-single-file",
+        "--project",
+        "my-project",
+    ]);
+    assert_eq!(code, 0, "stderr: {stderr:?} stdout: {stdout}");
+    assert_envelope_ok(&stdout);
+
+    let data = extract_data(&stdout);
+    assert_eq!(data["kind"], "article");
+    assert_eq!(data["direction"], "to_single_file");
+    assert_eq!(data["direction_source"], "explicit");
+    assert_eq!(data["dry_run"], false);
+    assert_eq!(data["converted_count"], 1);
+    assert_eq!(data["skipped_count"], 0);
+    assert_eq!(data["failed_count"], 0);
+
+    let converted = data["converted"].as_array().unwrap();
+    assert_eq!(converted.len(), 1);
+    assert_eq!(converted[0]["status"], "converted");
+    assert_eq!(converted[0]["direction"], "to_single_file");
+    assert_eq!(converted[0]["source_shape"], "directory");
+    assert_eq!(converted[0]["target_shape"], "single_file");
+    assert_eq!(converted[0]["source_path"], "docs/my-article");
+    assert_eq!(converted[0]["target_path"], "docs/my-article.md");
+    assert_eq!(converted[0]["index_updated"], true);
+    assert_eq!(converted[0]["source_removed"], true);
+}
+
+#[test]
+fn envelope_article_convert_to_directory_json() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Create a single-file article
+    std::fs::create_dir_all(repo.path().join("my-project/docs")).unwrap();
+    std::fs::write(repo.path().join("my-project/docs/my-article.md"), b"# My Article\n\nContent.\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article.md'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let (stdout, stderr, code) = run_json(&[
+        "--root",
+        &repo.path().to_string_lossy(),
+        "article",
+        "convert",
+        "--to-directory",
+        "--project",
+        "my-project",
+    ]);
+    assert_eq!(code, 0, "stderr: {stderr:?} stdout: {stdout}");
+    assert_envelope_ok(&stdout);
+
+    let data = extract_data(&stdout);
+    assert_eq!(data["kind"], "article");
+    assert_eq!(data["direction"], "to_directory");
+    assert_eq!(data["direction_source"], "explicit");
+    assert_eq!(data["dry_run"], false);
+    assert_eq!(data["converted_count"], 1);
+    assert_eq!(data["skipped_count"], 0);
+    assert_eq!(data["failed_count"], 0);
+
+    let converted = data["converted"].as_array().unwrap();
+    assert_eq!(converted.len(), 1);
+    assert_eq!(converted[0]["status"], "converted");
+    assert_eq!(converted[0]["direction"], "to_directory");
+    assert_eq!(converted[0]["source_shape"], "single_file");
+    assert_eq!(converted[0]["target_shape"], "directory");
+    assert_eq!(converted[0]["source_path"], "docs/my-article.md");
+    assert_eq!(converted[0]["target_path"], "docs/my-article");
+    assert_eq!(converted[0]["target_content_path"], "docs/my-article/01-opening.md");
+    assert_eq!(converted[0]["index_updated"], true);
+    assert_eq!(converted[0]["source_removed"], true);
+}
+
+#[test]
+fn envelope_article_convert_dry_run_json() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let article_dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-opening.md"), b"# My Article\n\nContent.\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let (stdout, stderr, code) = run_json(&[
+        "--root",
+        &repo.path().to_string_lossy(),
+        "article",
+        "convert",
+        "--to-single-file",
+        "--dry-run",
+        "--project",
+        "my-project",
+    ]);
+    assert_eq!(code, 0, "stderr: {stderr:?} stdout: {stdout}");
+    assert_envelope_ok(&stdout);
+
+    let data = extract_data(&stdout);
+    assert_eq!(data["kind"], "article");
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["converted_count"], 1);
+    assert_eq!(data["skipped_count"], 0);
+
+    let converted = data["converted"].as_array().unwrap();
+    assert_eq!(converted.len(), 1);
+    assert_eq!(converted[0]["status"], "would_convert");
+    assert_eq!(converted[0]["index_updated"], false);
+    assert_eq!(converted[0]["source_removed"], false);
+}
+
+// ── T056: JSON skip-reason assertions ─────────────────
+
+#[test]
+fn envelope_article_convert_skip_no_section_files_json() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Empty directory article (no section files)
+    let article_dir = repo.path().join("my-project/docs/empty-article");
+    std::fs::create_dir_all(&article_dir).unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'Empty Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/empty-article'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let (stdout, stderr, code) = run_json(&[
+        "--root",
+        &repo.path().to_string_lossy(),
+        "article",
+        "convert",
+        "--to-single-file",
+        "--project",
+        "my-project",
+    ]);
+    assert_eq!(code, 0, "stderr: {stderr:?} stdout: {stdout}");
+    assert_envelope_ok(&stdout);
+
+    let data = extract_data(&stdout);
+    assert_eq!(data["converted_count"], 0);
+    assert_eq!(data["skipped_count"], 1);
+    assert_eq!(data["failed_count"], 0);
+
+    let skipped = data["skipped"].as_array().unwrap();
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0]["status"], "skipped");
+    assert_eq!(skipped[0]["reason"], "no_section_files");
+    assert_eq!(skipped[0]["source_shape"], "directory");
+    assert_eq!(skipped[0]["source_path"], "docs/empty-article");
+}
+
+#[test]
+fn envelope_article_convert_skip_multiple_section_files_json() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Directory article with 2 section files
+    let article_dir = repo.path().join("my-project/docs/multi-article");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-opening.md"), b"# Opening\n").unwrap();
+    std::fs::write(article_dir.join("02-body.md"), b"# Body\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'Multi Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/multi-article'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let (stdout, stderr, code) = run_json(&[
+        "--root",
+        &repo.path().to_string_lossy(),
+        "article",
+        "convert",
+        "--to-single-file",
+        "--project",
+        "my-project",
+    ]);
+    assert_eq!(code, 0, "stderr: {stderr:?} stdout: {stdout}");
+    assert_envelope_ok(&stdout);
+
+    let data = extract_data(&stdout);
+    assert_eq!(data["converted_count"], 0);
+    assert_eq!(data["skipped_count"], 1);
+
+    let skipped = data["skipped"].as_array().unwrap();
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0]["status"], "skipped");
+    assert_eq!(skipped[0]["reason"], "multiple_section_files");
+}
+
+#[test]
+fn envelope_article_convert_skip_target_exists_json() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Directory article + pre-existing target .md file
+    let article_dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-opening.md"), b"# My Article\n\nContent.\n").unwrap();
+    // Target file already exists
+    std::fs::write(repo.path().join("my-project/docs/my-article.md"), b"existing content\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let (stdout, stderr, code) = run_json(&[
+        "--root",
+        &repo.path().to_string_lossy(),
+        "article",
+        "convert",
+        "--to-single-file",
+        "--project",
+        "my-project",
+    ]);
+    assert_eq!(code, 0, "stderr: {stderr:?} stdout: {stdout}");
+    assert_envelope_ok(&stdout);
+
+    let data = extract_data(&stdout);
+    assert_eq!(data["converted_count"], 0);
+    assert_eq!(data["skipped_count"], 1);
+
+    let skipped = data["skipped"].as_array().unwrap();
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0]["status"], "skipped");
+    assert_eq!(skipped[0]["reason"], "target_exists");
+}
+
+#[test]
+fn envelope_article_convert_skip_extra_files_json() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Directory article with extra non-section files
+    let article_dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-opening.md"), b"# My Article\n\nContent.\n").unwrap();
+    std::fs::write(article_dir.join("notes.txt"), b"some notes\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let (stdout, stderr, code) = run_json(&[
+        "--root",
+        &repo.path().to_string_lossy(),
+        "article",
+        "convert",
+        "--to-single-file",
+        "--project",
+        "my-project",
+    ]);
+    assert_eq!(code, 0, "stderr: {stderr:?} stdout: {stdout}");
+    assert_envelope_ok(&stdout);
+
+    let data = extract_data(&stdout);
+    assert_eq!(data["converted_count"], 0);
+    assert_eq!(data["skipped_count"], 1);
+
+    let skipped = data["skipped"].as_array().unwrap();
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0]["status"], "skipped");
+    assert_eq!(skipped[0]["reason"], "extra_files");
+}
+
+#[test]
+fn envelope_article_convert_skip_not_directory_article_json() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Single-file article, but requesting to-single-file (already in target shape)
+    std::fs::create_dir_all(repo.path().join("my-project/docs")).unwrap();
+    std::fs::write(repo.path().join("my-project/docs/my-article.md"), b"# My Article\n\nContent.\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article.md'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let (stdout, stderr, code) = run_json(&[
+        "--root",
+        &repo.path().to_string_lossy(),
+        "article",
+        "convert",
+        "--to-single-file",
+        "--project",
+        "my-project",
+    ]);
+    assert_eq!(code, 0, "stderr: {stderr:?} stdout: {stdout}");
+    assert_envelope_ok(&stdout);
+
+    let data = extract_data(&stdout);
+    assert_eq!(data["converted_count"], 0);
+    assert_eq!(data["skipped_count"], 1);
+
+    let skipped = data["skipped"].as_array().unwrap();
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0]["status"], "skipped");
+    assert_eq!(skipped[0]["reason"], "not_directory_article");
+}
+
+#[test]
+fn envelope_article_convert_skip_not_single_file_article_json() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Directory article, but requesting to-directory (already in target shape)
+    let article_dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-opening.md"), b"# My Article\n\nContent.\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let (stdout, stderr, code) = run_json(&[
+        "--root",
+        &repo.path().to_string_lossy(),
+        "article",
+        "convert",
+        "--to-directory",
+        "--project",
+        "my-project",
+    ]);
+    assert_eq!(code, 0, "stderr: {stderr:?} stdout: {stdout}");
+    assert_envelope_ok(&stdout);
+
+    let data = extract_data(&stdout);
+    assert_eq!(data["converted_count"], 0);
+    assert_eq!(data["skipped_count"], 1);
+
+    let skipped = data["skipped"].as_array().unwrap();
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0]["status"], "skipped");
+    assert_eq!(skipped[0]["reason"], "not_single_file_article");
+}

@@ -248,6 +248,13 @@ fn article_remove_help_snapshot() {
 }
 
 #[test]
+fn article_convert_help_snapshot() {
+    let (stdout, _, code) = run(&["article", "convert", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("article_convert_help", stdout);
+}
+
+#[test]
 fn render_template_list_help_snapshot() {
     let (stdout, _, code) = run(&["render", "template", "list", "--help"]);
     assert_eq!(code, 0);

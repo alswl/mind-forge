@@ -158,3 +158,65 @@ fn e2e_cross_resource_chain_project_to_article() {
     assert_eq!(code, 0, "should index articles: {stdout}");
     assert!(stdout.contains("indexed article"), "stdout: {stdout}");
 }
+
+/// E2E: article convert to-single-file then to-directory with list/show compatibility
+#[test]
+fn e2e_article_convert_both_directions() {
+    let ds = Dataset::empty().with_standard_project("blog").with_index(
+        "blog",
+        r#"schema_version: '1'
+articles:
+  - title: "Daily Report"
+    project: "blog"
+    type: blog
+    article_path: "docs/daily"
+    status: draft
+    created_at: "2026-05-20T00:00:00Z"
+    updated_at: "2026-05-20T00:00:00Z"
+"#,
+    );
+
+    let manifest = "schema_version: '1'\nprojects:\n  - name: blog\n    path: ./projects/blog\n    created_at: \"2026-05-20T00:00:00Z\"\n    archived_at: ~\n".to_string();
+    fs::write(ds.root().join("minds.yaml"), &manifest).expect("write manifest");
+
+    // Create directory article
+    let article_dir = ds.root().join("projects/blog/docs/daily");
+    fs::create_dir_all(&article_dir).unwrap();
+    fs::write(article_dir.join("01-opening.md"), "# Daily Report\n\nContent.\n").unwrap();
+
+    // 1. Convert to single-file
+    let (stdout, stderr, code) = run_in(ds.root(), &["-p", "blog", "article", "convert", "--to-single-file"]);
+    assert_eq!(code, 0, "stdout: {stdout}, stderr: {stderr}");
+    assert!(stdout.contains("daily -> docs/daily.md"), "stdout: {stdout}");
+
+    // 2. Verify directory is gone and file exists
+    assert!(!article_dir.exists(), "directory article should be removed");
+    assert!(ds.root().join("projects/blog/docs/daily.md").exists(), "single-file article should exist");
+
+    // 3. Article list shows new path
+    let (stdout, _, code) = run_in(ds.root(), &["-p", "blog", "article", "list", "--json"]);
+    assert_eq!(code, 0);
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    let articles = v["data"]["articles"].as_array().expect("articles array");
+    assert_eq!(articles[0]["identity"].as_str().unwrap(), "docs/daily.md");
+
+    // 4. Article show works with new path
+    let (stdout, _, code) = run_in(ds.root(), &["-p", "blog", "article", "show", "docs/daily.md"]);
+    assert_eq!(code, 0, "should show converted article: {stdout}");
+
+    // 5. Convert back to directory
+    let (stdout, _, code) = run_in(ds.root(), &["-p", "blog", "article", "convert", "--to-directory"]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    assert!(stdout.contains("daily.md -> docs/daily"), "stdout: {stdout}");
+
+    // 6. Verify file is gone and directory exists
+    assert!(!ds.root().join("projects/blog/docs/daily.md").exists(), "single-file should be removed");
+    assert!(ds.root().join("projects/blog/docs/daily/01-opening.md").exists(), "directory article should exist");
+
+    // 7. Article list shows directory path
+    let (stdout, _, code) = run_in(ds.root(), &["-p", "blog", "article", "list", "--json"]);
+    assert_eq!(code, 0);
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    let articles = v["data"]["articles"].as_array().expect("articles array");
+    assert_eq!(articles[0]["identity"].as_str().unwrap(), "docs/daily");
+}

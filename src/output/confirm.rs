@@ -2,7 +2,7 @@ use std::io::{BufRead, BufReader, Write};
 
 use crate::error::{MfError, Result};
 
-enum ConfirmOutcome {
+pub enum ConfirmOutcome {
     Confirmed,
     Aborted,
     NotTty,
@@ -34,30 +34,34 @@ fn maybe_confirm(args: &ConfirmArgs) -> ConfirmOutcome {
     if args.yes || args.force {
         return ConfirmOutcome::Confirmed;
     }
+    let prompt = format!("Confirm {} of {} \"{}\"? [y/N] ", args.verb_label, args.kind, args.identity);
+    prompt_confirmation(&prompt)
+}
 
+/// Show `prompt` on stderr, read a y/N answer from `/dev/tty`.
+///
+/// `Confirmed` only on "y"/"yes" (case-insensitive). Empty input, "n", EOF, and
+/// IO errors all map to `Aborted`. `NotTty` when `/dev/tty` cannot be opened.
+pub fn prompt_confirmation(prompt: &str) -> ConfirmOutcome {
     let tty_file = match std::fs::File::open("/dev/tty") {
         Ok(f) => f,
         Err(_) => return ConfirmOutcome::NotTty,
     };
 
-    // Write prompt to stderr
     let stderr = std::io::stderr();
     let mut stderr_handle = stderr.lock();
-    let _ = write!(stderr_handle, "Confirm {} of {} \"{}\"? [y/N] ", args.verb_label, args.kind, args.identity);
+    let _ = write!(stderr_handle, "{}", prompt);
     let _ = stderr_handle.flush();
+    drop(stderr_handle);
 
-    // Read answer from /dev/tty
     let mut reader = BufReader::new(&tty_file);
     let mut answer = String::new();
     match reader.read_line(&mut answer) {
-        Ok(0) => ConfirmOutcome::Aborted, // EOF (Ctrl-D)
-        Ok(_) => {
-            let trimmed = answer.trim().to_lowercase();
-            match trimmed.as_str() {
-                "y" | "yes" => ConfirmOutcome::Confirmed,
-                _ => ConfirmOutcome::Aborted,
-            }
-        }
+        Ok(0) => ConfirmOutcome::Aborted,
+        Ok(_) => match answer.trim().to_lowercase().as_str() {
+            "y" | "yes" => ConfirmOutcome::Confirmed,
+            _ => ConfirmOutcome::Aborted,
+        },
         Err(_) => ConfirmOutcome::Aborted,
     }
 }

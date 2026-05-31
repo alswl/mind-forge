@@ -5,6 +5,7 @@ pub const BUILD_OUTPUT_DIR: &str = "outputs";
 pub const BUILD_OUTPUT_PATH_PREFIX: &str = "outputs/";
 pub const DEFAULT_BUILD_FORMAT: &str = "md";
 pub const MARKDOWN_EXTENSION: &str = "md";
+pub const OPENING_SECTION_FILENAME: &str = "01-opening.md";
 
 pub const DOCS_DIR: &str = "docs";
 pub const DOCS_PATH_PREFIX: &str = "docs/";

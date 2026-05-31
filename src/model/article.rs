@@ -103,6 +103,105 @@ pub struct LintIssue {
     pub fixable: bool,
 }
 
+// ── Article shape conversion types ─────────────────────────────────────────
+
+/// Target shape for article conversion.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversionDirection {
+    ToSingleFile,
+    ToDirectory,
+}
+
+impl ConversionDirection {
+    /// Target on-disk shape produced by this direction.
+    pub fn target_shape(self) -> ArticleShape {
+        match self {
+            ConversionDirection::ToSingleFile => ArticleShape::SingleFile,
+            ConversionDirection::ToDirectory => ArticleShape::Directory,
+        }
+    }
+}
+
+impl std::fmt::Display for ConversionDirection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConversionDirection::ToSingleFile => write!(f, "--to-single-file"),
+            ConversionDirection::ToDirectory => write!(f, "--to-directory"),
+        }
+    }
+}
+
+/// How the conversion direction was selected.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DirectionSource {
+    Explicit,
+    Inferred,
+}
+
+/// Outcome status for a single article conversion candidate.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversionStatus {
+    Converted,
+    WouldConvert,
+    Skipped,
+    Failed,
+    Declined,
+}
+
+/// On-disk shape of an article.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArticleShape {
+    SingleFile,
+    Directory,
+}
+
+/// Stable skip reasons for automation consumption.
+pub mod skip_reason {
+    pub const NO_SECTION_FILES: &str = "no_section_files";
+    pub const MULTIPLE_SECTION_FILES: &str = "multiple_section_files";
+    pub const TARGET_EXISTS: &str = "target_exists";
+    pub const EXTRA_FILES: &str = "extra_files";
+    pub const NOT_DIRECTORY_ARTICLE: &str = "not_directory_article";
+    pub const NOT_SINGLE_FILE_ARTICLE: &str = "not_single_file_article";
+}
+
+/// Result for a single article conversion candidate.
+#[derive(Debug, Clone, Serialize)]
+pub struct ConversionResult {
+    pub status: ConversionStatus,
+    pub direction: ConversionDirection,
+    pub source_shape: ArticleShape,
+    pub target_shape: ArticleShape,
+    pub source_path: String,
+    pub source_content_path: String,
+    pub target_path: String,
+    pub target_content_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub index_updated: bool,
+    pub source_removed: bool,
+}
+
+/// Top-level conversion command result.
+#[derive(Debug, Clone, Serialize)]
+pub struct ConversionSummary {
+    pub kind: String,
+    pub direction: ConversionDirection,
+    pub direction_source: DirectionSource,
+    pub dry_run: bool,
+    pub converted_count: usize,
+    pub skipped_count: usize,
+    pub failed_count: usize,
+    pub scanned_count: usize,
+    pub converted: Vec<ConversionResult>,
+    pub skipped: Vec<ConversionResult>,
+    pub failed: Vec<ConversionResult>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

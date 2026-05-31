@@ -241,6 +241,7 @@ default `projects/` container). Defaults to the current directory.
 | `rename <OLD_PATH> <NEW_PATH>` | Rename an article |
 | `remove <PATH>` (rm) | Remove an article (interactive confirmation in TTY) |
 | `lint` | Lint articles |
+| `convert` | Convert article shape between directory and single-file. `--to-single-file`, `--to-directory`, `--dry-run` |
 | `index` | Index articles (mf extension). Also `-n` short for `--dry-run` |
 
 ### `mf source` — Manage content sources

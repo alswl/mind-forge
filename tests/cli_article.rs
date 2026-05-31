@@ -29,11 +29,8 @@ fn article_new_creates_file_and_index() {
 #[test]
 fn article_new_creates_missing_index_with_project_path_selector() {
     let repo = common::setup_repo();
-    std::fs::write(
-        repo.path().join("minds.yaml"),
-        "schema_version: '1'\nprojects_dir: projects\nprojects: []\n",
-    )
-    .unwrap();
+    std::fs::write(repo.path().join("minds.yaml"), "schema_version: '1'\nprojects_dir: projects\nprojects: []\n")
+        .unwrap();
     common::create_project(&repo, "projects/myproj");
 
     let index_path = repo.path().join("projects/myproj/mind-index.yaml");
@@ -1306,4 +1303,774 @@ fn article_rename_json_envelope() {
     assert_eq!(v["data"]["details"]["new_title"], "New Title");
     assert!(v["data"]["old_identity"].as_str().is_some_and(|s| s.contains("old-title")));
     assert!(v["data"]["identity"].as_str().is_some_and(|s| s.contains("new-title")));
+}
+
+// ── Article convert tests: US1 directory-to-file ──────────────────────────
+
+#[test]
+fn article_convert_to_single_file_converts_one_directory_article() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Create a directory article with one section
+    let article_dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-opening.md"), "# My Article\n\nContent.\n").unwrap();
+
+    // Write index with the directory path
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-single-file"])
+        .output()
+        .expect("command runs");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    // Target file should exist
+    assert!(repo.path().join("my-project/docs/my-article.md").exists(), "converted single-file should exist");
+    // Source directory should be removed
+    assert!(!repo.path().join("my-project/docs/my-article").exists(), "old directory article should be removed");
+    // Index should reference the new path
+    let index_content = std::fs::read_to_string(repo.path().join("my-project/mind-index.yaml")).unwrap();
+    assert!(
+        index_content.contains("article_path: docs/my-article.md"),
+        "index should reference the new path: {index_content}"
+    );
+}
+
+#[test]
+fn article_convert_to_single_file_multiple_ordered() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Create two directory articles
+    for name in &["alpha", "beta"] {
+        let dir = repo.path().join(format!("my-project/docs/{name}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("01-opening.md"), format!("# {}\n\nContent.\n", name)).unwrap();
+    }
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'Alpha'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/alpha'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+  - title: 'Beta'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/beta'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-single-file"])
+        .output()
+        .expect("command runs");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    // Output should be ordered by source_path (alpha before beta)
+    let alpha_pos = stdout.find("docs/alpha").unwrap();
+    let beta_pos = stdout.find("docs/beta").unwrap();
+    assert!(alpha_pos < beta_pos, "alpha should appear before beta in output: {stdout}");
+
+    assert!(repo.path().join("my-project/docs/alpha.md").exists());
+    assert!(repo.path().join("my-project/docs/beta.md").exists());
+    assert!(!repo.path().join("my-project/docs/alpha").exists());
+    assert!(!repo.path().join("my-project/docs/beta").exists());
+}
+
+#[test]
+fn article_convert_to_single_file_article_list_visibility() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Create a directory article
+    let article_dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-opening.md"), "# My Article\n\nContent.\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    // Run conversion
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-single-file"])
+        .assert()
+        .success();
+
+    // Article list should show the new path
+    let list_output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+
+    assert!(list_output.status.success());
+    let stdout = String::from_utf8(list_output.stdout).unwrap();
+    assert!(stdout.contains("docs/my-article.md"), "article list should show the new single-file path: {stdout}");
+    assert!(!stdout.contains("BLOCKED"), "article should no longer show as BLOCKED: {stdout}");
+}
+
+// ── Article convert tests: US2 file-to-directory ──────────────────────────
+
+#[test]
+fn article_convert_to_directory_converts_one_single_file_article() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Create a single-file article
+    std::fs::create_dir_all(repo.path().join("my-project/docs")).unwrap();
+    std::fs::write(repo.path().join("my-project/docs/my-article.md"), "# My Article\n\nContent.\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article.md'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-directory"])
+        .output()
+        .expect("command runs");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    // Target directory with section file should exist
+    assert!(repo.path().join("my-project/docs/my-article/01-opening.md").exists(), "01-opening.md should be created");
+    // Source file should be removed
+    assert!(!repo.path().join("my-project/docs/my-article.md").exists(), "old single-file article should be removed");
+    // Index should reference the new directory path
+    let index_content = std::fs::read_to_string(repo.path().join("my-project/mind-index.yaml")).unwrap();
+    assert!(
+        index_content.contains("article_path: docs/my-article"),
+        "index should reference directory path: {index_content}"
+    );
+}
+
+#[test]
+fn article_convert_to_directory_multiple_ordered() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    std::fs::create_dir_all(repo.path().join("my-project/docs")).unwrap();
+    for name in &["alpha", "beta"] {
+        std::fs::write(repo.path().join(format!("my-project/docs/{}.md", name)), format!("# {}\n\nContent.\n", name))
+            .unwrap();
+    }
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'Alpha'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/alpha.md'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+  - title: 'Beta'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/beta.md'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-directory"])
+        .output()
+        .expect("command runs");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let alpha_pos = stdout.find("docs/alpha.md").unwrap();
+    let beta_pos = stdout.find("docs/beta.md").unwrap();
+    assert!(alpha_pos < beta_pos, "alpha should appear before beta: {stdout}");
+
+    assert!(repo.path().join("my-project/docs/alpha/01-opening.md").exists());
+    assert!(repo.path().join("my-project/docs/beta/01-opening.md").exists());
+    assert!(!repo.path().join("my-project/docs/alpha.md").exists());
+    assert!(!repo.path().join("my-project/docs/beta.md").exists());
+}
+
+#[test]
+fn article_convert_to_directory_article_list_visibility() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    std::fs::create_dir_all(repo.path().join("my-project/docs")).unwrap();
+    std::fs::write(repo.path().join("my-project/docs/my-article.md"), "# My Article\n\nContent.\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article.md'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-directory"])
+        .assert()
+        .success();
+
+    let list_output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+
+    assert!(list_output.status.success());
+    let stdout = String::from_utf8(list_output.stdout).unwrap();
+    assert!(stdout.contains("docs/my-article"), "article list should show directory path: {stdout}");
+    assert!(!stdout.contains("Single File"), "article should no longer show as Single File: {stdout}");
+}
+
+// ── Article convert tests: US3 dry-run ────────────────────────────────────
+
+#[test]
+fn article_convert_to_single_file_dry_run_no_writes() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let article_dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-opening.md"), "# My Article\n\nContent.\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    // Snapshot index content before dry-run
+    let index_before = std::fs::read_to_string(repo.path().join("my-project/mind-index.yaml")).unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-single-file", "--dry-run"])
+        .output()
+        .expect("command runs");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("[dry-run]"), "output should show dry-run prefix: {stdout}");
+    assert!(stdout.contains("would convert article"), "should say 'would convert': {stdout}");
+
+    // No file was created
+    assert!(!repo.path().join("my-project/docs/my-article.md").exists(), "target file should NOT exist after dry-run");
+    // Source directory still exists
+    assert!(
+        repo.path().join("my-project/docs/my-article").exists(),
+        "source directory should still exist after dry-run"
+    );
+    // Index unchanged
+    let index_after = std::fs::read_to_string(repo.path().join("my-project/mind-index.yaml")).unwrap();
+    assert_eq!(index_before, index_after, "index should be byte-for-byte unchanged");
+}
+
+#[test]
+fn article_convert_to_directory_dry_run_no_writes() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    std::fs::create_dir_all(repo.path().join("my-project/docs")).unwrap();
+    std::fs::write(repo.path().join("my-project/docs/my-article.md"), "# My Article\n\nContent.\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article.md'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+    let index_before = std::fs::read_to_string(repo.path().join("my-project/mind-index.yaml")).unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-directory", "--dry-run"])
+        .output()
+        .expect("command runs");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("[dry-run]"), "output should show dry-run prefix: {stdout}");
+    assert!(stdout.contains("would convert article"), "should say 'would convert': {stdout}");
+
+    assert!(
+        !repo.path().join("my-project/docs/my-article").exists(),
+        "target directory should NOT exist after dry-run"
+    );
+    assert!(repo.path().join("my-project/docs/my-article.md").exists(), "source file should still exist after dry-run");
+    let index_after = std::fs::read_to_string(repo.path().join("my-project/mind-index.yaml")).unwrap();
+    assert_eq!(index_before, index_after, "index should be byte-for-byte unchanged");
+}
+
+#[test]
+fn article_convert_dry_run_zero_eligible() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Index with only a single-file article; dry-run to-single-file should find 0 eligible
+    std::fs::create_dir_all(repo.path().join("my-project/docs")).unwrap();
+    std::fs::write(repo.path().join("my-project/docs/my-article.md"), "# My Article\n\nContent.\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article.md'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-single-file", "--dry-run"])
+        .output()
+        .expect("command runs");
+
+    assert!(output.status.success(), "should succeed with zero eligible");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("0 would convert"), "should show 0 would convert: {stdout}");
+}
+
+// ── Article convert tests: US4 inferred direction ─────────────────────────
+
+#[test]
+fn article_convert_no_direction_non_tty_errors() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let article_dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-opening.md"), "# My Article\n\nContent.\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    // Passthrough stdin as /dev/null to force non-TTY
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert"])
+        .output()
+        .expect("command runs");
+
+    // Should fail with exit code 2 (usage error)
+    assert_eq!(output.status.code(), Some(2), "should exit 2 for usage error");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("--to-single-file") || stderr.contains("--to-directory"),
+        "error should mention explicit direction flags: {stderr}"
+    );
+
+    // No files or indexes changed
+    assert!(repo.path().join("my-project/docs/my-article").exists(), "source should still exist");
+    assert!(!repo.path().join("my-project/docs/my-article.md").exists(), "target should NOT exist");
+}
+
+#[test]
+fn article_convert_ambiguous_direction_errors() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Create both a directory article AND a single-file article
+    let dir = repo.path().join("my-project/docs/dir-article");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("01-opening.md"), "# Dir\n\nContent.\n").unwrap();
+
+    std::fs::create_dir_all(repo.path().join("my-project/docs")).unwrap();
+    std::fs::write(repo.path().join("my-project/docs/file-article.md"), "# File\n\nContent.\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'Dir Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/dir-article'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+  - title: 'File Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/file-article.md'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert"])
+        .output()
+        .expect("command runs");
+
+    assert_eq!(output.status.code(), Some(2), "ambiguous should exit 2");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("ambiguous") || stderr.contains("both"),
+        "error should mention ambiguous direction: {stderr}"
+    );
+}
+
+// ── Article convert tests: US5 safety/skip handling ───────────────────────
+
+#[test]
+fn article_convert_skips_multi_section_directory() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let dir = repo.path().join("my-project/docs/multi");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("01-opening.md"), "# Opening\n").unwrap();
+    std::fs::write(dir.join("02-details.md"), "# Details\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'Multi'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/multi'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-single-file"])
+        .output()
+        .expect("command runs");
+
+    assert!(output.status.success(), "should succeed with skip");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("multiple_section_files"), "should mention multiple_section_files: {stdout}");
+    assert!(stdout.contains("0 converted") || stdout.contains("0 would convert"), "should be 0 converted");
+
+    // Source directory unchanged
+    assert!(repo.path().join("my-project/docs/multi").exists());
+    assert!(repo.path().join("my-project/docs/multi/01-opening.md").exists());
+    assert!(repo.path().join("my-project/docs/multi/02-details.md").exists());
+}
+
+#[test]
+fn article_convert_skips_empty_directory() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let dir = repo.path().join("my-project/docs/empty");
+    std::fs::create_dir_all(&dir).unwrap();
+    // No markdown files in the directory
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'Empty'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/empty'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-single-file"])
+        .output()
+        .expect("command runs");
+
+    assert!(output.status.success(), "should succeed with skip");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("no_section_files"), "should mention no_section_files: {stdout}");
+}
+
+#[test]
+fn article_convert_skips_target_file_exists() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Create directory article AND target file
+    let dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("01-opening.md"), "# Article\n").unwrap();
+    // Create the target file to cause conflict
+    std::fs::write(repo.path().join("my-project/docs/my-article.md"), "# Conflict\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-single-file"])
+        .output()
+        .expect("command runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("target_exists"), "should mention target_exists: {stdout}");
+
+    // Both source and target still exist
+    assert!(repo.path().join("my-project/docs/my-article").exists());
+    assert!(repo.path().join("my-project/docs/my-article.md").exists());
+}
+
+#[test]
+fn article_convert_skips_target_directory_exists() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Create single-file article AND target directory
+    std::fs::create_dir_all(repo.path().join("my-project/docs/my-article")).unwrap();
+    std::fs::write(repo.path().join("my-project/docs/my-article.md"), "# Article\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article.md'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-directory"])
+        .output()
+        .expect("command runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("target_exists"), "should mention target_exists: {stdout}");
+
+    // Both source and target still exist
+    assert!(repo.path().join("my-project/docs/my-article.md").exists());
+    assert!(repo.path().join("my-project/docs/my-article").exists());
+}
+
+#[test]
+fn article_convert_skips_extra_files_in_directory() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("01-opening.md"), "# Article\n").unwrap();
+    // Extra non-.md file
+    std::fs::write(dir.join("image.png"), "fake png").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-single-file"])
+        .output()
+        .expect("command runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("extra_files"), "should mention extra_files: {stdout}");
+
+    // Directory still exists with all files
+    assert!(repo.path().join("my-project/docs/my-article").exists());
+    assert!(repo.path().join("my-project/docs/my-article/image.png").exists());
+}
+
+#[test]
+fn article_convert_idempotent_to_single_file() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("01-opening.md"), "# Article\n\nContent.\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    // First conversion
+    let output1 = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-single-file"])
+        .output()
+        .expect("command runs");
+    assert!(output1.status.success());
+    let stdout1 = String::from_utf8(output1.stdout).unwrap();
+    assert!(stdout1.contains("1 converted"), "first run: {stdout1}");
+
+    // Second conversion (idempotent)
+    let output2 = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-single-file"])
+        .output()
+        .expect("command runs");
+    assert!(output2.status.success());
+    let stdout2 = String::from_utf8(output2.stdout).unwrap();
+    assert!(stdout2.contains("0 converted"), "second run should have 0 converted: {stdout2}");
+}
+
+#[test]
+fn article_convert_idempotent_to_directory() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    std::fs::create_dir_all(repo.path().join("my-project/docs")).unwrap();
+    std::fs::write(repo.path().join("my-project/docs/my-article.md"), "# Article\n\nContent.\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article.md'
+    status: draft
+    created_at: '2026-05-15T00:00:00Z'
+    updated_at: '2026-05-15T00:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    // First conversion
+    let output1 = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-directory"])
+        .output()
+        .expect("command runs");
+    assert!(output1.status.success());
+    let stdout1 = String::from_utf8(output1.stdout).unwrap();
+    assert!(stdout1.contains("1 converted"), "first run: {stdout1}");
+
+    // Second conversion (idempotent)
+    let output2 = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-directory"])
+        .output()
+        .expect("command runs");
+    assert!(output2.status.success());
+    let stdout2 = String::from_utf8(output2.stdout).unwrap();
+    assert!(stdout2.contains("0 converted"), "second run should have 0 converted: {stdout2}");
 }

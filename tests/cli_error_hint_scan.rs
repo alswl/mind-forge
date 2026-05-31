@@ -120,6 +120,7 @@ fn all_mf_commands_in_hints_exist() {
         "index",
         "lint",
         "fix",
+        "convert",
         "learn",
         "upgrade",
         "init",
