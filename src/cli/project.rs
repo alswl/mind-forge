@@ -16,9 +16,9 @@ use crate::model::Resource;
 use crate::output::confirm::{require_confirmation, ConfirmArgs};
 use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
 use crate::output::show::{
-    json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowSection, ShowValue,
+    json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowOpts, ShowSection, ShowValue,
 };
-use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, Verb, VerbResult};
+use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, Verb, VerbOpts, VerbResult};
 use crate::output::Format;
 use crate::service::repo;
 use crate::service::{self as svc};
@@ -208,7 +208,10 @@ fn handle_new(args: ProjectNewArgs, repo_root: Option<&PathBuf>, format: Format)
         };
         return match format {
             Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-            Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+            Format::Text => Ok(CommandOutcome::Success(
+                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+                None,
+            )),
         };
     }
 
@@ -232,7 +235,10 @@ fn handle_new(args: ProjectNewArgs, repo_root: Option<&PathBuf>, format: Format)
     };
     match format {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+            None,
+        )),
     }
 }
 
@@ -244,7 +250,8 @@ fn handle_list(args: ProjectListArgs, repo_root: Option<&PathBuf>, format: Forma
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
     let entries = svc::project::list_projects(root)?;
 
-    let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc);
+    let opts =
+        ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc).with_repo_root(Some(root.clone()));
 
     match format {
         Format::Json => {
@@ -385,7 +392,7 @@ fn handle_lint(
                 dry_run,
                 details,
             };
-            Ok(CommandOutcome::Raw(verb_text(&result), exit_code))
+            Ok(CommandOutcome::Raw(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path()))), exit_code))
         }
     }
 }
@@ -439,7 +446,10 @@ fn handle_index(args: ProjectIndexArgs, repo_root: Option<&PathBuf>, format: For
         };
         return match format {
             Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-            Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+            Format::Text => Ok(CommandOutcome::Success(
+                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+                None,
+            )),
         };
     }
 
@@ -464,7 +474,10 @@ fn handle_index(args: ProjectIndexArgs, repo_root: Option<&PathBuf>, format: For
     };
     match format {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+            None,
+        )),
     }
 }
 
@@ -484,7 +497,7 @@ fn handle_show(
 
     let mut fields: Vec<ShowField> = vec![
         ShowField { label: "Name", value: ShowValue::Text(details.name.clone()) },
-        ShowField { label: "Path", value: ShowValue::Text(details.path.clone()) },
+        ShowField { label: "Path", value: ShowValue::Path(details.path.clone()) },
         ShowField { label: "Articles", value: ShowValue::Text(details.article_count.to_string()) },
         ShowField { label: "Sources", value: ShowValue::Text(details.source_count.to_string()) },
         ShowField { label: "Assets", value: ShowValue::Text(details.asset_count.to_string()) },
@@ -521,7 +534,10 @@ fn handle_show(
             let extra = details_json.as_object().cloned().unwrap_or_default();
             Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
         }
-        Format::Text => Ok(CommandOutcome::Raw(render_show_text(&block), None)),
+        Format::Text => Ok(CommandOutcome::Raw(
+            render_show_text(&block, &ShowOpts::from_repo_root(repo_root.map(|r| r.as_path()))),
+            None,
+        )),
     }
 }
 
@@ -560,7 +576,10 @@ fn handle_archive(
             };
             return match format {
                 Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-                Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+                Format::Text => Ok(CommandOutcome::Success(
+                    serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+                    None,
+                )),
             };
         }
     }
@@ -662,7 +681,10 @@ fn handle_rename(
         };
         return match format {
             Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-            Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+            Format::Text => Ok(CommandOutcome::Success(
+                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+                None,
+            )),
         };
     }
 
@@ -679,7 +701,10 @@ fn handle_rename(
     };
     match format {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+            None,
+        )),
     }
 }
 
@@ -718,7 +743,10 @@ fn handle_remove(
             };
             return match format {
                 Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-                Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+                Format::Text => Ok(CommandOutcome::Success(
+                    serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+                    None,
+                )),
             };
         }
     }
@@ -736,6 +764,9 @@ fn handle_remove(
     };
     match format {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+            None,
+        )),
     }
 }

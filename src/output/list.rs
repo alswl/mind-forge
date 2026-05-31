@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use unicode_width::UnicodeWidthStr;
 
 use crate::model::terminal::{OutputFormat, OutputRenderingPolicy};
@@ -16,15 +18,22 @@ pub enum ListCell {
     Text(String),
     Number(String),
     Optional(Option<String>),
-    Styled { text: String, ansi_prefix: &'static str, ansi_suffix: &'static str },
+    /// A repo-relative file path. When hyperlinks are enabled, rendered as a
+    /// `file://` OSC 8 link resolved against `ListOpts::repo_root`.
+    Path(String),
+    Styled {
+        text: String,
+        ansi_prefix: &'static str,
+        ansi_suffix: &'static str,
+    },
 }
 
 pub struct ListOpts {
     pub no_headers: bool,
     pub no_trunc: bool,
     pub color_enabled: bool,
-    #[allow(dead_code)]
     pub emit_hyperlinks: bool,
+    pub repo_root: Option<PathBuf>,
     pub terminal_width: usize,
 }
 
@@ -37,8 +46,14 @@ impl ListOpts {
             no_trunc: no_trunc || !profile.stdout_is_tty,
             color_enabled: policy.emit_ansi_color,
             emit_hyperlinks: policy.emit_hyperlinks,
+            repo_root: None,
             terminal_width: if profile.stdout_is_tty { profile.terminal_width } else { usize::MAX },
         }
+    }
+
+    pub fn with_repo_root(mut self, repo_root: Option<PathBuf>) -> Self {
+        self.repo_root = repo_root;
+        self
     }
 
     #[allow(dead_code)]
@@ -53,6 +68,7 @@ impl ListOpts {
             no_trunc: no_trunc || policy.plain_output,
             color_enabled: policy.emit_ansi_color,
             emit_hyperlinks: policy.emit_hyperlinks,
+            repo_root: None,
             terminal_width: if policy.plain_output { usize::MAX } else { terminal_width },
         }
     }
@@ -106,7 +122,7 @@ fn write_row(out: &mut String, cells: &[impl CellContent], col_widths: &[usize],
 
         if i == 0 {
             // Identity column: never truncated
-            let text = cell_text(cell, opts.color_enabled);
+            let text = cell.render(opts);
             let w = cell_display_width(cell);
             out.push_str(&text);
             used += w;
@@ -128,7 +144,7 @@ fn write_row(out: &mut String, cells: &[impl CellContent], col_widths: &[usize],
             }
         }
 
-        let text = cell_text(cell, opts.color_enabled);
+        let text = cell.render(opts);
         if truncate && i > 0 && (used + target > available) {
             // truncate this column
             let available_for_col = available.saturating_sub(used);
@@ -155,15 +171,6 @@ fn pad_to(out: &mut String, target: usize, actual_w: usize) {
     }
 }
 
-fn cell_text(cell: &impl CellContent, color_enabled: bool) -> String {
-    let raw = cell.raw_text();
-    if color_enabled {
-        cell.colored_text()
-    } else {
-        raw
-    }
-}
-
 fn cell_display_width(cell: &impl CellContent) -> usize {
     UnicodeWidthStr::width(cell.display_str().as_str())
 }
@@ -181,7 +188,6 @@ fn truncate_cell(text: &str, display_w: usize, available: usize) -> String {
         return ellipsis.to_string();
     }
     let target_w = available - ellipsis_w;
-    // Walk the string to find the prefix that fits
     let mut prefix = String::new();
     let mut pw = 0usize;
     for ch in text.chars() {
@@ -203,6 +209,13 @@ trait CellContent {
     fn colored_text(&self) -> String {
         self.raw_text()
     }
+    fn render(&self, opts: &ListOpts) -> String {
+        if opts.color_enabled {
+            self.colored_text()
+        } else {
+            self.raw_text()
+        }
+    }
 }
 
 impl CellContent for &str {
@@ -217,7 +230,7 @@ impl CellContent for &str {
 impl CellContent for ListCell {
     fn raw_text(&self) -> String {
         match self {
-            ListCell::Text(s) => s.clone(),
+            ListCell::Text(s) | ListCell::Path(s) => s.clone(),
             ListCell::Number(s) => s.clone(),
             ListCell::Optional(Some(s)) => s.clone(),
             ListCell::Optional(None) => "-".to_string(),
@@ -238,6 +251,17 @@ impl CellContent for ListCell {
             _ => self.raw_text(),
         }
     }
+
+    fn render(&self, opts: &ListOpts) -> String {
+        if let ListCell::Path(s) = self {
+            return super::link::render_path_link(s, opts.repo_root.as_deref(), opts.emit_hyperlinks);
+        }
+        if opts.color_enabled {
+            self.colored_text()
+        } else {
+            self.raw_text()
+        }
+    }
 }
 
 pub fn json_collection(plural_noun: &str, items: Vec<serde_json::Value>) -> serde_json::Value {
@@ -248,17 +272,21 @@ pub fn json_collection(plural_noun: &str, items: Vec<serde_json::Value>) -> serd
 mod tests {
     use super::*;
 
-    #[test]
-    fn empty_list_shows_placeholder() {
-        let view = ListView { headers: &["NAME", "DOCS"], rows: vec![], plural_noun: "projects" };
-        let opts = ListOpts {
+    fn default_opts() -> ListOpts {
+        ListOpts {
             no_headers: false,
             no_trunc: false,
             color_enabled: false,
             emit_hyperlinks: false,
+            repo_root: None,
             terminal_width: 80,
-        };
-        let result = render_text(&view, &opts);
+        }
+    }
+
+    #[test]
+    fn empty_list_shows_placeholder() {
+        let view = ListView { headers: &["NAME", "DOCS"], rows: vec![], plural_noun: "projects" };
+        let result = render_text(&view, &default_opts());
         assert_eq!(result, "No projects found.\n");
     }
 
@@ -269,14 +297,7 @@ mod tests {
             rows: vec![ListRow { cells: vec![ListCell::Text("demo".into()), ListCell::Number("4".into())] }],
             plural_noun: "projects",
         };
-        let opts = ListOpts {
-            no_headers: false,
-            no_trunc: false,
-            color_enabled: false,
-            emit_hyperlinks: false,
-            terminal_width: 80,
-        };
-        let result = render_text(&view, &opts);
+        let result = render_text(&view, &default_opts());
         let lines: Vec<&str> = result.lines().collect();
         assert_eq!(lines.len(), 2);
         assert!(lines[0].starts_with("NAME"));
@@ -290,14 +311,7 @@ mod tests {
             rows: vec![ListRow { cells: vec![ListCell::Text("demo2".into()), ListCell::Optional(None)] }],
             plural_noun: "projects",
         };
-        let opts = ListOpts {
-            no_headers: false,
-            no_trunc: false,
-            color_enabled: false,
-            emit_hyperlinks: false,
-            terminal_width: 80,
-        };
-        let result = render_text(&view, &opts);
+        let result = render_text(&view, &default_opts());
         assert!(result.contains(" -"), "expected - placeholder");
     }
 
@@ -313,13 +327,8 @@ mod tests {
             }],
             plural_noun: "terms",
         };
-        let opts = ListOpts {
-            no_headers: false,
-            no_trunc: false,
-            color_enabled: false,
-            emit_hyperlinks: false,
-            terminal_width: 30,
-        };
+        let mut opts = default_opts();
+        opts.terminal_width = 30;
         let result = render_text(&view, &opts);
         assert!(result.contains("RAG"), "identity column must not be truncated");
         assert!(result.contains("…") || result.contains("..."), "truncation ellipsis expected");
@@ -341,16 +350,49 @@ mod tests {
             }],
             plural_noun: "terms",
         };
-        let opts = ListOpts {
-            no_headers: false,
-            no_trunc: false,
-            color_enabled: false,
-            emit_hyperlinks: false,
-            terminal_width: 80,
-        };
-        let result = render_text(&view, &opts);
-        // CJK chars are 2 display width each
+        let result = render_text(&view, &default_opts());
         let lines: Vec<&str> = result.lines().collect();
         assert!(!lines.is_empty());
+    }
+
+    #[test]
+    fn path_cell_renders_as_link() {
+        let view = ListView {
+            headers: &["PATH"],
+            rows: vec![ListRow { cells: vec![ListCell::Path("docs/readme.md".into())] }],
+            plural_noun: "articles",
+        };
+        let mut opts = default_opts();
+        opts.emit_hyperlinks = true;
+        opts.repo_root = Some(PathBuf::from("/home/user"));
+        let result = render_text(&view, &opts);
+        assert!(result.contains("\x1b]8;;file:///home/user/docs/readme.md\x1b\\"));
+    }
+
+    #[test]
+    fn path_cell_no_hyperlinks_returns_plain() {
+        let view = ListView {
+            headers: &["PATH"],
+            rows: vec![ListRow { cells: vec![ListCell::Path("docs/readme.md".into())] }],
+            plural_noun: "articles",
+        };
+        let result = render_text(&view, &default_opts());
+        assert!(!result.contains('\x1b'));
+        assert!(result.contains("docs/readme.md"));
+    }
+
+    #[test]
+    fn path_cell_no_repo_root_returns_plain() {
+        let view = ListView {
+            headers: &["PATH"],
+            rows: vec![ListRow { cells: vec![ListCell::Path("docs/readme.md".into())] }],
+            plural_noun: "articles",
+        };
+        let mut opts = default_opts();
+        opts.emit_hyperlinks = true;
+        opts.repo_root = None;
+        let result = render_text(&view, &opts);
+        assert!(!result.contains('\x1b'));
+        assert!(result.contains("docs/readme.md"));
     }
 }

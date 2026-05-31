@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 pub enum Verb {
     Create,
     Add,
@@ -18,7 +20,24 @@ pub struct VerbResult {
     pub details: serde_json::Value,
 }
 
-pub fn render_text(result: &VerbResult) -> String {
+#[derive(Default)]
+pub struct VerbOpts {
+    pub emit_hyperlinks: bool,
+    pub repo_root: Option<PathBuf>,
+}
+
+impl VerbOpts {
+    pub fn from_repo_root(repo_root: Option<&std::path::Path>) -> Self {
+        let profile = super::capability::build_profile();
+        let policy = crate::model::terminal::OutputRenderingPolicy::from_profile(
+            &profile,
+            crate::model::terminal::OutputFormat::Text,
+        );
+        Self { emit_hyperlinks: policy.emit_hyperlinks, repo_root: repo_root.map(|p| p.to_path_buf()) }
+    }
+}
+
+pub fn render_text(result: &VerbResult, opts: &VerbOpts) -> String {
     if result.dry_run {
         return match &result.verb {
             Verb::Create => format!("[dry-run] would create {}: {}", result.kind, result.identity),
@@ -39,7 +58,7 @@ pub fn render_text(result: &VerbResult) -> String {
                 )
             }
             Verb::Index => render_index_text(result),
-            Verb::Lint => render_lint_text(result),
+            Verb::Lint => render_lint_text(result, opts),
         };
     }
 
@@ -56,7 +75,7 @@ pub fn render_text(result: &VerbResult) -> String {
             format!("✓ updated {}: {} ({} field{})", result.kind, result.identity, n, if n == 1 { "" } else { "s" })
         }
         Verb::Index => render_index_text(result),
-        Verb::Lint => render_lint_text(result),
+        Verb::Lint => render_lint_text(result, opts),
     }
 }
 
@@ -73,7 +92,7 @@ fn render_index_text(result: &VerbResult) -> String {
     format!("{prefix}indexed {}: +{added} ={kept} -{removed}", result.kind)
 }
 
-fn render_lint_text(result: &VerbResult) -> String {
+fn render_lint_text(result: &VerbResult, opts: &VerbOpts) -> String {
     let mut out = String::new();
     if let Some(issues) = result.details.get("issues").and_then(|v| v.as_array()) {
         for issue in issues {
@@ -82,10 +101,11 @@ fn render_lint_text(result: &VerbResult) -> String {
             let message = issue.get("message").and_then(|v| v.as_str()).unwrap_or("");
             let path = issue.get("path").and_then(|v| v.as_str()).unwrap_or("");
             let line = issue.get("line").and_then(|v| v.as_u64()).unwrap_or(0);
+            let linked_path = super::link::render_path_link(path, opts.repo_root.as_deref(), opts.emit_hyperlinks);
             if line > 0 {
-                out.push_str(&format!("[{severity}] {kind}: {message} ({path}:{line})\n"));
+                out.push_str(&format!("[{severity}] {kind}: {message} ({linked_path}:{line})\n"));
             } else {
-                out.push_str(&format!("[{severity}] {kind}: {message} ({path})\n"));
+                out.push_str(&format!("[{severity}] {kind}: {message} ({linked_path})\n"));
             }
         }
     }
@@ -135,12 +155,9 @@ pub fn json_envelope(result: &VerbResult) -> serde_json::Value {
     }
 
     if !result.details.is_null() && !matches!(&result.verb, Verb::Index | Verb::Lint) {
-        // Create: nest details under "details" key
-        // Index/Lint: already have their own structures
         map.insert("details".to_string(), result.details.clone());
     }
 
-    // For Index/Lint, flatten the details into top level
     if matches!(&result.verb, Verb::Index | Verb::Lint) && !result.details.is_null() {
         if let Some(obj) = result.details.as_object() {
             for (k, v) in obj {
@@ -169,7 +186,7 @@ mod tests {
             dry_run: false,
             details: serde_json::json!({"scaffolded": ["docs"]}),
         };
-        assert_eq!(render_text(&r), "✓ created project: demo");
+        assert_eq!(render_text(&r, &VerbOpts::default()), "✓ created project: demo");
     }
 
     #[test]
@@ -183,7 +200,7 @@ mod tests {
             dry_run: true,
             details: serde_json::json!({}),
         };
-        assert_eq!(render_text(&r), "[dry-run] would create project: demo");
+        assert_eq!(render_text(&r, &VerbOpts::default()), "[dry-run] would create project: demo");
     }
 
     #[test]
@@ -197,7 +214,7 @@ mod tests {
             dry_run: false,
             details: serde_json::json!({}),
         };
-        assert_eq!(render_text(&r), "✓ renamed project: demo → demo-renamed");
+        assert_eq!(render_text(&r, &VerbOpts::default()), "✓ renamed project: demo → demo-renamed");
     }
 
     #[test]
@@ -211,7 +228,7 @@ mod tests {
             dry_run: false,
             details: serde_json::json!({}),
         };
-        assert_eq!(render_text(&r), "✓ removed article: docs/draft");
+        assert_eq!(render_text(&r, &VerbOpts::default()), "✓ removed article: docs/draft");
     }
 
     #[test]
@@ -225,7 +242,7 @@ mod tests {
             dry_run: false,
             details: serde_json::json!({"changes": {"title": {"from": "Old", "to": "New"}}}),
         };
-        assert_eq!(render_text(&r), "✓ updated source: report (1 field)");
+        assert_eq!(render_text(&r, &VerbOpts::default()), "✓ updated source: report (1 field)");
     }
 
     #[test]
@@ -239,7 +256,7 @@ mod tests {
             dry_run: false,
             details: serde_json::json!({"added": [{"identity": "a"}], "removed": [{"identity": "b"}], "kept_count": 5, "scanned_count": 7}),
         };
-        assert_eq!(render_text(&r), "indexed article: +1 =5 -1");
+        assert_eq!(render_text(&r, &VerbOpts::default()), "indexed article: +1 =5 -1");
     }
 
     #[test]
@@ -258,9 +275,53 @@ mod tests {
                 "summary": {"errors": 1, "warnings": 0, "info": 0, "fixed": 0}
             }),
         };
-        let out = render_text(&r);
+        let out = render_text(&r, &VerbOpts::default());
         assert!(out.contains("[error] missing_directory: docs/foo not on disk (docs/foo)"));
         assert!(out.contains("1 errors, 0 warnings, 0 info"));
+    }
+
+    #[test]
+    fn lint_path_renders_as_link() {
+        let r = VerbResult {
+            verb: Verb::Lint,
+            kind: "article",
+            identity: String::new(),
+            old_identity: None,
+            path: None,
+            dry_run: false,
+            details: serde_json::json!({
+                "issues": [
+                    {"severity": "error", "kind": "missing_directory", "message": "docs/foo not on disk", "path": "docs/foo", "line": 42}
+                ],
+                "summary": {"errors": 1, "warnings": 0, "info": 0, "fixed": 0}
+            }),
+        };
+        let opts = VerbOpts { emit_hyperlinks: true, repo_root: Some(PathBuf::from("/repo")) };
+        let out = render_text(&r, &opts);
+        assert!(out.contains("\x1b]8;;file:///repo/docs/foo\x1b\\"));
+        // OSC 8 wraps the path; the ":42" follows the closing escape
+        assert!(out.contains("\x1b]8;;\x1b\\:42"));
+    }
+
+    #[test]
+    fn lint_path_no_hyperlinks_returns_plain() {
+        let r = VerbResult {
+            verb: Verb::Lint,
+            kind: "article",
+            identity: String::new(),
+            old_identity: None,
+            path: None,
+            dry_run: false,
+            details: serde_json::json!({
+                "issues": [
+                    {"severity": "error", "kind": "missing_directory", "message": "docs/foo not on disk", "path": "docs/foo", "line": 0}
+                ],
+                "summary": {"errors": 1, "warnings": 0, "info": 0, "fixed": 0}
+            }),
+        };
+        let out = render_text(&r, &VerbOpts::default());
+        assert!(!out.contains('\x1b'));
+        assert!(out.contains("docs/foo"));
     }
 
     #[test]

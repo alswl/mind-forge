@@ -13,9 +13,9 @@ use crate::model::Resource;
 use crate::output::confirm::{require_confirmation, ConfirmArgs};
 use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
 use crate::output::show::{
-    json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowSection, ShowValue,
+    json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowOpts, ShowSection, ShowValue,
 };
-use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, Verb, VerbResult};
+use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, Verb, VerbOpts, VerbResult};
 use crate::output::Format;
 use crate::service::{term as term_svc, util as svc_util};
 
@@ -244,7 +244,10 @@ fn handle_new(
         };
         return match format {
             Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-            Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+            Format::Text => Ok(CommandOutcome::Success(
+                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                None,
+            )),
         };
     }
 
@@ -272,7 +275,10 @@ fn handle_new(
     };
     match format {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            None,
+        )),
     }
 }
 
@@ -295,7 +301,7 @@ fn handle_list(
         } else {
             term_svc::global::show_term(root, name)?
         };
-        return render_term_show(&term, format);
+        return render_term_show(&term, Some(root), format);
     }
 
     let terms = if let Some(project_name) = project {
@@ -305,7 +311,8 @@ fn handle_list(
         term_svc::global::list_terms(root, args.filter.as_deref())?
     };
 
-    let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc);
+    let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
+        .with_repo_root(Some(root.to_path_buf()));
 
     match format {
         Format::Json => {
@@ -533,7 +540,10 @@ fn handle_learn(
         };
         return match format {
             Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-            Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+            Format::Text => Ok(CommandOutcome::Success(
+                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                None,
+            )),
         };
     }
 
@@ -555,7 +565,10 @@ fn handle_learn(
     };
     match format {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            None,
+        )),
     }
 }
 
@@ -611,13 +624,20 @@ fn handle_fix(
     };
     match format {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            None,
+        )),
     }
 }
 
 // ── Handle: mf term show (US3b / FR-019) ────────────────────────────────────
 
-fn render_term_show(term: &crate::model::term::Term, format: Format) -> Result<CommandOutcome> {
+fn render_term_show(
+    term: &crate::model::term::Term,
+    repo_root: Option<&std::path::Path>,
+    format: Format,
+) -> Result<CommandOutcome> {
     let corr_count = term.corrections.len();
     let fields = vec![
         ShowField { label: "Term", value: ShowValue::Text(term.term.clone()) },
@@ -671,7 +691,7 @@ fn render_term_show(term: &crate::model::term::Term, format: Format) -> Result<C
             let extra = term_json.as_object().cloned().unwrap_or_default();
             Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
         }
-        Format::Text => Ok(CommandOutcome::Raw(render_show_text(&block), None)),
+        Format::Text => Ok(CommandOutcome::Raw(render_show_text(&block, &ShowOpts::from_repo_root(repo_root)), None)),
     }
 }
 
@@ -688,7 +708,7 @@ fn handle_show(
     } else {
         term_svc::global::show_term(root, &args.name)?
     };
-    render_term_show(&term, format)
+    render_term_show(&term, Some(root), format)
 }
 
 // ── Handle: mf term remove / rm ────────────────────────────────────────────
@@ -726,7 +746,10 @@ fn handle_remove(
     };
     match format {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            None,
+        )),
     }
 }
 
@@ -751,7 +774,10 @@ fn handle_rename(
         };
         return match format {
             Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-            Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+            Format::Text => Ok(CommandOutcome::Success(
+                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                None,
+            )),
         };
     }
 
@@ -773,6 +799,9 @@ fn handle_rename(
     };
     match format {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            None,
+        )),
     }
 }

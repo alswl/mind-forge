@@ -13,7 +13,7 @@ use crate::model::publish::{LocalRunOutcome, PublishRunOutcome, PublishUpdateOut
 use crate::model::publisher::PublishersOutcome;
 use crate::model::Resource;
 use crate::output::list::{render_text, ListCell, ListOpts, ListRow, ListView};
-use crate::output::show::{json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowValue};
+use crate::output::show::{json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowOpts, ShowValue};
 use crate::output::Format;
 use crate::service::publish as publish_svc;
 use crate::service::publisher as publisher_svc;
@@ -119,7 +119,8 @@ fn handle_target_list(
     let report = publisher_svc::discover(root)?;
     let outcome = PublishersOutcome::from_report(&report, root);
 
-    let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc);
+    let opts =
+        ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc).with_repo_root(repo_root.cloned());
 
     match format {
         Format::Json => {
@@ -279,7 +280,7 @@ fn handle_target_show(
             ShowField { label: "Status", value: ShowValue::Text(publisher.status.clone()) },
             ShowField { label: "Label", value: ShowValue::Optional(publisher.label.clone()) },
             ShowField { label: "Description", value: ShowValue::Optional(publisher.description.clone()) },
-            ShowField { label: "Source", value: ShowValue::Text(publisher.source_path.clone()) },
+            ShowField { label: "Source", value: ShowValue::Path(publisher.source_path.clone()) },
             ShowField { label: "Required inputs", value: ShowValue::Text(required) },
         ],
         sections: vec![],
@@ -291,7 +292,10 @@ fn handle_target_show(
             let extra = pub_json.as_object().cloned().unwrap_or_default();
             Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
         }
-        Format::Text => Ok(CommandOutcome::Raw(render_show_text(&block), None)),
+        Format::Text => Ok(CommandOutcome::Raw(
+            render_show_text(&block, &ShowOpts::from_repo_root(repo_root.map(|r| r.as_path()))),
+            None,
+        )),
     }
 }
 

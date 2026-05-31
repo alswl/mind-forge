@@ -16,8 +16,8 @@ use crate::model::article::{
 use crate::model::config::TemplateMode;
 use crate::output::confirm::{prompt_confirmation, require_confirmation, ConfirmArgs, ConfirmOutcome};
 use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
-use crate::output::show::{json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowValue};
-use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, Verb, VerbResult};
+use crate::output::show::{json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowOpts, ShowValue};
+use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, Verb, VerbOpts, VerbResult};
 use crate::output::Format;
 use crate::service::{article as article_svc, config as config_svc, identity, util as svc_util};
 
@@ -165,7 +165,10 @@ pub fn dispatch(
                 };
                 return match format {
                     Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-                    Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+                    Format::Text => Ok(CommandOutcome::Success(
+                        serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                        None,
+                    )),
                 };
             }
 
@@ -206,7 +209,10 @@ pub fn dispatch(
             };
             match format {
                 Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-                Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+                Format::Text => Ok(CommandOutcome::Success(
+                    serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                    None,
+                )),
             }
         }
         Some(ArticleSubcommand::List(args)) => {
@@ -266,7 +272,8 @@ pub fn dispatch(
                 })
                 .collect();
 
-            let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc);
+            let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
+                .with_repo_root(Some(root.clone()));
 
             match format {
                 Format::Json => Ok(CommandOutcome::Success(json_collection("articles", enriched), None)),
@@ -277,7 +284,7 @@ pub fn dispatch(
                         let content_kind = v["content_kind"].as_str().unwrap_or("missing");
                         let status = v["status"].as_str().unwrap_or("draft");
                         rows.push(ListRow {
-                            cells: vec![ListCell::Text(identity), content_kind_cell(content_kind), status_cell(status)],
+                            cells: vec![ListCell::Path(identity), content_kind_cell(content_kind), status_cell(status)],
                         });
                     }
                     let view = ListView { headers: &["PATH", "CONTENT", "STATUS"], rows, plural_noun: "articles" };
@@ -287,7 +294,7 @@ pub fn dispatch(
         }
         Some(ArticleSubcommand::Lint(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
-            handle_lint(args, &project_path, format)
+            handle_lint(args, &project_path, root, format)
         }
         Some(ArticleSubcommand::Index(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
@@ -339,7 +346,10 @@ pub fn dispatch(
                 };
                 return match format {
                     Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-                    Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+                    Format::Text => Ok(CommandOutcome::Success(
+                        serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                        None,
+                    )),
                 };
             }
 
@@ -404,12 +414,15 @@ pub fn dispatch(
             };
             match format {
                 Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-                Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+                Format::Text => Ok(CommandOutcome::Success(
+                    serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                    None,
+                )),
             }
         }
         Some(ArticleSubcommand::Show(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
-            handle_article_show(args, &project_path, format)
+            handle_article_show(args, &project_path, root, format)
         }
         Some(ArticleSubcommand::Rename(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
@@ -428,7 +441,10 @@ pub fn dispatch(
                 };
                 return match format {
                     Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-                    Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+                    Format::Text => Ok(CommandOutcome::Success(
+                        serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                        None,
+                    )),
                 };
             }
 
@@ -445,7 +461,10 @@ pub fn dispatch(
             };
             match format {
                 Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-                Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+                Format::Text => Ok(CommandOutcome::Success(
+                    serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                    None,
+                )),
             }
         }
         Some(ArticleSubcommand::Remove(args)) => {
@@ -473,7 +492,10 @@ pub fn dispatch(
             };
             match format {
                 Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-                Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(verb_text(&result)), None)),
+                Format::Text => Ok(CommandOutcome::Success(
+                    serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                    None,
+                )),
             }
         }
         Some(ArticleSubcommand::Convert(args)) => handle_convert(args, root, format, project, &cwd),
@@ -507,7 +529,12 @@ fn status_cell(status: &str) -> ListCell {
     }
 }
 
-fn handle_article_show(args: ArticleShowArgs, project_path: &Path, format: Format) -> Result<CommandOutcome> {
+fn handle_article_show(
+    args: ArticleShowArgs,
+    project_path: &Path,
+    repo_root: &Path,
+    format: Format,
+) -> Result<CommandOutcome> {
     identity::validate_entity_path(project_path, &args.path)?;
     let config = config_svc::load_project(project_path, None)?;
     let articles = article_svc::list_articles(project_path)?;
@@ -537,13 +564,13 @@ fn handle_article_show(args: ArticleShowArgs, project_path: &Path, format: Forma
             };
 
             let mut fields = vec![
-                ShowField { label: "Path", value: ShowValue::Text(article.article_path.clone()) },
+                ShowField { label: "Path", value: ShowValue::Path(article.article_path.clone()) },
                 ShowField { label: "Title", value: ShowValue::Text(article.title.clone()) },
                 ShowField { label: "Status", value: ShowValue::Text(status_str.to_string()) },
                 ShowField { label: "Content", value: ShowValue::Text(content_kind.to_string()) },
             ];
             if let Some(ref dir) = article_dir {
-                fields.push(ShowField { label: "Article dir", value: ShowValue::Text(dir.clone()) });
+                fields.push(ShowField { label: "Article dir", value: ShowValue::Path(dir.clone()) });
             }
             if let Some(ref origin) = article.template_origin {
                 fields.push(ShowField {
@@ -562,7 +589,9 @@ fn handle_article_show(args: ArticleShowArgs, project_path: &Path, format: Forma
                     let extra = article_json.as_object().cloned().unwrap_or_default();
                     Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
                 }
-                Format::Text => Ok(CommandOutcome::Raw(render_show_text(&block), None)),
+                Format::Text => {
+                    Ok(CommandOutcome::Raw(render_show_text(&block, &ShowOpts::from_repo_root(Some(repo_root))), None))
+                }
             }
         }
     }
@@ -570,7 +599,7 @@ fn handle_article_show(args: ArticleShowArgs, project_path: &Path, format: Forma
 
 // ── Handle: mf article lint ────────────────────────────────────────────────
 
-fn handle_lint(args: ArticleLintArgs, project_path: &Path, format: Format) -> Result<CommandOutcome> {
+fn handle_lint(args: ArticleLintArgs, project_path: &Path, repo_root: &Path, format: Format) -> Result<CommandOutcome> {
     let fix = args.lint.fix;
     let dry_run = args.lint.dry_run;
 
@@ -620,7 +649,7 @@ fn handle_lint(args: ArticleLintArgs, project_path: &Path, format: Format) -> Re
                 dry_run,
                 details,
             };
-            Ok(CommandOutcome::Raw(verb_text(&result), exit_code))
+            Ok(CommandOutcome::Raw(verb_text(&result, &VerbOpts::from_repo_root(Some(repo_root))), exit_code))
         }
     }
 }
