@@ -81,6 +81,19 @@ fn detect_truecolor(term: &Option<String>, colorterm: &Option<String>) -> (bool,
         if t.contains("-direct") || t.contains("truecolor") {
             return (true, Some(DetectionSource::Terminfo));
         }
+        // tmux 3.2+ supports truecolor passthrough. ncurses terminfo for
+        // tmux-256color / screen-256color does not (yet) advertise RGB or Tc,
+        // so the infocmp check above produces a false negative. Fall back to
+        // TERM-prefix heuristics:
+        //   - "tmux" prefix: always a tmux session → truecolor.
+        //   - "screen" prefix: only when $TMUX is set (tmux masquerading as
+        //     screen). GNU screen does not support truecolor.
+        if t.starts_with("tmux") {
+            return (true, Some(DetectionSource::TerminalIdentity));
+        }
+        if t.starts_with("screen") && std::env::var("TMUX").map(|v| !v.is_empty()).unwrap_or(false) {
+            return (true, Some(DetectionSource::TerminalIdentity));
+        }
     }
 
     // Check for terminfo database evidence via infocmp/tic
@@ -146,11 +159,14 @@ fn detect_hyperlinks(term: &Option<String>, term_program: &Option<String>) -> bo
         }
     }
 
-    // tmux 3.3+ supports OSC 8 passthrough
+    // tmux 3.3+ supports OSC 8 passthrough. ncurses terminfo for tmux-256color
+    // / screen-256color does not (yet) advertise the Ms capability, so the
+    // terminfo check above produces a false negative. When TERM starts with
+    // "tmux" or "screen", first try to detect the outer terminal via
+    // TERM_PROGRAM; if that fails, default to true — tmux 3.3+ is widely
+    // deployed. Opt-out via MF_NO_HYPERLINKS is still available.
     if let Some(ref t) = term {
         if t.starts_with("tmux") || t.starts_with("screen") {
-            // In tmux, the outer terminal determines support. Check TERM_PROGRAM
-            // and TERM outside, or trust the passthrough if force env is set.
             let outside_term = std::env::var("TERM_PROGRAM").ok();
             if let Some(ref ot) = outside_term {
                 let ot_lower = ot.to_lowercase();
@@ -158,8 +174,6 @@ fn detect_hyperlinks(term: &Option<String>, term_program: &Option<String>) -> bo
                     return true;
                 }
             }
-            // If we can't detect the outer terminal, default to true for tmux
-            // 3.3+ which is widely deployed. Opt-out still available.
             return true;
         }
     }

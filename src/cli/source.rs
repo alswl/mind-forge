@@ -272,7 +272,7 @@ fn handle_list(
     let sources = svc_source::list(&project_path, args.filter.as_deref(), type_filter)?;
 
     let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
-        .with_repo_root(Some(root.to_path_buf()));
+        .with_repo_root(Some(project_path.to_path_buf()));
 
     match format {
         Format::Json => {
@@ -338,7 +338,7 @@ fn handle_update(
         return match format {
             Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
             Format::Text => Ok(CommandOutcome::Success(
-                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
                 None,
             )),
         };
@@ -371,7 +371,7 @@ fn handle_update(
     match format {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
         Format::Text => Ok(CommandOutcome::Success(
-            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
             None,
         )),
     }
@@ -419,7 +419,7 @@ fn handle_index(
                 details,
             };
             Ok(CommandOutcome::Success(
-                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
                 None,
             ))
         }
@@ -464,7 +464,7 @@ fn handle_remove(
     match format {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
         Format::Text => Ok(CommandOutcome::Success(
-            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
             None,
         )),
     }
@@ -531,7 +531,7 @@ fn handle_rename(
         return match format {
             Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
             Format::Text => Ok(CommandOutcome::Success(
-                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
                 None,
             )),
         };
@@ -551,7 +551,7 @@ fn handle_rename(
     match format {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
         Format::Text => Ok(CommandOutcome::Success(
-            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
             None,
         )),
     }
@@ -606,9 +606,10 @@ fn handle_source_show(
                     let extra = source_json.as_object().cloned().unwrap_or_default();
                     Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
                 }
-                Format::Text => {
-                    Ok(CommandOutcome::Raw(render_show_text(&block, &ShowOpts::from_repo_root(Some(root))), None))
-                }
+                Format::Text => Ok(CommandOutcome::Raw(
+                    render_show_text(&block, &ShowOpts::from_repo_root(Some(project_path.as_path()))),
+                    None,
+                )),
             }
         }
     }
@@ -666,7 +667,7 @@ fn handle_add(
         return match format {
             Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
             Format::Text => Ok(CommandOutcome::Success(
-                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
                 None,
             )),
         };
@@ -708,7 +709,7 @@ fn handle_add(
     match format {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
         Format::Text => Ok(CommandOutcome::Success(
-            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
             None,
         )),
     }
