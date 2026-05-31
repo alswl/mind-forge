@@ -27,6 +27,57 @@ fn article_new_creates_file_and_index() {
 }
 
 #[test]
+fn article_new_creates_missing_index_with_project_path_selector() {
+    let repo = common::setup_repo();
+    std::fs::write(
+        repo.path().join("minds.yaml"),
+        "schema_version: '1'\nprojects_dir: projects\nprojects: []\n",
+    )
+    .unwrap();
+    common::create_project(&repo, "projects/myproj");
+
+    let index_path = repo.path().join("projects/myproj/mind-index.yaml");
+    assert!(!index_path.exists(), "fixture should start without mind-index.yaml");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path())
+        .args(["article", "new", "foo", "--template", "blog", "--project", "projects/myproj"])
+        .output()
+        .expect("command runs");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "article new should succeed: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let md_path = repo.path().join("projects/myproj/docs/foo/01-opening.md");
+    assert!(md_path.exists(), "article file should exist");
+    assert!(index_path.exists(), "mind-index.yaml should be created");
+
+    let index_content = std::fs::read_to_string(&index_path).unwrap();
+    assert!(index_content.contains("schema: '1'"), "index should contain minimal schema:\n{index_content}");
+    assert!(index_content.contains("docs/foo:"), "index should contain the new article key:\n{index_content}");
+    assert!(index_content.contains("type: blog"), "index should preserve template type:\n{index_content}");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path())
+        .args(["article", "list", "--project", "projects/myproj"])
+        .output()
+        .expect("command runs");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "article list should succeed: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("docs/foo"), "article list should include created article: {stdout}");
+}
+
+#[test]
 fn article_new_refuses_duplicate() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
