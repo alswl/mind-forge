@@ -1,6 +1,6 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 180
+assertion_line: 187
 expression: stdout
 ---
 Lint term consistency in project docs
@@ -33,6 +33,10 @@ Options:
           Output format [default: text] [possible values: text, json]
       --json
           Shorthand for --format json
+  -y, --yes
+          Skip the interactive confirmation prompt (required in non-TTY)
+  -f, --force
+          Alias for --yes
       --no-color
           Disable colored output
   -p, --project <NAME>

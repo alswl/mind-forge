@@ -86,6 +86,10 @@ pub struct TermLintArgs {
     pub path: Option<String>,
     #[command(flatten)]
     pub lint: LintFlags,
+    #[arg(short = 'y', long = "yes", help = "Skip the interactive confirmation prompt (required in non-TTY)")]
+    pub yes: bool,
+    #[arg(short = 'f', long = "force", help = "Alias for --yes")]
+    pub force: bool,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -365,8 +369,50 @@ fn handle_lint(
     format: Format,
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
+    use std::io::IsTerminal;
+
     let effective_fix = args.lint.fix;
     let effective_dry_run = args.lint.fix && args.lint.dry_run;
+
+    // US1: confirmation gate for --fix (non-dry-run)
+    if effective_fix && !effective_dry_run && !args.yes && !args.force {
+        if !std::io::stdout().is_terminal() {
+            return Err(MfError::usage(
+                "--fix in non-interactive context requires -y / --yes",
+                Some("pass --yes to confirm".to_string()),
+            ));
+        }
+        // Show dry-run preview in text mode before prompting
+        if matches!(format, Format::Text) {
+            let preview = if let Some(pn) = project {
+                let pp = svc_util::resolve_project(root, Some(pn), cwd)?;
+                if let Some(ref path) = args.path {
+                    term_svc::lint_path(&pp, path, true, true)?
+                } else {
+                    term_svc::lint_terms(&pp, true, true)?
+                }
+            } else if let Some(ref path) = args.path {
+                term_svc::global::lint_path(root, path, true, true)?
+            } else {
+                term_svc::global::lint_terms(root, true, true)?
+            };
+            if !preview.findings.is_empty() {
+                println!("{}", format_lint_text(&preview, true, true));
+            }
+        }
+        match crate::output::confirm::prompt_confirmation("Apply changes? [y/N] ") {
+            crate::output::confirm::ConfirmOutcome::Confirmed => {}
+            crate::output::confirm::ConfirmOutcome::Aborted => {
+                return Ok(CommandOutcome::Raw("Aborted by user.".to_string(), Some(0)));
+            }
+            crate::output::confirm::ConfirmOutcome::NotTty => {
+                return Err(MfError::usage(
+                    "--fix in non-interactive context requires -y / --yes",
+                    Some("pass --yes to confirm".to_string()),
+                ));
+            }
+        }
+    }
 
     let report = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;

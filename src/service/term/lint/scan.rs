@@ -2,6 +2,16 @@ use std::collections::BTreeSet;
 
 use crate::model::term::{CandidateTerm, TermFinding};
 
+fn is_ascii_word_string(s: &str) -> bool {
+    !s.is_empty()
+        && s.bytes()
+            .all(|b| matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'-'))
+}
+
+fn is_word_boundary_byte(b: u8) -> bool {
+    !matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_')
+}
+
 pub(crate) struct InternalFinding {
     pub(crate) path: String,
     pub(crate) byte_offset: usize,
@@ -64,6 +74,19 @@ pub(crate) fn scan_file_for_corrections(
                 search_start = abs_offset + 1;
                 continue;
             }
+
+            // Word-boundary check for pure-ASCII originals
+            if is_ascii_word_string(c.original) {
+                let before_ok =
+                    abs_offset == 0 || is_word_boundary_byte(sanitized[abs_offset - 1]);
+                let end = abs_offset + orig_bytes.len();
+                let after_ok = end >= sanitized.len() || is_word_boundary_byte(sanitized[end]);
+                if !before_ok || !after_ok {
+                    search_start = abs_offset + 1;
+                    continue;
+                }
+            }
+
             claimed.insert(key);
 
             let (line, col) = byte_offset_to_line_col(content, abs_offset);
