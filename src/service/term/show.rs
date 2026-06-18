@@ -13,7 +13,10 @@ pub fn show_term(project_root: &Path, name: &str) -> Result<Term> {
         .iter()
         .find(|t| t.term == name)
         .ok_or_else(|| {
-            MfError::usage(format!("term '{name}' not found"), Some("use `mf term list` to see all terms".to_string()))
+            MfError::not_found(
+                format!("term '{name}' not found"),
+                Some("use `mf term list` to see all terms".to_string()),
+            )
         })?
         .clone();
 

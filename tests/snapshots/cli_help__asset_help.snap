@@ -8,7 +8,7 @@ Usage: mf asset [OPTIONS] [COMMAND]
 
 Commands:
   list    List assets [aliases: ls]
-  add     Add an asset
+  new     Create an asset
   update  Update assets
   index   Index assets
   clean   Clean stale asset index entries

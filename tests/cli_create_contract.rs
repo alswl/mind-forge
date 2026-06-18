@@ -132,7 +132,7 @@ fn term_new_text_confirm() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("✓ created term: RAG"), "stdout: {stdout}");
+    assert!(stdout.contains("created term \"RAG\""), "stdout: {stdout}");
 }
 
 #[test]
@@ -151,9 +151,10 @@ fn term_new_json_envelope() {
     assert_eq!(v["status"], "ok");
     let data = &v["data"];
     assert!(data.is_object());
-    assert_eq!(data["kind"], "term");
-    assert_eq!(data["identity"], "RAG");
-    assert_eq!(data["dry_run"], false);
+    assert_eq!(data["term"], "RAG");
+    assert_eq!(data["created"], true);
+    assert!(data["added_aliases"].is_array());
+    assert!(data["added_tags"].is_array());
 }
 
 #[test]
@@ -322,7 +323,7 @@ terms:
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("✓ added term_correction:"), "stdout: {stdout}");
+    assert!(stdout.contains("added alias") || stdout.contains("created term"), "stdout: {stdout}");
 }
 
 #[test]
@@ -351,9 +352,9 @@ terms:
     assert_eq!(v["status"], "ok");
     let data = &v["data"];
     assert!(data.is_object());
-    assert_eq!(data["kind"], "term_correction");
-    assert!(data["identity"].as_str().is_some());
-    assert_eq!(data["dry_run"], false);
+    assert_eq!(data["term"], "Mind Repo");
+    assert_eq!(data["created"], false);
+    assert!(!data["added_aliases"].as_array().unwrap().is_empty());
 }
 
 #[test]
@@ -379,7 +380,7 @@ terms:
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("[dry-run] would add term_correction:"), "stdout: {stdout}");
+    assert!(stdout.contains("[dry-run] would create term:"), "stdout: {stdout}");
 
     // No mutation
     let after = fs::read_to_string(project.join("mind-index.yaml")).unwrap();

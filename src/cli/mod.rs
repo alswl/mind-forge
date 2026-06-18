@@ -129,7 +129,8 @@ pub enum CommandOutcome {
     Completion(clap_complete::Shell),
     /// Successful command execution. The optional exit code overrides the default 0
     /// (used by commands like `lint` that signal issues via non-zero exit codes).
-    Success(serde_json::Value, Option<u8>),
+    /// Warnings collected during execution are injected into `data.warnings` when non-empty.
+    Success(serde_json::Value, Vec<String>, Option<u8>),
     /// Pre-serialized string content for raw output (e.g. YAML/JSON config).
     ///
     /// In text mode the string is printed as-is; in JSON mode it is embedded
@@ -177,8 +178,8 @@ impl RootCli {
         // FR-080: in quiet mode, suppress success stdout (non-error data).
         if quiet {
             match &outcome {
-                CommandOutcome::Success(_, _) => {
-                    return Ok(CommandOutcome::Success(serde_json::Value::String(String::new()), None));
+                CommandOutcome::Success(_, _, _) => {
+                    return Ok(CommandOutcome::Success(serde_json::Value::String(String::new()), Vec::new(), None));
                 }
                 CommandOutcome::Raw(_, _) => {
                     return Ok(CommandOutcome::Raw(String::new(), None));
@@ -213,5 +214,16 @@ fn dispatch_init(args: InitArgs) -> Result<CommandOutcome> {
 
     let report = repo::init_repo(&target, &kind)?;
     let data = serde_json::to_value(&report).map_err(|e| MfError::Internal(e.into()))?;
-    Ok(CommandOutcome::Success(data, None))
+    Ok(CommandOutcome::Success(data, Vec::new(), None))
+}
+
+/// Merge additional warnings into a CommandOutcome that already carries warnings.
+pub fn merge_warnings(outcome: CommandOutcome, extra: Vec<String>) -> CommandOutcome {
+    match outcome {
+        CommandOutcome::Success(data, mut warnings, code) => {
+            warnings.extend(extra);
+            CommandOutcome::Success(data, warnings, code)
+        }
+        other => other,
+    }
 }

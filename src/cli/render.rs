@@ -150,7 +150,7 @@ fn dispatch_render(
     });
 
     match format {
-        Format::Json => Ok(CommandOutcome::Success(data, None)),
+        Format::Json => Ok(CommandOutcome::Success(data, Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Raw(generated.prompt, None)),
     }
 }
@@ -211,7 +211,7 @@ fn handle_template_show(
         Format::Json => {
             let tpl_json = serde_json::to_value(&template).map_err(MfError::Json)?;
             let extra = tpl_json.as_object().cloned().unwrap_or_default();
-            Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
+            Ok(CommandOutcome::Success(json_envelope(&block, extra), Vec::new(), None))
         }
         Format::Text => Ok(CommandOutcome::Raw(
             render_show_text(&block, &ShowOpts::from_repo_root(repo_root.map(|r| r.as_path()))),
@@ -258,7 +258,7 @@ fn dispatch_list_templates(
                     "default": t.default,
                 }));
             }
-            Ok(CommandOutcome::Success(json_collection("templates", items), None))
+            Ok(CommandOutcome::Success(json_collection("templates", items), Vec::new(), None))
         }
         Format::Text => {
             let mut rows = Vec::new();

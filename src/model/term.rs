@@ -32,8 +32,8 @@ impl FixKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Boundary {
-    #[default]
     Loose,
+    #[default]
     Standalone,
 }
 
@@ -58,15 +58,15 @@ pub struct Correction {
 }
 
 impl Correction {
-    /// Default-shaped correction used by `term new`, `term add`, and global
-    /// equivalents: word match, required fix, loose boundary, no pinyin.
+    /// Default-shaped correction used by `term new` and global equivalents:
+    /// word match, required fix, standalone boundary, no pinyin.
     pub fn misrecognition(original: impl Into<String>, correct: impl Into<String>) -> Self {
         Self {
             original: original.into(),
             correct: correct.into(),
             r#match: MatchKind::Word,
             fix: FixKind::Required,
-            boundary: Boundary::Loose,
+            boundary: Boundary::Standalone,
             pinyin: None,
         }
     }
@@ -95,7 +95,13 @@ pub struct Term {
 pub fn validate_corrections(terms: &[Term]) -> std::result::Result<(), String> {
     for term in terms {
         for c in &term.corrections {
-            if c.boundary == Boundary::Standalone {
+            // Boundary::Standalone only constrains ASCII word corrections; pinyin
+            // and CJK originals ignore the boundary field entirely. Pinyin is
+            // always "suggested" and dispatched through a separate scanner that
+            // does not consult the boundary value.
+            let is_ascii_word =
+                c.original.bytes().all(|b| matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'-'));
+            if c.boundary == Boundary::Standalone && is_ascii_word && c.r#match != MatchKind::Pinyin {
                 if c.r#match != MatchKind::Word {
                     let kind = match c.r#match {
                         MatchKind::Substring => "substring",
@@ -145,6 +151,7 @@ pub struct TermFinding {
     pub match_kind: MatchKind,
     pub fix_kind: FixKind,
     pub boundary: Boundary,
+    pub boundary_mode: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -213,13 +220,13 @@ mod tests {
             correct: "Mind Repo".into(),
             r#match: MatchKind::Word,
             fix: FixKind::Required,
-            boundary: Boundary::Loose,
+            boundary: Boundary::Standalone,
             pinyin: None,
         };
         let yaml = serde_yaml::to_string(&c).unwrap();
         assert!(!yaml.contains("match:"), "default match:word must not write: {yaml}");
         assert!(!yaml.contains("fix:"), "default fix:required must not write: {yaml}");
-        assert!(!yaml.contains("boundary:"), "default boundary:loose must not write: {yaml}");
+        assert!(!yaml.contains("boundary:"), "default boundary:standalone must not write: {yaml}");
         assert!(!yaml.contains("pinyin:"), "None pinyin must not write: {yaml}");
     }
 
@@ -248,28 +255,28 @@ mod tests {
         assert_eq!(c.correct, "Mind Repo");
         assert_eq!(c.r#match, MatchKind::Word);
         assert_eq!(c.fix, FixKind::Required);
-        assert_eq!(c.boundary, Boundary::Loose);
+        assert_eq!(c.boundary, Boundary::Standalone);
         assert_eq!(c.pinyin, None);
     }
 
     #[test]
-    fn boundary_default_is_loose() {
-        assert_eq!(Boundary::default(), Boundary::Loose);
-        assert!(Boundary::Loose.is_default());
-        assert!(!Boundary::Standalone.is_default());
+    fn boundary_default_is_standalone() {
+        assert_eq!(Boundary::default(), Boundary::Standalone);
+        assert!(Boundary::Standalone.is_default());
+        assert!(!Boundary::Loose.is_default());
     }
 
     #[test]
-    fn boundary_standalone_roundtrip_preserves_value() {
+    fn boundary_standalone_is_default_omitted_on_write() {
         let yaml = "original: aidc\ncorrect: AIDC\nboundary: standalone\n";
         let c: Correction = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(c.boundary, Boundary::Standalone);
         let written = serde_yaml::to_string(&c).unwrap();
-        assert!(written.contains("boundary: standalone"), "standalone must serialize: {written}");
+        assert!(!written.contains("boundary:"), "standalone is default, must not serialize: {written}");
     }
 
     #[test]
-    fn boundary_loose_not_serialized_even_when_explicit() {
+    fn boundary_loose_is_explicit_and_serialized() {
         let c = Correction {
             original: "aidc".into(),
             correct: "AIDC".into(),
@@ -279,7 +286,7 @@ mod tests {
             pinyin: None,
         };
         let written = serde_yaml::to_string(&c).unwrap();
-        assert!(!written.contains("boundary:"), "explicit loose must still be omitted: {written}");
+        assert!(written.contains("boundary: loose"), "explicit loose must serialize: {written}");
     }
 
     #[test]
@@ -355,12 +362,10 @@ mod tests {
     }
 
     #[test]
-    fn validate_corrections_rejects_standalone_with_pinyin() {
-        let terms = vec![term_with(vec![correction("凯飞迪", MatchKind::Pinyin, Boundary::Standalone)])];
-        let err = validate_corrections(&terms).unwrap_err();
-        assert!(err.contains("standalone is only valid with match: word"), "got: {err}");
-        assert!(err.contains("凯飞迪"), "got: {err}");
-        assert!(err.contains("pinyin"), "got: {err}");
+    fn validate_corrections_allows_pinyin_with_standalone() {
+        // Pinyin matches ignore the boundary field — standalone+pinyin passes validation.
+        let terms = vec![term_with(vec![correction("kaifeidi", MatchKind::Pinyin, Boundary::Standalone)])];
+        validate_corrections(&terms).expect("pinyin+standalone should pass validation");
     }
 
     #[test]

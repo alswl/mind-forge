@@ -16,14 +16,14 @@ pub fn remove_term(project_path: &Path, term_name: &str, force: bool, dry_run: b
 
     // Check term exists
     let terms = index.terms.as_ref().ok_or_else(|| {
-        MfError::usage(
+        MfError::not_found(
             format!("term '{term_name}' not found"),
             Some("use `mf term list -p <project>` to see available terms".to_string()),
         )
     })?;
 
     if !terms.iter().any(|t| t.term == term_name) {
-        return Err(MfError::usage(
+        return Err(MfError::not_found(
             format!("term '{term_name}' not found"),
             Some("use `mf term list -p <project>` to see available terms".to_string()),
         ));

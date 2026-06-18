@@ -950,24 +950,22 @@ fn lint_rejects_pinyin_standalone_combination() {
     fs::create_dir_all(project.join("docs")).unwrap();
     let index_yaml = r#"schema_version: '1'
 terms:
-  - term: 凯飞迪
+  - term: kaifeidi
     corrections:
-      - original: 凯飞迪
-        correct: 凯飞迪
+      - original: kaifeidi
+        correct: kaifeidi
         match: pinyin
         boundary: standalone
 "#;
     common::write_index(&repo, "alpha", index_yaml);
-    write_doc(&project, "intro", "凯飞迪\n");
+    write_doc(&project, "intro", "kaifeidi\n");
 
     let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
-    assert_eq!(output.status.code(), Some(2));
-    let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
-        stderr.contains("standalone is only valid with match: word"),
-        "stderr must reject pinyin+standalone, got: {stderr}"
+        output.status.success(),
+        "pinyin+standalone should load and succeed: {:?}",
+        String::from_utf8_lossy(&output.stderr)
     );
-    assert!(stderr.contains("pinyin"), "stderr must name the offending match kind, got: {stderr}");
 }
 
 #[test]

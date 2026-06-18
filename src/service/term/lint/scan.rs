@@ -65,6 +65,15 @@ pub(crate) enum WordCheck {
 }
 
 impl WordCheck {
+    pub(crate) fn boundary_mode(&self) -> &'static str {
+        match self {
+            WordCheck::AlwaysAccept => "loose",
+            WordCheck::AsciiLoose => "loose",
+            WordCheck::AsciiStandalone => "standalone",
+            WordCheck::Cjk => "cjk",
+        }
+    }
+
     pub(crate) fn for_correction(match_kind: MatchKind, boundary: Boundary, original: &str) -> Self {
         match match_kind {
             MatchKind::Substring => WordCheck::AlwaysAccept,
@@ -221,6 +230,7 @@ pub(crate) fn scan_file_for_corrections(
                 match_kind: c.match_kind,
                 fix_kind: c.fix_kind,
                 boundary: c.boundary,
+                boundary_mode: check.boundary_mode(),
             });
 
             internal_findings.push(InternalFinding {

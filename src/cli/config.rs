@@ -119,7 +119,7 @@ fn handle_show(args: ConfigShowArgs, repo_root: Option<&PathBuf>, global_format:
     let output = service::config::show_effective(&cwd, repo_root.map(|p| p.as_path()), internal_format)?;
     if global_format == Format::Json {
         let data: serde_json::Value = serde_json::from_str(&output).map_err(crate::error::MfError::Json)?;
-        Ok(CommandOutcome::Success(data, None))
+        Ok(CommandOutcome::Success(data, Vec::new(), None))
     } else {
         Ok(CommandOutcome::Raw(output, None))
     }
@@ -135,7 +135,11 @@ fn handle_generate(args: ConfigGenerateArgs, repo_root: Option<&PathBuf>) -> Res
     let output = service::config::show_effective(&cwd, repo_root.map(|p| p.as_path()), &args.output_format)?;
     let mut file = std::fs::File::create(&args.output).map_err(crate::error::MfError::Io)?;
     file.write_all(output.as_bytes()).map_err(crate::error::MfError::Io)?;
-    Ok(CommandOutcome::Success(serde_json::json!({ "path": args.output.to_string_lossy().to_string() }), None))
+    Ok(CommandOutcome::Success(
+        serde_json::json!({ "path": args.output.to_string_lossy().to_string() }),
+        Vec::new(),
+        None,
+    ))
 }
 
 // ── B2 thin alias: config default (show default config) ─────────────────────
@@ -158,6 +162,7 @@ fn handle_init(args: ConfigInitArgs) -> Result<CommandOutcome> {
         serde_json::json!({
             "path": path.to_string_lossy().to_string(),
         }),
+        Vec::new(),
         None,
     ))
 }
@@ -183,7 +188,7 @@ fn handle_terminal(format: Format) -> Result<CommandOutcome> {
         }
         Format::Json => {
             let data = serde_json::to_value(&report).map_err(crate::error::MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
+            Ok(CommandOutcome::Success(data, Vec::new(), None))
         }
     }
 }

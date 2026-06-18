@@ -134,7 +134,7 @@ fn us1_ghostty_diagnostic_json() {
     assert_eq!(data["profile"]["hyperlinks"], true);
     assert_eq!(data["profile"]["term"], "xterm-ghostty");
     assert_eq!(data["profile"]["term_program"], "Ghostty");
-    assert_eq!(data["profile"]["terminal_width"].as_u64().unwrap_or(0) > 0, true);
+    assert!(data["profile"]["terminal_width"].as_u64().unwrap_or(0) > 0);
 }
 
 /// T024: xterm-256color fallback text output

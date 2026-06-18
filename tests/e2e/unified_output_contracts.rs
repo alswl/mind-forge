@@ -237,10 +237,7 @@ fn e2e_unified_create_commands_emit_canonical_dry_run_envelopes() {
             "source",
         ),
         (vec!["--project", "alpha", "--json", "asset", "add", asset.as_ref(), "--dry-run"], "asset"),
-        (
-            vec!["--project", "alpha", "--json", "term", "add", "--term", "RAG", "--alias", "rag", "--dry-run"],
-            "term_correction",
-        ),
+        (vec!["--project", "alpha", "--json", "term", "add", "--term", "RAG", "--alias", "rag", "--dry-run"], "term"),
     ];
 
     for (args, kind) in cases {

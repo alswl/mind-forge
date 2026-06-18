@@ -93,6 +93,7 @@ pub(crate) fn scan_for_pinyin(
                     match_kind: MatchKind::Pinyin,
                     fix_kind: FixKind::Suggested, // FR-404: pinyin is always suggested
                     boundary: Boundary::Loose,    // pinyin never opts into standalone
+                    boundary_mode: "loose",
                 });
 
                 internal_findings.push(InternalFinding {

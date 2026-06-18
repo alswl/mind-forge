@@ -14,6 +14,7 @@ use crate::model::lifecycle::{PlannedChange, ScopeRef};
 use crate::model::term::{Correction, Term, TermLintReport};
 use crate::service::lifecycle;
 use crate::service::term::lint;
+use crate::service::term::new::append_to_existing_term;
 use crate::service::term::repo_format::{self, path_for};
 
 // ── Load / Save ─────────────────────────────────────────────────────────────
@@ -30,8 +31,13 @@ pub fn save_terms(repo_root: &Path, terms: &[Term]) -> Result<()> {
 
 // ── Global term operations ──────────────────────────────────────────────────
 
-/// Register a new term in the global terms file.
-pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecognitions: &[String]) -> Result<Term> {
+/// Register a new term in the global terms file, or append aliases/tags when it exists.
+pub fn new_term(
+    repo_root: &Path,
+    term: &str,
+    input: TermInput<'_>,
+    misrecognitions: &[String],
+) -> Result<super::new::NewTermResult> {
     if term.trim().is_empty() {
         return Err(MfError::usage("term name cannot be empty", None));
     }
@@ -43,39 +49,71 @@ pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecogniti
     let aliases = dedup_preserve_first(input.aliases);
     let tags = dedup_preserve_first(input.tags);
 
-    if terms.iter().any(|t| t.term == term) {
-        return Err(MfError::usage(
-            format!("term '{term}' already exists"),
-            Some("use `mf term fix` to modify the existing term".to_string()),
-        ));
+    if let Some(idx) = terms.iter().position(|t| t.term == term) {
+        let outcome = append_to_existing_term(&mut terms, idx, &aliases, &tags, &misrecognitions)?;
+        let out = terms[idx].clone();
+        sort_terms_by_name(&mut terms);
+        save_terms(repo_root, &terms)?;
+        return Ok(super::new::NewTermResult {
+            term: out,
+            created: false,
+            added_aliases: outcome.added_aliases,
+            added_tags: outcome.added_tags,
+            added_misrecognitions: outcome.added_misrecognitions,
+        });
     }
 
+    // FR-006: alias collision exits 1 (Failure), not 2 (UsageError).
+    // NotFound is the closest existing variant for that exit code.
     for alias in &aliases {
         for t in terms.iter() {
             if t.term == *alias || t.aliases.iter().any(|a| a == alias) {
-                return Err(MfError::usage(format!("alias '{alias}' conflicts with existing term '{}'", t.term), None));
+                return Err(MfError::not_found(
+                    format!("alias '{alias}' conflicts with existing term '{}'", t.term),
+                    None,
+                ));
             }
         }
     }
 
-    let corrections: Vec<Correction> =
-        misrecognitions.iter().map(|m| Correction::misrecognition(m.clone(), term)).collect();
+    let mut corrections: Vec<Correction> = misrecognitions
+        .iter()
+        .map(|m| {
+            if let Some((original, correct)) = m.split_once(':') {
+                Correction::misrecognition(original, correct)
+            } else {
+                Correction::misrecognition(m.clone(), term)
+            }
+        })
+        .collect();
+    // Also create corrections for aliases so the scanner finds them.
+    for alias in &aliases {
+        if !corrections.iter().any(|c| c.original == *alias) {
+            corrections.push(Correction::misrecognition(alias.clone(), term));
+        }
+    }
 
     let new_entry = Term {
         term: term.to_string(),
         definition: input.definition.filter(|s| !s.is_empty()).map(String::from),
         description: input.description.map(String::from),
         confidence: input.confidence,
-        aliases,
-        tags,
-        corrections,
+        aliases: aliases.clone(),
+        tags: tags.clone(),
+        corrections: corrections.clone(),
     };
 
     terms.push(new_entry.clone());
     sort_terms_by_name(&mut terms);
     save_terms(repo_root, &terms)?;
 
-    Ok(new_entry)
+    Ok(super::new::NewTermResult {
+        term: new_entry,
+        created: true,
+        added_aliases: aliases,
+        added_tags: tags,
+        added_misrecognitions: misrecognitions,
+    })
 }
 
 /// List global terms, optionally filtered by substring.
@@ -380,7 +418,8 @@ mod tests {
         let root = dir.path();
         seed(root);
 
-        let t = new_term(root, "api-gateway", def_input("The API gateway service"), &[]).unwrap();
+        let r = new_term(root, "api-gateway", def_input("The API gateway service"), &[]).unwrap();
+        let t = r.term;
         assert_eq!(t.term, "api-gateway");
         assert_eq!(t.definition.as_deref(), Some("The API gateway service"));
 
@@ -390,13 +429,13 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_term_rejected() {
+    fn duplicate_term_is_idempotent() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         seed(root);
         new_term(root, "foo", TermInput::default(), &[]).unwrap();
-        let err = new_term(root, "foo", TermInput::default(), &[]).unwrap_err();
-        assert!(err.to_string().contains("already exists"));
+        let result = new_term(root, "foo", TermInput::default(), &[]).unwrap();
+        assert!(!result.created, "repeating the same new_term should be idempotent");
     }
 
     #[test]

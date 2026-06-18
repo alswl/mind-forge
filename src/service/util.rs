@@ -1,6 +1,7 @@
 //! Shared utilities: atomic write, schema version validation.
 
 pub mod filename_date;
+pub mod path;
 pub mod path_template;
 
 use std::fs;

@@ -177,12 +177,13 @@ pub fn dispatch(
                     details: serde_json::json!({"title": args.title, "template": args.template}),
                 };
                 return match format {
-                    Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                    Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
                     Format::Text => Ok(CommandOutcome::Success(
                         serde_json::Value::String(verb_text(
                             &result,
                             &VerbOpts::from_repo_root(Some(project_path.as_path())),
                         )),
+                        Vec::new(),
                         None,
                     )),
                 };
@@ -224,12 +225,13 @@ pub fn dispatch(
                 }),
             };
             match format {
-                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
                 Format::Text => Ok(CommandOutcome::Success(
                     serde_json::Value::String(verb_text(
                         &result,
                         &VerbOpts::from_repo_root(Some(project_path.as_path())),
                     )),
+                    Vec::new(),
                     None,
                 )),
             }
@@ -270,7 +272,9 @@ pub fn dispatch(
                     let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
                         .with_repo_root(Some(root.to_path_buf()));
                     match format {
-                        Format::Json => Ok(CommandOutcome::Success(json_collection("articles", json_items), None)),
+                        Format::Json => {
+                            Ok(CommandOutcome::Success(json_collection("articles", json_items), Vec::new(), None))
+                        }
                         Format::Text => Ok(CommandOutcome::Raw(render_text(&view, &opts), None)),
                     }
                 }
@@ -324,7 +328,9 @@ pub fn dispatch(
                         .with_repo_root(Some(project_path.clone()));
 
                     match format {
-                        Format::Json => Ok(CommandOutcome::Success(json_collection("articles", enriched), None)),
+                        Format::Json => {
+                            Ok(CommandOutcome::Success(json_collection("articles", enriched), Vec::new(), None))
+                        }
                         Format::Text => {
                             let mut rows = Vec::with_capacity(enriched.len());
                             for v in &enriched {
@@ -400,12 +406,13 @@ pub fn dispatch(
                     details,
                 };
                 return match format {
-                    Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                    Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
                     Format::Text => Ok(CommandOutcome::Success(
                         serde_json::Value::String(verb_text(
                             &result,
                             &VerbOpts::from_repo_root(Some(project_path.as_path())),
                         )),
+                        Vec::new(),
                         None,
                     )),
                 };
@@ -471,12 +478,13 @@ pub fn dispatch(
                 details,
             };
             match format {
-                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
                 Format::Text => Ok(CommandOutcome::Success(
                     serde_json::Value::String(verb_text(
                         &result,
                         &VerbOpts::from_repo_root(Some(project_path.as_path())),
                     )),
+                    Vec::new(),
                     None,
                 )),
             }
@@ -514,12 +522,13 @@ pub fn dispatch(
                 details: serde_json::json!({"changes": report.changes, "article": report.article}),
             };
             match format {
-                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
                 Format::Text => Ok(CommandOutcome::Success(
                     serde_json::Value::String(verb_text(
                         &result,
                         &VerbOpts::from_repo_root(Some(project_path.as_path())),
                     )),
+                    Vec::new(),
                     None,
                 )),
             }
@@ -540,12 +549,13 @@ pub fn dispatch(
                     details: serde_json::json!({}),
                 };
                 return match format {
-                    Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                    Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
                     Format::Text => Ok(CommandOutcome::Success(
                         serde_json::Value::String(verb_text(
                             &result,
                             &VerbOpts::from_repo_root(Some(project_path.as_path())),
                         )),
+                        Vec::new(),
                         None,
                     )),
                 };
@@ -563,12 +573,13 @@ pub fn dispatch(
                 details: serde_json::json!({"old_title": report.old_title, "new_title": report.new_title}),
             };
             match format {
-                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
                 Format::Text => Ok(CommandOutcome::Success(
                     serde_json::Value::String(verb_text(
                         &result,
                         &VerbOpts::from_repo_root(Some(project_path.as_path())),
                     )),
+                    Vec::new(),
                     None,
                 )),
             }
@@ -597,12 +608,13 @@ pub fn dispatch(
                 details: serde_json::json!({"removed": true}),
             };
             match format {
-                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
                 Format::Text => Ok(CommandOutcome::Success(
                     serde_json::Value::String(verb_text(
                         &result,
                         &VerbOpts::from_repo_root(Some(project_path.as_path())),
                     )),
+                    Vec::new(),
                     None,
                 )),
             }
@@ -691,7 +703,7 @@ fn handle_article_show(args: ArticleShowArgs, project_path: &Path, format: Forma
                 Format::Json => {
                     let article_json = serde_json::to_value(article).map_err(MfError::Json)?;
                     let extra = article_json.as_object().cloned().unwrap_or_default();
-                    Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
+                    Ok(CommandOutcome::Success(json_envelope(&block, extra), Vec::new(), None))
                 }
                 Format::Text => Ok(CommandOutcome::Raw(
                     render_show_text(&block, &ShowOpts::from_repo_root(Some(project_path))),
@@ -742,7 +754,7 @@ fn handle_lint(args: ArticleLintArgs, project_path: &Path, format: Format) -> Re
     match format {
         Format::Json => {
             let data = serde_json::json!({ "kind": "article", "issues": json_issues, "summary": { "errors": errors, "warnings": warnings, "info": info, "fixed": fixed_count }, "dry_run": dry_run });
-            Ok(CommandOutcome::Success(data, exit_code))
+            Ok(CommandOutcome::Success(data, Vec::new(), exit_code))
         }
         Format::Text => {
             let result = VerbResult {
@@ -789,7 +801,11 @@ fn handle_convert(
     let (direction, direction_source) = match resolve_direction(&args, &project_path, &article_paths)? {
         DirectionDecision::Use { direction, source } => (direction, source),
         DirectionDecision::Declined => {
-            return Ok(CommandOutcome::Success(serde_json::Value::String("conversion declined".to_string()), None));
+            return Ok(CommandOutcome::Success(
+                serde_json::Value::String("conversion declined".to_string()),
+                Vec::new(),
+                None,
+            ));
         }
     };
 
@@ -863,9 +879,11 @@ fn handle_convert(
     match format {
         Format::Json => {
             let data = serde_json::to_value(&summary).map_err(MfError::Json)?;
-            Ok(CommandOutcome::Success(data, None))
+            Ok(CommandOutcome::Success(data, Vec::new(), None))
         }
-        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(render_convert_text(&summary)), None)),
+        Format::Text => {
+            Ok(CommandOutcome::Success(serde_json::Value::String(render_convert_text(&summary)), Vec::new(), None))
+        }
     }
 }
 

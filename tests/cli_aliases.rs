@@ -273,18 +273,22 @@ fn verb_new_for_local_creation() {
 /// Verify `add` verb is used for external registration across resource groups
 #[test]
 fn verb_add_for_external_registration() {
+    // After 046: `new` is the canonical create verb, `add` is a hidden deprecated alias.
     let (stdout_s, _, code_s) = run(&["source", "--help"]);
     assert_eq!(code_s, 0);
-    assert!(stdout_s.contains("add"), "source should have 'add' subcommand");
+    assert!(stdout_s.contains("new"), "source should have 'new' subcommand");
+    assert!(!stdout_s.contains("add"), "source help should NOT show 'add' (hidden alias)");
 
     let (stdout_a, _, code_a) = run(&["asset", "--help"]);
     assert_eq!(code_a, 0);
-    assert!(stdout_a.contains("add"), "asset should have 'add' subcommand");
+    assert!(stdout_a.contains("new"), "asset should have 'new' subcommand");
+    assert!(!stdout_a.contains("add"), "asset help should NOT show 'add' (hidden alias)");
 
-    // term add (renamed from learn) should exist
+    // term: `new` visible, `add` hidden
     let (stdout_t, _, code_t) = run(&["term", "--help"]);
     assert_eq!(code_t, 0);
-    assert!(stdout_t.contains("add"), "term should have 'add' subcommand (renamed from learn)");
+    assert!(stdout_t.contains("new"), "term should have 'new' subcommand");
+    assert!(!stdout_t.contains("add"), "term help should NOT show 'add' (hidden alias)");
 }
 
 /// Verify `list` verb exists on all resource groups
@@ -307,19 +311,20 @@ fn verb_show_on_all_resources() {
     }
 }
 
-/// Verify term-specific: `update` replaces `fix`, `add` replaces `learn`
+/// Verify term-specific: `update` replaces `fix`, `new` replaces `add`
 #[test]
 fn term_renamed_verbs() {
     let (stdout, _, code) = run(&["term", "--help"]);
     assert_eq!(code, 0);
 
-    // Target state: should have 'update', 'add', and 'fix' (now a first-class lint alias)
+    // Target state: should have 'update', 'new', and 'fix' (now a first-class lint alias)
     assert!(stdout.contains("update"), "term should have 'update' subcommand (renamed from fix)");
-    assert!(stdout.contains("add"), "term should have 'add' subcommand (renamed from learn)");
+    assert!(stdout.contains("new"), "term should have 'new' subcommand (renamed from add)");
     assert!(stdout.contains("fix"), "term should have 'fix' subcommand (lint --fix alias)");
 
-    // Old 'learn' name should NOT appear in help (hidden alias)
+    // Old 'learn' and 'add' names should NOT appear in help (hidden aliases)
     assert!(!stdout.contains("learn"), "term help should not show 'learn' (hidden alias)");
+    assert!(!stdout.contains("  add"), "term help should not show 'add' (hidden alias)");
 }
 
 /// Verify `mf source ls` alias works

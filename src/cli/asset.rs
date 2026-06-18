@@ -6,7 +6,7 @@ use serde::Serialize;
 use crate::cli::deprecation::DeprecationContext;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
-use crate::cli::CommandOutcome;
+use crate::cli::{merge_warnings, CommandOutcome};
 use crate::error::{MfError, Result};
 use crate::model::asset::AssetKind;
 use crate::model::Resource;
@@ -29,7 +29,9 @@ pub struct AssetCmd {
 pub enum AssetSubcommand {
     #[command(about = "List assets", visible_alias = "ls")]
     List(AssetListArgs),
-    #[command(about = "Add an asset")]
+    #[command(about = "Create an asset")]
+    New(AssetAddArgs),
+    #[command(about = "Add an asset", hide = true)]
     Add(AssetAddArgs),
     #[command(about = "Update assets")]
     Update(AssetUpdateArgs),
@@ -168,7 +170,16 @@ pub fn dispatch(
 
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("asset")),
-        Some(AssetSubcommand::Add(args)) => handle_add(args, root, &cwd, format, project),
+        Some(AssetSubcommand::New(args)) => handle_add(args, root, &cwd, format, project),
+        Some(AssetSubcommand::Add(args)) => {
+            let mut warnings: Vec<String> = Vec::new();
+            crate::output::warning::emit_warning(
+                &format!("`asset add` is deprecated; use `mf asset new {}` instead.", args.path.display()),
+                &mut warnings,
+            );
+            let outcome = handle_add(args, root, &cwd, format, project)?;
+            Ok(merge_warnings(outcome, warnings))
+        }
         Some(AssetSubcommand::List(args)) => handle_list(args, root, &cwd, format, project),
         Some(AssetSubcommand::Update(args)) => handle_update(args, root, &cwd, format, project),
         Some(AssetSubcommand::Index(args)) => handle_index(args, root, &cwd, format, project),
@@ -205,9 +216,10 @@ fn handle_add(
             details: serde_json::json!({"source": args.path.to_string_lossy()}),
         };
         return match format {
-            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
             Format::Text => Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
+                Vec::new(),
                 None,
             )),
         };
@@ -242,9 +254,10 @@ fn handle_add(
         }),
     };
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
+            Vec::new(),
             None,
         )),
     }
@@ -279,7 +292,7 @@ fn handle_list(
                     Ok(v)
                 })
                 .collect::<Result<Vec<_>>>()?;
-            Ok(CommandOutcome::Success(json_collection("assets", items), None))
+            Ok(CommandOutcome::Success(json_collection("assets", items), Vec::new(), None))
         }
         Format::Text => {
             let mut rows = Vec::with_capacity(assets.len());
@@ -325,11 +338,12 @@ fn handle_update(
                     "url": result.url,
                     "channel": result.channel,
                 }),
+                Vec::new(),
                 None,
             )),
             Format::Text => {
                 let msg = format!("Set publish URL: {} (channel: {})", result.url, result.channel);
-                Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
+                Ok(CommandOutcome::Success(serde_json::Value::String(msg), Vec::new(), None))
             }
         };
     }
@@ -365,12 +379,13 @@ fn handle_update(
                 details: serde_json::json!({"changes": {}}),
             };
             return match format {
-                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
                 Format::Text => Ok(CommandOutcome::Success(
                     serde_json::Value::String(verb_text(
                         &result,
                         &VerbOpts::from_repo_root(Some(project_path.as_path())),
                     )),
+                    Vec::new(),
                     None,
                 )),
             };
@@ -396,9 +411,10 @@ fn handle_update(
             details: serde_json::json!({"changes": changes, "changed": update_result.changed}),
         };
         match format {
-            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
             Format::Text => Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
+                Vec::new(),
                 None,
             )),
         }
@@ -415,7 +431,7 @@ fn handle_update(
                     "items": items,
                     "summary": { "total": total, "changed": changed, "missing": missing }
                 });
-                Ok(CommandOutcome::Success(data, None))
+                Ok(CommandOutcome::Success(data, Vec::new(), None))
             }
             Format::Text => {
                 let mut lines = Vec::new();
@@ -468,7 +484,7 @@ fn handle_index(
                     "refreshed": report.refreshed,
                 },
             });
-            Ok(CommandOutcome::Success(data, None))
+            Ok(CommandOutcome::Success(data, Vec::new(), None))
         }
         Format::Text => {
             let details = serde_json::json!({
@@ -489,6 +505,7 @@ fn handle_index(
             };
             Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
+                Vec::new(),
                 None,
             ))
         }
@@ -511,13 +528,14 @@ fn handle_clean(args: AssetCleanArgs, root: &Path, format: Format, project: Opti
                 "removed_count": report.removed_count,
                 "dry_run": report.dry_run,
             });
-            Ok(CommandOutcome::Success(data, None))
+            Ok(CommandOutcome::Success(data, Vec::new(), None))
         }
         Format::Text => {
             let dry_msg = if args.dry_run { "[dry-run] " } else { "" };
             if report.stale_entries.is_empty() {
                 Ok(CommandOutcome::Success(
                     serde_json::Value::String(format!("{dry_msg}No stale entries found.")),
+                    Vec::new(),
                     None,
                 ))
             } else {
@@ -566,9 +584,10 @@ fn handle_remove(
         details: serde_json::json!({"removed": true}),
     };
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
+            Vec::new(),
             None,
         )),
     }
@@ -598,9 +617,10 @@ fn handle_rename(
             details: serde_json::json!({}),
         };
         return match format {
-            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
             Format::Text => Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
+                Vec::new(),
                 None,
             )),
         };
@@ -618,9 +638,10 @@ fn handle_rename(
         details: serde_json::json!({}),
     };
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
+            Vec::new(),
             None,
         )),
     }
@@ -671,7 +692,7 @@ fn handle_asset_show(
                 Format::Json => {
                     let asset_json = serde_json::to_value(asset).map_err(MfError::Json)?;
                     let extra = asset_json.as_object().cloned().unwrap_or_default();
-                    Ok(CommandOutcome::Success(show_json(&block, extra), None))
+                    Ok(CommandOutcome::Success(show_json(&block, extra), Vec::new(), None))
                 }
                 Format::Text => Ok(CommandOutcome::Raw(
                     render_show_text(&block, &ShowOpts::from_repo_root(Some(project_path.as_path()))),

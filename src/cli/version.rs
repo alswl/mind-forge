@@ -18,7 +18,7 @@ pub fn handle_version(format: Format) -> Result<CommandOutcome> {
                 "rustc": rustc,
                 "target_triple": target_triple,
             });
-            Ok(CommandOutcome::Success(data, None))
+            Ok(CommandOutcome::Success(data, Vec::new(), None))
         }
         Format::Text => {
             let line = format!("mf {version} ({commit}, built {build_date}, rustc {rustc})");

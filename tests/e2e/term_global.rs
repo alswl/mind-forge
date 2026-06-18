@@ -26,7 +26,7 @@ fn global_term_full_lifecycle() {
     // 2. Add correction (alias) for the term
     let (stdout, _stderr, code) = run_in(root, &["term", "add", "--term", "Kubernetes", "--alias", "k8s"]);
     assert_eq!(code, 0, "term add should succeed, got: {stdout} {_stderr}");
-    assert!(stdout.contains("added term_correction"), "stdout: {stdout}");
+    assert!(stdout.contains("added alias") || stdout.contains("created term"), "stdout: {stdout}");
 
     // 3. Lint the doc (dry-run)
     let (stdout, _stderr, code) = run_in(root, &["term", "lint", doc, "--fix", "--dry-run"]);
