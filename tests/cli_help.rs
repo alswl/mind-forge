@@ -35,7 +35,7 @@ fn leaf_help_snapshot() {
 fn version_works() {
     let (stdout, _, code) = run(&["--version"]);
     assert_eq!(code, 0);
-    assert!(stdout.contains("mf 0.1.0"));
+    assert!(stdout.contains(&format!("mf {}", env!("CARGO_PKG_VERSION"))));
 }
 
 #[test]
