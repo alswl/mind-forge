@@ -127,6 +127,18 @@ pub struct TermUpdateArgs {
     pub alias: Vec<String>,
     #[arg(long = "tag")]
     pub tag: Vec<String>,
+    #[arg(long = "delete-alias", help = "Remove an alias from the term")]
+    pub delete_alias: Vec<String>,
+    #[arg(long = "delete-tag", help = "Remove a tag from the term")]
+    pub delete_tag: Vec<String>,
+    #[arg(long = "delete-correction", help = "Remove a correction by its original (variant) text")]
+    pub delete_correction: Vec<String>,
+    #[arg(long = "correction-match", help = "Set correction match kind: ORIGINAL:word|substring|pinyin")]
+    pub correction_match: Vec<String>,
+    #[arg(long = "correction-fix", help = "Set correction fix kind: ORIGINAL:required|suggested")]
+    pub correction_fix: Vec<String>,
+    #[arg(long = "correction-pinyin", help = "Set correction pinyin: ORIGINAL:<pinyin>")]
+    pub correction_pinyin: Vec<String>,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -227,7 +239,12 @@ fn new_input(args: &TermNewArgs) -> term_svc::TermInput<'_> {
     }
 }
 
-fn update_input(args: &TermUpdateArgs) -> term_svc::TermUpdate<'_> {
+fn update_input<'a>(
+    args: &'a TermUpdateArgs,
+    correction_match: &'a [(String, crate::model::term::MatchKind)],
+    correction_fix: &'a [(String, crate::model::term::FixKind)],
+    correction_pinyin: &'a [(String, String)],
+) -> term_svc::TermUpdate<'a> {
     term_svc::TermUpdate {
         definition: args.definition.as_deref(),
         description: args.description.as_deref(),
@@ -236,6 +253,40 @@ fn update_input(args: &TermUpdateArgs) -> term_svc::TermUpdate<'_> {
         clear_confidence: args.clear_confidence,
         aliases: &args.alias,
         tags: &args.tag,
+        delete_aliases: &args.delete_alias,
+        delete_tags: &args.delete_tag,
+        delete_corrections: &args.delete_correction,
+        correction_match,
+        correction_fix,
+        correction_pinyin,
+    }
+}
+
+fn parse_kv(raw: &str) -> Result<(&str, &str)> {
+    raw.find(':').map(|pos| (&raw[..pos], &raw[pos + 1..])).ok_or_else(|| {
+        MfError::usage(
+            format!("expected ORIGINAL:VALUE format, got '{raw}'"),
+            Some("use --correction-<field> ORIGINAL:VALUE".to_string()),
+        )
+    })
+}
+
+fn parse_match_kind(raw: &str) -> Result<crate::model::term::MatchKind> {
+    match raw.to_lowercase().as_str() {
+        "word" => Ok(crate::model::term::MatchKind::Word),
+        "substring" => Ok(crate::model::term::MatchKind::Substring),
+        "pinyin" => Ok(crate::model::term::MatchKind::Pinyin),
+        other => {
+            Err(MfError::usage(format!("invalid match kind '{other}'; expected word, substring, or pinyin"), None))
+        }
+    }
+}
+
+fn parse_fix_kind(raw: &str) -> Result<crate::model::term::FixKind> {
+    match raw.to_lowercase().as_str() {
+        "required" => Ok(crate::model::term::FixKind::Required),
+        "suggested" => Ok(crate::model::term::FixKind::Suggested),
+        other => Err(MfError::usage(format!("invalid fix kind '{other}'; expected required or suggested"), None)),
     }
 }
 
@@ -268,14 +319,8 @@ fn handle_new(
     }
 
     let term = if let Some(project_name) = project {
-        if !args.misrecognition.is_empty() {
-            return Err(MfError::usage(
-                "--misrecognition is not supported on project-scoped term files",
-                Some("use global terms (without --project) for --misrecognition".to_string()),
-            ));
-        }
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
-        term_svc::new_term(&project_path, &args.term, new_input(&args))?
+        term_svc::new_term(&project_path, &args.term, new_input(&args), &args.misrecognition)?
     } else {
         term_svc::global::new_term(root, &args.term, new_input(&args), &args.misrecognition)?
     };
@@ -648,7 +693,23 @@ fn handle_update(
         return Err(MfError::usage("--confidence and --clear-confidence are mutually exclusive", None));
     }
 
-    let update = update_input(&args);
+    let mut correction_match: Vec<(String, crate::model::term::MatchKind)> = Vec::new();
+    for raw in &args.correction_match {
+        let (original, value) = parse_kv(raw)?;
+        correction_match.push((original.to_string(), parse_match_kind(value)?));
+    }
+    let mut correction_fix: Vec<(String, crate::model::term::FixKind)> = Vec::new();
+    for raw in &args.correction_fix {
+        let (original, value) = parse_kv(raw)?;
+        correction_fix.push((original.to_string(), parse_fix_kind(value)?));
+    }
+    let mut correction_pinyin: Vec<(String, String)> = Vec::new();
+    for raw in &args.correction_pinyin {
+        let (original, value) = parse_kv(raw)?;
+        correction_pinyin.push((original.to_string(), value.to_string()));
+    }
+
+    let update = update_input(&args, &correction_match, &correction_fix, &correction_pinyin);
     let term = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         term_svc::fix_term(&project_path, &args.term, update)?
@@ -669,8 +730,26 @@ fn handle_update(
     if !args.alias.is_empty() {
         changes.insert("aliases".to_string(), serde_json::json!({"added": args.alias}));
     }
+    if !args.delete_alias.is_empty() {
+        changes.insert("aliases".to_string(), serde_json::json!({"deleted": args.delete_alias}));
+    }
     if !args.tag.is_empty() {
         changes.insert("tags".to_string(), serde_json::json!({"added": args.tag}));
+    }
+    if !args.delete_tag.is_empty() {
+        changes.insert("tags".to_string(), serde_json::json!({"deleted": args.delete_tag}));
+    }
+    if !args.delete_correction.is_empty() {
+        changes.insert("corrections".to_string(), serde_json::json!({"deleted": args.delete_correction}));
+    }
+    if !correction_match.is_empty() {
+        changes.insert("correction_match".to_string(), serde_json::json!({"updated": args.correction_match}));
+    }
+    if !correction_fix.is_empty() {
+        changes.insert("correction_fix".to_string(), serde_json::json!({"updated": args.correction_fix}));
+    }
+    if !correction_pinyin.is_empty() {
+        changes.insert("correction_pinyin".to_string(), serde_json::json!({"updated": args.correction_pinyin}));
     }
 
     let result = VerbResult {

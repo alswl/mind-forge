@@ -13,6 +13,8 @@ pub mod rename;
 pub mod repo_format;
 pub mod show;
 
+use crate::model::term::{FixKind, MatchKind};
+
 use std::collections::BTreeSet;
 
 use crate::error::MfError;
@@ -53,6 +55,12 @@ pub struct TermUpdate<'a> {
     pub clear_confidence: bool,
     pub aliases: &'a [String],
     pub tags: &'a [String],
+    pub delete_aliases: &'a [String],
+    pub delete_tags: &'a [String],
+    pub delete_corrections: &'a [String],
+    pub correction_match: &'a [(String, MatchKind)],
+    pub correction_fix: &'a [(String, FixKind)],
+    pub correction_pinyin: &'a [(String, String)],
 }
 
 impl<'a> TermUpdate<'a> {

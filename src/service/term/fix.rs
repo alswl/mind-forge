@@ -7,9 +7,17 @@ use crate::service::index;
 
 /// Modify an existing term's definition, aliases, tags, description, or confidence.
 pub fn fix_term(project_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Result<Term> {
-    if !update.has_legacy_flags() && !update.has_metadata_flags() {
+    if !update.has_legacy_flags()
+        && !update.has_metadata_flags()
+        && update.delete_aliases.is_empty()
+        && update.delete_tags.is_empty()
+        && update.delete_corrections.is_empty()
+        && update.correction_match.is_empty()
+        && update.correction_fix.is_empty()
+        && update.correction_pinyin.is_empty()
+    {
         return Err(MfError::usage(
-            "at least one of --definition, --description, --confidence, --alias, --tag, --clear-description, --clear-confidence must be provided",
+            "at least one of --definition, --description, --confidence, --alias, --tag, --delete-alias, --delete-tag, --delete-correction, --correction-match, --correction-fix, --correction-pinyin, --clear-description, --clear-confidence must be provided",
             None,
         ));
     }
@@ -74,9 +82,33 @@ pub(crate) fn apply_update(t: &mut Term, update: &TermUpdate<'_>) {
             t.aliases.push(alias.clone());
         }
     }
+    for alias in update.delete_aliases {
+        t.aliases.retain(|a| a != alias);
+    }
     for tag in update.tags {
         if !t.tags.contains(tag) {
             t.tags.push(tag.clone());
+        }
+    }
+    for tag in update.delete_tags {
+        t.tags.retain(|t| t != tag);
+    }
+    for original in update.delete_corrections {
+        t.corrections.retain(|c| &c.original != original);
+    }
+    for (original, mk) in update.correction_match {
+        if let Some(c) = t.corrections.iter_mut().find(|c| c.original == *original) {
+            c.r#match = *mk;
+        }
+    }
+    for (original, fk) in update.correction_fix {
+        if let Some(c) = t.corrections.iter_mut().find(|c| c.original == *original) {
+            c.fix = *fk;
+        }
+    }
+    for (original, pinyin) in update.correction_pinyin {
+        if let Some(c) = t.corrections.iter_mut().find(|c| c.original == *original) {
+            c.pinyin = if pinyin.is_empty() { None } else { Some(pinyin.clone()) };
         }
     }
 }

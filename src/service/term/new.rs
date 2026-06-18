@@ -6,7 +6,7 @@ use crate::model::term::Term;
 use crate::service::index;
 
 /// Register a new term.
-pub fn new_term(project_root: &Path, term: &str, input: TermInput<'_>) -> Result<Term> {
+pub fn new_term(project_root: &Path, term: &str, input: TermInput<'_>, misrecognitions: &[String]) -> Result<Term> {
     if term.trim().is_empty() {
         return Err(MfError::usage("term name cannot be empty", None));
     }
@@ -27,6 +27,7 @@ pub fn new_term(project_root: &Path, term: &str, input: TermInput<'_>) -> Result
     // Dedup before checking alias conflicts
     let aliases = dedup_preserve_first(input.aliases);
     let tags = dedup_preserve_first(input.tags);
+    let misrecognitions = dedup_preserve_first(misrecognitions);
 
     // Check alias uniqueness across existing terms
     for alias in &aliases {
@@ -37,6 +38,17 @@ pub fn new_term(project_root: &Path, term: &str, input: TermInput<'_>) -> Result
         }
     }
 
+    let corrections: Vec<crate::model::term::Correction> = misrecognitions
+        .iter()
+        .map(|m| crate::model::term::Correction {
+            original: m.clone(),
+            correct: term.to_string(),
+            r#match: crate::model::term::MatchKind::Word,
+            fix: crate::model::term::FixKind::Required,
+            pinyin: None,
+        })
+        .collect();
+
     let new_entry = Term {
         term: term.to_string(),
         definition: input.definition.and_then(|s| if s.is_empty() { None } else { Some(s.to_string()) }),
@@ -44,7 +56,7 @@ pub fn new_term(project_root: &Path, term: &str, input: TermInput<'_>) -> Result
         confidence: input.confidence,
         aliases,
         tags,
-        corrections: vec![],
+        corrections,
     };
 
     terms.push(new_entry.clone());
