@@ -258,6 +258,7 @@ pub(crate) fn lint_single_file_with_index(
     }
 
     spans.sort_by_key(|s| s.start);
+    fix::deduplicate_spans(&mut spans);
     let new_bytes = apply_fixes(content.as_bytes(), &spans);
     let new_content = match String::from_utf8(new_bytes) {
         Ok(c) => c,
@@ -527,6 +528,7 @@ fn apply_term_fixes(
         }
 
         spans.sort_by_key(|s| s.start);
+        fix::deduplicate_spans(&mut spans);
         let new_bytes = apply_fixes(content_orig.as_bytes(), &spans);
         let new_content = String::from_utf8(new_bytes)
             .map_err(|_| MfError::Internal(anyhow::anyhow!("non-utf8 content after replacement")))?;

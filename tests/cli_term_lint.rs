@@ -528,3 +528,64 @@ terms:
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert_eq!(stdout.matches("→ \"MindRepo\"").count(), 1, "only standalone: {stdout}");
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// US2 — overlapping corrections don't panic --fix
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn lint_fix_overlapping_corrections_no_panic() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    // Two corrections whose originals can overlap in the same text:
+    // "mini pass" and "pass" — when "mini pass" appears, both match.
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: Mini PaaS
+    corrections:
+      - original: mini pass
+        correct: mini PaaS
+  - term: PaaS
+    corrections:
+      - original: pass
+        correct: PaaS
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    write_doc(&project, "doc", "we use mini pass for deployment\n");
+
+    let output = mf(&repo).args(["term", "lint", "--fix", "-y", "--project", "alpha"]).output().unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let content = fs::read_to_string(project.join("docs/doc.md")).unwrap();
+    // Only the longer match should apply; the nested one is skipped.
+    assert!(content.contains("mini PaaS"), "should fix mini pass -> mini PaaS: {content}");
+}
+
+#[test]
+fn lint_fix_overlapping_corrections_dry_run_no_panic() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: Mini PaaS
+    corrections:
+      - original: mini pass
+        correct: mini PaaS
+  - term: PaaS
+    corrections:
+      - original: pass
+        correct: PaaS
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    write_doc(&project, "doc", "mini pass test\n");
+
+    let output = mf(&repo).args(["term", "lint", "--fix", "--dry-run", "--project", "alpha"]).output().unwrap();
+    // dry-run exits 1 when there are findings
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("dry-run"), "stdout: {stdout}");
+}

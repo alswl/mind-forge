@@ -1,5 +1,6 @@
 ---
 name: mind-forge
+version: "0.1.0"
 description: "Rust CLI for mind 0.3.0-compatible local knowledge repos. Manage projects, directory or file articles, sources, assets, glossary terms, builds, publishing, and publish targets using mind-format YAML."
 ---
 
