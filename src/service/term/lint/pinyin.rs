@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::model::term::{FixKind, MatchKind, TermFinding};
+use crate::model::term::{Boundary, FixKind, MatchKind, TermFinding};
 
 use super::scan::{byte_offset_to_line_col, is_cjk_ideograph, CorrectionRef, InternalFinding};
 
@@ -90,8 +90,9 @@ pub(crate) fn scan_for_pinyin(
                     replacement_eligible: !entry.cref.is_ambiguous,
                     safety_reason: if entry.cref.is_ambiguous { Some("ambiguous".to_string()) } else { None },
                     candidates: if entry.cref.is_ambiguous { entry.cref.candidates.to_vec() } else { vec![] },
-                    match_kind: "pinyin".to_string(),
-                    fix_kind: "suggested".to_string(), // FR-404: pinyin is always suggested
+                    match_kind: MatchKind::Pinyin,
+                    fix_kind: FixKind::Suggested, // FR-404: pinyin is always suggested
+                    boundary: Boundary::Loose,    // pinyin never opts into standalone
                 });
 
                 internal_findings.push(InternalFinding {
@@ -102,6 +103,7 @@ pub(crate) fn scan_for_pinyin(
                     correct: entry.cref.correct.to_string(),
                     is_ambiguous: entry.cref.is_ambiguous,
                     fix_kind: FixKind::Suggested,
+                    yaml_index: entry.cref.yaml_index,
                 });
             }
         }

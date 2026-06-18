@@ -1,0 +1,11 @@
+schema_version: '1'
+terms:
+  - term: AIDC
+    definition: AI Data Center
+    corrections:
+      - original: aidc
+        correct: AIDC
+        boundary: standalone
+      - original: aidcx
+        correct: AIDC-Long
+        boundary: standalone

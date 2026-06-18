@@ -164,6 +164,7 @@ mod resource_tests {
             correct: "RAG".into(),
             r#match: term::MatchKind::Word,
             fix: term::FixKind::Required,
+            boundary: term::Boundary::Loose,
             pinyin: None,
         };
         assert_eq!(c.identity(), "Rag::RAG");

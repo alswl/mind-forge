@@ -87,6 +87,7 @@ impl GlobalOpts {
 }
 
 #[derive(Debug, Subcommand)]
+#[allow(clippy::large_enum_variant)]
 pub enum TopLevelCommand {
     // ── Repo lifecycle ──
     #[command(about = "Initialize a directory as a Mind Repo")]

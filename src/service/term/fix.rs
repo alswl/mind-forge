@@ -15,9 +15,10 @@ pub fn fix_term(project_root: &Path, term_name: &str, update: TermUpdate<'_>) ->
         && update.correction_match.is_empty()
         && update.correction_fix.is_empty()
         && update.correction_pinyin.is_empty()
+        && update.correction_boundary.is_empty()
     {
         return Err(MfError::usage(
-            "at least one of --definition, --description, --confidence, --alias, --tag, --delete-alias, --delete-tag, --delete-correction, --correction-match, --correction-fix, --correction-pinyin, --clear-description, --clear-confidence must be provided",
+            "at least one of --definition, --description, --confidence, --alias, --tag, --delete-alias, --delete-tag, --delete-correction, --correction-match, --correction-fix, --correction-pinyin, --correction-boundary, --clear-description, --clear-confidence must be provided",
             None,
         ));
     }
@@ -109,6 +110,11 @@ pub(crate) fn apply_update(t: &mut Term, update: &TermUpdate<'_>) {
     for (original, pinyin) in update.correction_pinyin {
         if let Some(c) = t.corrections.iter_mut().find(|c| c.original == *original) {
             c.pinyin = if pinyin.is_empty() { None } else { Some(pinyin.clone()) };
+        }
+    }
+    for (original, boundary) in update.correction_boundary {
+        if let Some(c) = t.corrections.iter_mut().find(|c| c.original == *original) {
+            c.boundary = *boundary;
         }
     }
 }

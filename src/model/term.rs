@@ -29,6 +29,20 @@ impl FixKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Boundary {
+    #[default]
+    Loose,
+    Standalone,
+}
+
+impl Boundary {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Correction {
     pub original: String,
@@ -37,8 +51,25 @@ pub struct Correction {
     pub r#match: MatchKind,
     #[serde(default, skip_serializing_if = "FixKind::is_default")]
     pub fix: FixKind,
+    #[serde(default, skip_serializing_if = "Boundary::is_default")]
+    pub boundary: Boundary,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pinyin: Option<String>,
+}
+
+impl Correction {
+    /// Default-shaped correction used by `term new`, `term add`, and global
+    /// equivalents: word match, required fix, loose boundary, no pinyin.
+    pub fn misrecognition(original: impl Into<String>, correct: impl Into<String>) -> Self {
+        Self {
+            original: original.into(),
+            correct: correct.into(),
+            r#match: MatchKind::Word,
+            fix: FixKind::Required,
+            boundary: Boundary::Loose,
+            pinyin: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -55,6 +86,40 @@ pub struct Term {
     pub tags: Vec<String>,
     #[serde(default)]
     pub corrections: Vec<Correction>,
+}
+
+/// Validate cross-field invariants on every correction. Returns a user-facing
+/// message on the first violation. Called by both the project-scoped index
+/// loader (`mind-index.yaml`) and the global terms loader (`minds-terms.yaml`)
+/// so the same rules apply regardless of scope.
+pub fn validate_corrections(terms: &[Term]) -> std::result::Result<(), String> {
+    for term in terms {
+        for c in &term.corrections {
+            if c.boundary == Boundary::Standalone {
+                if c.r#match != MatchKind::Word {
+                    let kind = match c.r#match {
+                        MatchKind::Substring => "substring",
+                        MatchKind::Pinyin => "pinyin",
+                        MatchKind::Word => unreachable!(),
+                    };
+                    return Err(format!(
+                        "boundary: standalone is only valid with match: word (correction '{}' uses match: {})",
+                        c.original, kind
+                    ));
+                }
+                let bytes = c.original.as_bytes();
+                if bytes.first().is_some_and(|b| *b == b'-' || *b == b'_')
+                    || bytes.last().is_some_and(|b| *b == b'-' || *b == b'_')
+                {
+                    return Err(format!(
+                        "boundary: standalone cannot apply to identifier-character edges (correction '{}')",
+                        c.original
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 // ── View models (012-term-core) ──────────────────────────────────────────────
@@ -77,8 +142,9 @@ pub struct TermFinding {
     pub safety_reason: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub candidates: Vec<CandidateTerm>,
-    pub match_kind: String,
-    pub fix_kind: String,
+    pub match_kind: MatchKind,
+    pub fix_kind: FixKind,
+    pub boundary: Boundary,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -147,11 +213,13 @@ mod tests {
             correct: "Mind Repo".into(),
             r#match: MatchKind::Word,
             fix: FixKind::Required,
+            boundary: Boundary::Loose,
             pinyin: None,
         };
         let yaml = serde_yaml::to_string(&c).unwrap();
         assert!(!yaml.contains("match:"), "default match:word must not write: {yaml}");
         assert!(!yaml.contains("fix:"), "default fix:required must not write: {yaml}");
+        assert!(!yaml.contains("boundary:"), "default boundary:loose must not write: {yaml}");
         assert!(!yaml.contains("pinyin:"), "None pinyin must not write: {yaml}");
     }
 
@@ -162,6 +230,7 @@ mod tests {
             correct: "凯飞迪".into(),
             r#match: MatchKind::Pinyin,
             fix: FixKind::Suggested,
+            boundary: Boundary::Loose,
             pinyin: Some("kai-fei-di".into()),
         };
         let yaml = serde_yaml::to_string(&c).unwrap();
@@ -179,7 +248,45 @@ mod tests {
         assert_eq!(c.correct, "Mind Repo");
         assert_eq!(c.r#match, MatchKind::Word);
         assert_eq!(c.fix, FixKind::Required);
+        assert_eq!(c.boundary, Boundary::Loose);
         assert_eq!(c.pinyin, None);
+    }
+
+    #[test]
+    fn boundary_default_is_loose() {
+        assert_eq!(Boundary::default(), Boundary::Loose);
+        assert!(Boundary::Loose.is_default());
+        assert!(!Boundary::Standalone.is_default());
+    }
+
+    #[test]
+    fn boundary_standalone_roundtrip_preserves_value() {
+        let yaml = "original: aidc\ncorrect: AIDC\nboundary: standalone\n";
+        let c: Correction = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(c.boundary, Boundary::Standalone);
+        let written = serde_yaml::to_string(&c).unwrap();
+        assert!(written.contains("boundary: standalone"), "standalone must serialize: {written}");
+    }
+
+    #[test]
+    fn boundary_loose_not_serialized_even_when_explicit() {
+        let c = Correction {
+            original: "aidc".into(),
+            correct: "AIDC".into(),
+            r#match: MatchKind::Word,
+            fix: FixKind::Required,
+            boundary: Boundary::Loose,
+            pinyin: None,
+        };
+        let written = serde_yaml::to_string(&c).unwrap();
+        assert!(!written.contains("boundary:"), "explicit loose must still be omitted: {written}");
+    }
+
+    #[test]
+    fn boundary_invalid_variant_fails() {
+        let yaml = "original: foo\ncorrect: bar\nboundary: bogus\n";
+        let result: Result<Correction, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err(), "unknown boundary variant must fail");
     }
 
     #[test]
@@ -202,5 +309,71 @@ mod tests {
         let yaml = "original: foo\ncorrect: bar\nmatch: bogus\n";
         let result: Result<Correction, _> = serde_yaml::from_str(yaml);
         assert!(result.is_err(), "unknown match variant must fail");
+    }
+
+    // ── validate_corrections ────────────────────────────────────────────────
+
+    fn term_with(corrections: Vec<Correction>) -> Term {
+        Term {
+            term: "TEST".into(),
+            definition: None,
+            description: None,
+            confidence: None,
+            aliases: vec![],
+            tags: vec![],
+            corrections,
+        }
+    }
+
+    fn correction(original: &str, m: MatchKind, b: Boundary) -> Correction {
+        Correction {
+            original: original.into(),
+            correct: "X".into(),
+            r#match: m,
+            fix: FixKind::Required,
+            boundary: b,
+            pinyin: None,
+        }
+    }
+
+    #[test]
+    fn validate_corrections_accepts_loose_with_any_match_kind() {
+        let terms = vec![term_with(vec![
+            correction("a", MatchKind::Word, Boundary::Loose),
+            correction("b", MatchKind::Substring, Boundary::Loose),
+            correction("c", MatchKind::Pinyin, Boundary::Loose),
+        ])];
+        assert!(validate_corrections(&terms).is_ok());
+    }
+
+    #[test]
+    fn validate_corrections_rejects_standalone_with_substring() {
+        let terms = vec![term_with(vec![correction("aidc", MatchKind::Substring, Boundary::Standalone)])];
+        let err = validate_corrections(&terms).unwrap_err();
+        assert!(err.contains("standalone is only valid with match: word"), "got: {err}");
+        assert!(err.contains("aidc"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_corrections_rejects_standalone_with_pinyin() {
+        let terms = vec![term_with(vec![correction("凯飞迪", MatchKind::Pinyin, Boundary::Standalone)])];
+        let err = validate_corrections(&terms).unwrap_err();
+        assert!(err.contains("standalone is only valid with match: word"), "got: {err}");
+        assert!(err.contains("凯飞迪"), "got: {err}");
+        assert!(err.contains("pinyin"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_corrections_rejects_edge_hyphen() {
+        let terms = vec![term_with(vec![correction("aidc-", MatchKind::Word, Boundary::Standalone)])];
+        let err = validate_corrections(&terms).unwrap_err();
+        assert!(err.contains("identifier-character edges"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_corrections_rejects_edge_underscore_leading() {
+        let terms = vec![term_with(vec![correction("_aidc", MatchKind::Word, Boundary::Standalone)])];
+        let err = validate_corrections(&terms).unwrap_err();
+        assert!(err.contains("identifier-character edges"), "got: {err}");
     }
 }

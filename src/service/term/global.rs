@@ -58,16 +58,8 @@ pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecogniti
         }
     }
 
-    let corrections: Vec<Correction> = misrecognitions
-        .iter()
-        .map(|m| Correction {
-            original: m.clone(),
-            correct: term.to_string(),
-            r#match: crate::model::term::MatchKind::Word,
-            fix: crate::model::term::FixKind::Required,
-            pinyin: None,
-        })
-        .collect();
+    let corrections: Vec<Correction> =
+        misrecognitions.iter().map(|m| Correction::misrecognition(m.clone(), term)).collect();
 
     let new_entry = Term {
         term: term.to_string(),
@@ -121,9 +113,10 @@ pub fn fix_term(repo_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Re
         && update.correction_match.is_empty()
         && update.correction_fix.is_empty()
         && update.correction_pinyin.is_empty()
+        && update.correction_boundary.is_empty()
     {
         return Err(MfError::usage(
-            "at least one of --definition, --description, --confidence, --alias, --tag, --delete-alias, --delete-tag, --delete-correction, --correction-match, --correction-fix, --correction-pinyin, --clear-description, --clear-confidence must be provided",
+            "at least one of --definition, --description, --confidence, --alias, --tag, --delete-alias, --delete-tag, --delete-correction, --correction-match, --correction-fix, --correction-pinyin, --correction-boundary, --clear-description, --clear-confidence must be provided",
             None,
         ));
     }
@@ -202,13 +195,7 @@ pub fn learn_correction(repo_root: &Path, original: &str, correct: &str) -> Resu
         return Ok((terms[idx].clone(), false));
     }
 
-    terms[idx].corrections.push(Correction {
-        original: original.to_string(),
-        correct: canonical_name.clone(),
-        r#match: crate::model::term::MatchKind::Word,
-        fix: crate::model::term::FixKind::Required,
-        pinyin: None,
-    });
+    terms[idx].corrections.push(Correction::misrecognition(original, &canonical_name));
     let result = terms[idx].clone();
     sort_terms_by_name(&mut terms);
     save_terms(repo_root, &terms)?;

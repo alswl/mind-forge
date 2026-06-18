@@ -79,6 +79,9 @@ fn load_from_str(content: &str, path: &Path) -> Result<IndexFile> {
         path: path.to_path_buf(),
         detail: e.to_string(),
     })?;
+    if let Some(terms) = index.terms.as_deref() {
+        crate::model::term::validate_corrections(terms).map_err(|m| MfError::usage(m, None::<String>))?;
+    }
     Ok(index)
 }
 
@@ -830,5 +833,71 @@ articles:
         let err_msg = "expected a mapping";
         let line = extract_error_line(err_msg);
         assert!(line.is_none());
+    }
+
+    // ── Boundary validation (T007/T008) ────────────────────────────────────
+
+    #[test]
+    fn boundary_standalone_with_substring_match_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = r#"schema: '1'
+terms:
+- term: TEST
+  corrections:
+    - original: aidc
+      correct: AIDC
+      match: substring
+      boundary: standalone
+"#;
+        std::fs::write(dir.path().join("mind-index.yaml"), content).unwrap();
+        let err = load(dir.path()).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("standalone is only valid with match: word"),
+            "expected substring+standalone rejection, got: {msg}"
+        );
+        assert!(msg.contains("aidc"), "message should name the correction: {msg}");
+        assert_eq!(err.exit_code(), crate::exit::ExitCode::UsageError);
+    }
+
+    #[test]
+    fn boundary_standalone_with_original_ending_hyphen_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = r#"schema: '1'
+terms:
+- term: TEST
+  corrections:
+    - original: aidc-
+      correct: AIDC
+      boundary: standalone
+"#;
+        std::fs::write(dir.path().join("mind-index.yaml"), content).unwrap();
+        let err = load(dir.path()).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("identifier-character edges"), "expected edge-character rejection, got: {msg}");
+        assert!(msg.contains("aidc-"), "message should name the correction: {msg}");
+        assert_eq!(err.exit_code(), crate::exit::ExitCode::UsageError);
+    }
+
+    #[test]
+    fn boundary_standalone_with_original_starting_underscore_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = r#"schema: '1'
+terms:
+- term: TEST
+  corrections:
+    - original: _aidc
+      correct: AIDC
+      boundary: standalone
+"#;
+        std::fs::write(dir.path().join("mind-index.yaml"), content).unwrap();
+        let err = load(dir.path()).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("identifier-character edges"),
+            "expected edge-character rejection for leading underscore, got: {msg}"
+        );
+        assert!(msg.contains("_aidc"), "message should name the correction: {msg}");
+        assert_eq!(err.exit_code(), crate::exit::ExitCode::UsageError);
     }
 }

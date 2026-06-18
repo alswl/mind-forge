@@ -213,3 +213,40 @@ fn fix_schema_version_unchanged() {
     assert!(content.contains("the cafed thing"), "definition updated: {content}");
     assert!(content.contains("schema_version"), "must remain schema-version: {content}");
 }
+
+// --correction-boundary flag (spec 044) — end-to-end round-trip.
+
+#[test]
+fn fix_term_correction_boundary_flag_round_trip() {
+    let (repo, project) = setup_with_term();
+    let output = mf(&repo)
+        .args(["term", "update", "Mind Repo", "--correction-boundary", "mindrepo:standalone", "--project", "alpha"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "stderr: {:?}", String::from_utf8_lossy(&output.stderr));
+
+    let index = fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert!(index.contains("boundary: standalone"), "boundary must be written to yaml: {index}");
+
+    // Flipping back to loose must drop the field (default serializer skip).
+    let output = mf(&repo)
+        .args(["term", "update", "Mind Repo", "--correction-boundary", "mindrepo:loose", "--project", "alpha"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "stderr: {:?}", String::from_utf8_lossy(&output.stderr));
+
+    let index = fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert!(!index.contains("boundary:"), "loose is default and must not be serialized: {index}");
+}
+
+#[test]
+fn fix_term_correction_boundary_invalid_value_rejected() {
+    let (repo, _project) = setup_with_term();
+    let output = mf(&repo)
+        .args(["term", "update", "Mind Repo", "--correction-boundary", "mindrepo:bogus", "--project", "alpha"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("invalid boundary"), "stderr: {stderr}");
+}
