@@ -85,7 +85,7 @@ fn new_term_alias_tag_dedup() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("✓ created term: CLI"), "stdout: {stdout}");
+    assert!(stdout.contains("created term \"CLI\""), "stdout: {stdout}");
 
     // Verify single entry in index (dedup verified at filesystem level)
     let index = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
@@ -112,11 +112,11 @@ fn new_term_no_definition() {
 }
 
 // ---------------------------------------------------------------------------
-// 4. new_term_duplicate_rejected — 同主名重复 → usage exit
+// 4. new_term_duplicate_is_idempotent — same term twice succeeds (US2: append, not error)
 // ---------------------------------------------------------------------------
 
 #[test]
-fn new_term_duplicate_rejected() {
+fn new_term_duplicate_is_idempotent() {
     let (repo, _project) = setup();
     // First one should succeed
     Command::cargo_bin("mf")
@@ -125,16 +125,12 @@ fn new_term_duplicate_rejected() {
         .assert()
         .code(0);
 
-    // Second one should fail
-    let output = Command::cargo_bin("mf")
+    // Second one should also succeed (idempotent, no error)
+    Command::cargo_bin("mf")
         .unwrap()
         .args(["--root", repo.path().to_str().unwrap(), "term", "new", "Duplicate", "--project", "alpha"])
-        .output()
-        .unwrap();
-
-    assert_eq!(output.status.code(), Some(2));
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("already exists"), "stderr: {stderr}");
+        .assert()
+        .code(0);
 }
 
 // ---------------------------------------------------------------------------
@@ -249,13 +245,11 @@ fn new_term_json_output_shape() {
     assert_eq!(parsed["status"], "ok");
 
     let data = &parsed["data"];
-    assert_eq!(data["kind"], "term");
-    assert_eq!(data["identity"], "Mind Repo");
-    assert_eq!(data["details"]["term"], "Mind Repo");
-    assert_eq!(data["details"]["definition"], "desc");
-    assert_eq!(data["details"]["aliases"].as_array().unwrap().len(), 1);
-    assert_eq!(data["details"]["tags"].as_array().unwrap().len(), 1);
-    assert_eq!(data["details"]["corrections"].as_array().unwrap().len(), 0);
+    assert_eq!(data["term"], "Mind Repo");
+    assert_eq!(data["created"], true);
+    assert_eq!(data["added_aliases"].as_array().unwrap().len(), 1);
+    assert_eq!(data["added_tags"].as_array().unwrap().len(), 1);
+    assert!(data["added_misrecognitions"].as_array().unwrap().is_empty());
 }
 
 // T030

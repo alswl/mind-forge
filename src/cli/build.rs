@@ -71,7 +71,7 @@ pub fn dispatch(
             });
 
             match format {
-                crate::output::Format::Json => Ok(CommandOutcome::Success(data, None)),
+                crate::output::Format::Json => Ok(CommandOutcome::Success(data, Vec::new(), None)),
                 crate::output::Format::Text => {
                     let mut lines = vec![format!("Build Plan: {}", plan.article)];
                     lines.push("  Input sources:".to_string());
@@ -100,7 +100,7 @@ pub fn dispatch(
             });
 
             match format {
-                crate::output::Format::Json => Ok(CommandOutcome::Success(data, None)),
+                crate::output::Format::Json => Ok(CommandOutcome::Success(data, Vec::new(), None)),
                 crate::output::Format::Text => {
                     let size_kb = format!("{:.1}", result.size_bytes as f64 / 1024.0);
                     let msg = format!(

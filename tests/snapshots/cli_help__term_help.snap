@@ -10,7 +10,6 @@ Commands:
   list    List terms [aliases: ls]
   new     Create a term
   lint    Lint term consistency in project docs
-  add     Add a term correction
   update  Update term metadata
   show    Show term details
   remove  Remove a term [aliases: rm]

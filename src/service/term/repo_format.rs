@@ -83,22 +83,20 @@ terms:
     }
 
     #[test]
-    fn global_load_rejects_standalone_with_pinyin() {
+    fn global_load_allows_pinyin_with_standalone() {
+        // Pinyin matches ignore the boundary field — standalone+pinyin passes validation.
         let dir = tempfile::tempdir().unwrap();
         let content = r#"schema_version: '1'
 terms:
 - term: KAIFEIDI
   corrections:
-  - original: 凯飞迪
-    correct: 凯飞迪
+  - original: kaifeidi
+    correct: kaifeidi
     match: pinyin
     boundary: standalone
 "#;
         std::fs::write(path_for(dir.path()), content).unwrap();
-        let err = load(dir.path()).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("standalone is only valid with match: word"), "got: {msg}");
-        assert!(msg.contains("pinyin"), "got: {msg}");
+        load(dir.path()).expect("pinyin+standalone should pass validation");
     }
 
     #[test]

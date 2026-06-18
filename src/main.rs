@@ -116,7 +116,8 @@ fn render_outcome(
             Ok(ExitCode::Ok)
         }
         CommandOutcome::Completion(shell) => cli::completion::render_completion(shell, stdout),
-        CommandOutcome::Success(data, exit_code) => {
+        CommandOutcome::Success(data, warnings, exit_code) => {
+            let data = inject_warnings(data, &warnings);
             render(stdout, context.format, Payload::Success(&data))?;
             Ok(ExitCode::from(exit_code.unwrap_or(0)))
         }
@@ -131,6 +132,16 @@ fn render_outcome(
         Ok(code)
     })
 }
+/// Inject collected warnings into the JSON data payload when non-empty.
+fn inject_warnings(mut data: serde_json::Value, warnings: &[String]) -> serde_json::Value {
+    if !warnings.is_empty() {
+        if let serde_json::Value::Object(ref mut map) = data {
+            map.insert("warnings".to_string(), serde_json::json!(warnings));
+        }
+    }
+    data
+}
+
 fn write_command_help(command: &mut clap::Command, stdout: &mut dyn Write) -> Result<()> {
     let mut buffer = Vec::new();
     command.write_long_help(&mut buffer)?;

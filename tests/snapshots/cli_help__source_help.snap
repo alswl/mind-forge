@@ -8,7 +8,7 @@ Usage: mf source [OPTIONS] [COMMAND]
 
 Commands:
   list    List sources [aliases: ls]
-  add     Add a source
+  new     Create a source
   update  Update a source
   index   Index sources
   remove  Remove a source [aliases: rm]

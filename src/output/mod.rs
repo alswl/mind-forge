@@ -4,6 +4,7 @@ pub mod link;
 pub mod list;
 pub mod show;
 pub mod verb;
+pub mod warning;
 
 use std::io::Write;
 

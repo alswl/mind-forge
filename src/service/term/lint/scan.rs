@@ -65,6 +65,15 @@ pub(crate) enum WordCheck {
 }
 
 impl WordCheck {
+    pub(crate) fn boundary_mode(&self) -> &'static str {
+        match self {
+            WordCheck::AlwaysAccept => "loose",
+            WordCheck::AsciiLoose => "loose",
+            WordCheck::AsciiStandalone => "standalone",
+            WordCheck::Cjk => "cjk",
+        }
+    }
+
     pub(crate) fn for_correction(match_kind: MatchKind, boundary: Boundary, original: &str) -> Self {
         match match_kind {
             MatchKind::Substring => WordCheck::AlwaysAccept,
@@ -128,6 +137,8 @@ pub(crate) struct InternalFinding {
     /// Used by `deduplicate_spans` as the tie-breaker when two corrections
     /// share the same byte span: lower wins (i.e., the earlier-declared rule).
     pub(crate) yaml_index: usize,
+    #[allow(dead_code)]
+    pub(crate) boundary_mode: String,
 }
 
 pub(super) fn byte_offset_to_line_col(content: &str, byte_offset: usize) -> (u32, u32) {
@@ -206,6 +217,8 @@ pub(crate) fn scan_file_for_corrections(
 
             let (line, col) = byte_offset_to_line_col(content, abs_offset);
 
+            let boundary_mode = check.boundary_mode().to_string();
+
             findings.push(TermFinding {
                 path: rel_path.to_string(),
                 line,
@@ -221,6 +234,7 @@ pub(crate) fn scan_file_for_corrections(
                 match_kind: c.match_kind,
                 fix_kind: c.fix_kind,
                 boundary: c.boundary,
+                boundary_mode: boundary_mode.clone(),
             });
 
             internal_findings.push(InternalFinding {
@@ -232,6 +246,7 @@ pub(crate) fn scan_file_for_corrections(
                 is_ambiguous,
                 fix_kind: c.fix_kind,
                 yaml_index: c.yaml_index,
+                boundary_mode,
             });
 
             search_start = abs_offset + 1;

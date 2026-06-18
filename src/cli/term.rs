@@ -7,7 +7,7 @@ use crate::cli::deprecation::DeprecationContext;
 use crate::cli::shared_flags::LintFlags;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
-use crate::cli::CommandOutcome;
+use crate::cli::{merge_warnings, CommandOutcome};
 use crate::error::{MfError, Result};
 use crate::model::Resource;
 use crate::output::confirm::{require_confirmation, ConfirmArgs};
@@ -33,7 +33,7 @@ pub enum TermSubcommand {
     New(TermNewArgs),
     #[command(about = "Lint term consistency in project docs")]
     Lint(TermLintArgs),
-    #[command(about = "Add a term correction")]
+    #[command(about = "Add a term correction", hide = true)]
     Add(TermLearnArgs),
     #[command(about = "Update term metadata")]
     Update(TermUpdateArgs),
@@ -203,7 +203,15 @@ pub fn dispatch(
         Some(TermSubcommand::Lint(args)) => handle_lint(args, root, &cwd, format, project),
         Some(TermSubcommand::Add(args)) => {
             warn_learn_flag_deprecations(&args, deprecation);
-            handle_learn(args, root, &cwd, format, project)
+            let mut warnings: Vec<String> = Vec::new();
+            let term_name = args.term.as_deref().unwrap_or("<NAME>");
+            let alias_str = args.alias.as_deref().unwrap_or("<ALIAS>");
+            crate::output::warning::emit_warning(
+                &format!("`term add --term --alias` is deprecated; use `mf term new {term_name} --alias {alias_str}` instead."),
+                &mut warnings,
+            );
+            let outcome = handle_learn(args, root, &cwd, format, project)?;
+            Ok(merge_warnings(outcome, warnings))
         }
         Some(TermSubcommand::Update(args)) => handle_update(args, root, &cwd, format, project),
         Some(TermSubcommand::Learn(args)) => {
@@ -311,7 +319,31 @@ fn handle_new(
     format: Format,
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
+    // T067: Detect legacy --term flag and emit deprecation warning
+    let mut new_warnings: Vec<String> = Vec::new();
+    let raw_args: Vec<String> = std::env::args().collect();
+    if raw_args.iter().any(|a| a == "--term") {
+        crate::output::warning::emit_warning(
+            &format!("--term flag is deprecated; pass `{}` positionally instead.", args.term),
+            &mut new_warnings,
+        );
+    }
+
     if args.dry_run {
+        let has_aliases = !args.alias.is_empty();
+        let mut actions = vec!["create canonical term".to_string()];
+        if has_aliases {
+            actions.push("attach alias".to_string());
+            for alias in &args.alias {
+                actions.push(format!("  alias: {alias}"));
+            }
+        }
+        let details = serde_json::json!({
+            "definition": args.definition,
+            "aliases": args.alias,
+            "tags": args.tag,
+            "planned_actions": actions,
+        });
         let result = VerbResult {
             verb: Verb::Create,
             kind: "term",
@@ -319,39 +351,48 @@ fn handle_new(
             old_identity: None,
             path: None,
             dry_run: true,
-            details: serde_json::json!({"definition": args.definition, "aliases": args.alias, "tags": args.tag}),
+            details,
         };
         return match format {
-            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
             Format::Text => Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                new_warnings,
                 None,
             )),
         };
     }
 
-    let term = if let Some(project_name) = project {
+    let result = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         term_svc::new_term(&project_path, &args.term, new_input(&args), &args.misrecognition)?
     } else {
         term_svc::global::new_term(root, &args.term, new_input(&args), &args.misrecognition)?
     };
 
-    let result = VerbResult {
-        verb: Verb::Create,
-        kind: "term",
-        identity: term.term.clone(),
-        old_identity: None,
-        path: None,
-        dry_run: false,
-        details: serde_json::to_value(&term).map_err(MfError::Json)?,
+    let data = serde_json::json!({
+        "term": result.term.term,
+        "created": result.created,
+        "added_aliases": result.added_aliases,
+        "added_tags": result.added_tags,
+        "added_misrecognitions": result.added_misrecognitions,
+    });
+
+    let text_output = if result.created {
+        if result.added_aliases.is_empty() {
+            format!("created term \"{}\"", result.term.term)
+        } else {
+            format!("created term \"{}\" with alias {}", result.term.term, result.added_aliases.join(", "))
+        }
+    } else if !result.added_aliases.is_empty() {
+        format!("added alias {} to existing term \"{}\"", result.added_aliases.join(", "), result.term.term)
+    } else {
+        format!("term \"{}\" already up to date", result.term.term)
     };
+
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
-        Format::Text => Ok(CommandOutcome::Success(
-            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
-            None,
-        )),
+        Format::Json => Ok(CommandOutcome::Success(data, new_warnings, None)),
+        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(text_output), new_warnings, None)),
     }
 }
 
@@ -368,20 +409,43 @@ fn handle_list(
     // D5: --term <X> redirects to term show
     if let Some(ref name) = args.term {
         deprecation.warn_subject("term list --term <X>", "term show <X>");
-        let term = if let Some(project_name) = project {
+        if let Some(project_name) = project {
             let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
-            term_svc::show_term(&project_path, name)?
+            match term_svc::show_term(&project_path, name) {
+                Ok(term) => return render_term_show_with_scope(&term, Some(root), "project", format),
+                Err(MfError::NotFound { .. }) => {
+                    let term = term_svc::global::show_term(root, name)?;
+                    return render_term_show_with_scope(&term, Some(root), "global", format);
+                }
+                Err(e) => return Err(e),
+            }
         } else {
-            term_svc::global::show_term(root, name)?
-        };
-        return render_term_show(&term, Some(root), format);
+            let term = term_svc::global::show_term(root, name)?;
+            return render_term_show(&term, Some(root), format);
+        }
     }
 
-    let terms = if let Some(project_name) = project {
+    let (terms, scope_map) = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
-        term_svc::list_terms(&project_path, args.filter.as_deref())?
+        let mut project_terms = term_svc::list_terms(&project_path, args.filter.as_deref())?;
+        // Merge global terms not shadowed by project terms
+        let global_terms = term_svc::global::list_terms(root, args.filter.as_deref()).unwrap_or_default();
+        let mut scope_map: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+        for t in &project_terms {
+            scope_map.insert(t.term.clone(), "project".to_string());
+        }
+        for t in &global_terms {
+            if !scope_map.contains_key(&t.term) {
+                scope_map.insert(t.term.clone(), "global".to_string());
+                project_terms.push(t.clone());
+            }
+        }
+        // Resort
+        project_terms.sort_by(|a, b| a.term.cmp(&b.term));
+        (project_terms, scope_map)
     } else {
-        term_svc::global::list_terms(root, args.filter.as_deref())?
+        let terms = term_svc::global::list_terms(root, args.filter.as_deref())?;
+        (terms, std::collections::BTreeMap::new())
     };
 
     let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
@@ -395,11 +459,14 @@ fn handle_list(
                     let mut v = serde_json::to_value(t).map_err(MfError::Json)?;
                     if let Some(obj) = v.as_object_mut() {
                         obj.insert("identity".to_string(), serde_json::Value::String(t.identity()));
+                        if let Some(scope) = scope_map.get(&t.term) {
+                            obj.insert("scope".to_string(), serde_json::json!(scope));
+                        }
                     }
                     Ok(v)
                 })
                 .collect::<Result<Vec<_>>>()?;
-            Ok(CommandOutcome::Success(json_collection("terms", items), None))
+            Ok(CommandOutcome::Success(json_collection("terms", items), Vec::new(), None))
         }
         Format::Text => {
             let mut rows = Vec::with_capacity(terms.len());
@@ -442,7 +509,12 @@ fn handle_lint(
 
     let effective_fix = args.lint.fix;
     let effective_dry_run = args.lint.fix && args.lint.dry_run;
-    let include_suggested = args.lint.all;
+    let include_suggested = args.lint.include_suggested;
+    // T008: Detect legacy --all form and emit deprecation warning
+    let mut warnings: Vec<String> = Vec::new();
+    if std::env::args().any(|a| a == "--all") {
+        crate::output::warning::emit_warning("--all is deprecated; use --include-suggested instead.", &mut warnings);
+    }
 
     // US1: confirmation gate for --fix (non-dry-run)
     if effective_fix && !effective_dry_run && !args.yes && !args.force {
@@ -487,12 +559,32 @@ fn handle_lint(
     let report = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         if let Some(ref path) = args.path {
-            term_svc::lint_path(&project_path, path, effective_fix, effective_dry_run, include_suggested)?
+            let resolved = svc_util::path::resolve_lint_path(path, Some(&project_path), cwd, root)?;
+            let rel = resolved.strip_prefix(&project_path).map_err(|_| {
+                MfError::usage(
+                    format!("path '{}' is not under project root '{}'", resolved.display(), project_path.display()),
+                    None,
+                )
+            })?;
+            term_svc::lint_path(
+                &project_path,
+                &rel.to_string_lossy(),
+                effective_fix,
+                effective_dry_run,
+                include_suggested,
+            )?
         } else {
             term_svc::lint_terms(&project_path, effective_fix, effective_dry_run, include_suggested)?
         }
     } else if let Some(ref path) = args.path {
-        term_svc::global::lint_path(root, path, effective_fix, effective_dry_run, include_suggested)?
+        let resolved = svc_util::path::resolve_lint_path(path, None, cwd, root)?;
+        term_svc::global::lint_path(
+            root,
+            &resolved.to_string_lossy(),
+            effective_fix,
+            effective_dry_run,
+            include_suggested,
+        )?
     } else {
         term_svc::global::lint_terms(root, effective_fix, effective_dry_run, include_suggested)?
     };
@@ -517,7 +609,7 @@ fn handle_lint(
                     }
                 }
             }
-            Ok(CommandOutcome::Success(serde_json::Value::Object(data), exit_code))
+            Ok(CommandOutcome::Success(serde_json::Value::Object(data), warnings, exit_code))
         }
         Format::Text => {
             let output = format_lint_text(&report, effective_fix, effective_dry_run);
@@ -666,9 +758,10 @@ fn handle_learn(
             details: serde_json::json!({"canonical": canonical, "variant": variant}),
         };
         return match format {
-            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
             Format::Text => Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                Vec::new(),
                 None,
             )),
         };
@@ -691,9 +784,10 @@ fn handle_learn(
         details: serde_json::to_value(&term).map_err(MfError::Json)?,
     };
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            Vec::new(),
             None,
         )),
     }
@@ -737,11 +831,23 @@ fn handle_update(
     }
 
     let update = update_input(&args, &correction_match, &correction_fix, &correction_pinyin, &correction_boundary);
-    let term = if let Some(project_name) = project {
+    let mut warnings: Vec<String> = Vec::new();
+    let (term, global_fallback) = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
-        term_svc::fix_term(&project_path, &args.term, update)?
+        match term_svc::fix_term(&project_path, &args.term, update) {
+            Ok(term) => (term, false),
+            Err(MfError::NotFound { .. }) => {
+                // Fall through to global with silent-drop WARN
+                crate::output::warning::emit_warning(
+                    &format!("-p {project_name} was ignored; the write applied to global scope because \"{}\" does not exist as a project-local term.", args.term),
+                    &mut warnings,
+                );
+                (term_svc::global::fix_term(root, &args.term, update)?, true)
+            }
+            Err(e) => return Err(e),
+        }
     } else {
-        term_svc::global::fix_term(root, &args.term, update)?
+        (term_svc::global::fix_term(root, &args.term, update)?, false)
     };
 
     let mut changes = serde_json::Map::new();
@@ -782,7 +888,7 @@ fn handle_update(
         changes.insert("correction_boundary".to_string(), serde_json::json!({"updated": args.correction_boundary}));
     }
 
-    let result = VerbResult {
+    let mut result = VerbResult {
         verb: Verb::Update,
         kind: "term",
         identity: term.term.clone(),
@@ -791,10 +897,16 @@ fn handle_update(
         dry_run: false,
         details: serde_json::json!({"changes": changes}),
     };
+    if global_fallback {
+        if let serde_json::Value::Object(ref mut map) = result.details {
+            map.insert("scope".to_string(), serde_json::json!("global"));
+        }
+    }
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            warnings,
             None,
         )),
     }
@@ -807,8 +919,26 @@ fn render_term_show(
     repo_root: Option<&std::path::Path>,
     format: Format,
 ) -> Result<CommandOutcome> {
+    render_term_show_inner(term, repo_root, format, None)
+}
+
+fn render_term_show_with_scope(
+    term: &crate::model::term::Term,
+    repo_root: Option<&std::path::Path>,
+    scope: &str,
+    format: Format,
+) -> Result<CommandOutcome> {
+    render_term_show_inner(term, repo_root, format, Some(scope))
+}
+
+fn render_term_show_inner(
+    term: &crate::model::term::Term,
+    repo_root: Option<&std::path::Path>,
+    format: Format,
+    scope: Option<&str>,
+) -> Result<CommandOutcome> {
     let corr_count = term.corrections.len();
-    let fields = vec![
+    let mut fields = vec![
         ShowField { label: "Term", value: ShowValue::Text(term.term.clone()) },
         ShowField { label: "Definition", value: ShowValue::Optional(term.definition.clone()) },
         ShowField { label: "Description", value: ShowValue::Optional(term.description.clone()) },
@@ -838,6 +968,9 @@ fn render_term_show(
             },
         },
     ];
+    if let Some(s) = scope {
+        fields.push(ShowField { label: "Scope", value: ShowValue::Text(s.to_string()) });
+    }
 
     let mut sections = Vec::new();
     if !term.corrections.is_empty() {
@@ -856,9 +989,11 @@ fn render_term_show(
 
     match format {
         Format::Json => {
-            let term_json = serde_json::to_value(term).map_err(MfError::Json)?;
-            let extra = term_json.as_object().cloned().unwrap_or_default();
-            Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
+            let mut extra = serde_json::to_value(term).map_err(MfError::Json)?.as_object().cloned().unwrap_or_default();
+            if let Some(s) = scope {
+                extra.insert("scope".to_string(), serde_json::json!(s));
+            }
+            Ok(CommandOutcome::Success(json_envelope(&block, extra), Vec::new(), None))
         }
         Format::Text => Ok(CommandOutcome::Raw(render_show_text(&block, &ShowOpts::from_repo_root(repo_root)), None)),
     }
@@ -871,13 +1006,21 @@ fn handle_show(
     format: Format,
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
-    let term = if let Some(project_name) = project {
+    if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
-        term_svc::show_term(&project_path, &args.name)?
+        match term_svc::show_term(&project_path, &args.name) {
+            Ok(term) => render_term_show_with_scope(&term, Some(root), "project", format),
+            Err(MfError::NotFound { .. }) => {
+                // Fall through to global
+                let term = term_svc::global::show_term(root, &args.name)?;
+                render_term_show_with_scope(&term, Some(root), "global", format)
+            }
+            Err(e) => Err(e),
+        }
     } else {
-        term_svc::global::show_term(root, &args.name)?
-    };
-    render_term_show(&term, Some(root), format)
+        let term = term_svc::global::show_term(root, &args.name)?;
+        render_term_show(&term, Some(root), format)
+    }
 }
 
 // ── Handle: mf term remove / rm ────────────────────────────────────────────
@@ -897,9 +1040,20 @@ fn handle_remove(
         force: args.force,
     })?;
 
+    let mut warnings: Vec<String> = Vec::new();
     let report = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
-        term_svc::remove_term(&project_path, &args.term, args.force, args.dry_run)?
+        match term_svc::remove_term(&project_path, &args.term, args.force, args.dry_run) {
+            Ok(report) => report,
+            Err(MfError::NotFound { .. }) => {
+                crate::output::warning::emit_warning(
+                    &format!("-p {project_name} was ignored; the write applied to global scope because \"{}\" does not exist as a project-local term.", args.term),
+                    &mut warnings,
+                );
+                term_svc::remove_term_global(root, &args.term, args.force, args.dry_run)?
+            }
+            Err(e) => return Err(e),
+        }
     } else {
         term_svc::remove_term_global(root, &args.term, args.force, args.dry_run)?
     };
@@ -914,9 +1068,10 @@ fn handle_remove(
         details: serde_json::json!({"removed": true}),
     };
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            warnings,
             None,
         )),
     }
@@ -942,17 +1097,29 @@ fn handle_rename(
             details: serde_json::json!({"keep_alias": args.keep_alias}),
         };
         return match format {
-            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
             Format::Text => Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                Vec::new(),
                 None,
             )),
         };
     }
 
+    let mut rename_warnings: Vec<String> = Vec::new();
     let report = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
-        term_svc::rename_term(&project_path, &args.old_term, &args.new_term, args.keep_alias, args.force, false)?
+        match term_svc::rename_term(&project_path, &args.old_term, &args.new_term, args.keep_alias, args.force, false) {
+            Ok(report) => report,
+            Err(MfError::NotFound { .. }) => {
+                crate::output::warning::emit_warning(
+                    &format!("-p {project_name} was ignored; the write applied to global scope because \"{}\" does not exist as a project-local term.", args.old_term),
+                    &mut rename_warnings,
+                );
+                term_svc::global::rename_term(root, &args.old_term, &args.new_term, args.keep_alias, args.force, false)?
+            }
+            Err(e) => return Err(e),
+        }
     } else {
         term_svc::global::rename_term(root, &args.old_term, &args.new_term, args.keep_alias, args.force, false)?
     };
@@ -967,9 +1134,10 @@ fn handle_rename(
         details: serde_json::json!({"keep_alias": args.keep_alias}),
     };
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), rename_warnings, None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            rename_warnings,
             None,
         )),
     }

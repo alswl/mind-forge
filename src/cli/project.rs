@@ -221,9 +221,10 @@ fn handle_new(args: ProjectNewArgs, repo_root: Option<&PathBuf>, format: Format)
             details: serde_json::json!({"requested_path": identity.requested_path, "path": identity.path}),
         };
         return match format {
-            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
             Format::Text => Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+                Vec::new(),
                 None,
             )),
         };
@@ -248,9 +249,10 @@ fn handle_new(args: ProjectNewArgs, repo_root: Option<&PathBuf>, format: Format)
         }),
     };
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+            Vec::new(),
             None,
         )),
     }
@@ -283,7 +285,7 @@ fn handle_list(args: ProjectListArgs, repo_root: Option<&PathBuf>, format: Forma
                     })
                 })
                 .collect();
-            Ok(CommandOutcome::Success(json_collection("projects", items), None))
+            Ok(CommandOutcome::Success(json_collection("projects", items), Vec::new(), None))
         }
         Format::Text => {
             let mut rows = Vec::with_capacity(entries.len());
@@ -320,7 +322,7 @@ fn handle_status(
     let snapshot = svc::project::status_for(root, &project_path)?;
 
     let data = serde_json::json!(snapshot);
-    Ok(CommandOutcome::Success(data, None))
+    Ok(CommandOutcome::Success(data, Vec::new(), None))
 }
 
 // ---------------------------------------------------------------------------
@@ -393,7 +395,7 @@ fn handle_lint(
         Format::Json => {
             let data =
                 serde_json::json!({ "kind": "project", "issues": issues, "summary": summary, "dry_run": dry_run });
-            Ok(CommandOutcome::Success(data, exit_code))
+            Ok(CommandOutcome::Success(data, Vec::new(), exit_code))
         }
         Format::Text => {
             let details = serde_json::json!({ "issues": issues, "summary": summary });
@@ -459,9 +461,10 @@ fn handle_index(args: ProjectIndexArgs, repo_root: Option<&PathBuf>, format: For
             details,
         };
         return match format {
-            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
             Format::Text => Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+                Vec::new(),
                 None,
             )),
         };
@@ -487,9 +490,10 @@ fn handle_index(args: ProjectIndexArgs, repo_root: Option<&PathBuf>, format: For
         details,
     };
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+            Vec::new(),
             None,
         )),
     }
@@ -546,7 +550,7 @@ fn handle_show(
         Format::Json => {
             let details_json = serde_json::to_value(&details).map_err(MfError::Json)?;
             let extra = details_json.as_object().cloned().unwrap_or_default();
-            Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
+            Ok(CommandOutcome::Success(json_envelope(&block, extra), Vec::new(), None))
         }
         Format::Text => Ok(CommandOutcome::Raw(
             render_show_text(&block, &ShowOpts::from_repo_root(repo_root.map(|r| r.as_path()))),
@@ -589,9 +593,10 @@ fn handle_archive(
                 details: serde_json::json!({"archived": false, "reason": "not found"}),
             };
             return match format {
-                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
                 Format::Text => Ok(CommandOutcome::Success(
                     serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+                    Vec::new(),
                     None,
                 )),
             };
@@ -609,10 +614,10 @@ fn handle_archive(
             details: serde_json::json!({"archived": true, "action": "archive"}),
         };
         return match format {
-            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
             Format::Text => {
                 let msg = format!("[dry-run] would archive project: {}", args.name_or_path);
-                Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
+                Ok(CommandOutcome::Success(serde_json::Value::String(msg), Vec::new(), None))
             }
         };
     }
@@ -629,10 +634,10 @@ fn handle_archive(
         details: serde_json::json!({"archived": true, "from": report.from, "to": report.to, "action": "archive"}),
     };
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => {
             let msg = format!("✓ archived project: {}", report.name);
-            Ok(CommandOutcome::Success(serde_json::Value::String(msg), None))
+            Ok(CommandOutcome::Success(serde_json::Value::String(msg), Vec::new(), None))
         }
     }
 }
@@ -658,7 +663,9 @@ fn handle_import(
     )?;
 
     match format {
-        Format::Json => Ok(CommandOutcome::Success(serde_json::to_value(&report).map_err(MfError::Json)?, None)),
+        Format::Json => {
+            Ok(CommandOutcome::Success(serde_json::to_value(&report).map_err(MfError::Json)?, Vec::new(), None))
+        }
         Format::Text => {
             let mut lines = Vec::new();
             lines.push(format!("Imported project: {}", report.name));
@@ -700,9 +707,10 @@ fn handle_update(
     };
 
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+            Vec::new(),
             None,
         )),
     }
@@ -730,9 +738,10 @@ fn handle_rename(
             details: serde_json::json!({}),
         };
         return match format {
-            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
             Format::Text => Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+                Vec::new(),
                 None,
             )),
         };
@@ -750,9 +759,10 @@ fn handle_rename(
         details: serde_json::json!({"from": report.from, "to": report.to}),
     };
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+            Vec::new(),
             None,
         )),
     }
@@ -792,9 +802,10 @@ fn handle_remove(
                 details: serde_json::json!({"removed": false, "reason": "not found"}),
             };
             return match format {
-                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
                 Format::Text => Ok(CommandOutcome::Success(
                     serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+                    Vec::new(),
                     None,
                 )),
             };
@@ -813,9 +824,10 @@ fn handle_remove(
         details: serde_json::json!({"removed": true, "path": report.before.path}),
     };
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+            Vec::new(),
             None,
         )),
     }

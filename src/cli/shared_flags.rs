@@ -47,6 +47,6 @@ pub struct LintFlags {
     pub max_warnings: Option<i32>,
     #[arg(long = "dry-run", help = "Preview fixes without writing (only with --fix)")]
     pub dry_run: bool,
-    #[arg(long = "all", help = "Apply all corrections including suggested")]
-    pub all: bool,
+    #[arg(long = "include-suggested", alias = "all", help = "Apply all corrections including suggested")]
+    pub include_suggested: bool,
 }

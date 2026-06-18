@@ -132,7 +132,7 @@ fn term_new_text_confirm() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("✓ created term: RAG"), "stdout: {stdout}");
+    assert!(stdout.contains("created term \"RAG\""), "stdout: {stdout}");
 }
 
 #[test]
@@ -151,9 +151,10 @@ fn term_new_json_envelope() {
     assert_eq!(v["status"], "ok");
     let data = &v["data"];
     assert!(data.is_object());
-    assert_eq!(data["kind"], "term");
-    assert_eq!(data["identity"], "RAG");
-    assert_eq!(data["dry_run"], false);
+    assert_eq!(data["term"], "RAG");
+    assert_eq!(data["created"], true);
+    assert!(data["added_aliases"].is_array());
+    assert!(data["added_tags"].is_array());
 }
 
 #[test]

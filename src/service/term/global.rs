@@ -30,8 +30,13 @@ pub fn save_terms(repo_root: &Path, terms: &[Term]) -> Result<()> {
 
 // ── Global term operations ──────────────────────────────────────────────────
 
-/// Register a new term in the global terms file.
-pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecognitions: &[String]) -> Result<Term> {
+/// Register a new term in the global terms file, or append aliases/tags when it exists.
+pub fn new_term(
+    repo_root: &Path,
+    term: &str,
+    input: TermInput<'_>,
+    misrecognitions: &[String],
+) -> Result<super::new::NewTermResult> {
     if term.trim().is_empty() {
         return Err(MfError::usage("term name cannot be empty", None));
     }
@@ -43,11 +48,65 @@ pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecogniti
     let aliases = dedup_preserve_first(input.aliases);
     let tags = dedup_preserve_first(input.tags);
 
-    if terms.iter().any(|t| t.term == term) {
-        return Err(MfError::usage(
-            format!("term '{term}' already exists"),
-            Some("use `mf term fix` to modify the existing term".to_string()),
-        ));
+    let existing_idx = terms.iter().position(|t| t.term == term);
+
+    if let Some(idx) = existing_idx {
+        let existing_term_name = terms[idx].term.clone();
+        let mut added_aliases = Vec::new();
+        let mut added_tags = Vec::new();
+        let mut added_misrecognitions = Vec::new();
+
+        for alias in &aliases {
+            if terms[idx].aliases.contains(alias) || terms[idx].term == *alias {
+                continue;
+            }
+            for t in terms.iter() {
+                if t.term == existing_term_name {
+                    continue;
+                }
+                if t.term == *alias || t.aliases.iter().any(|a| a == alias) {
+                    return Err(MfError::not_found(
+                        format!("alias '{alias}' already belongs to term '{}'", t.term),
+                        None,
+                    ));
+                }
+            }
+            terms[idx].aliases.push(alias.clone());
+            added_aliases.push(alias.clone());
+        }
+
+        for tag in &tags {
+            if !terms[idx].tags.contains(tag) {
+                terms[idx].tags.push(tag.clone());
+                added_tags.push(tag.clone());
+            }
+        }
+
+        for misrec in &misrecognitions {
+            let parts: Vec<&str> = misrec.splitn(2, ':').collect();
+            if parts.len() != 2 {
+                continue;
+            }
+            let original = parts[0];
+            let correct = parts[1];
+            if terms[idx].corrections.iter().any(|c| c.original == original && c.correct == correct) {
+                continue;
+            }
+            terms[idx].corrections.push(Correction::misrecognition(original, correct));
+            added_misrecognitions.push(misrec.clone());
+        }
+
+        let out = terms[idx].clone();
+        sort_terms_by_name(&mut terms);
+        save_terms(repo_root, &terms)?;
+
+        return Ok(super::new::NewTermResult {
+            term: out,
+            created: false,
+            added_aliases,
+            added_tags,
+            added_misrecognitions,
+        });
     }
 
     for alias in &aliases {
@@ -66,16 +125,22 @@ pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecogniti
         definition: input.definition.filter(|s| !s.is_empty()).map(String::from),
         description: input.description.map(String::from),
         confidence: input.confidence,
-        aliases,
-        tags,
-        corrections,
+        aliases: aliases.clone(),
+        tags: tags.clone(),
+        corrections: corrections.clone(),
     };
 
     terms.push(new_entry.clone());
     sort_terms_by_name(&mut terms);
     save_terms(repo_root, &terms)?;
 
-    Ok(new_entry)
+    Ok(super::new::NewTermResult {
+        term: new_entry,
+        created: true,
+        added_aliases: aliases,
+        added_tags: tags,
+        added_misrecognitions: misrecognitions,
+    })
 }
 
 /// List global terms, optionally filtered by substring.
@@ -380,7 +445,8 @@ mod tests {
         let root = dir.path();
         seed(root);
 
-        let t = new_term(root, "api-gateway", def_input("The API gateway service"), &[]).unwrap();
+        let r = new_term(root, "api-gateway", def_input("The API gateway service"), &[]).unwrap();
+        let t = r.term;
         assert_eq!(t.term, "api-gateway");
         assert_eq!(t.definition.as_deref(), Some("The API gateway service"));
 
@@ -390,13 +456,13 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_term_rejected() {
+    fn duplicate_term_is_idempotent() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         seed(root);
         new_term(root, "foo", TermInput::default(), &[]).unwrap();
-        let err = new_term(root, "foo", TermInput::default(), &[]).unwrap_err();
-        assert!(err.to_string().contains("already exists"));
+        let result = new_term(root, "foo", TermInput::default(), &[]).unwrap();
+        assert!(!result.created, "repeating the same new_term should be idempotent");
     }
 
     #[test]

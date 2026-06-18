@@ -144,7 +144,7 @@ fn handle_target_list(
                 "publish_targets": items,
                 "diagnostics": diagnostics,
             });
-            Ok(CommandOutcome::Success(data, None))
+            Ok(CommandOutcome::Success(data, Vec::new(), None))
         }
         Format::Text => {
             // Emit diagnostics to stderr before the table
@@ -290,7 +290,7 @@ fn handle_target_show(
         Format::Json => {
             let pub_json = serde_json::to_value(publisher).map_err(MfError::Json)?;
             let extra = pub_json.as_object().cloned().unwrap_or_default();
-            Ok(CommandOutcome::Success(json_envelope(&block, extra), None))
+            Ok(CommandOutcome::Success(json_envelope(&block, extra), Vec::new(), None))
         }
         Format::Text => Ok(CommandOutcome::Raw(
             render_show_text(&block, &ShowOpts::from_repo_root(repo_root.map(|r| r.as_path()))),
@@ -303,7 +303,7 @@ fn render_run_outcome(outcome: PublishRunOutcome, format: Format) -> Result<Comm
     match format {
         Format::Json => {
             let data = serde_json::to_value(&outcome)?;
-            Ok(CommandOutcome::Success(data, None))
+            Ok(CommandOutcome::Success(data, Vec::new(), None))
         }
         Format::Text => {
             let text = match &outcome {
@@ -331,7 +331,7 @@ fn render_update_outcome(outcome: PublishUpdateOutcome, format: Format) -> Resul
     match format {
         Format::Json => {
             let data = serde_json::to_value(&outcome)?;
-            Ok(CommandOutcome::Success(data, None))
+            Ok(CommandOutcome::Success(data, Vec::new(), None))
         }
         Format::Text => {
             let mut lines = Vec::new();
