@@ -139,6 +139,8 @@ pub struct TermUpdateArgs {
     pub correction_fix: Vec<String>,
     #[arg(long = "correction-pinyin", help = "Set correction pinyin: ORIGINAL:<pinyin>")]
     pub correction_pinyin: Vec<String>,
+    #[arg(long = "correction-boundary", help = "Set correction boundary: ORIGINAL:loose|standalone")]
+    pub correction_boundary: Vec<String>,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -244,6 +246,7 @@ fn update_input<'a>(
     correction_match: &'a [(String, crate::model::term::MatchKind)],
     correction_fix: &'a [(String, crate::model::term::FixKind)],
     correction_pinyin: &'a [(String, String)],
+    correction_boundary: &'a [(String, crate::model::term::Boundary)],
 ) -> term_svc::TermUpdate<'a> {
     term_svc::TermUpdate {
         definition: args.definition.as_deref(),
@@ -259,6 +262,7 @@ fn update_input<'a>(
         correction_match,
         correction_fix,
         correction_pinyin,
+        correction_boundary,
     }
 }
 
@@ -287,6 +291,14 @@ fn parse_fix_kind(raw: &str) -> Result<crate::model::term::FixKind> {
         "required" => Ok(crate::model::term::FixKind::Required),
         "suggested" => Ok(crate::model::term::FixKind::Suggested),
         other => Err(MfError::usage(format!("invalid fix kind '{other}'; expected required or suggested"), None)),
+    }
+}
+
+fn parse_boundary(raw: &str) -> Result<crate::model::term::Boundary> {
+    match raw.to_lowercase().as_str() {
+        "loose" => Ok(crate::model::term::Boundary::Loose),
+        "standalone" => Ok(crate::model::term::Boundary::Standalone),
+        other => Err(MfError::usage(format!("invalid boundary '{other}'; expected loose or standalone"), None)),
     }
 }
 
@@ -577,9 +589,18 @@ fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_
                     None => String::new(),
                 };
                 let suggested_mark = if f.fix_kind == "suggested" { "?" } else { "" };
+                let boundary_mark = if f.boundary == "standalone" { ", standalone" } else { "" };
                 lines.push(format!(
-                    "{}:{}:{}: \"{}\" → \"{}\" [{}]{}{}",
-                    f.path, f.line, f.column, f.original, f.correct, f.term, confidence_part, suggested_mark
+                    "{}:{}:{}: \"{}\" → \"{}\" [{}]{}{}{}",
+                    f.path,
+                    f.line,
+                    f.column,
+                    f.original,
+                    f.correct,
+                    f.term,
+                    confidence_part,
+                    suggested_mark,
+                    boundary_mark
                 ));
             }
         }
@@ -708,8 +729,13 @@ fn handle_update(
         let (original, value) = parse_kv(raw)?;
         correction_pinyin.push((original.to_string(), value.to_string()));
     }
+    let mut correction_boundary: Vec<(String, crate::model::term::Boundary)> = Vec::new();
+    for raw in &args.correction_boundary {
+        let (original, value) = parse_kv(raw)?;
+        correction_boundary.push((original.to_string(), parse_boundary(value)?));
+    }
 
-    let update = update_input(&args, &correction_match, &correction_fix, &correction_pinyin);
+    let update = update_input(&args, &correction_match, &correction_fix, &correction_pinyin, &correction_boundary);
     let term = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         term_svc::fix_term(&project_path, &args.term, update)?
@@ -750,6 +776,18 @@ fn handle_update(
     }
     if !correction_pinyin.is_empty() {
         changes.insert("correction_pinyin".to_string(), serde_json::json!({"updated": args.correction_pinyin}));
+    }
+    if !correction_boundary.is_empty() {
+        changes.insert(
+            "correction_boundary".to_string(),
+            serde_json::json!({"updated": correction_boundary.iter().map(|(o, b)| {
+            let boundary_str = match b {
+                crate::model::term::Boundary::Loose => "loose",
+                crate::model::term::Boundary::Standalone => "standalone",
+            };
+            format!("{o}:{boundary_str}")
+        }).collect::<Vec<_>>()}),
+        );
     }
 
     let result = VerbResult {

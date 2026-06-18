@@ -45,6 +45,7 @@ pub fn new_term(project_root: &Path, term: &str, input: TermInput<'_>, misrecogn
             correct: term.to_string(),
             r#match: crate::model::term::MatchKind::Word,
             fix: crate::model::term::FixKind::Required,
+            boundary: crate::model::term::Boundary::Loose,
             pinyin: None,
         })
         .collect();

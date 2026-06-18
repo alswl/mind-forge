@@ -65,6 +65,7 @@ pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecogniti
             correct: term.to_string(),
             r#match: crate::model::term::MatchKind::Word,
             fix: crate::model::term::FixKind::Required,
+            boundary: crate::model::term::Boundary::Loose,
             pinyin: None,
         })
         .collect();
@@ -121,9 +122,10 @@ pub fn fix_term(repo_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Re
         && update.correction_match.is_empty()
         && update.correction_fix.is_empty()
         && update.correction_pinyin.is_empty()
+        && update.correction_boundary.is_empty()
     {
         return Err(MfError::usage(
-            "at least one of --definition, --description, --confidence, --alias, --tag, --delete-alias, --delete-tag, --delete-correction, --correction-match, --correction-fix, --correction-pinyin, --clear-description, --clear-confidence must be provided",
+            "at least one of --definition, --description, --confidence, --alias, --tag, --delete-alias, --delete-tag, --delete-correction, --correction-match, --correction-fix, --correction-pinyin, --correction-boundary, --clear-description, --clear-confidence must be provided",
             None,
         ));
     }
@@ -207,6 +209,7 @@ pub fn learn_correction(repo_root: &Path, original: &str, correct: &str) -> Resu
         correct: canonical_name.clone(),
         r#match: crate::model::term::MatchKind::Word,
         fix: crate::model::term::FixKind::Required,
+        boundary: crate::model::term::Boundary::Loose,
         pinyin: None,
     });
     let result = terms[idx].clone();

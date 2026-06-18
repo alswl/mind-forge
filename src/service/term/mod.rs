@@ -13,7 +13,7 @@ pub mod rename;
 pub mod repo_format;
 pub mod show;
 
-use crate::model::term::{FixKind, MatchKind};
+use crate::model::term::{Boundary, FixKind, MatchKind};
 
 use std::collections::BTreeSet;
 
@@ -61,6 +61,7 @@ pub struct TermUpdate<'a> {
     pub correction_match: &'a [(String, MatchKind)],
     pub correction_fix: &'a [(String, FixKind)],
     pub correction_pinyin: &'a [(String, String)],
+    pub correction_boundary: &'a [(String, Boundary)],
 }
 
 impl<'a> TermUpdate<'a> {

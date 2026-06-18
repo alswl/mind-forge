@@ -42,6 +42,7 @@ pub fn learn_correction(project_root: &Path, original: &str, correct: &str) -> R
             correct: correct.to_string(),
             r#match: MatchKind::Word,
             fix: FixKind::Required,
+            boundary: crate::model::term::Boundary::Loose,
             pinyin: None,
         });
         term.clone()

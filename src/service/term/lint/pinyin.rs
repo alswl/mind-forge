@@ -92,6 +92,7 @@ pub(crate) fn scan_for_pinyin(
                     candidates: if entry.cref.is_ambiguous { entry.cref.candidates.to_vec() } else { vec![] },
                     match_kind: "pinyin".to_string(),
                     fix_kind: "suggested".to_string(), // FR-404: pinyin is always suggested
+                    boundary: "loose".to_string(),     // pinyin never opts into standalone
                 });
 
                 internal_findings.push(InternalFinding {

@@ -589,3 +589,290 @@ terms:
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("dry-run"), "stdout: {stdout}");
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// US1 — boundary: standalone skips identifier-internal matches (T011–T013)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn us1_boundary_standalone_skips_identifier_internal_and_fixes_standalone() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: AIDC
+    definition: AI Data Center
+    corrections:
+      - original: aidc
+        correct: AIDC
+        boundary: standalone
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    write_doc(&project, "cluster", "我们运行的 xxx-aidc-test 集群有问题。\n请改用 aidc 站点类型。\n");
+
+    let output = mf(&repo).args(["term", "lint", "--fix", "--yes", "--project", "alpha"]).output().unwrap();
+    assert!(output.status.success(), "should exit 0 after successful fix");
+
+    // Re-read the file: line 1 unchanged, line 2 rewritten
+    let content = fs::read_to_string(project.join("docs").join("cluster.md")).unwrap();
+    assert!(content.contains("xxx-aidc-test"), "identifier-internal must remain untouched: {content}");
+    assert!(content.contains("AIDC 站点类型"), "standalone occurrence must be rewritten: {content}");
+}
+
+#[test]
+fn us1_boundary_standalone_json_envelope() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: AIDC
+    definition: AI Data Center
+    corrections:
+      - original: aidc
+        correct: AIDC
+        boundary: standalone
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    write_doc(&project, "cluster", "我们运行的 xxx-aidc-test 集群有问题。\n请改用 aidc 站点类型。\n");
+
+    let output = mf(&repo).args(["term", "lint", "--json", "--project", "alpha"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
+    let findings = v["data"]["findings"].as_array().expect("findings array");
+    assert_eq!(findings.len(), 1, "exactly one finding expected, got: {stdout}");
+    assert_eq!(findings[0]["boundary"].as_str().expect("boundary field"), "standalone");
+}
+
+#[test]
+fn us1_boundary_standalone_all_suppressed_no_file_write() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: AIDC
+    definition: AI Data Center
+    corrections:
+      - original: aidc
+        correct: AIDC
+        boundary: standalone
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    // File with ONLY identifier-internal occurrences — nothing to fix
+    write_doc(&project, "cluster", "我们运行的 xxx-aidc-test 和 yyy-aidc-suffix。\n");
+
+    let file_path = project.join("docs").join("cluster.md");
+    let original_content = fs::read_to_string(&file_path).unwrap();
+    let mtime_before = std::fs::metadata(&file_path).unwrap().modified().unwrap();
+
+    let output = mf(&repo).args(["term", "lint", "--fix", "--yes", "--project", "alpha"]).output().unwrap();
+    assert!(output.status.success(), "should exit 0 when nothing to fix");
+
+    let mtime_after = std::fs::metadata(&file_path).unwrap().modified().unwrap();
+    let content_after = fs::read_to_string(&file_path).unwrap();
+
+    assert_eq!(content_after, original_content, "file must be byte-identical when no findings");
+    assert_eq!(mtime_before, mtime_after, "mtime must be unchanged when no file write");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// US2 — path-internal matches skipped (T017–T019)
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn setup_us2() -> (common::TempDir, std::path::PathBuf) {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: AIDC
+    definition: AI Data Center
+    corrections:
+      - original: aidc
+        correct: AIDC
+        boundary: standalone
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    (repo, project)
+}
+
+#[test]
+fn us2_relative_path_in_prose_suppressed() {
+    let (repo, project) = setup_us2();
+    // Relative-path "aidc" should be suppressed; standalone "aidc" on line 2 matches
+    write_doc(&project, "links", "./docs/aidc/intro.md 路径不匹配。\n独立 aidc 应该匹配。\n");
+
+    let output = mf(&repo).args(["term", "lint", "--json", "--project", "alpha"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
+    let findings = v["data"]["findings"].as_array().expect("findings array");
+    assert_eq!(findings.len(), 1, "only standalone aidc should match, path-internal suppressed: {stdout}");
+    assert_eq!(findings[0]["line"].as_u64(), Some(2), "finding must be on line 2 (standalone)");
+}
+
+#[test]
+fn us2_bare_url_still_exempt() {
+    let (repo, project) = setup_us2();
+    write_doc(&project, "links", "参见 https://example.com/guide/aidc_bootstrap 文档。\n");
+
+    let output = mf(&repo).args(["term", "lint", "--json", "--project", "alpha"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
+    let findings = v["data"]["findings"].as_array().expect("findings array");
+    assert_eq!(findings.len(), 0, "bare URL aidc must be exempt, got: {stdout}");
+}
+
+#[test]
+fn us2_combined_url_path_standalone_one_finding() {
+    let (repo, project) = setup_us2();
+    write_doc(
+        &project,
+        "links",
+        concat!(
+            "官方文档见 https://example.com/guide/aidc_bootstrap 。\n",
+            "相对路径 ./docs/aidc/intro.md 也别动。\n",
+            "独立用法 aidc 站点类型。\n",
+        ),
+    );
+
+    let output = mf(&repo).args(["term", "lint", "--json", "--project", "alpha"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
+    let findings = v["data"]["findings"].as_array().expect("findings array");
+    assert_eq!(findings.len(), 1, "exactly one finding (standalone) expected, got: {stdout}");
+    assert_eq!(findings[0]["line"].as_u64(), Some(3), "finding must be on line 3 (standalone)");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// US3 — code spans and fenced blocks skipped (regression, T022–T023)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn us3_code_span_and_fenced_blocks_suppressed() {
+    let (repo, project) = setup_us2(); // same index as US2
+    write_doc(
+        &project,
+        "code",
+        concat!(
+            "行内代码：`aidc-config` 是配置名。\n",
+            "\n",
+            "```yaml\n",
+            "service: aidc\n",
+            "```\n",
+            "\n",
+            "正文里说 aidc 站点。\n",
+        ),
+    );
+
+    let output = mf(&repo).args(["term", "lint", "--json", "--project", "alpha"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
+    let findings = v["data"]["findings"].as_array().expect("findings array");
+    assert_eq!(findings.len(), 1, "only prose aidc should be found, got: {stdout}");
+    assert_eq!(findings[0]["line"].as_u64(), Some(7), "finding must be on prose line");
+}
+
+#[test]
+fn us3_code_span_suppressed_for_loose_boundary_too() {
+    // Regression: code spans should be suppressed even with boundary: loose
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: AIDC
+    definition: AI Data Center
+    corrections:
+      - original: aidc
+        correct: AIDC
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    write_doc(&project, "code", "行内代码：`aidc-config` 是配置名。\n正文 aidc 站点。\n");
+
+    let output = mf(&repo).args(["term", "lint", "--json", "--project", "alpha"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
+    let findings = v["data"]["findings"].as_array().expect("findings array");
+    assert_eq!(findings.len(), 1, "code-span must be exempt; only prose should match: {stdout}");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// US4 — overlap dedup: longest-match wins (T027–T028)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn us4_overlap_longest_match_wins() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    // Two rules: "aidc" (short) and "aidcx" (long) — both match "aidcx"
+    // Longest must win, NOT double-write
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: AIDC
+    definition: AI Data Center
+    corrections:
+      - original: aidc
+        correct: AIDC
+        boundary: standalone
+      - original: aidcx
+        correct: AIDC-Long
+        boundary: standalone
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    write_doc(&project, "overlap", "看这里 aidcx 3.0 元数据平台。\n");
+
+    let output = mf(&repo).args(["term", "lint", "--fix", "--yes", "--project", "alpha"]).output().unwrap();
+    assert!(output.status.success());
+
+    let content = fs::read_to_string(project.join("docs").join("overlap.md")).unwrap();
+    assert!(content.contains("AIDC-Long 3.0"), "longest match must win, got: {content}");
+    assert!(!content.contains("AIDC AIDC-Long"), "no double-write allowed, got: {content}");
+
+    // Rerun is no-op
+    let output2 = mf(&repo).args(["term", "lint", "--fix", "--yes", "--project", "alpha"]).output().unwrap();
+    assert!(output2.status.success());
+}
+
+#[test]
+fn us4_no_panic_on_overlap_regression_1c05809() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    // Reproduce the 1c05809 panic input: "mini pass" with two overlapping corrections
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: MiniPaaS
+    corrections:
+      - original: mini pass
+        correct: mini PaaS
+  - term: PaaS
+    corrections:
+      - original: pass
+        correct: PaaS
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    write_doc(&project, "doc", "mini pass test\n");
+
+    let output = mf(&repo).args(["term", "lint", "--fix", "--yes", "--project", "alpha"]).output().unwrap();
+    // Must not panic; must produce exactly one rewrite
+    let content = fs::read_to_string(project.join("docs").join("doc.md")).unwrap();
+    assert!(content.contains("mini PaaS"), "should rewrite mini pass → mini PaaS, got: {content}");
+    assert!(!content.contains("PaaS PaaS"), "no double-write, got: {content}");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("mini PaaS") || stdout.contains("fixed"), "stdout: {stdout}");
+}

@@ -5,7 +5,7 @@ use std::path::Path;
 use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::index::IndexFile;
-use crate::model::term::{CandidateTerm, FixKind, TermFinding, TermLintFailure, TermLintReport};
+use crate::model::term::{Boundary, CandidateTerm, FixKind, TermFinding, TermLintFailure, TermLintReport};
 use crate::service::config as config_svc;
 use crate::service::index;
 use crate::service::util::{atomic_write, canonicalize_within, rel_posix_path};
@@ -29,6 +29,7 @@ pub(crate) struct CorrectionEntry {
     pub(crate) confidence: Option<f64>,
     pub(crate) match_kind: crate::model::term::MatchKind,
     pub(crate) fix_kind: crate::model::term::FixKind,
+    pub(crate) boundary: Boundary,
     pub(crate) pinyin: Option<String>,
 }
 
@@ -45,6 +46,7 @@ pub(crate) fn collect_corrections(index: &IndexFile) -> Vec<CorrectionEntry> {
                     confidence: t.confidence,
                     match_kind: c.r#match,
                     fix_kind: c.fix,
+                    boundary: c.boundary,
                     pinyin: c.pinyin.clone(),
                 });
             }
@@ -224,7 +226,7 @@ pub(crate) fn lint_single_file_with_index(
 
     let mut would_apply_count: u64 = 0;
     let mut spans: Vec<FixSpan> = Vec::new();
-    for ifind in &internal_findings {
+    for (idx, ifind) in internal_findings.iter().enumerate() {
         if ifind.original == ifind.correct || ifind.is_ambiguous {
             continue;
         }
@@ -236,6 +238,7 @@ pub(crate) fn lint_single_file_with_index(
             start: ifind.byte_offset,
             end: ifind.byte_offset + ifind.original_len,
             replacement: ifind.correct.clone(),
+            declaration_order: idx,
         });
     }
 
@@ -453,6 +456,7 @@ pub(crate) fn build_correction_refs<'a>(
                 },
                 match_kind: c.match_kind,
                 fix_kind: c.fix_kind,
+                boundary: c.boundary,
                 pinyin: c.pinyin.as_deref(),
             }
         })
@@ -515,6 +519,7 @@ fn apply_term_fixes(
                 start: ifind.byte_offset,
                 end: ifind.byte_offset + ifind.original_len,
                 replacement: ifind.correct.clone(),
+                declaration_order: idx,
             });
             per_file_fixed += 1;
         }

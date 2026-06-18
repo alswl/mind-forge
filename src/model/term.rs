@@ -29,6 +29,20 @@ impl FixKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Boundary {
+    #[default]
+    Loose,
+    Standalone,
+}
+
+impl Boundary {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Correction {
     pub original: String,
@@ -37,6 +51,8 @@ pub struct Correction {
     pub r#match: MatchKind,
     #[serde(default, skip_serializing_if = "FixKind::is_default")]
     pub fix: FixKind,
+    #[serde(default, skip_serializing_if = "Boundary::is_default")]
+    pub boundary: Boundary,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pinyin: Option<String>,
 }
@@ -79,6 +95,7 @@ pub struct TermFinding {
     pub candidates: Vec<CandidateTerm>,
     pub match_kind: String,
     pub fix_kind: String,
+    pub boundary: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -147,11 +164,13 @@ mod tests {
             correct: "Mind Repo".into(),
             r#match: MatchKind::Word,
             fix: FixKind::Required,
+            boundary: Boundary::Loose,
             pinyin: None,
         };
         let yaml = serde_yaml::to_string(&c).unwrap();
         assert!(!yaml.contains("match:"), "default match:word must not write: {yaml}");
         assert!(!yaml.contains("fix:"), "default fix:required must not write: {yaml}");
+        assert!(!yaml.contains("boundary:"), "default boundary:loose must not write: {yaml}");
         assert!(!yaml.contains("pinyin:"), "None pinyin must not write: {yaml}");
     }
 
@@ -162,6 +181,7 @@ mod tests {
             correct: "凯飞迪".into(),
             r#match: MatchKind::Pinyin,
             fix: FixKind::Suggested,
+            boundary: Boundary::Loose,
             pinyin: Some("kai-fei-di".into()),
         };
         let yaml = serde_yaml::to_string(&c).unwrap();
@@ -179,7 +199,45 @@ mod tests {
         assert_eq!(c.correct, "Mind Repo");
         assert_eq!(c.r#match, MatchKind::Word);
         assert_eq!(c.fix, FixKind::Required);
+        assert_eq!(c.boundary, Boundary::Loose);
         assert_eq!(c.pinyin, None);
+    }
+
+    #[test]
+    fn boundary_default_is_loose() {
+        assert_eq!(Boundary::default(), Boundary::Loose);
+        assert!(Boundary::Loose.is_default());
+        assert!(!Boundary::Standalone.is_default());
+    }
+
+    #[test]
+    fn boundary_standalone_roundtrip_preserves_value() {
+        let yaml = "original: aidc\ncorrect: AIDC\nboundary: standalone\n";
+        let c: Correction = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(c.boundary, Boundary::Standalone);
+        let written = serde_yaml::to_string(&c).unwrap();
+        assert!(written.contains("boundary: standalone"), "standalone must serialize: {written}");
+    }
+
+    #[test]
+    fn boundary_loose_not_serialized_even_when_explicit() {
+        let c = Correction {
+            original: "aidc".into(),
+            correct: "AIDC".into(),
+            r#match: MatchKind::Word,
+            fix: FixKind::Required,
+            boundary: Boundary::Loose,
+            pinyin: None,
+        };
+        let written = serde_yaml::to_string(&c).unwrap();
+        assert!(!written.contains("boundary:"), "explicit loose must still be omitted: {written}");
+    }
+
+    #[test]
+    fn boundary_invalid_variant_fails() {
+        let yaml = "original: foo\ncorrect: bar\nboundary: bogus\n";
+        let result: Result<Correction, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err(), "unknown boundary variant must fail");
     }
 
     #[test]
