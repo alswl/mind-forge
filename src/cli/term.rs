@@ -64,7 +64,13 @@ pub struct TermListArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct TermNewArgs {
-    pub term: String,
+    /// Canonical term name. Pass positionally; the deprecated `--term` flag
+    /// still parses for one release with a WARN.
+    #[arg(value_name = "TERM")]
+    pub term: Option<String>,
+    /// Deprecated alias of the positional `<TERM>` argument.
+    #[arg(long = "term", hide = true)]
+    pub term_legacy: Option<String>,
     #[arg(long)]
     pub definition: Option<String>,
     #[arg(long)]
@@ -319,6 +325,33 @@ fn handle_new(
     format: Format,
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
+    // T066/T067: reconcile positional and the deprecated `--term` flag.
+    // Positional wins when both are present; either way, the legacy flag earns a WARN.
+    let mut warnings: Vec<String> = Vec::new();
+    let term_name = match (args.term.clone(), args.term_legacy.clone()) {
+        (Some(t), None) => t,
+        (Some(positional), Some(_)) => {
+            crate::output::warning::emit_warning(
+                &format!("--term flag is deprecated; pass `{positional}` positionally instead."),
+                &mut warnings,
+            );
+            positional
+        }
+        (None, Some(legacy)) => {
+            crate::output::warning::emit_warning(
+                &format!("--term flag is deprecated; pass `{legacy}` positionally instead."),
+                &mut warnings,
+            );
+            legacy
+        }
+        (None, None) => {
+            return Err(MfError::usage(
+                "term name required",
+                Some("pass the canonical term as the positional argument: `mf term new <NAME>`".to_string()),
+            ))
+        }
+    };
+
     if args.dry_run {
         let has_aliases = !args.alias.is_empty();
         let mut actions = vec!["create canonical term".to_string()];
@@ -337,17 +370,17 @@ fn handle_new(
         let result = VerbResult {
             verb: Verb::Create,
             kind: "term",
-            identity: args.term.clone(),
+            identity: term_name.clone(),
             old_identity: None,
             path: None,
             dry_run: true,
             details,
         };
         return match format {
-            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
             Format::Text => Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
-                Vec::new(),
+                warnings,
                 None,
             )),
         };
@@ -355,9 +388,9 @@ fn handle_new(
 
     let result = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
-        term_svc::new_term(&project_path, &args.term, new_input(&args), &args.misrecognition)?
+        term_svc::new_term(&project_path, &term_name, new_input(&args), &args.misrecognition)?
     } else {
-        term_svc::global::new_term(root, &args.term, new_input(&args), &args.misrecognition)?
+        term_svc::global::new_term(root, &term_name, new_input(&args), &args.misrecognition)?
     };
 
     let data = serde_json::json!({
@@ -381,8 +414,8 @@ fn handle_new(
     };
 
     match format {
-        Format::Json => Ok(CommandOutcome::Success(data, Vec::new(), None)),
-        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(text_output), Vec::new(), None)),
+        Format::Json => Ok(CommandOutcome::Success(data, warnings, None)),
+        Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(text_output), warnings, None)),
     }
 }
 
