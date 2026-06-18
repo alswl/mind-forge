@@ -313,13 +313,13 @@ fn term_renamed_verbs() {
     let (stdout, _, code) = run(&["term", "--help"]);
     assert_eq!(code, 0);
 
-    // Target state: should have 'update' and 'add'
+    // Target state: should have 'update', 'add', and 'fix' (now a first-class lint alias)
     assert!(stdout.contains("update"), "term should have 'update' subcommand (renamed from fix)");
     assert!(stdout.contains("add"), "term should have 'add' subcommand (renamed from learn)");
+    assert!(stdout.contains("fix"), "term should have 'fix' subcommand (lint --fix alias)");
 
-    // Old names should NOT appear in help (they become hidden aliases)
+    // Old 'learn' name should NOT appear in help (hidden alias)
     assert!(!stdout.contains("learn"), "term help should not show 'learn' (hidden alias)");
-    assert!(!stdout.contains("fix"), "term help should not show 'fix' (hidden alias)");
 }
 
 /// Verify `mf source ls` alias works

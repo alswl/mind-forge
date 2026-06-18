@@ -218,10 +218,14 @@ fn lint_json_shape() {
     assert_eq!(parsed["status"], "ok");
     let findings = parsed["data"]["findings"].as_array().unwrap();
     assert_eq!(findings.len(), 1);
+    let f = &findings[0];
+    assert!(f.get("match_kind").is_some(), "finding must have match_kind");
+    assert!(f.get("fix_kind").is_some(), "finding must have fix_kind");
     assert!(parsed["data"].get("scanned_files").is_some());
     assert!(parsed["data"].get("fixed_count").is_some());
     assert!(parsed["data"].get("modified_files").is_some());
     assert!(parsed["data"].get("failures").is_some());
+    assert!(parsed["data"].get("would_apply_count").is_some(), "report must have would_apply_count");
 }
 
 // ---------------------------------------------------------------------------
@@ -448,6 +452,7 @@ fn lint_fix_json_shape() {
     assert_eq!(parsed["status"], "ok");
     assert!(parsed["data"]["fixed_count"].as_u64().unwrap_or(0) >= 1);
     assert_eq!(parsed["data"]["modified_files"].as_array().unwrap().len(), 1);
+    assert!(parsed["data"].get("would_apply_count").is_some(), "report must have would_apply_count");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -523,4 +528,3 @@ terms:
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert_eq!(stdout.matches("→ \"MindRepo\"").count(), 1, "only standalone: {stdout}");
 }
-

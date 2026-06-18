@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
+### `mf term lint` 误改防护 + 语音输入感知 (042-term-ux-improvements)
+
+#### Breaking Changes
+- **CJK `original` 默认匹配模式从字面变为词边界**：`match: word`（默认）下，CJK 术语只在词边界命中（e.g., `机器` 不命中 `机器人`）。已有 CJK 术语需加 `match: substring` 还原 spec 012 行为。
+- **`mf term fix` 命令语义重定义**：从「修改 term metadata」变为「修改文档命中」（= `mf term lint --fix`）。旧 metadata 用法已删除，请使用 `mf term update` 替代。
+
+#### New Features
+- **`Correction.match` 字段**：`word`（默认）/ `substring` / `pinyin`。`word` 对 ASCII 按 `[A-Za-z0-9_]` 词边界匹配，CJK 按非 CJK 表意字符邻居判定。
+- **`mf term fix` 一级动词**：`mf term fix` 等价于 `mf term lint --fix`，新增 `--all` flag 支持应用 suggested 命中。
+- **拼音模糊匹配 `match: pinyin`**：使用 `pinyin` crate（MIT）对 CJK 术语做拼音扫描（忽略声调，distance 0），命中强制 `fix_kind=suggested`。适应语音输入场景。
+- **`Correction.fix` 字段**：`required`（默认，自动应用）/ `suggested`（需 `--all` 才应用）。文本输出 sugered finding 行末追加 `?`。
+- **JSON 新增字段**：每条 finding 含 `match_kind` / `fix_kind`；报告含 `would_apply_count`。
+
+#### Compatibility
+- 旧 YAML 文件（无 `match` / `fix` / `pinyin` 字段）加载后取默认值，行为非破坏（`match: word`、`fix: required`）。
+- 新 YAML（含 `match: pinyin` 等字段）被旧 mf binary 读取时静默忽略未知字段（serde default）。
+- 新增 `pinyin` crate 依赖（MIT，纯 Rust，无 transitive 外部依赖）。
+
 ### Breaking Changes (JSON Envelope)
 
 All breaking changes are documented with before/after examples below.

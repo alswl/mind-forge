@@ -58,8 +58,16 @@ pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecogniti
         }
     }
 
-    let corrections: Vec<Correction> =
-        misrecognitions.iter().map(|m| Correction { original: m.clone(), correct: term.to_string() }).collect();
+    let corrections: Vec<Correction> = misrecognitions
+        .iter()
+        .map(|m| Correction {
+            original: m.clone(),
+            correct: term.to_string(),
+            r#match: crate::model::term::MatchKind::Word,
+            fix: crate::model::term::FixKind::Required,
+            pinyin: None,
+        })
+        .collect();
 
     let new_entry = Term {
         term: term.to_string(),
@@ -186,7 +194,13 @@ pub fn learn_correction(repo_root: &Path, original: &str, correct: &str) -> Resu
         return Ok((terms[idx].clone(), false));
     }
 
-    terms[idx].corrections.push(Correction { original: original.to_string(), correct: canonical_name.clone() });
+    terms[idx].corrections.push(Correction {
+        original: original.to_string(),
+        correct: canonical_name.clone(),
+        r#match: crate::model::term::MatchKind::Word,
+        fix: crate::model::term::FixKind::Required,
+        pinyin: None,
+    });
     let result = terms[idx].clone();
     sort_terms_by_name(&mut terms);
     save_terms(repo_root, &terms)?;
@@ -208,25 +222,43 @@ fn global_index(terms: Vec<Term>) -> IndexFile {
 }
 
 /// Lint a single file against global terms.
-pub fn lint_file(repo_root: &Path, file_path: &str, fix: bool, dry_run: bool) -> Result<TermLintReport> {
+pub fn lint_file(
+    repo_root: &Path,
+    file_path: &str,
+    fix: bool,
+    dry_run: bool,
+    include_suggested: bool,
+) -> Result<TermLintReport> {
     let terms = load_terms(repo_root)?;
     if terms.is_empty() {
         return Ok(lint::empty_report(fix, dry_run));
     }
-    lint::lint_single_file_with_index(&global_index(terms), repo_root, file_path, fix, dry_run)
+    lint::lint_single_file_with_index(&global_index(terms), repo_root, file_path, fix, dry_run, include_suggested)
 }
 
 /// Lint a file or directory path relative to the repo root.
-pub fn lint_path(repo_root: &Path, path: &str, fix: bool, dry_run: bool) -> Result<TermLintReport> {
+pub fn lint_path(
+    repo_root: &Path,
+    path: &str,
+    fix: bool,
+    dry_run: bool,
+    include_suggested: bool,
+) -> Result<TermLintReport> {
     if repo_root.join(path).is_dir() {
-        lint_dir(repo_root, path, fix, dry_run)
+        lint_dir(repo_root, path, fix, dry_run, include_suggested)
     } else {
-        lint_file(repo_root, path, fix, dry_run)
+        lint_file(repo_root, path, fix, dry_run, include_suggested)
     }
 }
 
 /// Lint all markdown files under a specific directory (global).
-pub fn lint_dir(repo_root: &Path, dir_path: &str, fix: bool, dry_run: bool) -> Result<TermLintReport> {
+pub fn lint_dir(
+    repo_root: &Path,
+    dir_path: &str,
+    fix: bool,
+    dry_run: bool,
+    include_suggested: bool,
+) -> Result<TermLintReport> {
     let terms = load_terms(repo_root)?;
     if terms.is_empty() {
         return Ok(lint::empty_report(fix, dry_run));
@@ -238,16 +270,17 @@ pub fn lint_dir(repo_root: &Path, dir_path: &str, fix: bool, dry_run: bool) -> R
         "provide a path relative to the repo root",
         fix,
         dry_run,
+        include_suggested,
     )
 }
 
 /// Lint all markdown files in the repo against global terms.
-pub fn lint_terms(repo_root: &Path, fix: bool, dry_run: bool) -> Result<TermLintReport> {
+pub fn lint_terms(repo_root: &Path, fix: bool, dry_run: bool, include_suggested: bool) -> Result<TermLintReport> {
     let terms = load_terms(repo_root)?;
     if terms.is_empty() {
         return Ok(lint::empty_report(fix, dry_run));
     }
-    lint::lint_walk_with_index(&global_index(terms), repo_root, repo_root, None, fix, dry_run)
+    lint::lint_walk_with_index(&global_index(terms), repo_root, repo_root, None, fix, dry_run, include_suggested)
 }
 
 // ── Global term rename ───────────────────────────────────────────────────────

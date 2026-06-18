@@ -15,5 +15,6 @@ mod publisher;
 mod repo_lifecycle;
 mod source_index;
 mod term_global;
+mod term_lint_workflow;
 mod terminal_capabilities;
 mod unified_output_contracts;
