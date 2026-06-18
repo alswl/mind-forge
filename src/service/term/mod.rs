@@ -21,7 +21,7 @@ use crate::error::MfError;
 
 pub use self::fix::fix_term;
 pub use self::learn::learn_correction;
-pub use self::lint::{lint_path, lint_terms};
+pub use self::lint::{lint_path_with_global, lint_terms_with_global};
 pub use self::list::list_terms;
 pub(crate) use self::lookup::find_term_by_correct;
 pub use self::new::new_term;

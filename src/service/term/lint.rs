@@ -82,6 +82,63 @@ pub(crate) fn build_candidates(
     result
 }
 
+/// Merge global terms into a project index for lint fall-through (US3).
+/// For each global term whose canonical name does not appear in the project
+/// index, append it. Project records shadow global ones by name.
+fn merge_global_into_index(project_index: &mut IndexFile, global_terms: Vec<crate::model::term::Term>) {
+    let project_terms = project_index.terms.get_or_insert_with(Vec::new);
+    let project_names: std::collections::BTreeSet<String> = project_terms.iter().map(|t| t.term.clone()).collect();
+    for t in global_terms {
+        if !project_names.contains(&t.term) {
+            project_terms.push(t);
+        }
+    }
+}
+
+pub fn lint_path_with_global(
+    project_root: &Path,
+    repo_root: &Path,
+    path: &str,
+    fix: bool,
+    dry_run: bool,
+    include_suggested: bool,
+) -> Result<TermLintReport> {
+    let mut index = index::load(project_root)?;
+    let global_terms = crate::service::term::global::load_terms(repo_root)?;
+    merge_global_into_index(&mut index, global_terms);
+    if project_root.join(path).is_dir() {
+        lint_dir_with_index(
+            &index,
+            project_root,
+            path,
+            "provide a path relative to the project root",
+            fix,
+            dry_run,
+            include_suggested,
+        )
+    } else {
+        lint_single_file_with_index(&index, project_root, path, fix, dry_run, include_suggested)
+    }
+}
+
+pub fn lint_terms_with_global(
+    project_root: &Path,
+    repo_root: &Path,
+    fix: bool,
+    dry_run: bool,
+    include_suggested: bool,
+) -> Result<TermLintReport> {
+    let mut index = index::load(project_root)?;
+    let global_terms = crate::service::term::global::load_terms(repo_root)?;
+    merge_global_into_index(&mut index, global_terms);
+    let layout = config_svc::effective_layout(project_root)?;
+    let docs_dir = project_root.join(&layout.articles);
+    if !docs_dir.exists() {
+        return Ok(empty_report(fix, dry_run));
+    }
+    lint_walk_with_index(&index, project_root, &docs_dir, Some(&docs_dir), fix, dry_run, include_suggested)
+}
+
 pub(crate) fn empty_report(fix: bool, dry_run: bool) -> TermLintReport {
     TermLintReport {
         findings: vec![],
@@ -93,74 +150,6 @@ pub(crate) fn empty_report(fix: bool, dry_run: bool) -> TermLintReport {
         would_fix_count: if fix && dry_run { Some(0) } else { None },
         would_apply_count: 0,
     }
-}
-
-/// Lint a single file for term corrections (FR-027 mind primary form).
-pub fn lint_file(
-    project_root: &Path,
-    file_path: &str,
-    fix: bool,
-    dry_run: bool,
-    include_suggested: bool,
-) -> Result<TermLintReport> {
-    let index = index::load(project_root)?;
-    if index.terms.as_ref().map_or(true, |t| t.is_empty()) {
-        return Ok(empty_report(fix, dry_run));
-    }
-    lint_single_file_with_index(&index, project_root, file_path, fix, dry_run, include_suggested)
-}
-
-/// Lint a file or directory path relative to the project root.
-pub fn lint_path(
-    project_root: &Path,
-    path: &str,
-    fix: bool,
-    dry_run: bool,
-    include_suggested: bool,
-) -> Result<TermLintReport> {
-    if project_root.join(path).is_dir() {
-        lint_dir(project_root, path, fix, dry_run, include_suggested)
-    } else {
-        lint_file(project_root, path, fix, dry_run, include_suggested)
-    }
-}
-
-/// Lint all markdown files under a specific directory (project-scoped).
-pub fn lint_dir(
-    project_root: &Path,
-    dir_path: &str,
-    fix: bool,
-    dry_run: bool,
-    include_suggested: bool,
-) -> Result<TermLintReport> {
-    let index = index::load(project_root)?;
-    if index.terms.as_ref().map_or(true, |t| t.is_empty()) {
-        return Ok(empty_report(fix, dry_run));
-    }
-    lint_dir_with_index(
-        &index,
-        project_root,
-        dir_path,
-        "provide a path relative to the project root",
-        fix,
-        dry_run,
-        include_suggested,
-    )
-}
-
-pub fn lint_terms(project_root: &Path, fix: bool, dry_run: bool, include_suggested: bool) -> Result<TermLintReport> {
-    let index = index::load(project_root)?;
-    if index.terms.as_ref().map_or(true, |t| t.is_empty()) {
-        return Ok(empty_report(fix, dry_run));
-    }
-
-    let layout = config_svc::effective_layout(project_root)?;
-    let docs_dir = project_root.join(&layout.articles);
-    if !docs_dir.exists() {
-        return Ok(empty_report(fix, dry_run));
-    }
-
-    lint_walk_with_index(&index, project_root, &docs_dir, Some(&docs_dir), fix, dry_run, include_suggested)
 }
 
 pub(crate) fn lint_dir_with_index(

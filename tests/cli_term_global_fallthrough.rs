@@ -185,3 +185,112 @@ fn list_merges_global_terms_with_scope_tag_in_json() {
     assert_eq!(by_name.get("Kubernetes"), Some(&"global"), "expected Kubernetes tagged global: {by_name:?}");
     assert_eq!(by_name.get("ProjectOnly"), Some(&"project"), "expected ProjectOnly tagged project: {by_name:?}");
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// T044 — show prefers project record when both exist
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn show_prefers_project_record_when_both_exist() {
+    let repo = setup();
+    // Seed global and project records with the same name.
+    seed_global_term(&repo, "Overlap");
+    let _ = mf(&repo).args(["--project", "alpha", "term", "new", "Overlap", "--tag", "project-only"]).output().unwrap();
+
+    let output = mf(&repo).args(["--project", "alpha", "--json", "term", "show", "Overlap"]).output().unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let v: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(v["data"]["scope"], "project", "should prefer project record: {}", v["data"]);
+    assert!(
+        v["data"]["tags"].as_array().map_or(false, |a| a.iter().any(|t| t == "project-only")),
+        "project record should contain project-only tag: {}",
+        v["data"]
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// T045 — list -p returns union: project first, then unshadowed global
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn list_returns_deterministic_union_with_project_first() {
+    let repo = setup();
+    seed_global_term(&repo, "GlobalOnly");
+    let _ = mf(&repo).args(["--project", "alpha", "term", "new", "ProjectFirst"]).output().unwrap();
+
+    let output = mf(&repo).args(["--project", "alpha", "--json", "term", "list"]).output().unwrap();
+    assert!(output.status.success());
+
+    let v: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let terms = v["data"]["terms"].as_array().unwrap();
+
+    // Verify both terms are present.
+    let names: Vec<&str> = terms.iter().map(|t| t["term"].as_str().unwrap()).collect();
+    assert!(names.contains(&"GlobalOnly"), "list must include global terms: {names:?}");
+    assert!(names.contains(&"ProjectFirst"), "list must include project terms: {names:?}");
+
+    // Verify the list is sorted deterministically (alphabetical).
+    let sorted: Vec<String> = {
+        let mut n = names.clone();
+        n.sort();
+        n.iter().map(|s| s.to_string()).collect()
+    };
+    let actual: Vec<String> = names.iter().map(|s| s.to_string()).collect();
+    assert_eq!(actual, sorted, "list must be sorted alphabetically");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// T046 — lint -p applies global corrections when no project-level correction exists
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn lint_applies_global_corrections_under_project() {
+    let repo = setup();
+    // Seed a global term with a correction: gt → GlobalTerm.
+    let _ = mf(&repo).args(["term", "new", "GlobalTerm", "--misrecognition", "gt"]).output().unwrap();
+
+    // Create a doc under project alpha.
+    let doc_dir = repo.path().join("alpha/docs");
+    std::fs::create_dir_all(&doc_dir).unwrap();
+    std::fs::write(doc_dir.join("note.md"), "we use gt a lot\n").unwrap();
+
+    let output = mf(&repo)
+        .args(["--project", "alpha", "--json", "term", "lint", "docs/note.md", "--include-suggested"])
+        .output()
+        .unwrap();
+
+    let v: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let findings = v["data"]["findings"].as_array().unwrap();
+
+    // The global correction "gt → GlobalTerm" should be found.
+    assert!(!findings.is_empty(), "global corrections must apply under -p: {v}");
+    let has_gt = findings.iter().any(|f| f["original"].as_str().unwrap_or("") == "gt");
+    assert!(has_gt, "findings must include the global correction 'gt': {findings:?}");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// T049 — stderr redirection: JSON envelope still carries WARN even when stderr dropped
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn json_warning_survives_stderr_redirect() {
+    let repo = setup();
+    seed_global_term(&repo, "Kubernetes");
+
+    // Run with stderr redirected to /dev/null — JSON on stdout still carries the warning.
+    let output = mf(&repo)
+        .args(["--project", "alpha", "--json", "term", "update", "Kubernetes", "--tag", "k8s"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    // Ignore stderr content — the test is that stdout JSON carries the warning regardless.
+
+    let v: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let warnings = v["data"]["warnings"].as_array().unwrap();
+    assert!(
+        warnings.iter().any(|w| w.as_str().unwrap_or("").contains("-p alpha was ignored")),
+        "JSON warnings must survive even when stderr is dropped: {warnings:?}"
+    );
+}

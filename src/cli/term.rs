@@ -210,13 +210,26 @@ pub fn dispatch(
         Some(TermSubcommand::Add(args)) => {
             warn_learn_flag_deprecations(&args, deprecation);
             let mut warnings: Vec<String> = Vec::new();
-            let term_name = args.term.as_deref().unwrap_or("<NAME>");
-            let alias_str = args.alias.as_deref().unwrap_or("<ALIAS>");
+            let canonical = args.term.as_deref().or(args.correct.as_deref()).filter(|s| !s.is_empty());
+            let variant = args.alias.as_deref().or(args.original.as_deref()).filter(|s| !s.is_empty());
+            let term_name = canonical.unwrap_or("<NAME>");
+            let alias_str = variant.unwrap_or("<ALIAS>");
             crate::output::warning::emit_warning(
                 &format!("`term add --term --alias` is deprecated; use `mf term new {term_name} --alias {alias_str}` instead."),
                 &mut warnings,
             );
-            let outcome = handle_learn(args, root, &cwd, format, project)?;
+            let new_args = TermNewArgs {
+                term: canonical.map(String::from),
+                term_legacy: None,
+                definition: None,
+                description: None,
+                confidence: None,
+                alias: variant.into_iter().map(String::from).collect(),
+                tag: vec![],
+                misrecognition: vec![],
+                dry_run: args.dry_run,
+            };
+            let outcome = handle_new(new_args, root, &cwd, format, project)?;
             Ok(merge_warnings(outcome, warnings))
         }
         Some(TermSubcommand::Update(args)) => handle_update(args, root, &cwd, format, project),
@@ -378,11 +391,14 @@ fn handle_new(
         };
         return match format {
             Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
-            Format::Text => Ok(CommandOutcome::Success(
-                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
-                warnings,
-                None,
-            )),
+            Format::Text => {
+                let mut lines: Vec<String> = Vec::new();
+                lines.push(format!("[dry-run] would create term: {}", term_name));
+                for alias in &args.alias {
+                    lines.push(format!("[dry-run] would attach alias: {} → {}", alias, term_name));
+                }
+                Ok(CommandOutcome::Success(serde_json::Value::String(lines.join("\n")), warnings, None))
+            }
         };
     }
 
@@ -550,9 +566,9 @@ fn handle_lint(
             let preview = if let Some(pn) = project {
                 let pp = svc_util::resolve_project(root, Some(pn), cwd)?;
                 if let Some(ref path) = args.path {
-                    term_svc::lint_path(&pp, path, true, true, include_suggested)?
+                    term_svc::lint_path_with_global(&pp, root, path, true, true, include_suggested)?
                 } else {
-                    term_svc::lint_terms(&pp, true, true, include_suggested)?
+                    term_svc::lint_terms_with_global(&pp, root, true, true, include_suggested)?
                 }
             } else if let Some(ref path) = args.path {
                 term_svc::global::lint_path(root, path, true, true, include_suggested)?
@@ -592,15 +608,16 @@ fn handle_lint(
                     None,
                 )
             })?;
-            term_svc::lint_path(
+            term_svc::lint_path_with_global(
                 &project_path,
+                root,
                 &rel.to_string_lossy(),
                 effective_fix,
                 effective_dry_run,
                 include_suggested,
             )?
         } else {
-            term_svc::lint_terms(&project_path, effective_fix, effective_dry_run, include_suggested)?
+            term_svc::lint_terms_with_global(&project_path, root, effective_fix, effective_dry_run, include_suggested)?
         }
     } else if let Some(ref path) = args.path {
         let resolved = svc_util::path::resolve_lint_path(path, None, cwd, root)?;

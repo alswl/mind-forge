@@ -46,10 +46,17 @@ pub(crate) fn append_to_existing_term(
                 continue;
             }
             if t.term == *alias || t.aliases.iter().any(|a| a == alias) {
-                return Err(MfError::usage(format!("alias '{alias}' conflicts with existing term '{}'", t.term), None));
+                return Err(MfError::not_found(
+                    format!("alias '{alias}' conflicts with existing term '{}'", t.term),
+                    None,
+                ));
             }
         }
         terms[idx].aliases.push(alias.clone());
+        // Also create a correction so the scanner finds this alias.
+        if !terms[idx].corrections.iter().any(|c| c.original == *alias) {
+            terms[idx].corrections.push(Correction::misrecognition(alias.clone(), &existing_term_name));
+        }
         added_aliases.push(alias.clone());
     }
 
@@ -112,13 +119,31 @@ pub fn new_term(
     for alias in &aliases {
         for t in terms.iter() {
             if t.term == *alias || t.aliases.iter().any(|a| a == alias) {
-                return Err(MfError::usage(format!("alias '{alias}' conflicts with existing term '{}'", t.term), None));
+                return Err(MfError::not_found(
+                    format!("alias '{alias}' conflicts with existing term '{}'", t.term),
+                    None,
+                ));
             }
         }
     }
 
-    let corrections: Vec<Correction> =
-        misrecognitions.iter().map(|m| Correction::misrecognition(m.clone(), term)).collect();
+    let mut corrections: Vec<Correction> = misrecognitions
+        .iter()
+        .map(|m| {
+            // Support both `variant` and `variant:canonical` formats.
+            if let Some((original, correct)) = m.split_once(':') {
+                Correction::misrecognition(original, correct)
+            } else {
+                Correction::misrecognition(m.clone(), term)
+            }
+        })
+        .collect();
+    // Also create corrections for aliases so the scanner finds them.
+    for alias in &aliases {
+        if !corrections.iter().any(|c| c.original == *alias) {
+            corrections.push(Correction::misrecognition(alias.clone(), term));
+        }
+    }
 
     let new_entry = Term {
         term: term.to_string(),
