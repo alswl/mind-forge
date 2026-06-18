@@ -58,17 +58,8 @@ pub fn new_term(repo_root: &Path, term: &str, input: TermInput<'_>, misrecogniti
         }
     }
 
-    let corrections: Vec<Correction> = misrecognitions
-        .iter()
-        .map(|m| Correction {
-            original: m.clone(),
-            correct: term.to_string(),
-            r#match: crate::model::term::MatchKind::Word,
-            fix: crate::model::term::FixKind::Required,
-            boundary: crate::model::term::Boundary::Loose,
-            pinyin: None,
-        })
-        .collect();
+    let corrections: Vec<Correction> =
+        misrecognitions.iter().map(|m| Correction::misrecognition(m.clone(), term)).collect();
 
     let new_entry = Term {
         term: term.to_string(),
@@ -204,14 +195,7 @@ pub fn learn_correction(repo_root: &Path, original: &str, correct: &str) -> Resu
         return Ok((terms[idx].clone(), false));
     }
 
-    terms[idx].corrections.push(Correction {
-        original: original.to_string(),
-        correct: canonical_name.clone(),
-        r#match: crate::model::term::MatchKind::Word,
-        fix: crate::model::term::FixKind::Required,
-        boundary: crate::model::term::Boundary::Loose,
-        pinyin: None,
-    });
+    terms[idx].corrections.push(Correction::misrecognition(original, &canonical_name));
     let result = terms[idx].clone();
     sort_terms_by_name(&mut terms);
     save_terms(repo_root, &terms)?;

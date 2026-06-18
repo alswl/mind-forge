@@ -3,23 +3,20 @@ pub(crate) struct FixSpan {
     pub(crate) start: usize,
     pub(crate) end: usize,
     pub(crate) replacement: String,
-    /// Monotonic per-file counter recording the order in which this candidate
-    /// was emitted by the scanner. Used as the final tie-breaker in
-    /// `deduplicate_spans` so that same-(start, end) candidates pick the
-    /// earlier-declared rule.
-    pub(crate) declaration_order: usize,
+    /// Position of the source Correction in the YAML `corrections:` list.
+    /// Used as the final tie-breaker in `deduplicate_spans` so that when two
+    /// corrections produce candidates at the same `(start, end)`, the
+    /// earlier-declared rule wins. Lower index = wins.
+    pub(crate) correction_order: usize,
 }
 
 /// Filter out overlapping spans. Spans are sorted by (start ASC, end DESC,
-/// decl_order ASC) before the overlap pass so that when two candidates share
-/// the same start offset the longest original wins (FR-006). On a same-(start,
-/// end) tie the earlier-declared rule wins.
+/// correction_order ASC) before the overlap pass so that when two candidates
+/// share the same start offset the longest original wins (FR-006). On a
+/// same-(start, end) tie the earlier-declared rule wins.
 pub(crate) fn deduplicate_spans(spans: &mut Vec<FixSpan>) {
     spans.sort_by(|a, b| {
-        a.start
-            .cmp(&b.start)
-            .then_with(|| b.end.cmp(&a.end))
-            .then_with(|| a.declaration_order.cmp(&b.declaration_order))
+        a.start.cmp(&b.start).then_with(|| b.end.cmp(&a.end)).then_with(|| a.correction_order.cmp(&b.correction_order))
     });
     let mut last_end = 0;
     spans.retain(|s| {
@@ -54,8 +51,8 @@ pub(crate) fn apply_fixes(content: &[u8], spans: &[FixSpan]) -> Vec<u8> {
 mod tests {
     use super::*;
 
-    fn span(start: usize, end: usize, replacement: &str, declaration_order: usize) -> FixSpan {
-        FixSpan { start, end, replacement: replacement.to_string(), declaration_order }
+    fn span(start: usize, end: usize, replacement: &str, correction_order: usize) -> FixSpan {
+        FixSpan { start, end, replacement: replacement.to_string(), correction_order }
     }
 
     #[test]
@@ -142,11 +139,11 @@ mod tests {
 
     #[test]
     fn same_start_same_end_earlier_declaration_wins() {
-        // Pure tie on (start, end) — declaration_order ASC decides.
+        // Pure tie on (start, end) — correction_order ASC decides.
         let mut spans = vec![span(0, 4, "B-WINS", 5), span(0, 4, "A-WINS", 2)];
         deduplicate_spans(&mut spans);
         assert_eq!(spans.len(), 1);
-        assert_eq!(spans[0].replacement, "A-WINS", "earlier declaration_order must win");
+        assert_eq!(spans[0].replacement, "A-WINS", "earlier correction_order must win");
     }
 
     #[test]

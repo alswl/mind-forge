@@ -57,6 +57,21 @@ pub struct Correction {
     pub pinyin: Option<String>,
 }
 
+impl Correction {
+    /// Default-shaped correction used by `term new`, `term add`, and global
+    /// equivalents: word match, required fix, loose boundary, no pinyin.
+    pub fn misrecognition(original: impl Into<String>, correct: impl Into<String>) -> Self {
+        Self {
+            original: original.into(),
+            correct: correct.into(),
+            r#match: MatchKind::Word,
+            fix: FixKind::Required,
+            boundary: Boundary::Loose,
+            pinyin: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Term {
     pub term: String,
@@ -71,6 +86,40 @@ pub struct Term {
     pub tags: Vec<String>,
     #[serde(default)]
     pub corrections: Vec<Correction>,
+}
+
+/// Validate cross-field invariants on every correction. Returns a user-facing
+/// message on the first violation. Called by both the project-scoped index
+/// loader (`mind-index.yaml`) and the global terms loader (`minds-terms.yaml`)
+/// so the same rules apply regardless of scope.
+pub fn validate_corrections(terms: &[Term]) -> std::result::Result<(), String> {
+    for term in terms {
+        for c in &term.corrections {
+            if c.boundary == Boundary::Standalone {
+                if c.r#match != MatchKind::Word {
+                    let kind = match c.r#match {
+                        MatchKind::Substring => "substring",
+                        MatchKind::Pinyin => "pinyin",
+                        MatchKind::Word => unreachable!(),
+                    };
+                    return Err(format!(
+                        "boundary: standalone is only valid with match: word (correction '{}' uses match: {})",
+                        c.original, kind
+                    ));
+                }
+                let bytes = c.original.as_bytes();
+                if bytes.first().is_some_and(|b| *b == b'-' || *b == b'_')
+                    || bytes.last().is_some_and(|b| *b == b'-' || *b == b'_')
+                {
+                    return Err(format!(
+                        "boundary: standalone cannot apply to identifier-character edges (correction '{}')",
+                        c.original
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 // ── View models (012-term-core) ──────────────────────────────────────────────
@@ -93,9 +142,9 @@ pub struct TermFinding {
     pub safety_reason: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub candidates: Vec<CandidateTerm>,
-    pub match_kind: String,
-    pub fix_kind: String,
-    pub boundary: String,
+    pub match_kind: MatchKind,
+    pub fix_kind: FixKind,
+    pub boundary: Boundary,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -260,5 +309,71 @@ mod tests {
         let yaml = "original: foo\ncorrect: bar\nmatch: bogus\n";
         let result: Result<Correction, _> = serde_yaml::from_str(yaml);
         assert!(result.is_err(), "unknown match variant must fail");
+    }
+
+    // ── validate_corrections ────────────────────────────────────────────────
+
+    fn term_with(corrections: Vec<Correction>) -> Term {
+        Term {
+            term: "TEST".into(),
+            definition: None,
+            description: None,
+            confidence: None,
+            aliases: vec![],
+            tags: vec![],
+            corrections,
+        }
+    }
+
+    fn correction(original: &str, m: MatchKind, b: Boundary) -> Correction {
+        Correction {
+            original: original.into(),
+            correct: "X".into(),
+            r#match: m,
+            fix: FixKind::Required,
+            boundary: b,
+            pinyin: None,
+        }
+    }
+
+    #[test]
+    fn validate_corrections_accepts_loose_with_any_match_kind() {
+        let terms = vec![term_with(vec![
+            correction("a", MatchKind::Word, Boundary::Loose),
+            correction("b", MatchKind::Substring, Boundary::Loose),
+            correction("c", MatchKind::Pinyin, Boundary::Loose),
+        ])];
+        assert!(validate_corrections(&terms).is_ok());
+    }
+
+    #[test]
+    fn validate_corrections_rejects_standalone_with_substring() {
+        let terms = vec![term_with(vec![correction("aidc", MatchKind::Substring, Boundary::Standalone)])];
+        let err = validate_corrections(&terms).unwrap_err();
+        assert!(err.contains("standalone is only valid with match: word"), "got: {err}");
+        assert!(err.contains("aidc"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_corrections_rejects_standalone_with_pinyin() {
+        let terms = vec![term_with(vec![correction("凯飞迪", MatchKind::Pinyin, Boundary::Standalone)])];
+        let err = validate_corrections(&terms).unwrap_err();
+        assert!(err.contains("standalone is only valid with match: word"), "got: {err}");
+        assert!(err.contains("凯飞迪"), "got: {err}");
+        assert!(err.contains("pinyin"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_corrections_rejects_edge_hyphen() {
+        let terms = vec![term_with(vec![correction("aidc-", MatchKind::Word, Boundary::Standalone)])];
+        let err = validate_corrections(&terms).unwrap_err();
+        assert!(err.contains("identifier-character edges"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_corrections_rejects_edge_underscore_leading() {
+        let terms = vec![term_with(vec![correction("_aidc", MatchKind::Word, Boundary::Standalone)])];
+        let err = validate_corrections(&terms).unwrap_err();
+        assert!(err.contains("identifier-character edges"), "got: {err}");
     }
 }

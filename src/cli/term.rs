@@ -588,8 +588,9 @@ fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_
                     Some(c) => format!(" [confidence={c:.2}]"),
                     None => String::new(),
                 };
-                let suggested_mark = if f.fix_kind == "suggested" { "?" } else { "" };
-                let boundary_mark = if f.boundary == "standalone" { ", standalone" } else { "" };
+                let suggested_mark = if f.fix_kind == crate::model::term::FixKind::Suggested { "?" } else { "" };
+                let boundary_mark =
+                    if f.boundary == crate::model::term::Boundary::Standalone { ", standalone" } else { "" };
                 lines.push(format!(
                     "{}:{}:{}: \"{}\" → \"{}\" [{}]{}{}{}",
                     f.path,
@@ -778,16 +779,7 @@ fn handle_update(
         changes.insert("correction_pinyin".to_string(), serde_json::json!({"updated": args.correction_pinyin}));
     }
     if !correction_boundary.is_empty() {
-        changes.insert(
-            "correction_boundary".to_string(),
-            serde_json::json!({"updated": correction_boundary.iter().map(|(o, b)| {
-            let boundary_str = match b {
-                crate::model::term::Boundary::Loose => "loose",
-                crate::model::term::Boundary::Standalone => "standalone",
-            };
-            format!("{o}:{boundary_str}")
-        }).collect::<Vec<_>>()}),
-        );
+        changes.insert("correction_boundary".to_string(), serde_json::json!({"updated": args.correction_boundary}));
     }
 
     let result = VerbResult {

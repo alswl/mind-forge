@@ -79,41 +79,10 @@ fn load_from_str(content: &str, path: &Path) -> Result<IndexFile> {
         path: path.to_path_buf(),
         detail: e.to_string(),
     })?;
-    validate_boundary_rules(&index, path)?;
-    Ok(index)
-}
-
-fn validate_boundary_rules(index: &IndexFile, _path: &Path) -> Result<()> {
-    use crate::model::term::{Boundary, MatchKind};
-    let terms = match &index.terms {
-        Some(t) => t,
-        None => return Ok(()),
-    };
-    for term in terms {
-        for c in &term.corrections {
-            if c.boundary == Boundary::Standalone {
-                if c.r#match == MatchKind::Substring {
-                    return Err(MfError::usage(
-                        format!("boundary: standalone is only valid with match: word (correction '{}')", c.original),
-                        None::<String>,
-                    ));
-                }
-                let original = c.original.as_bytes();
-                if original.first().is_some_and(|b| *b == b'-' || *b == b'_')
-                    || original.last().is_some_and(|b| *b == b'-' || *b == b'_')
-                {
-                    return Err(MfError::usage(
-                        format!(
-                            "boundary: standalone cannot apply to identifier-character edges (correction '{}')",
-                            c.original
-                        ),
-                        None::<String>,
-                    ));
-                }
-            }
-        }
+    if let Some(terms) = index.terms.as_deref() {
+        crate::model::term::validate_corrections(terms).map_err(|m| MfError::usage(m, None::<String>))?;
     }
-    Ok(())
+    Ok(index)
 }
 
 /// Extract the duplicate key name from a serde_yaml duplicate-key error message.

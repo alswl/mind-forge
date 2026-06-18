@@ -226,7 +226,7 @@ pub(crate) fn lint_single_file_with_index(
 
     let mut would_apply_count: u64 = 0;
     let mut spans: Vec<FixSpan> = Vec::new();
-    for (idx, ifind) in internal_findings.iter().enumerate() {
+    for ifind in internal_findings.iter() {
         if ifind.original == ifind.correct || ifind.is_ambiguous {
             continue;
         }
@@ -238,7 +238,7 @@ pub(crate) fn lint_single_file_with_index(
             start: ifind.byte_offset,
             end: ifind.byte_offset + ifind.original_len,
             replacement: ifind.correct.clone(),
-            declaration_order: idx,
+            correction_order: ifind.yaml_index,
         });
     }
 
@@ -260,7 +260,6 @@ pub(crate) fn lint_single_file_with_index(
         return Ok(single_file_report(findings, failures, 0, vec![], false, false, would_apply_count));
     }
 
-    spans.sort_by_key(|s| s.start);
     fix::deduplicate_spans(&mut spans);
     let new_bytes = apply_fixes(content.as_bytes(), &spans);
     let new_content = match String::from_utf8(new_bytes) {
@@ -440,9 +439,11 @@ pub(crate) fn build_correction_refs<'a>(
 ) -> Vec<scan::CorrectionRef<'a>> {
     corrections
         .iter()
-        .map(|c| {
+        .enumerate()
+        .map(|(yaml_index, c)| {
             let is_ambiguous = ambiguous.contains(&c.original);
             scan::CorrectionRef {
+                yaml_index,
                 original: &c.original,
                 correct: &c.correct,
                 term_name: &c.term_name,
@@ -519,7 +520,7 @@ fn apply_term_fixes(
                 start: ifind.byte_offset,
                 end: ifind.byte_offset + ifind.original_len,
                 replacement: ifind.correct.clone(),
-                declaration_order: idx,
+                correction_order: ifind.yaml_index,
             });
             per_file_fixed += 1;
         }
@@ -532,7 +533,6 @@ fn apply_term_fixes(
             continue;
         }
 
-        spans.sort_by_key(|s| s.start);
         fix::deduplicate_spans(&mut spans);
         let new_bytes = apply_fixes(content_orig.as_bytes(), &spans);
         let new_content = String::from_utf8(new_bytes)

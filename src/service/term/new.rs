@@ -38,17 +38,8 @@ pub fn new_term(project_root: &Path, term: &str, input: TermInput<'_>, misrecogn
         }
     }
 
-    let corrections: Vec<crate::model::term::Correction> = misrecognitions
-        .iter()
-        .map(|m| crate::model::term::Correction {
-            original: m.clone(),
-            correct: term.to_string(),
-            r#match: crate::model::term::MatchKind::Word,
-            fix: crate::model::term::FixKind::Required,
-            boundary: crate::model::term::Boundary::Loose,
-            pinyin: None,
-        })
-        .collect();
+    let corrections: Vec<crate::model::term::Correction> =
+        misrecognitions.iter().map(|m| crate::model::term::Correction::misrecognition(m.clone(), term)).collect();
 
     let new_entry = Term {
         term: term.to_string(),
