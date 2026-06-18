@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::model::term::{FixKind, MatchKind, TermFinding};
 
-use super::scan::{byte_offset_to_line_col, CorrectionRef, InternalFinding};
+use super::scan::{byte_offset_to_line_col, is_cjk_ideograph, CorrectionRef, InternalFinding};
 
 /// Convert CJK characters in `s` to pinyin (first reading, no tone), joined by hyphens.
 /// Non-CJK characters are skipped. Returns an empty string if no CJK chars found.
@@ -12,32 +12,28 @@ pub(crate) fn to_pinyin_no_tone(s: &str) -> String {
     parts.join("-")
 }
 
+struct PinyinEntry<'a> {
+    cref: &'a CorrectionRef<'a>,
+    pinyin: String,
+    char_len: usize,
+}
+
 /// Scan `content` for pinyin matches from `corrections` whose `match_kind == Pinyin`.
-/// Findings are pushed to `findings` and `internal_findings`; matched positions
-/// are recorded in `claimed`.
+/// `sanitized` is the byte-mask produced by `strip_exempt_regions`; bytes that are
+/// 0 in `sanitized` (fenced code, inline code, HTML comments, URLs) are skipped
+/// per FR-407.
 pub(crate) fn scan_for_pinyin(
     content: &str,
+    sanitized: &[u8],
     rel_path: &str,
     corrections: &[CorrectionRef<'_>],
     findings: &mut Vec<TermFinding>,
     internal_findings: &mut Vec<InternalFinding>,
     claimed: &mut BTreeSet<(String, usize)>,
 ) {
-    let pinyin_corrections: Vec<&CorrectionRef<'_>> =
-        corrections.iter().filter(|c| c.match_kind == MatchKind::Pinyin).collect();
-
-    if pinyin_corrections.is_empty() {
-        return;
-    }
-
-    // Pre-compute pinyin for each correction
-    struct PinyinEntry<'a> {
-        cref: &'a CorrectionRef<'a>,
-        pinyin: String,
-        char_len: usize,
-    }
-    let entries: Vec<PinyinEntry<'_>> = pinyin_corrections
+    let entries: Vec<PinyinEntry<'_>> = corrections
         .iter()
+        .filter(|c| c.match_kind == MatchKind::Pinyin)
         .filter_map(|c| {
             let py = c.pinyin.map(String::from).unwrap_or_else(|| to_pinyin_no_tone(c.original));
             if py.is_empty() {
@@ -52,50 +48,34 @@ pub(crate) fn scan_for_pinyin(
         return;
     }
 
-    // Collect CJK spans: regions of consecutive CJK characters
-    let spans = cjk_spans(content);
-    let content_chars: Vec<char> = content.chars().collect();
-
-    for (start_byte, end_byte) in &spans {
-        // Convert byte positions to char indices
-        let start_char = content[..*start_byte].chars().count();
-        let end_char = content[..*end_byte].chars().count();
-
+    for run in cjk_runs(content, sanitized) {
         for entry in &entries {
-            if end_char - start_char < entry.char_len {
+            if run.len() < entry.char_len {
                 continue;
             }
-            let max_start = end_char - entry.char_len;
-            for window_start in start_char..=max_start {
-                // Check if this window is within exempt regions by scanning the claimed set
-                let window_bytes_start = content.char_indices().nth(window_start).map(|(bi, _)| bi).unwrap_or(0);
-
-                let key = (rel_path.to_string(), window_bytes_start);
+            let max_start = run.len() - entry.char_len;
+            for window_start in 0..=max_start {
+                let (window_byte_start, _) = run[window_start];
+                let key = (rel_path.to_string(), window_byte_start);
                 if claimed.contains(&key) {
                     continue;
                 }
 
-                // Get pinyin for this window
-                let window_text: String = content_chars[window_start..window_start + entry.char_len].iter().collect();
+                let window_text: String =
+                    run[window_start..window_start + entry.char_len].iter().map(|(_, c)| *c).collect();
                 let window_pinyin = to_pinyin_no_tone(&window_text);
-                if window_pinyin.is_empty() {
+                if window_pinyin.is_empty() || window_pinyin != entry.pinyin {
                     continue;
                 }
 
-                // Pinyin distance 0: exact match ignoring tone
-                if window_pinyin != entry.pinyin {
-                    continue;
-                }
-
-                // Skip if window text equals original (already found by literal scan)
+                // Skip if window text equals original (already typed correctly).
                 if window_text == entry.cref.original {
                     continue;
                 }
 
                 claimed.insert(key);
 
-                let (line, col) = byte_offset_to_line_col(content, window_bytes_start);
-
+                let (line, col) = byte_offset_to_line_col(content, window_byte_start);
                 let window_byte_len = window_text.len();
 
                 findings.push(TermFinding {
@@ -111,57 +91,41 @@ pub(crate) fn scan_for_pinyin(
                     safety_reason: if entry.cref.is_ambiguous { Some("ambiguous".to_string()) } else { None },
                     candidates: if entry.cref.is_ambiguous { entry.cref.candidates.to_vec() } else { vec![] },
                     match_kind: "pinyin".to_string(),
-                    fix_kind: "suggested".to_string(), // always suggested for pinyin
+                    fix_kind: "suggested".to_string(), // FR-404: pinyin is always suggested
                 });
 
                 internal_findings.push(InternalFinding {
                     path: rel_path.to_string(),
-                    byte_offset: window_bytes_start,
+                    byte_offset: window_byte_start,
                     original_len: window_byte_len,
                     original: window_text,
                     correct: entry.cref.correct.to_string(),
                     is_ambiguous: entry.cref.is_ambiguous,
-                    #[allow(dead_code)]
-                    match_kind: MatchKind::Pinyin,
-                    fix_kind: FixKind::Suggested, // always suggested for pinyin
+                    fix_kind: FixKind::Suggested,
                 });
             }
         }
     }
 }
 
-/// Return byte-offset spans of consecutive CJK character runs in `content`.
-fn cjk_spans(content: &str) -> Vec<(usize, usize)> {
-    let mut spans = Vec::new();
-    let mut in_cjk = false;
-    let mut span_start = 0;
-
+/// Return runs of consecutive CJK characters in `content`, excluding any character
+/// whose start byte in `sanitized` is 0 (exempt regions per `strip_exempt_regions`).
+/// Each run is `Vec<(byte_offset, char)>` in source order.
+fn cjk_runs(content: &str, sanitized: &[u8]) -> Vec<Vec<(usize, char)>> {
+    let mut runs = Vec::new();
+    let mut current: Vec<(usize, char)> = Vec::new();
     for (i, c) in content.char_indices() {
-        let is_cjk = is_cjk_ideograph(c);
-        if is_cjk && !in_cjk {
-            span_start = i;
-            in_cjk = true;
-        } else if !is_cjk && in_cjk {
-            spans.push((span_start, i));
-            in_cjk = false;
+        let exempt = sanitized.get(i).copied() == Some(0);
+        if is_cjk_ideograph(c) && !exempt {
+            current.push((i, c));
+        } else if !current.is_empty() {
+            runs.push(std::mem::take(&mut current));
         }
     }
-    if in_cjk {
-        spans.push((span_start, content.len()));
+    if !current.is_empty() {
+        runs.push(current);
     }
-
-    spans
-}
-
-fn is_cjk_ideograph(c: char) -> bool {
-    matches!(
-        c,
-        '\u{4E00}'..='\u{9FFF}'
-            | '\u{3400}'..='\u{4DBF}'
-            | '\u{20000}'..='\u{3134F}'
-            | '\u{3040}'..='\u{30FF}'
-            | '\u{AC00}'..='\u{D7AF}'
-    )
+    runs
 }
 
 #[cfg(test)]
@@ -194,18 +158,37 @@ mod tests {
     }
 
     #[test]
-    fn cjk_spans_basic() {
+    fn cjk_runs_basic() {
         let content = "hello 你好 world 测试";
-        let spans = cjk_spans(content);
-        assert_eq!(spans.len(), 2);
-        // "你好" starts at byte offset of "hello "
-        assert_eq!(&content[spans[0].0..spans[0].1], "你好");
-        assert_eq!(&content[spans[1].0..spans[1].1], "测试");
+        let sanitized = content.as_bytes().to_vec();
+        let runs = cjk_runs(content, &sanitized);
+        assert_eq!(runs.len(), 2);
+        let first: String = runs[0].iter().map(|(_, c)| *c).collect();
+        let second: String = runs[1].iter().map(|(_, c)| *c).collect();
+        assert_eq!(first, "你好");
+        assert_eq!(second, "测试");
     }
 
     #[test]
-    fn cjk_spans_no_cjk() {
-        let spans = cjk_spans("hello world");
-        assert!(spans.is_empty());
+    fn cjk_runs_no_cjk() {
+        let content = "hello world";
+        let runs = cjk_runs(content, content.as_bytes());
+        assert!(runs.is_empty());
+    }
+
+    #[test]
+    fn cjk_runs_skip_exempt_bytes() {
+        // Simulate: "你好" inside an exempt region — sanitized has 0s on those bytes.
+        let content = "前 你好 后";
+        let mut sanitized = content.as_bytes().to_vec();
+        // Blank "你好" (3 bytes each in UTF-8).
+        let start = content.find('你').unwrap();
+        for b in &mut sanitized[start..start + "你好".len()] {
+            *b = 0;
+        }
+        let runs = cjk_runs(content, &sanitized);
+        // 前 and 后 are still kept as two separate single-char runs.
+        let collected: Vec<String> = runs.iter().map(|r| r.iter().map(|(_, c)| *c).collect()).collect();
+        assert_eq!(collected, vec!["前".to_string(), "后".to_string()]);
     }
 }

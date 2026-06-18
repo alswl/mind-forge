@@ -10,7 +10,7 @@ fn is_word_boundary_byte(b: u8) -> bool {
     !matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_')
 }
 
-fn is_cjk_ideograph(c: char) -> bool {
+pub(crate) fn is_cjk_ideograph(c: char) -> bool {
     matches!(c,
         '\u{4E00}'..='\u{9FFF}'   // CJK Unified Ideographs
         | '\u{3400}'..='\u{4DBF}' // CJK Extension A
@@ -52,10 +52,6 @@ fn apply_word_boundary(
 ) -> bool {
     match match_kind {
         MatchKind::Substring => true,
-        MatchKind::Pinyin => {
-            // Pinyin matches are handled by the pinyin scanner; literal scan never emits pinyin.
-            true
-        }
         MatchKind::Word => {
             if is_ascii_word_string(original) {
                 let before_ok = offset == 0 || is_word_boundary_byte(sanitized[offset - 1]);
@@ -74,6 +70,7 @@ fn apply_word_boundary(
                 left_boundary || right_boundary
             }
         }
+        MatchKind::Pinyin => unreachable!("pinyin matches are dispatched through the pinyin scanner"),
     }
 }
 
@@ -84,8 +81,6 @@ pub(crate) struct InternalFinding {
     pub(crate) original: String,
     pub(crate) correct: String,
     pub(crate) is_ambiguous: bool,
-    #[allow(dead_code)]
-    pub(crate) match_kind: crate::model::term::MatchKind,
     pub(crate) fix_kind: crate::model::term::FixKind,
 }
 
@@ -193,7 +188,6 @@ pub(crate) fn scan_file_for_corrections(
                 original: c.original.to_string(),
                 correct: c.correct.to_string(),
                 is_ambiguous,
-                match_kind: c.match_kind,
                 fix_kind: c.fix_kind,
             });
 

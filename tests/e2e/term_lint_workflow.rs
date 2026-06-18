@@ -60,14 +60,14 @@ terms:
 
     // ── 3. term fix -y: only required applied ──
     //    (机器 didn't match CJK boundary, so no required findings — file unchanged)
-    let (_stdout, _stderr, code) = run_in(&root, &["term", "fix", "docs/mixed.md", "-y"]);
+    let (_stdout, _stderr, code) = run_in(root, &["term", "fix", "docs/mixed.md", "-y"]);
     assert_eq!(code, 0, "fix should succeed");
     let content = fs::read_to_string(docs.join("mixed.md")).unwrap();
     assert!(content.contains("开飞地"), "suggested should not apply without --all: {content}");
     assert!(content.contains("rag"), "suggested should not apply without --all: {content}");
 
     // ── 4. term fix --all -y: applies suggested too ──
-    let (_stdout, _stderr, code) = run_in(&root, &["term", "fix", "docs/mixed.md", "--all", "-y"]);
+    let (_stdout, _stderr, code) = run_in(root, &["term", "fix", "docs/mixed.md", "--all", "-y"]);
     assert_eq!(code, 0, "fix --all should succeed");
     let content = fs::read_to_string(docs.join("mixed.md")).unwrap();
     assert!(content.contains("凯飞迪"), "pinyin fix should apply with --all: {content}");

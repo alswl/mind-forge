@@ -162,7 +162,31 @@ terms:
     assert!(output.status.success(), "no CJK in doc: must be no finding");
 }
 
-// ── Scenario 7: fix with --all applies pinyin finding ──
+// ── Scenario 7: FR-407 — exempt regions (code block / inline code) skip pinyin scan ──
+
+#[test]
+fn pinyin_skip_fenced_code_and_inline_code() {
+    let repo = setup_cjk_repo();
+    let project = repo.path().join("alpha");
+    let index = r#"schema_version: '1'
+terms:
+  - term: Person:KaiFeidi
+    corrections:
+      - original: 凯飞迪
+        correct: 凯飞迪
+        match: pinyin
+"#;
+    write_index(&repo, index);
+    // 开飞地 lives only inside a fenced code block and an inline code span.
+    write_doc(&project, "code", "```\n会议由开飞地主持。\n```\n\n这是 `开飞地` 的引用。\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    assert!(output.status.success(), "exempt regions must not surface pinyin findings: {output:?}");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(!stdout.contains("开飞地"), "pinyin must not match inside exempt regions: {stdout}");
+}
+
+// ── Scenario 8: fix with --all applies pinyin finding ──
 
 #[test]
 fn pinyin_fix_with_all_applies() {

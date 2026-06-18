@@ -218,8 +218,6 @@ pub(crate) fn lint_single_file_with_index(
 
     scan_content(&content, None, &correction_refs, &rel_path, &mut findings, &mut internal_findings, &mut claimed);
 
-    pinyin::scan_for_pinyin(&content, &rel_path, &correction_refs, &mut findings, &mut internal_findings, &mut claimed);
-
     if !fix {
         return Ok(single_file_report(findings, failures, 0, vec![], false, false, 0));
     }
@@ -371,14 +369,6 @@ pub(crate) fn lint_walk_with_index(
                     &mut internal_findings,
                     &mut claimed,
                 );
-                pinyin::scan_for_pinyin(
-                    &content,
-                    &rel_path,
-                    &correction_refs,
-                    &mut findings,
-                    &mut internal_findings,
-                    &mut claimed,
-                );
             }
             FrontMatterDecision::None => {
                 scanned_files += 1;
@@ -387,14 +377,6 @@ pub(crate) fn lint_walk_with_index(
                     None,
                     &correction_refs,
                     &rel_path,
-                    &mut findings,
-                    &mut internal_findings,
-                    &mut claimed,
-                );
-                pinyin::scan_for_pinyin(
-                    &content,
-                    &rel_path,
-                    &correction_refs,
                     &mut findings,
                     &mut internal_findings,
                     &mut claimed,
@@ -444,6 +426,7 @@ pub(crate) fn scan_content(
 ) {
     let sanitized = strip_exempt_regions(content, fm_end);
     scan_file_for_corrections(content, &sanitized, correction_refs, rel_path, findings, internal_findings, claimed);
+    pinyin::scan_for_pinyin(content, &sanitized, rel_path, correction_refs, findings, internal_findings, claimed);
 }
 
 pub(crate) fn build_correction_refs<'a>(
