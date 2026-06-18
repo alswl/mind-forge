@@ -15,6 +15,65 @@ pub struct NewTermResult {
     pub added_misrecognitions: Vec<String>,
 }
 
+/// Outcome of appending fields to an existing term entry.
+pub(crate) struct AppendOutcome {
+    pub added_aliases: Vec<String>,
+    pub added_tags: Vec<String>,
+    pub added_misrecognitions: Vec<String>,
+}
+
+/// Append aliases/tags/misrecognitions to the term at `terms[idx]`. Returns the
+/// fields actually added (existing values are silently skipped). Rejects any
+/// alias that already belongs to a different term.
+pub(crate) fn append_to_existing_term(
+    terms: &mut [Term],
+    idx: usize,
+    aliases: &[String],
+    tags: &[String],
+    misrecognitions: &[String],
+) -> Result<AppendOutcome> {
+    let existing_term_name = terms[idx].term.clone();
+    let mut added_aliases = Vec::new();
+    let mut added_tags = Vec::new();
+    let mut added_misrecognitions = Vec::new();
+
+    for alias in aliases {
+        if terms[idx].aliases.contains(alias) || terms[idx].term == *alias {
+            continue;
+        }
+        for t in terms.iter() {
+            if t.term == existing_term_name {
+                continue;
+            }
+            if t.term == *alias || t.aliases.iter().any(|a| a == alias) {
+                return Err(MfError::usage(format!("alias '{alias}' conflicts with existing term '{}'", t.term), None));
+            }
+        }
+        terms[idx].aliases.push(alias.clone());
+        added_aliases.push(alias.clone());
+    }
+
+    for tag in tags {
+        if !terms[idx].tags.contains(tag) {
+            terms[idx].tags.push(tag.clone());
+            added_tags.push(tag.clone());
+        }
+    }
+
+    for misrec in misrecognitions {
+        let Some((original, correct)) = misrec.split_once(':') else {
+            continue;
+        };
+        if terms[idx].corrections.iter().any(|c| c.original == original && c.correct == correct) {
+            continue;
+        }
+        terms[idx].corrections.push(Correction::misrecognition(original, correct));
+        added_misrecognitions.push(misrec.clone());
+    }
+
+    Ok(AppendOutcome { added_aliases, added_tags, added_misrecognitions })
+}
+
 /// Register a new term, or append aliases/tags/misrecognitions when it already exists.
 pub fn new_term(
     project_root: &Path,
@@ -35,61 +94,18 @@ pub fn new_term(
     let tags = dedup_preserve_first(input.tags);
     let misrecognitions = dedup_preserve_first(misrecognitions);
 
-    // Check if the term already exists (by index to avoid borrow conflicts)
-    let existing_idx = terms.iter().position(|t| t.term == term);
-
-    if let Some(idx) = existing_idx {
-        // Collect the data we need, then modify by index
-        let existing_term_name = terms[idx].term.clone();
-        let mut added_aliases = Vec::new();
-        let mut added_tags = Vec::new();
-        let mut added_misrecognitions = Vec::new();
-
-        for alias in &aliases {
-            if terms[idx].aliases.contains(alias) || terms[idx].term == *alias {
-                continue;
-            }
-            for t in terms.iter() {
-                if t.term == existing_term_name {
-                    continue;
-                }
-                if t.term == *alias || t.aliases.iter().any(|a| a == alias) {
-                    return Err(MfError::not_found(
-                        format!("alias '{alias}' already belongs to term '{}'", t.term),
-                        None,
-                    ));
-                }
-            }
-            terms[idx].aliases.push(alias.clone());
-            added_aliases.push(alias.clone());
-        }
-
-        for tag in &tags {
-            if !terms[idx].tags.contains(tag) {
-                terms[idx].tags.push(tag.clone());
-                added_tags.push(tag.clone());
-            }
-        }
-
-        for misrec in &misrecognitions {
-            let parts: Vec<&str> = misrec.splitn(2, ':').collect();
-            if parts.len() != 2 {
-                continue;
-            }
-            let original = parts[0];
-            let correct = parts[1];
-            if terms[idx].corrections.iter().any(|c| c.original == original && c.correct == correct) {
-                continue;
-            }
-            terms[idx].corrections.push(Correction::misrecognition(original, correct));
-            added_misrecognitions.push(misrec.clone());
-        }
-
+    if let Some(idx) = terms.iter().position(|t| t.term == term) {
+        let outcome = append_to_existing_term(terms, idx, &aliases, &tags, &misrecognitions)?;
         let out = terms[idx].clone();
         sort_terms_by_name(terms);
         index::save(project_root, &index)?;
-
-        return Ok(NewTermResult { term: out, created: false, added_aliases, added_tags, added_misrecognitions });
+        return Ok(NewTermResult {
+            term: out,
+            created: false,
+            added_aliases: outcome.added_aliases,
+            added_tags: outcome.added_tags,
+            added_misrecognitions: outcome.added_misrecognitions,
+        });
     }
 
     // Check alias uniqueness across existing terms
@@ -111,7 +127,7 @@ pub fn new_term(
         confidence: input.confidence,
         aliases: aliases.clone(),
         tags: tags.clone(),
-        corrections: corrections.clone(),
+        corrections,
     };
 
     terms.push(new_entry.clone());

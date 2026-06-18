@@ -14,6 +14,7 @@ use crate::model::lifecycle::{PlannedChange, ScopeRef};
 use crate::model::term::{Correction, Term, TermLintReport};
 use crate::service::lifecycle;
 use crate::service::term::lint;
+use crate::service::term::new::append_to_existing_term;
 use crate::service::term::repo_format::{self, path_for};
 
 // ── Load / Save ─────────────────────────────────────────────────────────────
@@ -48,64 +49,17 @@ pub fn new_term(
     let aliases = dedup_preserve_first(input.aliases);
     let tags = dedup_preserve_first(input.tags);
 
-    let existing_idx = terms.iter().position(|t| t.term == term);
-
-    if let Some(idx) = existing_idx {
-        let existing_term_name = terms[idx].term.clone();
-        let mut added_aliases = Vec::new();
-        let mut added_tags = Vec::new();
-        let mut added_misrecognitions = Vec::new();
-
-        for alias in &aliases {
-            if terms[idx].aliases.contains(alias) || terms[idx].term == *alias {
-                continue;
-            }
-            for t in terms.iter() {
-                if t.term == existing_term_name {
-                    continue;
-                }
-                if t.term == *alias || t.aliases.iter().any(|a| a == alias) {
-                    return Err(MfError::not_found(
-                        format!("alias '{alias}' already belongs to term '{}'", t.term),
-                        None,
-                    ));
-                }
-            }
-            terms[idx].aliases.push(alias.clone());
-            added_aliases.push(alias.clone());
-        }
-
-        for tag in &tags {
-            if !terms[idx].tags.contains(tag) {
-                terms[idx].tags.push(tag.clone());
-                added_tags.push(tag.clone());
-            }
-        }
-
-        for misrec in &misrecognitions {
-            let parts: Vec<&str> = misrec.splitn(2, ':').collect();
-            if parts.len() != 2 {
-                continue;
-            }
-            let original = parts[0];
-            let correct = parts[1];
-            if terms[idx].corrections.iter().any(|c| c.original == original && c.correct == correct) {
-                continue;
-            }
-            terms[idx].corrections.push(Correction::misrecognition(original, correct));
-            added_misrecognitions.push(misrec.clone());
-        }
-
+    if let Some(idx) = terms.iter().position(|t| t.term == term) {
+        let outcome = append_to_existing_term(&mut terms, idx, &aliases, &tags, &misrecognitions)?;
         let out = terms[idx].clone();
         sort_terms_by_name(&mut terms);
         save_terms(repo_root, &terms)?;
-
         return Ok(super::new::NewTermResult {
             term: out,
             created: false,
-            added_aliases,
-            added_tags,
-            added_misrecognitions,
+            added_aliases: outcome.added_aliases,
+            added_tags: outcome.added_tags,
+            added_misrecognitions: outcome.added_misrecognitions,
         });
     }
 

@@ -151,7 +151,7 @@ pub struct TermFinding {
     pub match_kind: MatchKind,
     pub fix_kind: FixKind,
     pub boundary: Boundary,
-    pub boundary_mode: String,
+    pub boundary_mode: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize)]
