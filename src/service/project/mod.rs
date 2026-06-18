@@ -9,6 +9,7 @@ pub(crate) use self::new::{scaffold, upsert_project_entry};
 pub use self::remove::remove_project;
 pub use self::rename::rename_project;
 pub use self::show::show;
+pub use self::update::{update_project, ProjectUpdate};
 
 pub mod remove;
 pub mod rename;
@@ -60,3 +61,4 @@ pub mod lifecycle;
 pub mod list;
 pub mod new;
 pub mod show;
+pub mod update;

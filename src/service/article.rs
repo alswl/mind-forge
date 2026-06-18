@@ -1154,6 +1154,60 @@ pub fn rename_article(
     })
 }
 
+#[derive(Debug, Clone)]
+pub struct ArticleUpdate<'a> {
+    pub selector: &'a str,
+    pub status: Option<ArticleStatus>,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ArticleUpdateReport {
+    pub article: Article,
+    pub dry_run: bool,
+    pub changes: serde_json::Value,
+}
+
+pub fn update_article(project_path: &Path, update: ArticleUpdate<'_>) -> Result<ArticleUpdateReport> {
+    if update.status.is_none() {
+        return Err(MfError::usage(
+            "nothing to update: use --status",
+            Some("pass --status draft or --status published".to_string()),
+        ));
+    }
+
+    let mut index_file = index::load(project_path)?;
+    let articles = index_file.articles.as_mut().ok_or_else(|| article_not_found(update.selector))?;
+    let article = articles
+        .iter_mut()
+        .find(|a| a.title == update.selector || a.article_path == update.selector)
+        .ok_or_else(|| article_not_found(update.selector))?;
+
+    let mut changes = serde_json::Map::new();
+    if let Some(status) = update.status.clone() {
+        changes.insert("status".to_string(), serde_json::json!({"from": article.status, "to": status}));
+        if !update.dry_run {
+            article.status = status;
+            article.updated_at = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        }
+    }
+
+    let updated = article.clone();
+    if !update.dry_run {
+        index::save(project_path, &index_file)?;
+    }
+
+    Ok(ArticleUpdateReport { article: updated, dry_run: update.dry_run, changes: serde_json::Value::Object(changes) })
+}
+
+fn article_not_found(selector: &str) -> MfError {
+    MfError::not_found(
+        format!("article '{selector}' not found"),
+        Some("use `mf article list --project <project>` to see available articles".to_string()),
+    )
+}
+
 // ── Article remove ────────────────────────────────────────────────────────
 
 use crate::model::article::{ArticleIdentity, ArticleRemoveReport};

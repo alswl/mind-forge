@@ -1,6 +1,6 @@
 ---
 name: mind-forge
-version: "0.2.0"
+version: "0.2.1"
 description: "Rust CLI for mind 0.3.0-compatible local knowledge repos. Manage projects, directory or file articles, sources, assets, glossary terms, builds, publishing, and publish targets using mind-format YAML."
 ---
 
@@ -79,7 +79,7 @@ Bootstrap a directory as a Mind Repo: creates `minds.yaml` and the default `proj
 
 ### `mf project` — Manage projects
 
-Subcommands: `new`, `list` (alias `ls`), `show`, `rename`, `remove` (alias `rm`), `archive`, `lint`, `index`, `import`.
+Subcommands: `new`, `list` (alias `ls`), `show`, `update`, `rename`, `remove` (alias `rm`), `archive`, `lint`, `index`, `import`.
 
 **`mf project new <PATH>`**
 Create a project. Accepts cwd-relative or repo-relative paths with Unicode, emoji, dates, spaces, and underscores. No `--name`/`--id`/`--title` required.
@@ -88,6 +88,11 @@ Create a project. Accepts cwd-relative or repo-relative paths with Unicode, emoj
 **`mf project list`** (alias `ls`) — List all projects.
 
 **`mf project show <NAME>`** — Show project details (key-value block + JSON envelope `{ kind: "project", identity, ... }`).
+
+**`mf project update <NAME>`**
+Update project metadata in `mind.yaml`.
+`--description <TEXT>` — Set `project.description`
+`--clear-description` — Clear `project.description`
 
 **`mf project rename <OLD_NAME> <NEW_NAME>`** — Rename a project.
 
@@ -110,7 +115,7 @@ Import a directory as a project.
 
 ### `mf article` — Manage articles
 
-Subcommands: `new`, `list` (alias `ls`), `show`, `rename`, `remove` (alias `rm`), `convert`, `lint`, `index`.
+Subcommands: `new`, `list` (alias `ls`), `show`, `update`, `rename`, `remove` (alias `rm`), `convert`, `lint`, `index`.
 
 **`mf article new <TITLE>`**
 Create an article. `<TITLE>` is the sole positional argument; the article type is derived from `--template`.
@@ -124,6 +129,10 @@ JSON envelope `details`: `template`, `shape` (`directory`|`file`), `path`, `file
 **`mf article list`** (alias `ls`) — List articles. When run outside a project dir without `--project`, auto-matches all projects and sorts by most recently modified.
 
 **`mf article show <PATH>`** — Show article details. `<PATH>` accepts a path (e.g. `docs/weekly.md`) or a title.
+
+**`mf article update <PATH>`**
+Update article metadata in `mind-index.yaml`.
+`--status <draft|published>` — Set article status
 
 **`mf article rename <OLD_PATH> <NEW_PATH>`** — Rename an article.
 
@@ -328,6 +337,8 @@ mf project new workspaces/team/projects/2026-W21
 mf project new 2026-W21                                # from inside workspaces/team/projects/
 mf project list
 mf project show my-project
+mf project update my-project --description "Writing workspace"
+mf project update my-project --clear-description
 mf project rename old-name new-name
 mf project remove obsolete --yes                       # non-interactive
 mf project archive completed
@@ -362,6 +373,7 @@ mf article new "Quick Note" --template blog --project my-project
 mf article new "Single Page" --file --project my-project
 mf article list --project my-project
 mf article show docs/my-first-post --project my-project
+mf article update docs/my-first-post --status published --project my-project
 mf article rename docs/old-title docs/new-title --project my-project
 mf article index --project my-project
 mf article lint --fix --project my-project
@@ -416,6 +428,7 @@ mf version --json
 - `mf article convert` supports bidirectional shape conversion (`--to-single-file` / `--to-directory`). Without a direction flag in a TTY, it infers the unique reasonable direction; non-TTY requires an explicit flag.
 - `--project` accepts repo-relative paths or project names. When running inside a project directory, it can be omitted — the CLI auto-detects the current project.
 - Project identity is path-based: `mf project new` accepts cwd-relative or repo-relative paths with Unicode, emoji, dates, spaces, and underscores.
+- `mf project update` currently updates `project.description`; `mf article update` currently updates indexed article `status`.
 - Index subcommands reconcile `mind-index.yaml` with the filesystem; run them after manual file changes.
 - Prefer `schema` over `schema_version` in docs, examples, and generated YAML.
 - Global terms (created without `--project`) are stored in `minds-terms.yaml` at the repo root. Project-scoped terms are stored in each project's `mind-index.yaml`.

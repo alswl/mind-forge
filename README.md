@@ -109,6 +109,13 @@ mf build "First Post" --project blog
 mf publish run "First Post" --target local --project blog
 ```
 
+## Manual
+
+See [docs/manual.md](docs/manual.md) for the full user manual, including repo
+layout, shared CLI contracts, scripting patterns, and end-to-end workflows for
+projects, articles, sources, assets, terms, builds, publishing, templates, and
+configuration.
+
 ## Core Concepts
 
 | Concept          | What it is                                                                 |
@@ -227,6 +234,7 @@ default `projects/` container). Defaults to the current directory.
 | `new <PATH>` | Create a project. Accepts cwd-relative or repo-relative paths with Unicode, emoji, dates, spaces. `--template <TEMPLATE>` |
 | `list` (ls) | List projects |
 | `show <NAME>` | Show project details |
+| `update <NAME>` | Update project metadata. `--description <TEXT>`, `--clear-description` |
 | `rename <OLD> <NEW>` | Rename a project |
 | `remove <NAME>` (rm) | Remove a project (interactive confirmation in TTY) |
 | `archive <NAME_OR_PATH>` | Archive a project to `_archived/` (interactive confirmation in TTY) |
@@ -241,6 +249,7 @@ default `projects/` container). Defaults to the current directory.
 | `new <TITLE>` | Create an article. `-t, --template blank\|arch\|prd\|blog\|<path>`, `--file`, `--tag <TAG>`, `--draft` |
 | `list` (ls) | List articles. Omitting `--project` outside a project dir lists all articles across all projects, sorted by most recently modified. |
 | `show <PATH>` | Show article details |
+| `update <PATH>` | Update article metadata. `--status draft\|published` |
 | `rename <OLD_PATH> <NEW_PATH>` | Rename an article |
 | `remove <PATH>` (rm) | Remove an article (interactive confirmation in TTY) |
 | `lint` | Lint articles |
@@ -335,9 +344,9 @@ Text output includes commit / build_date / rustc. JSON envelope adds
 ## Features
 
 - **Repo bootstrap** — `mf init [PATH]` creates `minds.yaml` and `.mind/`
-- **Project lifecycle** — `mf project new | list | show | rename | remove | archive | lint | index | import`; path-based identity supports Unicode, emoji, dates, spaces
+- **Project lifecycle** — `mf project new | list | show | update | rename | remove | archive | lint | index | import`; path-based identity supports Unicode, emoji, dates, spaces
 - **Project auto-detection** — running inside a project directory auto-injects `--project`; `mf article list` without `--project` outside a project dir auto-matches all projects, sorted by most recently modified; cwd-relative paths normalized to repo-relative canonical identity
-- **Article management** — `mf article new | list | show | rename | remove | lint | index`; directory articles by default, `--file` for single-file shape; `--template blank|arch|prd|blog` or custom project-local template path
+- **Article management** — `mf article new | list | show | update | rename | remove | lint | index`; directory articles by default, `--file` for single-file shape; `--template blank|arch|prd|blog` or custom project-local template path
 - **Sources** — `mf source add | list | show | update | rename | remove | index | clean`; `--file-kind auto|pdf|file|rss|web`, `--source-kind yuque|meeting|misc`
 - **Assets** — `mf asset add | list | show | update | rename | remove | index | clean`; `--copy`/`--link` for copy vs symlink
 - **Glossary** — `mf term new | list | show | add | update | rename | remove | lint`; global terms in `minds-terms.yaml`, project-scoped in `mind-index.yaml`
