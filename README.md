@@ -284,7 +284,8 @@ default `projects/` container). Defaults to the current directory.
 | `update <TERM>` | Update term metadata (mf extension; previously `fix`). `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--clear-description`, `--clear-confidence` |
 | `rename <OLD> <NEW>` | Rename a term. `--keep-alias` keeps the old name as an alias |
 | `remove <TERM>` (rm) | Remove a term (interactive confirmation in TTY) |
-| `lint [PATH]` | Lint term consistency in project docs |
+| `lint [PATH]` | Lint term consistency in project docs. CJK/pinyin-aware matching, configurable `match` modes (`word`/`substring`/`pinyin`), `--fix`, `--all` to apply suggested corrections. Non-TTY `--fix` exits 2 without `-y`/`--force`. |
+| `fix [PATH]` | First-class alias for `term lint --fix`. Same flags as `lint` + `--all` for suggested corrections. |
 
 Global terms (created without `--project`) are stored in `minds-terms.yaml` at
 the repo root. Project-scoped terms live in each project's `mind-index.yaml`.
@@ -319,6 +320,7 @@ Directory articles are built by merging Markdown files in filename order.
 | `show` | Show effective config (canonical JSON envelope). `--output-format json\|yaml` (default: `yaml`) |
 | `generate` | Generate effective config file. `--output-format json\|yaml` (default: `yaml`), `-o, --output <PATH>` |
 | `default` | Show default config values. `--output-format json\|yaml` (default: `yaml`) |
+| `terminal` | Show terminal capability diagnostics (hyperlink support, color depth, terminfo probing). Respects `TERM`, `COLORTERM`, `TERM_PROGRAM`, `NO_COLOR`, `MF_FORCE_HYPERLINKS`, `MF_NO_HYPERLINKS`. |
 | `init` | **Deprecated:** use `mf init`. `--output <PATH>`, `--target project\|repo` (default: `project`), `--force` |
 
 ### `mf completion <SHELL>` — Generate shell completion
@@ -347,6 +349,7 @@ Text output includes commit / build_date / rustc. JSON envelope adds
 - **Compatibility** — reads and writes mind 0.3.0 YAML; tolerates older `schema_version` and list-based shapes on read
 - **Shell completion** — `mf completion <SHELL>` for bash, zsh, fish, powershell, elvish
 - **Version** — `mf version` includes commit / build_date / rustc / target_triple
+- **Terminal intelligence** — `mf config terminal` for capability diagnostics; automatic OSC 8 hyperlink rendering in list/show/verb outputs when supported; broad terminal emulator detection (iTerm2, Ghostty, Kitty, VS Code, Warp, Terminal.app, tmux, WezTerm, etc.) plus `MF_FORCE_HYPERLINKS`/`MF_NO_HYPERLINKS` overrides; file:// URI encoding for paths with spaces or Unicode
 - **Output contracts** — `text` by default, `--json` for `{ status, command, data }` envelopes; canonical per-verb shapes; identity round-trip between list and show; remove/archive use a TTY confirmation protocol; stable exit codes
 
 ## Output Contracts

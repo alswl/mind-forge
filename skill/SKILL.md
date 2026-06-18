@@ -109,7 +109,7 @@ Import a directory as a project.
 
 ### `mf article` — Manage articles
 
-Subcommands: `new`, `list` (alias `ls`), `show`, `rename`, `remove` (alias `rm`), `lint`, `index`.
+Subcommands: `new`, `list` (alias `ls`), `show`, `rename`, `remove` (alias `rm`), `convert`, `lint`, `index`.
 
 **`mf article new <TITLE>`**
 Create an article. `<TITLE>` is the sole positional argument; the article type is derived from `--template`.
@@ -120,7 +120,7 @@ Create an article. `<TITLE>` is the sole positional argument; the article type i
 
 JSON envelope `details`: `template`, `shape` (`directory`|`file`), `path`, `files`, `typora_front_matter_injected` (bool), `typora_copy_images_to` (string|null). When the Typora plugin is enabled, each generated file starts with a YAML front-matter block containing `typora-copy-images-to` pointing to the project assets directory.
 
-**`mf article list`** (alias `ls`) — List articles.
+**`mf article list`** (alias `ls`) — List articles. When run outside a project dir without `--project`, auto-matches all projects and sorts by most recently modified.
 
 **`mf article show <PATH>`** — Show article details. `<PATH>` accepts a path (e.g. `docs/weekly.md`) or a title.
 
@@ -129,6 +129,13 @@ JSON envelope `details`: `template`, `shape` (`directory`|`file`), `path`, `file
 **`mf article remove <PATH>`** (alias `rm`) — Remove an article. Interactive TTY confirmation unless `--yes` or `--force` is set.
 
 **`mf article lint`** — Lint articles.
+
+**`mf article convert [PATH]`**
+Convert article shape between directory and single-file.
+`--to-single-file` — Collapse eligible single-section directory articles into single-file articles.
+`--to-directory` — Expand single-file articles into directory mode with an opening section.
+Without a direction flag in a TTY, the CLI infers the unique reasonable direction and prompts for confirmation; non-TTY fails with a usage error if both directions are plausible.
+`--dry-run` reports the plan without mutating the filesystem or index.
 
 **`mf article index`** — Index articles (mf extension). `-n` is short for `--dry-run`.
 
@@ -193,7 +200,7 @@ Subcommands: `list` (alias `ls`), `add`, `show`, `update`, `rename`, `remove` (a
 
 ### `mf term` (alias `mf terms`) — Manage terminology
 
-Subcommands: `list` (alias `ls`), `new`, `show`, `add`, `update`, `rename`, `remove` (alias `rm`), `lint`.
+Subcommands: `list` (alias `ls`), `new`, `show`, `add`, `update`, `rename`, `remove` (alias `rm`), `lint`, `fix`.
 
 **`mf term new <TERM>`**
 Create a term (mf extension).
@@ -232,8 +239,16 @@ Rename a term.
 **`mf term remove <TERM>`** (alias `rm`) — Remove a term. Interactive TTY confirmation unless `--yes` or `--force` is set.
 
 **`mf term lint [PATH]`**
-Lint term consistency in project docs.
-`--fix` — Auto-correct term usage in docs (pair with `--dry-run` to preview).
+Lint term consistency in project docs. Detects misrecognized terms using configurable `Correction.match` modes: `word` (default — ASCII word boundaries; CJK requires a non-CJK neighbor), `substring` (exact match anywhere), or `pinyin` (tone-less pinyin scan with auto-conversion for CJK terms). Pinyin findings are always `fix: suggested` (trailing `?` marker).
+`--fix` — Auto-correct term usage in docs (pair with `--dry-run` to preview). Non-TTY exits 2 unless `-y`/`--force` is passed.
+`--all` — Apply suggested fixes (pinyin matches) in addition to required corrections.
+`--rule <RULE>` — Restrict to one rule kind.
+`--severity <LEVEL>` — Filter at-or-above severity (`error`/`warning`/`info`).
+`--max-warnings <N>` — Exit 1 when warnings exceed N.
+
+**`mf term fix [PATH]`**
+First-class alias for `term lint --fix`. Same flags as `term lint`, plus `--all` to apply suggested corrections.
+Replaces the old deprecated `term fix` metadata subcommand (which is now `term update`).
 
 ### `mf build <ARTICLE>` — Build/assemble an article
 
@@ -271,7 +286,7 @@ Subcommands: `list`, `show`.
 
 ### `mf config` — Manage configuration
 
-Subcommands: `schema`, `show`, `generate`, `default`, `init` (deprecated).
+Subcommands: `schema`, `show`, `generate`, `default`, `terminal`, `init` (deprecated).
 
 **`mf config schema`** — Show config JSON schema. `--output-format <json|yaml>` (default: `json`).
 
@@ -280,6 +295,8 @@ Subcommands: `schema`, `show`, `generate`, `default`, `init` (deprecated).
 **`mf config generate`** — Generate effective config file. `--output-format <json|yaml>` (default: `yaml`), `-o, --output <PATH>`.
 
 **`mf config default`** — Show default config values. `--output-format <json|yaml>` (default: `yaml`). Generated config includes a `plugins.typora-front-matter` block with `enabled: true`.
+
+**`mf config terminal`** — Show terminal capability diagnostics (hyperlink support, color depth, terminfo probing). Environment-driven detection respects `TERM`, `COLORTERM`, `TERM_PROGRAM`, `NO_COLOR`, `MF_FORCE_HYPERLINKS`, and `MF_NO_HYPERLINKS`.
 
 **`mf config init`** — **Deprecated:** use `mf init`. `--output <PATH>`, `--target <project|repo>` (default: `project`), `--force`.
 
@@ -341,6 +358,9 @@ mf article show docs/my-first-post --project my-project
 mf article rename docs/old-title docs/new-title --project my-project
 mf article index --project my-project
 mf article lint --fix --project my-project
+mf article convert docs/quick-note --to-single-file --project my-project
+mf article convert docs/single-page --to-directory --project my-project
+mf article convert --dry-run --project my-project
 
 # Build & publish
 mf build my-first-post --project my-project
@@ -365,12 +385,18 @@ mf term add --term "API" --alias "Application Programming Interface" --project m
 mf term update "API" --definition "Updated definition" --project my-project
 mf term rename "API" "Application API" --keep-alias --project my-project
 mf term remove obsolete-term --yes --project my-project
-mf term lint --project my-project --fix
+mf term lint --project my-project
+mf term lint --project my-project --fix --dry-run   # preview corrections
+mf term lint --project my-project --fix --all       # apply suggested pinyin fixes too
+mf term fix --project my-project                    # alias for term lint --fix
+mf term fix --project my-project --all              # apply suggested corrections
 
 # Config
 mf config show
 mf config default
 mf config generate -o minds.yaml
+mf config terminal
+mf config terminal --json
 
 # Shell & diagnostics
 mf completion zsh
@@ -379,7 +405,8 @@ mf version --json
 
 ## Notes
 
-- Commands that modify project state require a Mind Repo context. `config`, `completion`, `version`, and help can run outside repos. `project index` can also run outside repos (scans from cwd).
+- Commands that modify project state require a Mind Repo context. `config`, `completion`, `version`, and help can run outside repos. `project index` can also run outside repos (scans from cwd). `article list` without `--project` outside a project dir auto-matches all projects and sorts by most recently modified.
+- `mf article convert` supports bidirectional shape conversion (`--to-single-file` / `--to-directory`). Without a direction flag in a TTY, it infers the unique reasonable direction; non-TTY requires an explicit flag.
 - `--project` accepts repo-relative paths or project names. When running inside a project directory, it can be omitted — the CLI auto-detects the current project.
 - Project identity is path-based: `mf project new` accepts cwd-relative or repo-relative paths with Unicode, emoji, dates, spaces, and underscores.
 - Index subcommands reconcile `mind-index.yaml` with the filesystem; run them after manual file changes.
@@ -387,5 +414,5 @@ mf version --json
 - Global terms (created without `--project`) are stored in `minds-terms.yaml` at the repo root. Project-scoped terms are stored in each project's `mind-index.yaml`.
 - `term lint` requires a project context — it scans project docs for term usage.
 - Destructive verbs (`remove`, `archive`) prompt on `/dev/tty` in interactive shells. In scripts/CI pipe the command through `--yes` (confirms) or `--force` (also bypasses safety checks).
-- `term add` replaces the legacy `term learn`; `term update` replaces the legacy `term fix`. Old subcommand names are no longer accepted.
+- `term add` replaces the legacy `term learn`; `term update` replaced the old `term fix` metadata subcommand. The new `term fix` is a first-class verb (alias for `term lint --fix`).
 - `mf init` replaces `mf config init` for repo bootstrap; the latter still works but is deprecated.
