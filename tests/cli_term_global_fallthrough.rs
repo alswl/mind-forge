@@ -203,7 +203,7 @@ fn show_prefers_project_record_when_both_exist() {
     let v: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(v["data"]["scope"], "project", "should prefer project record: {}", v["data"]);
     assert!(
-        v["data"]["tags"].as_array().map_or(false, |a| a.iter().any(|t| t == "project-only")),
+        v["data"]["tags"].as_array().is_some_and(|a| a.iter().any(|t| t == "project-only")),
         "project record should contain project-only tag: {}",
         v["data"]
     );

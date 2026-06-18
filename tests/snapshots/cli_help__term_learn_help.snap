@@ -2,7 +2,7 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Learn a term correction (deprecated: use `add`)
+Learn a term correction (deprecated: use `term new <NAME> --alias <VARIANT>`)
 
 Usage: mf term learn [OPTIONS]
 

@@ -63,6 +63,8 @@ pub fn new_term(
         });
     }
 
+    // FR-006: alias collision exits 1 (Failure), not 2 (UsageError).
+    // NotFound is the closest existing variant for that exit code.
     for alias in &aliases {
         for t in terms.iter() {
             if t.term == *alias || t.aliases.iter().any(|a| a == alias) {

@@ -58,8 +58,8 @@ pub struct Correction {
 }
 
 impl Correction {
-    /// Default-shaped correction used by `term new`, `term add`, and global
-    /// equivalents: word match, required fix, loose boundary, no pinyin.
+    /// Default-shaped correction used by `term new` and global equivalents:
+    /// word match, required fix, standalone boundary, no pinyin.
     pub fn misrecognition(original: impl Into<String>, correct: impl Into<String>) -> Self {
         Self {
             original: original.into(),

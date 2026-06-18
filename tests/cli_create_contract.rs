@@ -354,7 +354,7 @@ terms:
     assert!(data.is_object());
     assert_eq!(data["term"], "Mind Repo");
     assert_eq!(data["created"], false);
-    assert!(data["added_aliases"].as_array().unwrap().len() >= 1);
+    assert!(!data["added_aliases"].as_array().unwrap().is_empty());
 }
 
 #[test]

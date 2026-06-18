@@ -4,7 +4,6 @@ use std::io::Write;
 ///
 /// Writes `WARN: {message}\n` to stderr (plain text, no ANSI codes).
 /// Appends `message` (without the `WARN: ` prefix) to `warnings`.
-#[allow(dead_code)]
 pub fn emit_warning(message: &str, warnings: &mut Vec<String>) {
     let _ = writeln!(std::io::stderr(), "WARN: {message}");
     warnings.push(message.to_string());

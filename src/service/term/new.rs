@@ -46,6 +46,9 @@ pub(crate) fn append_to_existing_term(
                 continue;
             }
             if t.term == *alias || t.aliases.iter().any(|a| a == alias) {
+                // FR-006: alias collision exits 1 (Failure), not 2 (UsageError),
+                // so callers can distinguish "claimed by another term" from
+                // "you misspelled a flag". NotFound is the closest fit.
                 return Err(MfError::not_found(
                     format!("alias '{alias}' conflicts with existing term '{}'", t.term),
                     None,
@@ -115,7 +118,8 @@ pub fn new_term(
         });
     }
 
-    // Check alias uniqueness across existing terms
+    // Check alias uniqueness across existing terms. See note on
+    // append_to_existing_term about FR-006 / NotFound vs Usage.
     for alias in &aliases {
         for t in terms.iter() {
             if t.term == *alias || t.aliases.iter().any(|a| a == alias) {

@@ -19,16 +19,17 @@ pub fn resolve_lint_path(input: &str, project_root: Option<&Path>, cwd: &Path, r
     } else if let Some(proj_root) = project_root {
         proj_root.join(p)
     } else {
-        // Walk up from cwd looking for mind.yaml
+        // Walk up from cwd looking for mind.yaml; fall back to repo root.
+        let mut anchor = repo_root;
         let mut dir = Some(cwd);
         while let Some(d) = dir {
             if d.join("mind.yaml").exists() {
-                return Ok(d.join(p));
+                anchor = d;
+                break;
             }
             dir = d.parent();
         }
-        // Fallback to repo root
-        repo_root.join(p)
+        anchor.join(p)
     };
 
     if resolved.exists() {

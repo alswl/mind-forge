@@ -43,7 +43,7 @@ pub enum TermSubcommand {
     Remove(TermRemoveArgs),
     #[command(about = "Rename a term")]
     Rename(TermRenameArgs),
-    #[command(about = "Learn a term correction (deprecated: use `add`)", hide = true)]
+    #[command(about = "Learn a term correction (deprecated: use `term new <NAME> --alias <VARIANT>`)", hide = true)]
     Learn(TermLearnArgs),
     #[command(about = "Apply term corrections to documents (alias of `term lint --fix`)")]
     Fix(TermFixArgs),
@@ -234,7 +234,7 @@ pub fn dispatch(
         }
         Some(TermSubcommand::Update(args)) => handle_update(args, root, &cwd, format, project),
         Some(TermSubcommand::Learn(args)) => {
-            deprecation.warn_subject("term learn", "term add");
+            deprecation.warn_subject("term learn", "term new <NAME> --alias <VARIANT>");
             warn_learn_flag_deprecations(&args, deprecation);
             handle_learn(args, root, &cwd, format, project)
         }
