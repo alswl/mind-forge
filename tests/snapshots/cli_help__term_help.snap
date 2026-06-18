@@ -15,6 +15,7 @@ Commands:
   show    Show term details
   remove  Remove a term [aliases: rm]
   rename  Rename a term
+  fix     Apply term corrections to documents (alias of `term lint --fix`)
 
 Options:
       --root <PATH>

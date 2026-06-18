@@ -2,42 +2,44 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Fix a term metadata (deprecated: use `update`)
+Apply term corrections to documents (alias of `term lint --fix`)
 
-Usage: mf term fix [OPTIONS] <TERM>
+Usage: mf term fix [OPTIONS] [PATH]
 
 Arguments:
-  <TERM>  
+  [PATH]  
 
 Options:
-      --definition <DEFINITION>
-          
+      --fix
+          Auto-fix issues that have a fixer
       --root <PATH>
           Mind Repo root directory
       --config <PATH>
           Config file path
-      --description <DESCRIPTION>
-          
-      --clear-description
-          
+      --rule <RULE>
+          Restrict to a specific lint rule kind
+      --severity <LEVEL>
+          Only emit issues at or above this severity (error|warning|info)
   -v, --verbose...
           Verbose output
-      --confidence <CONFIDENCE>
-          
+      --max-warnings <N>
+          Exit 1 when warnings exceed this count
   -q, --quiet
           Silence non-error output
-      --clear-confidence
-          
+      --dry-run
+          Preview fixes without writing (only with --fix)
       --format <FORMAT>
           Output format [default: text] [possible values: text, json]
-      --alias <ALIAS>
-          
+      --all
+          Apply all corrections including suggested
       --json
           Shorthand for --format json
       --no-color
           Disable colored output
-      --tag <TAG>
-          
+  -y, --yes
+          Skip the interactive confirmation prompt (required in non-TTY)
+  -f, --force
+          Alias for --yes
   -p, --project <NAME>
           Project name for project-scoped operations
       --install-completion <INSTALL_COMPLETION>

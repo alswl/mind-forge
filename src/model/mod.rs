@@ -159,7 +159,13 @@ mod resource_tests {
 
     #[test]
     fn correction_identity() {
-        let c = term::Correction { original: "Rag".into(), correct: "RAG".into() };
+        let c = term::Correction {
+            original: "Rag".into(),
+            correct: "RAG".into(),
+            r#match: term::MatchKind::Word,
+            fix: term::FixKind::Required,
+            pinyin: None,
+        };
         assert_eq!(c.identity(), "Rag::RAG");
     }
 }

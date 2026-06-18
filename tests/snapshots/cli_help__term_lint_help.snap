@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 180
 expression: stdout
 ---
 Lint term consistency in project docs
@@ -31,10 +30,16 @@ Options:
           Preview fixes without writing (only with --fix)
       --format <FORMAT>
           Output format [default: text] [possible values: text, json]
+      --all
+          Apply all corrections including suggested
       --json
           Shorthand for --format json
       --no-color
           Disable colored output
+  -y, --yes
+          Skip the interactive confirmation prompt (required in non-TTY)
+  -f, --force
+          Alias for --yes
   -p, --project <NAME>
           Project name for project-scoped operations
       --install-completion <INSTALL_COMPLETION>

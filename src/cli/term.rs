@@ -36,7 +36,7 @@ pub enum TermSubcommand {
     #[command(about = "Add a term correction")]
     Add(TermLearnArgs),
     #[command(about = "Update term metadata")]
-    Update(TermFixArgs),
+    Update(TermUpdateArgs),
     #[command(about = "Show term details")]
     Show(TermShowArgs),
     #[command(about = "Remove a term", visible_alias = "rm")]
@@ -45,7 +45,7 @@ pub enum TermSubcommand {
     Rename(TermRenameArgs),
     #[command(about = "Learn a term correction (deprecated: use `add`)", hide = true)]
     Learn(TermLearnArgs),
-    #[command(about = "Fix a term metadata (deprecated: use `update`)", hide = true)]
+    #[command(about = "Apply term corrections to documents (alias of `term lint --fix`)")]
     Fix(TermFixArgs),
 }
 
@@ -86,6 +86,10 @@ pub struct TermLintArgs {
     pub path: Option<String>,
     #[command(flatten)]
     pub lint: LintFlags,
+    #[arg(short = 'y', long = "yes", help = "Skip the interactive confirmation prompt (required in non-TTY)")]
+    pub yes: bool,
+    #[arg(short = 'f', long = "force", help = "Alias for --yes")]
+    pub force: bool,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -107,7 +111,7 @@ pub struct TermLearnArgs {
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
-pub struct TermFixArgs {
+pub struct TermUpdateArgs {
     pub term: String,
     #[arg(long)]
     pub definition: Option<String>,
@@ -123,6 +127,17 @@ pub struct TermFixArgs {
     pub alias: Vec<String>,
     #[arg(long = "tag")]
     pub tag: Vec<String>,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct TermFixArgs {
+    pub path: Option<String>,
+    #[command(flatten)]
+    pub lint: LintFlags,
+    #[arg(short = 'y', long = "yes", help = "Skip the interactive confirmation prompt (required in non-TTY)")]
+    pub yes: bool,
+    #[arg(short = 'f', long = "force", help = "Alias for --yes")]
+    pub force: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -176,15 +191,16 @@ pub fn dispatch(
             warn_learn_flag_deprecations(&args, deprecation);
             handle_learn(args, root, &cwd, format, project)
         }
-        Some(TermSubcommand::Update(args)) => handle_fix(args, root, &cwd, format, project),
+        Some(TermSubcommand::Update(args)) => handle_update(args, root, &cwd, format, project),
         Some(TermSubcommand::Learn(args)) => {
             deprecation.warn_subject("term learn", "term add");
             warn_learn_flag_deprecations(&args, deprecation);
             handle_learn(args, root, &cwd, format, project)
         }
         Some(TermSubcommand::Fix(args)) => {
-            deprecation.warn_subject("term fix", "term update");
-            handle_fix(args, root, &cwd, format, project)
+            let mut lint_args = TermLintArgs { path: args.path, lint: args.lint, yes: args.yes, force: args.force };
+            lint_args.lint.fix = true; // term fix is always lint --fix
+            handle_lint(lint_args, root, &cwd, format, project)
         }
         Some(TermSubcommand::Show(args)) => handle_show(args, root, &cwd, format, project),
         Some(TermSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format, project),
@@ -211,7 +227,7 @@ fn new_input(args: &TermNewArgs) -> term_svc::TermInput<'_> {
     }
 }
 
-fn fix_update(args: &TermFixArgs) -> term_svc::TermUpdate<'_> {
+fn update_input(args: &TermUpdateArgs) -> term_svc::TermUpdate<'_> {
     term_svc::TermUpdate {
         definition: args.definition.as_deref(),
         description: args.description.as_deref(),
@@ -365,20 +381,63 @@ fn handle_lint(
     format: Format,
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
+    use std::io::IsTerminal;
+
     let effective_fix = args.lint.fix;
     let effective_dry_run = args.lint.fix && args.lint.dry_run;
+    let include_suggested = args.lint.all;
+
+    // US1: confirmation gate for --fix (non-dry-run)
+    if effective_fix && !effective_dry_run && !args.yes && !args.force {
+        if !std::io::stdout().is_terminal() {
+            return Err(MfError::usage(
+                "--fix in non-interactive context requires -y / --yes",
+                Some("pass --yes to confirm".to_string()),
+            ));
+        }
+        // Show dry-run preview in text mode before prompting
+        if matches!(format, Format::Text) {
+            let preview = if let Some(pn) = project {
+                let pp = svc_util::resolve_project(root, Some(pn), cwd)?;
+                if let Some(ref path) = args.path {
+                    term_svc::lint_path(&pp, path, true, true, include_suggested)?
+                } else {
+                    term_svc::lint_terms(&pp, true, true, include_suggested)?
+                }
+            } else if let Some(ref path) = args.path {
+                term_svc::global::lint_path(root, path, true, true, include_suggested)?
+            } else {
+                term_svc::global::lint_terms(root, true, true, include_suggested)?
+            };
+            if !preview.findings.is_empty() {
+                println!("{}", format_lint_text(&preview, true, true));
+            }
+        }
+        match crate::output::confirm::prompt_confirmation("Apply changes? [y/N] ") {
+            crate::output::confirm::ConfirmOutcome::Confirmed => {}
+            crate::output::confirm::ConfirmOutcome::Aborted => {
+                return Ok(CommandOutcome::Raw("Aborted by user.".to_string(), Some(0)));
+            }
+            crate::output::confirm::ConfirmOutcome::NotTty => {
+                return Err(MfError::usage(
+                    "--fix in non-interactive context requires -y / --yes",
+                    Some("pass --yes to confirm".to_string()),
+                ));
+            }
+        }
+    }
 
     let report = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         if let Some(ref path) = args.path {
-            term_svc::lint_path(&project_path, path, effective_fix, effective_dry_run)?
+            term_svc::lint_path(&project_path, path, effective_fix, effective_dry_run, include_suggested)?
         } else {
-            term_svc::lint_terms(&project_path, effective_fix, effective_dry_run)?
+            term_svc::lint_terms(&project_path, effective_fix, effective_dry_run, include_suggested)?
         }
     } else if let Some(ref path) = args.path {
-        term_svc::global::lint_path(root, path, effective_fix, effective_dry_run)?
+        term_svc::global::lint_path(root, path, effective_fix, effective_dry_run, include_suggested)?
     } else {
-        term_svc::global::lint_terms(root, effective_fix, effective_dry_run)?
+        term_svc::global::lint_terms(root, effective_fix, effective_dry_run, include_suggested)?
     };
 
     // Determine exit code
@@ -472,9 +531,10 @@ fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_
                     Some(c) => format!(" [confidence={c:.2}]"),
                     None => String::new(),
                 };
+                let suggested_mark = if f.fix_kind == "suggested" { "?" } else { "" };
                 lines.push(format!(
-                    "{}:{}:{}: \"{}\" → \"{}\" [{}]{}",
-                    f.path, f.line, f.column, f.original, f.correct, f.term, confidence_part
+                    "{}:{}:{}: \"{}\" → \"{}\" [{}]{}{}",
+                    f.path, f.line, f.column, f.original, f.correct, f.term, confidence_part, suggested_mark
                 ));
             }
         }
@@ -572,10 +632,10 @@ fn handle_learn(
     }
 }
 
-// ── Handle: mf term fix (US6 / T041) ─────────────────────────────────────────
+// ── Handle: mf term update (metadata) ─────────────────────────────────────────
 
-fn handle_fix(
-    args: TermFixArgs,
+fn handle_update(
+    args: TermUpdateArgs,
     root: &Path,
     cwd: &Path,
     format: Format,
@@ -588,7 +648,7 @@ fn handle_fix(
         return Err(MfError::usage("--confidence and --clear-confidence are mutually exclusive", None));
     }
 
-    let update = fix_update(&args);
+    let update = update_input(&args);
     let term = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         term_svc::fix_term(&project_path, &args.term, update)?

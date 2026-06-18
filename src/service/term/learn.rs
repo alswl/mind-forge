@@ -2,7 +2,7 @@ use std::path::Path;
 
 use super::{find_term_by_correct, sort_terms_by_name};
 use crate::error::{MfError, Result};
-use crate::model::term::{Correction, Term};
+use crate::model::term::{Correction, FixKind, MatchKind, Term};
 use crate::service::index;
 
 /// Register a correction for an existing term.
@@ -37,7 +37,13 @@ pub fn learn_correction(project_root: &Path, original: &str, correct: &str) -> R
             return Ok((term.clone(), false));
         }
 
-        term.corrections.push(Correction { original: original.to_string(), correct: correct.to_string() });
+        term.corrections.push(Correction {
+            original: original.to_string(),
+            correct: correct.to_string(),
+            r#match: MatchKind::Word,
+            fix: FixKind::Required,
+            pinyin: None,
+        });
         term.clone()
     };
 

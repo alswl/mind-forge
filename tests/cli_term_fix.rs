@@ -41,7 +41,7 @@ fn mf(repo: &common::TempDir) -> Command {
 fn fix_term_replace_definition() {
     let (repo, _project) = setup_with_term();
     let output = mf(&repo)
-        .args(["term", "fix", "Mind Repo", "--definition", "new definition", "--project", "alpha"])
+        .args(["term", "update", "Mind Repo", "--definition", "new definition", "--project", "alpha"])
         .output()
         .unwrap();
 
@@ -62,7 +62,7 @@ fn fix_term_replace_definition() {
 fn fix_term_append_alias_and_tag() {
     let (repo, _project) = setup_with_term();
     let output = mf(&repo)
-        .args(["term", "fix", "Mind Repo", "--alias", "new-alias", "--tag", "new-tag", "--project", "alpha"])
+        .args(["term", "update", "Mind Repo", "--alias", "new-alias", "--tag", "new-tag", "--project", "alpha"])
         .output()
         .unwrap();
 
@@ -85,7 +85,7 @@ fn fix_term_combined_changes_atomic() {
     let output = mf(&repo)
         .args([
             "term",
-            "fix",
+            "update",
             "Other",
             "--definition",
             "combined",
@@ -115,7 +115,8 @@ fn fix_term_combined_changes_atomic() {
 fn fix_term_silently_ignores_existing_alias() {
     let (repo, _project) = setup_with_term();
     // mr already exists as alias
-    let output = mf(&repo).args(["term", "fix", "Mind Repo", "--alias", "mr", "--project", "alpha"]).output().unwrap();
+    let output =
+        mf(&repo).args(["term", "update", "Mind Repo", "--alias", "mr", "--project", "alpha"]).output().unwrap();
 
     assert!(output.status.success());
     // The CLI reports argument count, but the service deduplicates.
@@ -132,7 +133,7 @@ fn fix_term_silently_ignores_existing_alias() {
 fn fix_term_not_found_rejected() {
     let (repo, _project) = setup_with_term();
     let output =
-        mf(&repo).args(["term", "fix", "NonExistent", "--definition", "x", "--project", "alpha"]).output().unwrap();
+        mf(&repo).args(["term", "update", "NonExistent", "--definition", "x", "--project", "alpha"]).output().unwrap();
 
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8(output.stderr).unwrap();
@@ -146,7 +147,7 @@ fn fix_term_not_found_rejected() {
 #[test]
 fn fix_term_no_change_flags_rejected() {
     let (repo, _project) = setup_with_term();
-    let output = mf(&repo).args(["term", "fix", "Mind Repo", "--project", "alpha"]).output().unwrap();
+    let output = mf(&repo).args(["term", "update", "Mind Repo", "--project", "alpha"]).output().unwrap();
 
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8(output.stderr).unwrap();
@@ -161,7 +162,7 @@ fn fix_term_no_change_flags_rejected() {
 fn fix_term_does_not_touch_corrections() {
     let (repo, _project) = setup_with_term();
     // Mind Repo has 1 correction. After fix, should still have 1.
-    mf(&repo).args(["term", "fix", "Mind Repo", "--definition", "updated", "--project", "alpha"]).assert().code(0);
+    mf(&repo).args(["term", "update", "Mind Repo", "--definition", "updated", "--project", "alpha"]).assert().code(0);
 
     let index = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
     // Count corrections (original: mindrepo should be there once)
@@ -176,7 +177,7 @@ fn fix_term_does_not_touch_corrections() {
 fn fix_term_json_shape() {
     let (repo, _project) = setup_with_term();
     let output = mf(&repo)
-        .args(["--format", "json", "term", "fix", "Mind Repo", "--definition", "json-test", "--project", "alpha"])
+        .args(["--format", "json", "term", "update", "Mind Repo", "--definition", "json-test", "--project", "alpha"])
         .output()
         .unwrap();
 
@@ -200,7 +201,7 @@ fn fix_schema_version_unchanged() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "term", "fix", "cafed", "--definition", "the cafed thing"])
+        .args(["--root", repo.path().to_str().unwrap(), "term", "update", "cafed", "--definition", "the cafed thing"])
         .output()
         .unwrap();
 

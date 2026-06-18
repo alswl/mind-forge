@@ -5,7 +5,7 @@ use std::path::Path;
 use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::index::IndexFile;
-use crate::model::term::{CandidateTerm, TermFinding, TermLintFailure, TermLintReport};
+use crate::model::term::{CandidateTerm, FixKind, TermFinding, TermLintFailure, TermLintReport};
 use crate::service::config as config_svc;
 use crate::service::index;
 use crate::service::util::{atomic_write, canonicalize_within, rel_posix_path};
@@ -13,6 +13,7 @@ use crate::service::util::{atomic_write, canonicalize_within, rel_posix_path};
 mod exempt;
 mod fix;
 mod front_matter;
+mod pinyin;
 mod scan;
 
 use self::exempt::strip_exempt_regions;
@@ -26,6 +27,9 @@ pub(crate) struct CorrectionEntry {
     pub(crate) term_name: String,
     pub(crate) description: Option<String>,
     pub(crate) confidence: Option<f64>,
+    pub(crate) match_kind: crate::model::term::MatchKind,
+    pub(crate) fix_kind: crate::model::term::FixKind,
+    pub(crate) pinyin: Option<String>,
 }
 
 pub(crate) fn collect_corrections(index: &IndexFile) -> Vec<CorrectionEntry> {
@@ -39,6 +43,9 @@ pub(crate) fn collect_corrections(index: &IndexFile) -> Vec<CorrectionEntry> {
                     term_name: t.term.clone(),
                     description: t.description.clone(),
                     confidence: t.confidence,
+                    match_kind: c.r#match,
+                    fix_kind: c.fix,
+                    pinyin: c.pinyin.clone(),
                 });
             }
         }
@@ -82,37 +89,64 @@ pub(crate) fn empty_report(fix: bool, dry_run: bool) -> TermLintReport {
         modified_files: vec![],
         failures: vec![],
         would_fix_count: if fix && dry_run { Some(0) } else { None },
+        would_apply_count: 0,
     }
 }
 
 /// Lint a single file for term corrections (FR-027 mind primary form).
-pub fn lint_file(project_root: &Path, file_path: &str, fix: bool, dry_run: bool) -> Result<TermLintReport> {
+pub fn lint_file(
+    project_root: &Path,
+    file_path: &str,
+    fix: bool,
+    dry_run: bool,
+    include_suggested: bool,
+) -> Result<TermLintReport> {
     let index = index::load(project_root)?;
     if index.terms.as_ref().map_or(true, |t| t.is_empty()) {
         return Ok(empty_report(fix, dry_run));
     }
-    lint_single_file_with_index(&index, project_root, file_path, fix, dry_run)
+    lint_single_file_with_index(&index, project_root, file_path, fix, dry_run, include_suggested)
 }
 
 /// Lint a file or directory path relative to the project root.
-pub fn lint_path(project_root: &Path, path: &str, fix: bool, dry_run: bool) -> Result<TermLintReport> {
+pub fn lint_path(
+    project_root: &Path,
+    path: &str,
+    fix: bool,
+    dry_run: bool,
+    include_suggested: bool,
+) -> Result<TermLintReport> {
     if project_root.join(path).is_dir() {
-        lint_dir(project_root, path, fix, dry_run)
+        lint_dir(project_root, path, fix, dry_run, include_suggested)
     } else {
-        lint_file(project_root, path, fix, dry_run)
+        lint_file(project_root, path, fix, dry_run, include_suggested)
     }
 }
 
 /// Lint all markdown files under a specific directory (project-scoped).
-pub fn lint_dir(project_root: &Path, dir_path: &str, fix: bool, dry_run: bool) -> Result<TermLintReport> {
+pub fn lint_dir(
+    project_root: &Path,
+    dir_path: &str,
+    fix: bool,
+    dry_run: bool,
+    include_suggested: bool,
+) -> Result<TermLintReport> {
     let index = index::load(project_root)?;
     if index.terms.as_ref().map_or(true, |t| t.is_empty()) {
         return Ok(empty_report(fix, dry_run));
     }
-    lint_dir_with_index(&index, project_root, dir_path, "provide a path relative to the project root", fix, dry_run)
+    lint_dir_with_index(
+        &index,
+        project_root,
+        dir_path,
+        "provide a path relative to the project root",
+        fix,
+        dry_run,
+        include_suggested,
+    )
 }
 
-pub fn lint_terms(project_root: &Path, fix: bool, dry_run: bool) -> Result<TermLintReport> {
+pub fn lint_terms(project_root: &Path, fix: bool, dry_run: bool, include_suggested: bool) -> Result<TermLintReport> {
     let index = index::load(project_root)?;
     if index.terms.as_ref().map_or(true, |t| t.is_empty()) {
         return Ok(empty_report(fix, dry_run));
@@ -124,7 +158,7 @@ pub fn lint_terms(project_root: &Path, fix: bool, dry_run: bool) -> Result<TermL
         return Ok(empty_report(fix, dry_run));
     }
 
-    lint_walk_with_index(&index, project_root, &docs_dir, Some(&docs_dir), fix, dry_run)
+    lint_walk_with_index(&index, project_root, &docs_dir, Some(&docs_dir), fix, dry_run, include_suggested)
 }
 
 pub(crate) fn lint_dir_with_index(
@@ -134,12 +168,13 @@ pub(crate) fn lint_dir_with_index(
     hint: &str,
     fix: bool,
     dry_run: bool,
+    include_suggested: bool,
 ) -> Result<TermLintReport> {
     let target_dir = base_path.join(dir_path);
     if !target_dir.is_dir() {
         return Err(MfError::usage(format!("not a directory: {dir_path}"), Some(hint.to_string())));
     }
-    lint_walk_with_index(index, base_path, &target_dir, Some(&target_dir), fix, dry_run)
+    lint_walk_with_index(index, base_path, &target_dir, Some(&target_dir), fix, dry_run, include_suggested)
 }
 
 /// Lint a single markdown file against terms in `index`. Used by both project-
@@ -152,6 +187,7 @@ pub(crate) fn lint_single_file_with_index(
     file_path: &str,
     fix: bool,
     dry_run: bool,
+    include_suggested: bool,
 ) -> Result<TermLintReport> {
     let target_path = base_path.join(file_path);
     if !target_path.exists() {
@@ -176,25 +212,32 @@ pub(crate) fn lint_single_file_with_index(
         Ok(c) => c,
         Err(e) => {
             failures.push(TermLintFailure { path: rel_path.clone(), reason: format!("io error: {e}") });
-            return Ok(single_file_report(findings, failures, 0, vec![], fix, dry_run));
+            return Ok(single_file_report(findings, failures, 0, vec![], false, false, 0));
         }
     };
 
     scan_content(&content, None, &correction_refs, &rel_path, &mut findings, &mut internal_findings, &mut claimed);
 
     if !fix {
-        return Ok(single_file_report(findings, failures, 0, vec![], false, false));
+        return Ok(single_file_report(findings, failures, 0, vec![], false, false, 0));
     }
 
-    let mut spans: Vec<FixSpan> = internal_findings
-        .iter()
-        .filter(|ifind| ifind.original != ifind.correct && !ifind.is_ambiguous)
-        .map(|ifind| FixSpan {
+    let mut would_apply_count: u64 = 0;
+    let mut spans: Vec<FixSpan> = Vec::new();
+    for ifind in &internal_findings {
+        if ifind.original == ifind.correct || ifind.is_ambiguous {
+            continue;
+        }
+        if ifind.fix_kind == FixKind::Suggested && !include_suggested {
+            would_apply_count += 1;
+            continue;
+        }
+        spans.push(FixSpan {
             start: ifind.byte_offset,
             end: ifind.byte_offset + ifind.original_len,
             replacement: ifind.correct.clone(),
-        })
-        .collect();
+        });
+    }
 
     if dry_run {
         let wf = spans.len() as u64;
@@ -206,11 +249,12 @@ pub(crate) fn lint_single_file_with_index(
             modified_files: vec![],
             failures,
             would_fix_count: Some(wf),
+            would_apply_count,
         });
     }
 
     if spans.is_empty() {
-        return Ok(single_file_report(findings, failures, 0, vec![], false, false));
+        return Ok(single_file_report(findings, failures, 0, vec![], false, false, would_apply_count));
     }
 
     spans.sort_by_key(|s| s.start);
@@ -222,15 +266,23 @@ pub(crate) fn lint_single_file_with_index(
                 path: rel_path.clone(),
                 reason: "non-utf8 content after replacement".to_string(),
             });
-            return Ok(single_file_report(findings, failures, 0, vec![], false, false));
+            return Ok(single_file_report(findings, failures, 0, vec![], false, false, would_apply_count));
         }
     };
 
     match atomic_write(&target_path, &new_content) {
-        Ok(()) => Ok(single_file_report(findings, failures, spans.len() as u64, vec![rel_path], false, false)),
+        Ok(()) => Ok(single_file_report(
+            findings,
+            failures,
+            spans.len() as u64,
+            vec![rel_path],
+            false,
+            false,
+            would_apply_count,
+        )),
         Err(e) => {
             failures.push(TermLintFailure { path: rel_path, reason: format!("io error: {e}") });
-            Ok(single_file_report(findings, failures, 0, vec![], false, false))
+            Ok(single_file_report(findings, failures, 0, vec![], false, false, would_apply_count))
         }
     }
 }
@@ -242,6 +294,7 @@ fn single_file_report(
     modified_files: Vec<String>,
     fix: bool,
     dry_run: bool,
+    would_apply_count: u64,
 ) -> TermLintReport {
     TermLintReport {
         findings,
@@ -251,6 +304,7 @@ fn single_file_report(
         modified_files,
         failures,
         would_fix_count: if fix && dry_run { Some(0) } else { None },
+        would_apply_count,
     }
 }
 
@@ -265,6 +319,7 @@ pub(crate) fn lint_walk_with_index(
     safety_dir: Option<&Path>,
     fix: bool,
     dry_run: bool,
+    include_suggested: bool,
 ) -> Result<TermLintReport> {
     let corrections = collect_corrections(index);
     let ambiguous = build_ambiguous_originals(&corrections);
@@ -343,6 +398,7 @@ pub(crate) fn lint_walk_with_index(
             modified_files: vec![],
             failures,
             would_fix_count: None,
+            would_apply_count: 0,
         });
     }
 
@@ -350,6 +406,7 @@ pub(crate) fn lint_walk_with_index(
         base_path,
         safety_dir,
         dry_run,
+        include_suggested,
         findings,
         &internal_findings,
         scanned_files,
@@ -369,6 +426,7 @@ pub(crate) fn scan_content(
 ) {
     let sanitized = strip_exempt_regions(content, fm_end);
     scan_file_for_corrections(content, &sanitized, correction_refs, rel_path, findings, internal_findings, claimed);
+    pinyin::scan_for_pinyin(content, &sanitized, rel_path, correction_refs, findings, internal_findings, claimed);
 }
 
 pub(crate) fn build_correction_refs<'a>(
@@ -392,6 +450,9 @@ pub(crate) fn build_correction_refs<'a>(
                 } else {
                     &[]
                 },
+                match_kind: c.match_kind,
+                fix_kind: c.fix_kind,
+                pinyin: c.pinyin.as_deref(),
             }
         })
         .collect()
@@ -402,6 +463,7 @@ fn apply_term_fixes(
     base_path: &Path,
     safety_dir: Option<&Path>,
     dry_run: bool,
+    include_suggested: bool,
     findings: Vec<TermFinding>,
     internal_findings: &[InternalFinding],
     scanned_files: u64,
@@ -411,6 +473,7 @@ fn apply_term_fixes(
     let mut fixed_count: u64 = 0;
     let mut modified_files: Vec<String> = Vec::new();
     let mut would_fix_count: u64 = 0;
+    let mut would_apply_count: u64 = 0;
 
     let mut by_path: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     for (idx, ifind) in internal_findings.iter().enumerate() {
@@ -441,6 +504,10 @@ fn apply_term_fixes(
         for &idx in indices {
             let ifind = &internal_findings[idx];
             if ifind.original == ifind.correct || ifind.is_ambiguous {
+                continue;
+            }
+            if ifind.fix_kind == FixKind::Suggested && !include_suggested {
+                would_apply_count += 1;
                 continue;
             }
             spans.push(FixSpan {
@@ -484,5 +551,6 @@ fn apply_term_fixes(
         modified_files,
         failures,
         would_fix_count: if dry_run { Some(would_fix_count) } else { None },
+        would_apply_count,
     })
 }

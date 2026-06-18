@@ -20,6 +20,7 @@ thiserror = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 terminal_size = "0.4"
+pinyin = "0.10"
 unicode-width = "0.1"
 walkdir = "2"
 

@@ -218,10 +218,14 @@ fn lint_json_shape() {
     assert_eq!(parsed["status"], "ok");
     let findings = parsed["data"]["findings"].as_array().unwrap();
     assert_eq!(findings.len(), 1);
+    let f = &findings[0];
+    assert!(f.get("match_kind").is_some(), "finding must have match_kind");
+    assert!(f.get("fix_kind").is_some(), "finding must have fix_kind");
     assert!(parsed["data"].get("scanned_files").is_some());
     assert!(parsed["data"].get("fixed_count").is_some());
     assert!(parsed["data"].get("modified_files").is_some());
     assert!(parsed["data"].get("failures").is_some());
+    assert!(parsed["data"].get("would_apply_count").is_some(), "report must have would_apply_count");
 }
 
 // ---------------------------------------------------------------------------
@@ -298,7 +302,7 @@ fn lint_fix_writes_back_atomically() {
     let (repo, project) = setup_with_term();
     write_doc(&project, "intro", "hello mindrepo world\n");
 
-    let output = mf(&repo).args(["term", "lint", "--fix", "--project", "alpha"]).output().unwrap();
+    let output = mf(&repo).args(["term", "lint", "--fix", "-y", "--project", "alpha"]).output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("fixed"), "stdout: {stdout}");
@@ -318,7 +322,7 @@ fn lint_fix_multiple_findings_single_atomic() {
     let (repo, project) = setup_with_term();
     write_doc(&project, "intro", "mindrepo at start\nmindrepo at line 2\n");
 
-    mf(&repo).args(["term", "lint", "--fix", "--project", "alpha"]).assert().code(0);
+    mf(&repo).args(["term", "lint", "--fix", "-y", "--project", "alpha"]).assert().code(0);
 
     let content = fs::read_to_string(project.join("docs/intro.md")).unwrap();
     assert_eq!(content.matches("Mind Repo").count(), 2);
@@ -334,7 +338,7 @@ fn lint_fix_replaces_all_occurrences_in_line() {
     let (repo, project) = setup_with_term();
     write_doc(&project, "intro", "mindrepo and mindrepo on same line\n");
 
-    mf(&repo).args(["term", "lint", "--fix", "--project", "alpha"]).assert().code(0);
+    mf(&repo).args(["term", "lint", "--fix", "-y", "--project", "alpha"]).assert().code(0);
 
     let content = fs::read_to_string(project.join("docs/intro.md")).unwrap();
     assert_eq!(content.matches("Mind Repo").count(), 2);
@@ -360,7 +364,7 @@ terms:
     common::write_index(&repo, "alpha", index_yaml);
     write_doc(&project, "doc", "foo bar\n");
 
-    let output = mf(&repo).args(["term", "lint", "--fix", "--project", "alpha"]).output().unwrap();
+    let output = mf(&repo).args(["term", "lint", "--fix", "-y", "--project", "alpha"]).output().unwrap();
     // original == correct filtering: finding reported but no fix applied
     // Exit 0 because no actual failures
     assert!(output.status.success());
@@ -400,7 +404,7 @@ fn lint_fix_respects_exemption() {
     // Normal file
     write_doc(&project, "normal", "mindrepo here\n");
 
-    mf(&repo).args(["term", "lint", "--fix", "--project", "alpha"]).assert().code(0);
+    mf(&repo).args(["term", "lint", "--fix", "-y", "--project", "alpha"]).assert().code(0);
 
     // Skipped file should not be modified
     let skipped = fs::read_to_string(project.join("docs/skipped.md")).unwrap();
@@ -421,10 +425,10 @@ fn lint_fix_idempotent() {
     write_doc(&project, "intro", "mindrepo\n");
 
     // First fix
-    mf(&repo).args(["term", "lint", "--fix", "--project", "alpha"]).assert().code(0);
+    mf(&repo).args(["term", "lint", "--fix", "-y", "--project", "alpha"]).assert().code(0);
 
     // Second fix — should be clean
-    let output = mf(&repo).args(["term", "lint", "--fix", "--project", "alpha"]).output().unwrap();
+    let output = mf(&repo).args(["term", "lint", "--fix", "-y", "--project", "alpha"]).output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("No term issues found."), "second run clean: {stdout}");
@@ -439,7 +443,8 @@ fn lint_fix_json_shape() {
     let (repo, project) = setup_with_term();
     write_doc(&project, "intro", "mindrepo\n");
 
-    let output = mf(&repo).args(["--format", "json", "term", "lint", "--fix", "--project", "alpha"]).output().unwrap();
+    let output =
+        mf(&repo).args(["--format", "json", "term", "lint", "--fix", "-y", "--project", "alpha"]).output().unwrap();
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
@@ -447,4 +452,79 @@ fn lint_fix_json_shape() {
     assert_eq!(parsed["status"], "ok");
     assert!(parsed["data"]["fixed_count"].as_u64().unwrap_or(0) >= 1);
     assert_eq!(parsed["data"]["modified_files"].as_array().unwrap().len(), 1);
+    assert!(parsed["data"].get("would_apply_count").is_some(), "report must have would_apply_count");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// US1 — --fix confirmation gate
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn lint_fix_non_tty_without_yes_exits_2() {
+    let (repo, project) = setup_with_term();
+    write_doc(&project, "intro", "mindrepo here\n");
+
+    // Test process stdout is not a TTY; --fix without -y must exit 2
+    let output = mf(&repo).args(["term", "lint", "--fix", "--project", "alpha"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(2), "expected exit 2, got: {:?}", output.status.code());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("--yes") || stderr.contains("-y"), "hint missing: {stderr}");
+}
+
+#[test]
+fn lint_fix_force_flag_bypasses_confirmation() {
+    let (repo, project) = setup_with_term();
+    write_doc(&project, "intro", "mindrepo here\n");
+
+    mf(&repo).args(["term", "lint", "--fix", "--force", "--project", "alpha"]).assert().code(0);
+    let content = fs::read_to_string(project.join("docs/intro.md")).unwrap();
+    assert!(content.contains("Mind Repo"));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// US2 — ASCII word-boundary matching
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn lint_word_boundary_no_false_positives() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: AI
+    corrections:
+      - original: ai
+        correct: AI
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    // "ai" in "training" and "detail" must not match
+    write_doc(&project, "doc", "we use ai for training detail\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.matches("→ \"AI\"").count(), 1, "only standalone ai: {stdout}");
+}
+
+#[test]
+fn lint_word_boundary_no_partial_match() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: MindRepo
+    corrections:
+      - original: mindrepo
+        correct: MindRepo
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    // only standalone "mindrepo" should match
+    write_doc(&project, "doc", "the mindrepo, submindrepo, mindreport\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.matches("→ \"MindRepo\"").count(), 1, "only standalone: {stdout}");
 }
