@@ -281,7 +281,7 @@ default `projects/` container). Defaults to the current directory.
 | `list` (ls) | List terms. `--filter <PATTERN>`, `--term <NAME>` (deprecated: use `show`) |
 | `show <NAME>` | Show term details |
 | `add` | Add a term correction (mind primary; previously `learn`). `--term <CANONICAL>`, `--alias <VARIANT>` |
-| `update <TERM>` | Update term metadata (mf extension; previously `fix`). `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--clear-description`, `--clear-confidence` |
+| `update <TERM>` | Update term metadata (mf extension; previously `fix`). `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--clear-description`, `--clear-confidence`, `--delete-alias <TEXT>`, `--delete-tag <TAG>`, `--delete-correction <ORIGINAL>`, `--correction-match <ORIGINAL:word\|substring\|pinyin>`, `--correction-fix <ORIGINAL:required\|suggested>`, `--correction-pinyin <ORIGINAL:PINYIN>` |
 | `rename <OLD> <NEW>` | Rename a term. `--keep-alias` keeps the old name as an alias |
 | `remove <TERM>` (rm) | Remove a term (interactive confirmation in TTY) |
 | `lint [PATH]` | Lint term consistency in project docs. CJK/pinyin-aware matching, configurable `match` modes (`word`/`substring`/`pinyin`), `--fix`, `--all` to apply suggested corrections. Non-TTY `--fix` exits 2 without `-y`/`--force`. |

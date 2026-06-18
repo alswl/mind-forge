@@ -209,7 +209,7 @@ Create a term (mf extension).
 `--confidence <N>` — Confidence score
 `--alias <TEXT>` — Alias (repeatable)
 `--tag <TAG>` — Tag (repeatable)
-`--misrecognition <TEXT>` — Common misrecognition variant
+`--misrecognition <TEXT>` — Common misrecognition variant (repeatable, global and project-scoped)
 
 **`mf term list`** (alias `ls`)
 `--filter <PATTERN>` — Filter by name
@@ -231,6 +231,12 @@ Update term metadata (mf extension; replaces the legacy `term fix`).
 `--confidence <N>` — Update confidence (`--clear-confidence` to unset)
 `--alias <TEXT>` — Add alias (repeatable)
 `--tag <TAG>` — Add tag (repeatable)
+`--delete-alias <TEXT>` — Remove an alias (repeatable)
+`--delete-tag <TAG>` — Remove a tag (repeatable)
+`--delete-correction <ORIGINAL>` — Remove a correction by its original variant text (repeatable)
+`--correction-match <ORIGINAL:word|substring|pinyin>` — Set correction match kind (repeatable)
+`--correction-fix <ORIGINAL:required|suggested>` — Set correction fix kind (repeatable)
+`--correction-pinyin <ORIGINAL:<PINYIN>>` — Set correction pinyin (repeatable)
 
 **`mf term rename <OLD_TERM> <NEW_TERM>`**
 Rename a term.
