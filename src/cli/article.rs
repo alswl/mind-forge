@@ -43,6 +43,8 @@ pub enum ArticleSubcommand {
     Remove(ArticleRemoveArgs),
     #[command(about = "Show article details")]
     Show(ArticleShowArgs),
+    #[command(about = "Update article metadata")]
+    Update(ArticleUpdateArgs),
     #[command(about = "Convert article shape between directory and single-file")]
     Convert(ArticleConvertArgs),
 }
@@ -91,6 +93,17 @@ pub struct ArticleIndexArgs {
 pub struct ArticleShowArgs {
     /// Article path (e.g. docs/weekly.md) or title
     pub path: String,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ArticleUpdateArgs {
+    /// Article path (e.g. docs/weekly.md) or title
+    pub path: String,
+    /// Article publication status
+    #[arg(long)]
+    pub status: Option<String>,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -471,6 +484,45 @@ pub fn dispatch(
         Some(ArticleSubcommand::Show(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
             handle_article_show(args, &project_path, format)
+        }
+        Some(ArticleSubcommand::Update(args)) => {
+            let project_path = svc_util::resolve_project(root, project, &cwd)?;
+            let status = match args.status.as_deref() {
+                Some("draft") => Some(ArticleStatus::Draft),
+                Some("published") => Some(ArticleStatus::Published),
+                Some(other) => {
+                    return Err(MfError::usage(
+                        format!("invalid status '{other}'"),
+                        Some("use --status draft or --status published".to_string()),
+                    ));
+                }
+                None => None,
+            };
+
+            let report = article_svc::update_article(
+                &project_path,
+                article_svc::ArticleUpdate { selector: &args.path, status, dry_run: args.dry_run },
+            )?;
+
+            let result = VerbResult {
+                verb: Verb::Update,
+                kind: "article",
+                identity: report.article.article_path.clone(),
+                old_identity: None,
+                path: Some(report.article.article_path.clone()),
+                dry_run: report.dry_run,
+                details: serde_json::json!({"changes": report.changes, "article": report.article}),
+            };
+            match format {
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+                Format::Text => Ok(CommandOutcome::Success(
+                    serde_json::Value::String(verb_text(
+                        &result,
+                        &VerbOpts::from_repo_root(Some(project_path.as_path())),
+                    )),
+                    None,
+                )),
+            }
         }
         Some(ArticleSubcommand::Rename(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;

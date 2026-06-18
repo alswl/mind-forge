@@ -1,5 +1,6 @@
 ---
 source: tests/cli_help.rs
+assertion_line: 240
 expression: stdout
 ---
 Manage articles
@@ -14,6 +15,7 @@ Commands:
   rename   Rename an article
   remove   Remove an article [aliases: rm]
   show     Show article details
+  update   Update article metadata
   convert  Convert article shape between directory and single-file
 
 Options:

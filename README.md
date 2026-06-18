@@ -227,6 +227,7 @@ default `projects/` container). Defaults to the current directory.
 | `new <PATH>` | Create a project. Accepts cwd-relative or repo-relative paths with Unicode, emoji, dates, spaces. `--template <TEMPLATE>` |
 | `list` (ls) | List projects |
 | `show <NAME>` | Show project details |
+| `update <NAME>` | Update project metadata. `--description <TEXT>`, `--clear-description` |
 | `rename <OLD> <NEW>` | Rename a project |
 | `remove <NAME>` (rm) | Remove a project (interactive confirmation in TTY) |
 | `archive <NAME_OR_PATH>` | Archive a project to `_archived/` (interactive confirmation in TTY) |
@@ -241,6 +242,7 @@ default `projects/` container). Defaults to the current directory.
 | `new <TITLE>` | Create an article. `-t, --template blank\|arch\|prd\|blog\|<path>`, `--file`, `--tag <TAG>`, `--draft` |
 | `list` (ls) | List articles. Omitting `--project` outside a project dir lists all articles across all projects, sorted by most recently modified. |
 | `show <PATH>` | Show article details |
+| `update <PATH>` | Update article metadata. `--status draft\|published` |
 | `rename <OLD_PATH> <NEW_PATH>` | Rename an article |
 | `remove <PATH>` (rm) | Remove an article (interactive confirmation in TTY) |
 | `lint` | Lint articles |

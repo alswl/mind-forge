@@ -45,6 +45,8 @@ pub enum ProjectSubcommand {
     Index(ProjectIndexArgs),
     #[command(about = "Show project details")]
     Show(ProjectShowArgs),
+    #[command(about = "Update project metadata")]
+    Update(ProjectUpdateArgs),
     #[command(about = "Import a directory as a project")]
     Import(ProjectImportArgs),
     #[command(about = "Rename a project")]
@@ -102,6 +104,17 @@ pub struct ProjectIndexArgs {
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectShowArgs {
     pub name: String,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct ProjectUpdateArgs {
+    pub name: String,
+    #[arg(long)]
+    pub description: Option<String>,
+    #[arg(long = "clear-description")]
+    pub clear_description: bool,
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -169,6 +182,7 @@ pub fn dispatch(
         Some(ProjectSubcommand::Lint(args)) => handle_lint(args, repo_root, format, project),
         Some(ProjectSubcommand::Index(args)) => handle_index(args, repo_root, format),
         Some(ProjectSubcommand::Show(args)) => handle_show(args, repo_root, format),
+        Some(ProjectSubcommand::Update(args)) => handle_update(args, repo_root, format),
         Some(ProjectSubcommand::Import(args)) => handle_import(args, repo_root, format),
         Some(ProjectSubcommand::Rename(args)) => handle_rename(args, repo_root, format),
         Some(ProjectSubcommand::Remove(args)) => handle_remove(args, repo_root, format),
@@ -655,6 +669,42 @@ fn handle_import(
             lines.push(format!("  articles: {}", report.article_count));
             Ok(CommandOutcome::Raw(lines.join("\n"), None))
         }
+    }
+}
+
+fn handle_update(
+    args: ProjectUpdateArgs,
+    repo_root: Option<&std::path::PathBuf>,
+    format: Format,
+) -> Result<CommandOutcome> {
+    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+
+    let report = svc::project::update_project(
+        root,
+        svc::project::ProjectUpdate {
+            name: &args.name,
+            description: args.description.as_deref(),
+            clear_description: args.clear_description,
+            dry_run: args.dry_run,
+        },
+    )?;
+
+    let result = VerbResult {
+        verb: Verb::Update,
+        kind: "project",
+        identity: report.name.clone(),
+        old_identity: None,
+        path: Some(report.path.clone()),
+        dry_run: report.dry_run,
+        details: serde_json::json!({"changes": report.changes}),
+    };
+
+    match format {
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
+            None,
+        )),
     }
 }
 
