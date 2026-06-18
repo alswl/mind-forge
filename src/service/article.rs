@@ -566,6 +566,76 @@ pub fn list_articles(project_path: &Path) -> Result<Vec<Article>> {
     Ok(index.articles.unwrap_or_default())
 }
 
+/// List articles across all projects in a repo, sorted by file modification time
+/// (newest first). Returns tuples of (article, project_path, mtime_seconds).
+pub fn list_articles_all_projects(repo_root: &Path) -> Result<Vec<(Article, PathBuf, u64)>> {
+    let projects_dir = crate::service::repo::projects_dir_for(repo_root)?;
+    let manifest_path = repo_root.join("minds.yaml");
+    let manifest = if manifest_path.exists() { crate::service::repo::load_manifest(&manifest_path).ok() } else { None };
+
+    let mut project_paths: Vec<PathBuf> = Vec::new();
+    if let Some(ref m) = manifest {
+        for entry in &m.projects {
+            project_paths.push(repo_root.join(entry.path.trim_start_matches("./")));
+        }
+    }
+    let scanned = crate::service::repo::scan_project_dirs(repo_root, &projects_dir);
+    for sp in &scanned {
+        let path = repo_root.join(sp.path.trim_start_matches("./"));
+        if !project_paths.contains(&path) {
+            project_paths.push(path);
+        }
+    }
+
+    let mut results: Vec<(Article, PathBuf, u64)> = Vec::new();
+    for project_path in &project_paths {
+        if let Ok(articles) = list_articles(project_path) {
+            for article in articles {
+                let mtime = article_file_mtime(project_path, &article.article_path);
+                results.push((article, project_path.clone(), mtime));
+            }
+        }
+    }
+
+    results.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.article_path.cmp(&b.0.article_path)));
+    Ok(results)
+}
+
+/// Get the newest file modification time (Unix epoch seconds) for an article.
+fn article_file_mtime(project_path: &Path, article_path: &str) -> u64 {
+    let full_path = project_path.join(article_path);
+    match fs::metadata(&full_path) {
+        Ok(meta) => {
+            if meta.is_dir() {
+                newest_file_mtime_in_dir(&full_path).unwrap_or(0)
+            } else {
+                meta_unixtime(&meta).unwrap_or(0)
+            }
+        }
+        Err(_) => 0,
+    }
+}
+
+fn newest_file_mtime_in_dir(dir: &Path) -> Option<u64> {
+    let mut newest: Option<u64> = None;
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Ok(meta) = fs::metadata(&path) {
+                let t = if meta.is_dir() { newest_file_mtime_in_dir(&path) } else { meta_unixtime(&meta) };
+                if let Some(t) = t {
+                    newest = Some(newest.map_or(t, |n| n.max(t)));
+                }
+            }
+        }
+    }
+    newest
+}
+
+fn meta_unixtime(meta: &fs::Metadata) -> Option<u64> {
+    meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs())
+}
+
 /// Derive the article key from its article_path.
 ///
 /// Returns the full project-relative path without `.md` extension.

@@ -2074,3 +2074,231 @@ articles:
     let stdout2 = String::from_utf8(output2.stdout).unwrap();
     assert!(stdout2.contains("0 converted"), "second run should have 0 converted: {stdout2}");
 }
+
+// ── All-projects article list ────────────────────────────────────────────────
+
+#[test]
+fn article_list_all_projects_text() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    common::create_project(&repo, "beta");
+    common::write_doc(&repo, "alpha", "post", "# Alpha post\n");
+    // Enough delay for mtime to differ across filesystems
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    common::write_doc(&repo, "beta", "note", "# Beta note\n");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path())
+        .env("MF_FORCE_TTY", "1")
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    // TTY mode: PROJECT column header is present
+    assert!(stdout.contains("PROJECT"), "PROJECT column missing:\n{stdout}");
+
+    // Both articles appear with their project names
+    assert!(stdout.contains("beta"), "beta project name missing:\n{stdout}");
+    assert!(stdout.contains("alpha"), "alpha project name missing:\n{stdout}");
+
+    // Articles appear: beta's note (newer mtime) should come before alpha's post
+    let beta_pos = stdout.find("docs/note.md").expect("beta article");
+    let alpha_pos = stdout.find("docs/post.md").expect("alpha article");
+    assert!(beta_pos < alpha_pos, "newer article (beta/note) should appear before alpha/post:\n{stdout}");
+}
+
+#[test]
+fn article_list_all_projects_json() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    common::create_project(&repo, "beta");
+    common::write_doc(&repo, "alpha", "post", "# Alpha post\n");
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    common::write_doc(&repo, "beta", "note", "# Beta note\n");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path())
+        .args(["--format", "json", "article", "list"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    let articles = v["data"]["articles"].as_array().expect("articles array");
+
+    assert!(!articles.is_empty(), "should have articles");
+
+    // Each article has mtime field
+    for a in articles {
+        assert!(a.get("mtime").is_some(), "article missing mtime: {a}");
+        assert!(a.get("project").is_some(), "article missing project: {a}");
+    }
+
+    // Sorted by mtime descending: beta/note first
+    let first = &articles[0];
+    assert_eq!(first["project"].as_str().unwrap(), "beta");
+    assert!(first["article_path"].as_str().unwrap().contains("note"));
+}
+
+#[test]
+fn article_list_all_projects_sorted_by_mtime() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "first");
+    common::write_doc(&repo, "first", "old", "# Oldest\n");
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    common::create_project(&repo, "second");
+    common::write_doc(&repo, "second", "mid", "# Middle\n");
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    common::create_project(&repo, "third");
+    common::write_doc(&repo, "third", "new", "# Newest\n");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path())
+        .args(["--format", "json", "article", "list"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    let articles = v["data"]["articles"].as_array().expect("articles array");
+    assert_eq!(articles.len(), 3);
+
+    // All three articles are present (order is by mtime, verify mtimes are non-increasing)
+    let mtimes: Vec<u64> = articles.iter().map(|a| a["mtime"].as_u64().unwrap_or(0)).collect();
+    for i in 1..mtimes.len() {
+        assert!(mtimes[i - 1] >= mtimes[i], "mtimes should be sorted descending, got: {mtimes:?}");
+    }
+    // "old" should have the smallest (or equal) mtime since it was written first
+    assert!(mtimes.last().copied().unwrap_or(0) <= mtimes[0], "oldest article should have smallest mtime: {mtimes:?}");
+}
+
+#[test]
+fn article_list_inside_project_dir_still_works() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_doc(&repo, "my-project", "hello", "# Hello\n");
+
+    // Run from inside the project dir — should still list only that project
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .env("MF_FORCE_TTY", "1")
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    // Single-project mode: no PROJECT column, only PATH/CONTENT/STATUS
+    assert!(!stdout.contains("PROJECT"), "should not show PROJECT column in single-project mode:\n{stdout}");
+    assert!(stdout.contains("CONTENT"), "should have CONTENT column:\n{stdout}");
+    assert!(stdout.contains("docs/hello.md"), "should show the article:\n{stdout}");
+}
+
+#[test]
+fn article_list_with_explicit_project_still_works() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "foo");
+    common::create_project(&repo, "bar");
+    common::write_doc(&repo, "foo", "foo-post", "# Foo\n");
+    common::write_doc(&repo, "bar", "bar-post", "# Bar\n");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path())
+        .args(["--project", "foo", "article", "list"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(!stdout.contains("PROJECT"), "should not show PROJECT column with --project:\n{stdout}");
+    assert!(stdout.contains("docs/foo-post.md"), "should show foo's article:\n{stdout}");
+    assert!(!stdout.contains("bar-post"), "should not show bar's article:\n{stdout}");
+}
+
+#[test]
+fn article_list_all_projects_no_articles() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "empty-project");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path())
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("No articles found"), "should show empty message:\n{stdout}");
+}
+
+#[test]
+fn article_list_all_projects_no_projects_at_all() {
+    let repo = common::setup_repo();
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path())
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("No articles found"), "should show empty message:\n{stdout}");
+}
+
+#[test]
+fn article_list_pipe_mode_all_projects_no_headers() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    common::write_doc(&repo, "alpha", "post", "# Post\n");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path())
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    // Pipe mode: no ANSI
+    assert!(!stdout.contains("\x1b["), "pipe mode should not have ANSI:\n{stdout}");
+    // Header row should NOT be present (pipe mode)
+    assert!(!stdout.starts_with("PATH"), "pipe mode should not show headers:\n{stdout}");
+}
+
+#[test]
+fn article_list_all_projects_hyperlinks() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    common::write_doc(&repo, "alpha", "post", "# Post\n");
+
+    // TTY mode with color to enable hyperlinks
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path())
+        .env("MF_FORCE_TTY", "1")
+        .args(["article", "list"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    // TTY mode: header present
+    assert!(stdout.contains("PATH"), "TTY mode should show headers:\n{stdout}");
+    assert!(stdout.contains("PROJECT"), "TTY mode should show PROJECT column:\n{stdout}");
+}

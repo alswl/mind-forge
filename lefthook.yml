@@ -1,0 +1,6 @@
+pre-commit:
+  commands:
+    cargo-fmt:
+      glob: "*.rs"
+      run: cargo fmt --check
+      fail_text: "Formatting errors found. Run 'cargo fmt' to fix."

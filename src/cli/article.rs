@@ -222,79 +222,115 @@ pub fn dispatch(
             }
         }
         Some(ArticleSubcommand::List(args)) => {
-            let project_path = svc_util::resolve_project(root, project, &cwd)?;
-            let articles = article_svc::list_articles(&project_path)?;
-            let config = config_svc::load_project(&project_path, Some(root))?;
+            let detected =
+                project.map_or_else(|| svc_util::detect_current_project(root, &cwd), |p| Some(p.to_string()));
 
-            // Compute article_dir for each article based on config
-            let enriched: Vec<serde_json::Value> = articles
-                .iter()
-                .map(|a| {
-                    let article_dir =
-                        config.as_ref().map(|cfg| article_svc::effective_article_dir(&project_path, cfg, a));
-                    let mut v = serde_json::to_value(a).unwrap_or_default();
-
-                    // Add article_dir
-                    if let Some(dir) = article_dir {
-                        v["article_dir"] = serde_json::Value::String(dir);
-                    }
-
-                    // Article key (id)
-                    if let Ok(key) = crate::service::index::article_key(a) {
-                        v["id"] = serde_json::Value::String(key);
-                    }
-
-                    // Discovery origin
-                    let origin = if a.template_origin.is_some() {
-                        "generated"
-                    } else {
-                        let is_declared = config.as_ref().is_some_and(|cfg| {
-                            let short_key = crate::service::index::article_output_stem(&a.article_path);
-                            cfg.build.articles.contains_key(short_key)
-                                || cfg
-                                    .articles
-                                    .as_ref()
-                                    .and_then(|v| v.as_object())
-                                    .is_some_and(|map| map.contains_key(short_key))
-                        });
-                        if is_declared {
-                            "declared"
-                        } else {
-                            "docs"
-                        }
-                    };
-                    v["origin"] = serde_json::Value::String(origin.to_string());
-
-                    // Article content existence
-                    v["article_present"] = serde_json::Value::Bool(project_path.join(&a.article_path).exists());
-                    let content_kind = article_content_kind(&project_path, &a.article_path);
-                    v["content_kind"] = serde_json::Value::String(content_kind.to_string());
-
-                    // Path identity contract
-                    v["identity"] = serde_json::Value::String(a.article_path.clone());
-                    v["path"] = serde_json::Value::String(a.article_path.clone());
-
-                    v
-                })
-                .collect();
-
-            let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
-                .with_repo_root(Some(project_path.clone()));
-
-            match format {
-                Format::Json => Ok(CommandOutcome::Success(json_collection("articles", enriched), None)),
-                Format::Text => {
-                    let mut rows = Vec::with_capacity(enriched.len());
-                    for v in &enriched {
-                        let identity = v["identity"].as_str().unwrap_or("").to_string();
-                        let content_kind = v["content_kind"].as_str().unwrap_or("missing");
-                        let status = v["status"].as_str().unwrap_or("draft");
+            match detected {
+                None => {
+                    // No --project and not in a project directory: list all projects
+                    let all = article_svc::list_articles_all_projects(root)?;
+                    let mut rows = Vec::with_capacity(all.len());
+                    let mut json_items = Vec::with_capacity(all.len());
+                    for (article, project_path, mtime) in &all {
+                        let repo_rel = project_path.strip_prefix(root).unwrap_or(project_path);
+                        let full_path = repo_rel.join(&article.article_path);
+                        let path_str = full_path.to_string_lossy().replace('\\', "/");
+                        let content_kind = article_content_kind(project_path, &article.article_path);
+                        let status = match article.status {
+                            ArticleStatus::Draft => "draft",
+                            ArticleStatus::Published => "published",
+                        };
                         rows.push(ListRow {
-                            cells: vec![ListCell::Path(identity), content_kind_cell(content_kind), status_cell(status)],
+                            cells: vec![
+                                ListCell::Path(path_str),
+                                ListCell::Text(article.project.clone()),
+                                content_kind_cell(content_kind),
+                                status_cell(status),
+                            ],
                         });
+                        let mut v = serde_json::to_value(article).unwrap_or_default();
+                        v["mtime"] = serde_json::Value::Number((*mtime).into());
+                        json_items.push(v);
                     }
-                    let view = ListView { headers: &["PATH", "CONTENT", "STATUS"], rows, plural_noun: "articles" };
-                    Ok(CommandOutcome::Raw(render_text(&view, &opts), None))
+                    let view =
+                        ListView { headers: &["PATH", "PROJECT", "CONTENT", "STATUS"], rows, plural_noun: "articles" };
+                    let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
+                        .with_repo_root(Some(root.to_path_buf()));
+                    match format {
+                        Format::Json => Ok(CommandOutcome::Success(json_collection("articles", json_items), None)),
+                        Format::Text => Ok(CommandOutcome::Raw(render_text(&view, &opts), None)),
+                    }
+                }
+                Some(resolved) => {
+                    // --project specified or detected from cwd: single-project behavior
+                    let project_path = svc_util::resolve_project(root, Some(&resolved), &cwd)?;
+                    let articles = article_svc::list_articles(&project_path)?;
+                    let config = config_svc::load_project(&project_path, Some(root))?;
+
+                    let enriched: Vec<serde_json::Value> = articles
+                        .iter()
+                        .map(|a| {
+                            let article_dir =
+                                config.as_ref().map(|cfg| article_svc::effective_article_dir(&project_path, cfg, a));
+                            let mut v = serde_json::to_value(a).unwrap_or_default();
+                            if let Some(dir) = article_dir {
+                                v["article_dir"] = serde_json::Value::String(dir);
+                            }
+                            if let Ok(key) = crate::service::index::article_key(a) {
+                                v["id"] = serde_json::Value::String(key);
+                            }
+                            let origin = if a.template_origin.is_some() {
+                                "generated"
+                            } else {
+                                let is_declared = config.as_ref().is_some_and(|cfg| {
+                                    let short_key = crate::service::index::article_output_stem(&a.article_path);
+                                    cfg.build.articles.contains_key(short_key)
+                                        || cfg
+                                            .articles
+                                            .as_ref()
+                                            .and_then(|v| v.as_object())
+                                            .is_some_and(|map| map.contains_key(short_key))
+                                });
+                                if is_declared {
+                                    "declared"
+                                } else {
+                                    "docs"
+                                }
+                            };
+                            v["origin"] = serde_json::Value::String(origin.to_string());
+                            v["article_present"] = serde_json::Value::Bool(project_path.join(&a.article_path).exists());
+                            let content_kind = article_content_kind(&project_path, &a.article_path);
+                            v["content_kind"] = serde_json::Value::String(content_kind.to_string());
+                            v["identity"] = serde_json::Value::String(a.article_path.clone());
+                            v["path"] = serde_json::Value::String(a.article_path.clone());
+                            v
+                        })
+                        .collect();
+
+                    let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
+                        .with_repo_root(Some(project_path.clone()));
+
+                    match format {
+                        Format::Json => Ok(CommandOutcome::Success(json_collection("articles", enriched), None)),
+                        Format::Text => {
+                            let mut rows = Vec::with_capacity(enriched.len());
+                            for v in &enriched {
+                                let identity = v["identity"].as_str().unwrap_or("").to_string();
+                                let content_kind = v["content_kind"].as_str().unwrap_or("missing");
+                                let status = v["status"].as_str().unwrap_or("draft");
+                                rows.push(ListRow {
+                                    cells: vec![
+                                        ListCell::Path(identity),
+                                        content_kind_cell(content_kind),
+                                        status_cell(status),
+                                    ],
+                                });
+                            }
+                            let view =
+                                ListView { headers: &["PATH", "CONTENT", "STATUS"], rows, plural_noun: "articles" };
+                            Ok(CommandOutcome::Raw(render_text(&view, &opts), None))
+                        }
+                    }
                 }
             }
         }

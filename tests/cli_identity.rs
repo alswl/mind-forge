@@ -387,14 +387,15 @@ fn project_new_rejects_duplicate_path_identity() {
 }
 
 #[test]
-fn missing_project_auto_detection_returns_error() {
+fn article_list_from_repo_root_lists_all_projects() {
     let repo = setup();
-    // Running article list from repo root without --project should fail
-    // because there's no auto-detected project
+    // Running article list from repo root without --project now auto-matches
+    // all projects across the entire repo
     let (stdout, _stderr, code) = run_json_in(&repo, &["article", "list"]);
-    // May succeed with empty list or fail — either is fine for auto-detection
-    // The key is it shouldn't crash
-    let _ = (stdout, code);
+    assert_eq!(code, 0, "should succeed");
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(v["status"], "ok");
+    assert!(v["data"]["articles"].is_array());
 }
 
 // ── T052: Text stderr diagnostic tests ────────────────────────────────────

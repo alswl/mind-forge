@@ -211,6 +211,9 @@ Shared flag families (uniform across all commands they apply to):
 `source`, `term`, `build`, `publish run`, etc.) and accepts repo-relative
 paths or project names. When running inside a project directory,
 `--project` can be omitted — the CLI auto-detects the current project.
+When run outside a project directory without `--project`, `mf article list`
+automatically matches all projects and sorts articles by most recently
+modified.
 
 ### `mf init [PATH]` — Initialize a Mind Repo
 
@@ -236,7 +239,7 @@ default `projects/` container). Defaults to the current directory.
 | Subcommand | Description |
 |-----------|-------------|
 | `new <TITLE>` | Create an article. `-t, --template blank\|arch\|prd\|blog\|<path>`, `--file`, `--tag <TAG>`, `--draft` |
-| `list` (ls) | List articles |
+| `list` (ls) | List articles. Omitting `--project` outside a project dir lists all articles across all projects, sorted by most recently modified. |
 | `show <PATH>` | Show article details |
 | `rename <OLD_PATH> <NEW_PATH>` | Rename an article |
 | `remove <PATH>` (rm) | Remove an article (interactive confirmation in TTY) |
@@ -331,7 +334,7 @@ Text output includes commit / build_date / rustc. JSON envelope adds
 
 - **Repo bootstrap** — `mf init [PATH]` creates `minds.yaml` and `.mind/`
 - **Project lifecycle** — `mf project new | list | show | rename | remove | archive | lint | index | import`; path-based identity supports Unicode, emoji, dates, spaces
-- **Project auto-detection** — running inside a project directory auto-injects `--project`; cwd-relative paths normalized to repo-relative canonical identity
+- **Project auto-detection** — running inside a project directory auto-injects `--project`; `mf article list` without `--project` outside a project dir auto-matches all projects, sorted by most recently modified; cwd-relative paths normalized to repo-relative canonical identity
 - **Article management** — `mf article new | list | show | rename | remove | lint | index`; directory articles by default, `--file` for single-file shape; `--template blank|arch|prd|blog` or custom project-local template path
 - **Sources** — `mf source add | list | show | update | rename | remove | index | clean`; `--file-kind auto|pdf|file|rss|web`, `--source-kind yuque|meeting|misc`
 - **Assets** — `mf asset add | list | show | update | rename | remove | index | clean`; `--copy`/`--link` for copy vs symlink
