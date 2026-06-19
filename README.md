@@ -99,8 +99,8 @@ mf project new workspaces/team/projects/2026-W21
 mf article new "First Post" --project blog
 
 # 4. Add sources, assets, and terms
-mf source add https://example.com/ref --file-kind web --project blog
-mf asset add diagram.png --project blog
+mf source new https://example.com/ref --file-kind web --project blog
+mf asset new diagram.png --project blog
 mf term new "Zettelkasten" --definition "A note-taking method" --project blog
 
 # 5. Index, build, and publish
@@ -165,7 +165,7 @@ flowchart LR
   P -. new insights .-> C
 ```
 
-1. **Capture** — `mf source add` and `mf asset add` pull raw material into a
+1. **Capture** — `mf source new` and `mf asset new` pull raw material into a
    project. `mf term new` records vocabulary.
 2. **Draft** — `mf article new <TYPE> <TITLE> [--template <S>] [--file]`
    scaffolds a directory article (default) or single file (`--file`) under
@@ -208,8 +208,8 @@ Shared flag families (uniform across all commands they apply to):
 
 | Flag family | Applies to | Description |
 |------|------|------|
-| `--dry-run` | every mutating command (`new`, `add`, `rename`, `remove`, `archive`, `update`, `index`, lint `--fix`) | Preview without writing |
-| `-f`, `--force` | every `new`/`add`/`rename`/`remove`/`archive` | Overwrite or skip safety checks |
+| `--dry-run` | every mutating command (`new`, `rename`, `remove`, `archive`, `update`, `index`, lint `--fix`) | Preview without writing |
+| `-f`, `--force` | every `new`/`rename`/`remove`/`archive` | Overwrite or skip safety checks |
 | `-y`, `--yes` | every `remove` and `archive` | Confirm destructive action non-interactively |
 | `--no-headers`, `--no-trunc` | every `list` | Suppress table header / disable column truncation |
 | `--fix`, `--rule <RULE>`, `--severity <LEVEL>`, `--max-warnings <N>` | every `lint` | Auto-fix, restrict rule, filter severity, fail on warnings > N |
@@ -260,7 +260,7 @@ default `projects/` container). Defaults to the current directory.
 
 | Subcommand | Description |
 |-----------|-------------|
-| `add <INPUT>` | Add a source. `-n, --name <NAME>`, `--file-kind auto\|pdf\|file\|rss\|web`, `--source-kind yuque\|meeting\|misc`, `--link` |
+| `new <INPUT>` | Add a source. `-n, --name <NAME>`, `--file-kind auto\|pdf\|file\|rss\|web`, `--source-kind yuque\|meeting\|misc`, `--link` |
 | `list` (ls) | List sources. `--filter <PATTERN>`, `-t, --type <KIND>` |
 | `show <NAME>` | Show source details |
 | `update <NAME>` | Update a source (mf extension). `--url <URL>`, `--rename <NAME>` |
@@ -273,7 +273,7 @@ default `projects/` container). Defaults to the current directory.
 
 | Subcommand | Description |
 |-----------|-------------|
-| `add <PATH>` | Add an asset. `--name <NAME>`, `--tag <TAG>`, `--copy`/`--link` |
+| `new <PATH>` | Add an asset. `--name <NAME>`, `--tag <TAG>`, `--copy`/`--link` |
 | `list` (ls) | List assets. `--filter <PATTERN>`, `--type image\|video\|audio\|other` |
 | `show <NAME>` | Show asset details |
 | `update [PATH]` | Update assets. `--set-url <URL>`, `--channel <CHANNEL>`, `--all` |
@@ -289,12 +289,11 @@ default `projects/` container). Defaults to the current directory.
 | `new <TERM>` | Create a term (mf extension). `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--misrecognition <TEXT>` |
 | `list` (ls) | List terms. `--filter <PATTERN>`, `--term <NAME>` (deprecated: use `show`) |
 | `show <NAME>` | Show term details |
-| `add` | Add a term correction (mind primary; previously `learn`). `--term <CANONICAL>`, `--alias <VARIANT>` |
 | `update <TERM>` | Update term metadata (mf extension; previously `fix`). `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--clear-description`, `--clear-confidence`, `--delete-alias <TEXT>`, `--delete-tag <TAG>`, `--delete-correction <ORIGINAL>`, `--correction-match <ORIGINAL:word\|substring\|pinyin>`, `--correction-fix <ORIGINAL:required\|suggested>`, `--correction-pinyin <ORIGINAL:PINYIN>` |
 | `rename <OLD> <NEW>` | Rename a term. `--keep-alias` keeps the old name as an alias |
 | `remove <TERM>` (rm) | Remove a term (interactive confirmation in TTY) |
-| `lint [PATH]` | Lint term consistency in project docs. CJK/pinyin-aware matching, configurable `match` modes (`word`/`substring`/`pinyin`), `--fix`, `--all` to apply suggested corrections. Non-TTY `--fix` exits 2 without `-y`/`--force`. |
-| `fix [PATH]` | First-class alias for `term lint --fix`. Same flags as `lint` + `--all` for suggested corrections. |
+| `lint [PATH]` | Lint term consistency in project docs. CJK/pinyin-aware matching, configurable `match` modes (`word`/`substring`/`pinyin`), `--fix`, `--include-suggested` to apply suggested corrections. Non-TTY `--fix` exits 2 without `-y`/`--force`. |
+| `fix [PATH]` | First-class alias for `term lint --fix`. Same flags as `lint` + `--include-suggested` for suggested corrections. |
 
 Global terms (created without `--project`) are stored in `minds-terms.yaml` at
 the repo root. Project-scoped terms live in each project's `mind-index.yaml`.
@@ -347,9 +346,9 @@ Text output includes commit / build_date / rustc. JSON envelope adds
 - **Project lifecycle** — `mf project new | list | show | update | rename | remove | archive | lint | index | import`; path-based identity supports Unicode, emoji, dates, spaces
 - **Project auto-detection** — running inside a project directory auto-injects `--project`; `mf article list` without `--project` outside a project dir auto-matches all projects, sorted by most recently modified; cwd-relative paths normalized to repo-relative canonical identity
 - **Article management** — `mf article new | list | show | update | rename | remove | lint | index`; directory articles by default, `--file` for single-file shape; `--template blank|arch|prd|blog` or custom project-local template path
-- **Sources** — `mf source add | list | show | update | rename | remove | index | clean`; `--file-kind auto|pdf|file|rss|web`, `--source-kind yuque|meeting|misc`
-- **Assets** — `mf asset add | list | show | update | rename | remove | index | clean`; `--copy`/`--link` for copy vs symlink
-- **Glossary** — `mf term new | list | show | add | update | rename | remove | lint`; global terms in `minds-terms.yaml`, project-scoped in `mind-index.yaml`
+- **Sources** — `mf source new | list | show | update | rename | remove | index | clean`; `--file-kind auto|pdf|file|rss|web`, `--source-kind yuque|meeting|misc`
+- **Assets** — `mf asset new | list | show | update | rename | remove | index | clean`; `--copy`/`--link` for copy vs symlink
+- **Glossary** — `mf term new | list | show | update | rename | remove | lint`; global terms in `minds-terms.yaml`, project-scoped in `mind-index.yaml`
 - **Build** — config-driven assembly, directory-article merging, `--dry-run`, `--output`, and `@path/`-style article addressing
 - **Publish** — `mf publish run | update | target list | target show` against per-target publishers (`local`, `yuque-prompt`); project-level local targets resolve relative paths from project root
 - **Render templates** — `mf render template list | show` covers built-in and project-local templates

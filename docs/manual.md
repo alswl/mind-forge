@@ -66,8 +66,8 @@ mf init
 
 mf project new blog
 mf article new "First Post" --project blog
-mf source add https://example.com/ref --file-kind web --project blog
-mf asset add diagram.png --project blog
+mf source new https://example.com/ref --file-kind web --project blog
+mf asset new diagram.png --project blog
 mf term new "Zettelkasten" --definition "A note-taking method" --project blog
 
 mf article index --project blog
@@ -172,8 +172,8 @@ Notes:
 Sources track reference material used by a project.
 
 ```bash
-mf source add https://example.com/ref --name ref-a --file-kind web --project blog
-mf source add paper.pdf --file-kind pdf --project blog
+mf source new https://example.com/ref --name ref-a --file-kind web --project blog
+mf source new paper.pdf --file-kind pdf --project blog
 mf source list --project blog
 mf source show ref-a --project blog
 mf source update ref-a --url https://example.com/v2 --project blog
@@ -191,8 +191,8 @@ available for compatibility.
 Assets are project files, usually images or other media.
 
 ```bash
-mf asset add diagram.png --project blog
-mf asset add logo.png --copy --project blog
+mf asset new diagram.png --project blog
+mf asset new logo.png --copy --project blog
 mf asset list --project blog
 mf asset show diagram.png --project blog
 mf asset update diagram.png --set-url https://cdn.example.com/diagram.png --project blog
@@ -212,7 +212,7 @@ mf term new "API" --definition "Application Programming Interface"
 mf term new "Zettelkasten" --definition "A note-taking method" --project blog
 mf term list
 mf term show API
-mf term add --term API --alias "application programming interface"
+mf term new API --alias "application programming interface"
 mf term update API --definition "Interface contract" --tag architecture
 mf term rename API "Application API" --keep-alias
 mf term remove obsolete-term --yes
