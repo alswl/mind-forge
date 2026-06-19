@@ -17,6 +17,7 @@ pub struct ListRow {
 pub enum ListCell {
     Text(String),
     Number(String),
+    #[allow(dead_code)]
     Optional(Option<String>),
     /// A repo-relative file path. When hyperlinks are enabled, rendered as a
     /// `file://` OSC 8 link resolved against `ListOpts::repo_root`.

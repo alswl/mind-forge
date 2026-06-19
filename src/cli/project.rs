@@ -290,20 +290,48 @@ fn handle_list(args: ProjectListArgs, repo_root: Option<&PathBuf>, format: Forma
         Format::Text => {
             let mut rows = Vec::with_capacity(entries.len());
             for e in &entries {
+                let status = if e.archived_at.is_some() { "archived" } else { "active" };
+                let created_at = format_iso_date(&e.created_at);
+                let updated_at = format_iso_date(e.last_activity_at.as_deref().unwrap_or(""));
                 rows.push(ListRow {
                     cells: vec![
+                        ListCell::Path(e.path.clone()),
                         ListCell::Text(e.name.clone()),
                         ListCell::Number(e.document_count.to_string()),
-                        ListCell::Optional(e.last_activity_at.clone()),
-                        ListCell::Text(e.created_at.clone()),
+                        status_cell(status),
+                        ListCell::Text(updated_at),
+                        ListCell::Text(created_at),
                     ],
                 });
             }
-            let view =
-                ListView { headers: &["NAME", "DOCS", "LAST ACTIVITY", "CREATED"], rows, plural_noun: "projects" };
+            let view = ListView {
+                headers: &["PATH", "NAME", "ITEMS", "STATUS", "UPDATED", "CREATED"],
+                rows,
+                plural_noun: "projects",
+            };
             Ok(CommandOutcome::Raw(render_text(&view, &opts), None))
         }
     }
+}
+
+fn status_cell(status: &str) -> ListCell {
+    match status {
+        "archived" => ListCell::Styled { text: "archived".to_string(), ansi_prefix: "\x1b[2m", ansi_suffix: "" },
+        _ => ListCell::Styled { text: "active".to_string(), ansi_prefix: "\x1b[32m", ansi_suffix: "" },
+    }
+}
+
+fn format_iso_date(iso: &str) -> String {
+    if iso.is_empty() {
+        return "-".to_string();
+    }
+    chrono::DateTime::parse_from_rfc3339(iso)
+        .map(|dt| dt.with_timezone(&chrono::Utc).format("%Y-%m-%d %H:%M").to_string())
+        .or_else(|_| {
+            chrono::NaiveDateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%SZ")
+                .map(|dt| dt.and_utc().format("%Y-%m-%d %H:%M").to_string())
+        })
+        .unwrap_or_else(|_| "-".to_string())
 }
 
 // ---------------------------------------------------------------------------

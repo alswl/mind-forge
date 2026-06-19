@@ -2199,9 +2199,9 @@ fn article_list_inside_project_dir_still_works() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    // Single-project mode: no PROJECT column, only PATH/CONTENT/STATUS
+    // Single-project mode: no PROJECT column, only PATH/TITLE/STATUS
     assert!(!stdout.contains("PROJECT"), "should not show PROJECT column in single-project mode:\n{stdout}");
-    assert!(stdout.contains("CONTENT"), "should have CONTENT column:\n{stdout}");
+    assert!(stdout.contains("TITLE"), "should have TITLE column:\n{stdout}");
     assert!(stdout.contains("docs/hello.md"), "should show the article:\n{stdout}");
 }
 
