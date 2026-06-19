@@ -274,10 +274,11 @@ fn handle_list(args: ProjectListArgs, repo_root: Option<&PathBuf>, format: Forma
             let items: Vec<serde_json::Value> = entries
                 .iter()
                 .map(|e| {
+                    let path = e.path.strip_prefix("./").unwrap_or(&e.path);
                     serde_json::json!({
                         "identity": e.identity(),
                         "name": e.name,
-                        "path": e.path,
+                        "path": path,
                         "created_at": e.created_at,
                         "archived_at": e.archived_at,
                         "document_count": e.document_count,
@@ -293,9 +294,10 @@ fn handle_list(args: ProjectListArgs, repo_root: Option<&PathBuf>, format: Forma
                 let status = if e.archived_at.is_some() { "archived" } else { "active" };
                 let created_at = format_iso_date(&e.created_at);
                 let updated_at = format_iso_date(e.last_activity_at.as_deref().unwrap_or(""));
+                let path = e.path.strip_prefix("./").unwrap_or(&e.path);
                 rows.push(ListRow {
                     cells: vec![
-                        ListCell::Path(e.path.clone()),
+                        ListCell::Path(path.to_string()),
                         ListCell::Text(e.name.clone()),
                         ListCell::Number(e.document_count.to_string()),
                         status_cell(status),
