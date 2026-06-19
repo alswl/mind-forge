@@ -250,7 +250,6 @@ pub fn dispatch(
                         let repo_rel = project_path.strip_prefix(root).unwrap_or(project_path);
                         let full_path = repo_rel.join(&article.article_path);
                         let path_str = full_path.to_string_lossy().replace('\\', "/");
-                        let content_kind = article_content_kind(project_path, &article.article_path);
                         let status = match article.status {
                             ArticleStatus::Draft => "draft",
                             ArticleStatus::Published => "published",
@@ -259,7 +258,7 @@ pub fn dispatch(
                             cells: vec![
                                 ListCell::Path(path_str),
                                 ListCell::Text(article.project.clone()),
-                                content_kind_cell(content_kind),
+                                ListCell::Text(article.title.clone()),
                                 status_cell(status),
                                 ListCell::Text(format_mtime(*mtime)),
                             ],
@@ -269,7 +268,7 @@ pub fn dispatch(
                         json_items.push(v);
                     }
                     let view = ListView {
-                        headers: &["PATH", "PROJECT", "CONTENT", "STATUS", "UPDATED"],
+                        headers: &["PATH", "PROJECT", "TITLE", "STATUS", "UPDATED"],
                         rows,
                         plural_noun: "articles",
                     };
@@ -346,19 +345,19 @@ pub fn dispatch(
                             let mut rows = Vec::with_capacity(enriched.len());
                             for (v, mtime) in &enriched {
                                 let identity = v["identity"].as_str().unwrap_or("").to_string();
-                                let content_kind = v["content_kind"].as_str().unwrap_or("missing");
+                                let title = v["title"].as_str().unwrap_or("").to_string();
                                 let status = v["status"].as_str().unwrap_or("draft");
                                 rows.push(ListRow {
                                     cells: vec![
                                         ListCell::Path(identity),
-                                        content_kind_cell(content_kind),
+                                        ListCell::Text(title),
                                         status_cell(status),
                                         ListCell::Text(format_mtime(*mtime)),
                                     ],
                                 });
                             }
                             let view = ListView {
-                                headers: &["PATH", "CONTENT", "STATUS", "UPDATED"],
+                                headers: &["PATH", "TITLE", "STATUS", "UPDATED"],
                                 rows,
                                 plural_noun: "articles",
                             };
@@ -646,15 +645,6 @@ fn article_content_kind(project_path: &Path, article_path: &str) -> &'static str
         "single_file"
     } else {
         "missing"
-    }
-}
-
-fn content_kind_cell(kind: &str) -> ListCell {
-    match kind {
-        "blocked" => ListCell::Styled { text: "BLOCKED".to_string(), ansi_prefix: "\x1b[33m", ansi_suffix: "" },
-        "single_file" => ListCell::Styled { text: "Single File".to_string(), ansi_prefix: "\x1b[32m", ansi_suffix: "" },
-        "missing" => ListCell::Styled { text: "Missing".to_string(), ansi_prefix: "\x1b[31m", ansi_suffix: "" },
-        _ => ListCell::Text("Unknown".to_string()),
     }
 }
 
