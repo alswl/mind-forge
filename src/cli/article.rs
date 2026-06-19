@@ -261,14 +261,18 @@ pub fn dispatch(
                                 ListCell::Text(article.project.clone()),
                                 content_kind_cell(content_kind),
                                 status_cell(status),
+                                ListCell::Text(format_mtime(*mtime)),
                             ],
                         });
                         let mut v = serde_json::to_value(article).unwrap_or_default();
                         v["mtime"] = serde_json::Value::Number((*mtime).into());
                         json_items.push(v);
                     }
-                    let view =
-                        ListView { headers: &["PATH", "PROJECT", "CONTENT", "STATUS"], rows, plural_noun: "articles" };
+                    let view = ListView {
+                        headers: &["PATH", "PROJECT", "CONTENT", "STATUS", "UPDATED"],
+                        rows,
+                        plural_noun: "articles",
+                    };
                     let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
                         .with_repo_root(Some(root.to_path_buf()));
                     match format {
@@ -284,7 +288,7 @@ pub fn dispatch(
                     let articles = article_svc::list_articles(&project_path)?;
                     let config = config_svc::load_project(&project_path, Some(root))?;
 
-                    let enriched: Vec<serde_json::Value> = articles
+                    let mut enriched: Vec<(serde_json::Value, u64)> = articles
                         .iter()
                         .map(|a| {
                             let article_dir =
@@ -320,20 +324,27 @@ pub fn dispatch(
                             v["content_kind"] = serde_json::Value::String(content_kind.to_string());
                             v["identity"] = serde_json::Value::String(a.article_path.clone());
                             v["path"] = serde_json::Value::String(a.article_path.clone());
-                            v
+                            let mtime = article_svc::article_file_mtime(&project_path, &a.article_path);
+                            v["mtime"] = serde_json::Value::Number(mtime.into());
+                            (v, mtime)
                         })
                         .collect();
+
+                    enriched.sort_by(|a, b| {
+                        b.1.cmp(&a.1).then_with(|| a.0["identity"].as_str().cmp(&b.0["identity"].as_str()))
+                    });
 
                     let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
                         .with_repo_root(Some(project_path.clone()));
 
                     match format {
                         Format::Json => {
-                            Ok(CommandOutcome::Success(json_collection("articles", enriched), Vec::new(), None))
+                            let items: Vec<serde_json::Value> = enriched.into_iter().map(|(v, _)| v).collect();
+                            Ok(CommandOutcome::Success(json_collection("articles", items), Vec::new(), None))
                         }
                         Format::Text => {
                             let mut rows = Vec::with_capacity(enriched.len());
-                            for v in &enriched {
+                            for (v, mtime) in &enriched {
                                 let identity = v["identity"].as_str().unwrap_or("").to_string();
                                 let content_kind = v["content_kind"].as_str().unwrap_or("missing");
                                 let status = v["status"].as_str().unwrap_or("draft");
@@ -342,11 +353,15 @@ pub fn dispatch(
                                         ListCell::Path(identity),
                                         content_kind_cell(content_kind),
                                         status_cell(status),
+                                        ListCell::Text(format_mtime(*mtime)),
                                     ],
                                 });
                             }
-                            let view =
-                                ListView { headers: &["PATH", "CONTENT", "STATUS"], rows, plural_noun: "articles" };
+                            let view = ListView {
+                                headers: &["PATH", "CONTENT", "STATUS", "UPDATED"],
+                                rows,
+                                plural_noun: "articles",
+                            };
                             Ok(CommandOutcome::Raw(render_text(&view, &opts), None))
                         }
                     }
@@ -650,6 +665,15 @@ fn status_cell(status: &str) -> ListCell {
     }
 }
 
+fn format_mtime(mtime_secs: u64) -> String {
+    if mtime_secs == 0 {
+        return "-".to_string();
+    }
+    chrono::DateTime::from_timestamp(mtime_secs as i64, 0)
+        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
 fn handle_article_show(args: ArticleShowArgs, project_path: &Path, format: Format) -> Result<CommandOutcome> {
     identity::validate_entity_path(project_path, &args.path)?;
     let config = config_svc::load_project(project_path, None)?;
@@ -938,6 +962,30 @@ fn confirm_inferred_direction(direction: ConversionDirection, count: usize) -> R
             format!("no conversion direction specified; eligible direction is {}", direction),
             Some(format!("pass {} or run in a terminal for interactive confirmation", direction)),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_mtime_zero_returns_dash() {
+        assert_eq!(format_mtime(0), "-");
+    }
+
+    #[test]
+    fn format_mtime_known_timestamp() {
+        // 2024-01-15 08:30 UTC
+        let ts: u64 = 1705307400;
+        assert_eq!(format_mtime(ts), "2024-01-15 08:30");
+    }
+
+    #[test]
+    fn format_mtime_epoch_boundary() {
+        // Unix epoch: 1970-01-01 00:00 UTC
+        assert_eq!(format_mtime(0), "-"); // 0 is special-cased
+        assert_eq!(format_mtime(1), "1970-01-01 00:00");
     }
 }
 

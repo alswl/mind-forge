@@ -602,7 +602,7 @@ pub fn list_articles_all_projects(repo_root: &Path) -> Result<Vec<(Article, Path
 }
 
 /// Get the newest file modification time (Unix epoch seconds) for an article.
-fn article_file_mtime(project_path: &Path, article_path: &str) -> u64 {
+pub fn article_file_mtime(project_path: &Path, article_path: &str) -> u64 {
     let full_path = project_path.join(article_path);
     match fs::metadata(&full_path) {
         Ok(meta) => {
@@ -2227,5 +2227,63 @@ mod tests {
         assert_eq!(blocks[0].1, "# Title\n\nintro\n");
         assert_eq!(blocks[1].0, "02-summary.md");
         assert!(blocks[1].1.starts_with("## Summary"));
+    }
+
+    // ── article_file_mtime tests ──
+
+    #[test]
+    fn mtime_regular_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("doc.md");
+        std::fs::write(&file_path, "content").unwrap();
+        let mtime = article_file_mtime(dir.path(), "doc.md");
+        assert!(mtime > 0, "regular file should return non-zero mtime");
+    }
+
+    #[test]
+    fn mtime_missing_path_returns_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let mtime = article_file_mtime(dir.path(), "nonexistent.md");
+        assert_eq!(mtime, 0);
+    }
+
+    #[test]
+    fn mtime_directory_returns_newest_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let article_dir = dir.path().join("docs");
+        std::fs::create_dir_all(&article_dir).unwrap();
+
+        std::fs::write(article_dir.join("a.md"), "old").unwrap();
+        std::fs::write(article_dir.join("b.md"), "newer").unwrap();
+
+        let a_mtime = std::fs::metadata(article_dir.join("a.md"))
+            .unwrap()
+            .modified()
+            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let b_mtime = std::fs::metadata(article_dir.join("b.md"))
+            .unwrap()
+            .modified()
+            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let dir_mtime = article_file_mtime(dir.path(), "docs");
+
+        let expected = a_mtime.max(b_mtime);
+        assert!(dir_mtime > 0, "directory with files should return non-zero mtime");
+        assert_eq!(dir_mtime, expected, "directory mtime should equal the newest file's mtime");
+    }
+
+    #[test]
+    fn mtime_empty_directory_returns_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let empty_dir = dir.path().join("empty_article");
+        std::fs::create_dir(&empty_dir).unwrap();
+
+        let mtime = article_file_mtime(dir.path(), "empty_article");
+        assert_eq!(mtime, 0);
     }
 }
