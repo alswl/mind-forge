@@ -15,6 +15,7 @@ Commands:
   remove   Remove an article [aliases: rm]
   show     Show article details
   update   Update article metadata
+  block    Manage blocks within a directory article
   convert  Convert article shape between directory and single-file
 
 Options:

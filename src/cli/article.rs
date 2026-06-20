@@ -48,6 +48,8 @@ pub enum ArticleSubcommand {
     Show(ArticleShowArgs),
     #[command(about = "Update article metadata")]
     Update(ArticleUpdateArgs),
+    #[command(subcommand, about = "Manage blocks within a directory article")]
+    Block(ArticleBlockSubcommand),
     #[command(about = "Convert article shape between directory and single-file")]
     Convert(ArticleConvertArgs),
 }
@@ -145,6 +147,26 @@ pub struct ArticleConvertArgs {
     #[arg(long = "to-directory", conflicts_with = "to_single_file")]
     pub to_directory: bool,
     /// Preview conversions without writing changes
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ArticleBlockSubcommand {
+    #[command(about = "Rename a block within a directory article")]
+    Rename(ArticleBlockRenameArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ArticleBlockRenameArgs {
+    /// Article path (e.g. docs/my-article) or title
+    pub article: String,
+    /// Current block filename (e.g. "02-notes.md") or slug (e.g. "notes")
+    pub old_block: String,
+    /// New slug — the number prefix is preserved (e.g. "thoughts" → "02-thoughts.md")
+    pub new_slug: String,
+    #[command(flatten)]
+    pub force: ForceFlag,
     #[command(flatten)]
     pub dry_run: DryRunFlag,
 }
@@ -645,7 +667,89 @@ pub fn dispatch(
                 )),
             }
         }
+        Some(ArticleSubcommand::Block(block_cmd)) => match block_cmd {
+            ArticleBlockSubcommand::Rename(args) => handle_block_rename(args, root, format, project, &cwd),
+        },
         Some(ArticleSubcommand::Convert(args)) => handle_convert(args, root, format, project, &cwd),
+    }
+}
+
+/// ── Handle: mf article block rename ────────────────────────────────────
+fn handle_block_rename(
+    args: ArticleBlockRenameArgs,
+    root: &Path,
+    format: Format,
+    project: Option<&str>,
+    cwd: &Path,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
+
+    // Resolve article path (supports title lookup via index)
+    let article_path = {
+        let index = crate::service::index::load(&project_path)?;
+        let articles = index.articles.as_ref().ok_or_else(|| {
+            MfError::not_found(
+                "no articles in index".to_string(),
+                Some("use `mf article list` to see available articles".to_string()),
+            )
+        })?;
+        let article =
+            articles.iter().find(|a| a.title == args.article || a.article_path == args.article).ok_or_else(|| {
+                MfError::not_found(
+                    format!("article '{}' not found", args.article),
+                    Some("use `mf article list --project <project>` to see available articles".to_string()),
+                )
+            })?;
+        article.article_path.clone()
+    };
+
+    identity::validate_entity_path(&project_path, &article_path)?;
+
+    if args.dry_run.dry_run {
+        let result = VerbResult {
+            verb: Verb::Rename,
+            kind: "block",
+            identity: format!("{}/{}", article_path, args.new_slug),
+            old_identity: Some(format!("{}/{}", article_path, args.old_block)),
+            path: None,
+            dry_run: true,
+            details: serde_json::json!({}),
+        };
+        return match format {
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
+            Format::Text => Ok(CommandOutcome::Success(
+                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
+                Vec::new(),
+                None,
+            )),
+        };
+    }
+
+    let report =
+        article_svc::rename_block(&project_path, &article_path, &args.old_block, &args.new_slug, args.force.force)?;
+
+    let new_full_path = format!("{}/{}", article_path, report.new_filename);
+    let old_full_path = format!("{}/{}", article_path, report.old_filename);
+    let result = VerbResult {
+        verb: Verb::Rename,
+        kind: "block",
+        identity: new_full_path.clone(),
+        old_identity: Some(old_full_path.clone()),
+        path: Some(new_full_path),
+        dry_run: false,
+        details: serde_json::json!({
+            "old_filename": report.old_filename,
+            "new_filename": report.new_filename,
+            "article_path": report.article_path,
+        }),
+    };
+    match format {
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
+            Vec::new(),
+            None,
+        )),
     }
 }
 

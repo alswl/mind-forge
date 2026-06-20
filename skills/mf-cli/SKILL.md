@@ -114,7 +114,7 @@ Import a directory as a project.
 
 ### `mf article` — Manage articles
 
-Subcommands: `new`, `list` (alias `ls`), `show`, `update`, `rename`, `remove` (alias `rm`), `convert`, `lint`, `index`.
+Subcommands: `new`, `list` (alias `ls`), `show`, `update`, `rename`, `remove` (alias `rm`), `block`, `convert`, `lint`, `index`.
 
 **`mf article new <TITLE>`**
 Create an article. `<TITLE>` is the sole positional argument; the article type is derived from `--template`.
@@ -146,6 +146,8 @@ Convert article shape between directory and single-file.
 `--to-directory` — Expand single-file articles into directory mode with an opening section.
 Without a direction flag in a TTY, the CLI infers the unique reasonable direction and prompts for confirmation; non-TTY fails with a usage error if both directions are plausible.
 `--dry-run` reports the plan without mutating the filesystem or index.
+
+**`mf article block rename <ARTICLE> <OLD_BLOCK> <NEW_SLUG>`** — Rename a block file within a directory article. `<ARTICLE>` accepts a path (e.g. `docs/my-article`) or a title. `<OLD_BLOCK>` is the current block filename (e.g. `02-notes.md`), filename without extension (e.g. `02-notes`), or just the slug (e.g. `notes`). `<NEW_SLUG>` is the new slug — the number prefix is preserved (e.g. `thoughts` produces `02-thoughts.md`). The H2 heading and file content are NOT changed. Use `--dry-run` to preview. Use `--force` to overwrite an existing target block file. Only works on directory articles; single-file articles should use `mf article rename` instead.
 
 **`mf article index`** — Index articles (mf extension). `-n` is short for `--dry-run`.
 

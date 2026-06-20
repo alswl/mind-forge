@@ -2438,3 +2438,241 @@ fn article_list_all_projects_hyperlinks() {
     assert!(stdout.contains("PATH"), "TTY mode should show headers:\n{stdout}");
     assert!(stdout.contains("PROJECT"), "TTY mode should show PROJECT column:\n{stdout}");
 }
+
+// ── article block rename tests ──────────────────────────────────────────
+
+#[test]
+fn article_block_rename_success() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Create a directory article with two blocks
+    let article_dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-opening.md"), "# My Article\n\nintro\n").unwrap();
+    std::fs::write(article_dir.join("02-notes.md"), "## Notes\n\nbody\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-08T10:00:00Z'
+    updated_at: '2026-05-08T10:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "block",
+            "rename",
+            "docs/my-article",
+            "02-notes",
+            "thoughts",
+            "--project",
+            "my-project",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("renamed block:"), "stdout: {stdout}");
+
+    assert!(!article_dir.join("02-notes.md").exists(), "old block should be gone");
+    assert!(article_dir.join("02-thoughts.md").exists(), "new block should exist");
+    let content = std::fs::read_to_string(article_dir.join("02-thoughts.md")).unwrap();
+    assert_eq!(content, "## Notes\n\nbody\n");
+}
+
+#[test]
+fn article_block_rename_dry_run() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let article_dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-opening.md"), "# Title\n\nintro\n").unwrap();
+    std::fs::write(article_dir.join("02-notes.md"), "## Notes\n\nbody\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-08T10:00:00Z'
+    updated_at: '2026-05-08T10:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "block",
+            "rename",
+            "docs/my-article",
+            "02-notes",
+            "thoughts",
+            "--project",
+            "my-project",
+            "--dry-run",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("[dry-run] would rename block:"), "stdout: {stdout}");
+
+    assert!(article_dir.join("02-notes.md").exists(), "old block should still exist");
+    assert!(!article_dir.join("02-thoughts.md").exists(), "new block should not exist");
+}
+
+#[test]
+fn article_block_rename_not_directory_article_errors() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    std::fs::create_dir_all(repo.path().join("my-project/docs")).unwrap();
+    std::fs::write(repo.path().join("my-project/docs/my-article.md"), "# Title\n\ncontent\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article.md'
+    status: draft
+    created_at: '2026-05-08T10:00:00Z'
+    updated_at: '2026-05-08T10:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "block",
+            "rename",
+            "docs/my-article.md",
+            "02-notes",
+            "new-slug",
+            "--project",
+            "my-project",
+        ])
+        .output()
+        .unwrap();
+
+    assert_ne!(output.status.code(), Some(0), "should fail for non-directory article");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stderr.contains("not a directory article") || stdout.contains("not a directory article"),
+        "stderr: {stderr}, stdout: {stdout}"
+    );
+}
+
+#[test]
+fn article_block_rename_json_envelope() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let article_dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-opening.md"), "# Title\n\nintro\n").unwrap();
+    std::fs::write(article_dir.join("02-notes.md"), "## Notes\n\nbody\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-08T10:00:00Z'
+    updated_at: '2026-05-08T10:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "block",
+            "rename",
+            "docs/my-article",
+            "02-notes",
+            "thoughts",
+            "--project",
+            "my-project",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(v["status"], "ok");
+    assert_eq!(v["data"]["kind"], "block");
+    assert_eq!(v["data"]["new_identity"], "docs/my-article/02-thoughts.md");
+    assert_eq!(v["data"]["old_identity"], "docs/my-article/02-notes.md");
+}
+
+#[test]
+fn article_block_rename_by_title_finds_article() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let article_dir = repo.path().join("my-project/docs/my-article");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-opening.md"), "# Title\n\nintro\n").unwrap();
+    std::fs::write(article_dir.join("02-notes.md"), "## Notes\n\nbody\n").unwrap();
+
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'My Article'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/my-article'
+    status: draft
+    created_at: '2026-05-08T10:00:00Z'
+    updated_at: '2026-05-08T10:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "block",
+            "rename",
+            "My Article",
+            "02-notes",
+            "thoughts",
+            "--project",
+            "my-project",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(article_dir.join("02-thoughts.md").exists());
+}
