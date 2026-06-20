@@ -2,9 +2,7 @@
 //!
 //! These tests lock the canonical positional-subject + flag-metadata shape
 //! that 046 standardised on:
-//!   * `mf term new <NAME>` — positional; no visible `--term` flag.
-//!   * The deprecated `--term` form still parses, emits a WARN, and the
-//!     warning text reconstructs the positional invocation verbatim.
+//!   * `mf term new <NAME>` — positional; the removed `--term` flag is rejected.
 //!   * JSON envelope `data` payloads use `term` (canonical) and `alias`
 //!     (variant) — never `original` / `correct` / `name`.
 
@@ -56,49 +54,26 @@ fn term_new_without_subject_errors_with_usage_hint() {
     assert!(stderr.contains("term name required") || stderr.to_lowercase().contains("required"), "stderr: {stderr}");
 }
 
-// ── T063: deprecated --term flag still parses and warns ────────────────────
+// ── T063: removed --term flag is absent and rejected ──────────────────────
 
 #[test]
-fn term_new_with_legacy_term_flag_warns_and_succeeds() {
-    let repo = setup();
-    let output = mf(&repo).args(["--project", "alpha", "term", "new", "--term", "Legacy"]).output().unwrap();
-    assert!(output.status.success(), "legacy --term must still parse: {}", String::from_utf8_lossy(&output.stderr));
-
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("WARN:"), "stderr must include a WARN line: {stderr}");
-    assert!(
-        stderr.contains("--term flag is deprecated") && stderr.contains("`Legacy`") && stderr.contains("positionally"),
-        "WARN must name the positional invocation verbatim: {stderr}"
-    );
-
-    // The actual term landed.
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Legacy"), "stdout: {stdout}");
-}
-
-#[test]
-fn term_new_legacy_term_flag_surfaces_warning_in_json_envelope() {
-    let repo = setup();
-    let output = mf(&repo).args(["--project", "alpha", "--json", "term", "new", "--term", "Echoed"]).output().unwrap();
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
-
-    let v: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON envelope");
-    let warnings = v["data"]["warnings"].as_array().expect("data.warnings array");
-    assert!(
-        warnings.iter().any(|w| w.as_str().unwrap_or("").contains("--term flag is deprecated")),
-        "data.warnings must include the deprecation line: {warnings:?}"
-    );
-}
-
-#[test]
-fn term_new_help_hides_legacy_term_flag() {
+fn term_new_help_omits_removed_term_flag() {
     let repo = setup();
     let output = mf(&repo).args(["term", "new", "--help"]).output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    // Positional <TERM> is visible; the hidden flag is not.
+    // Positional <TERM> is visible; the removed flag is not.
     assert!(stdout.contains("[TERM]") || stdout.contains("<TERM>"), "positional argument must show in help: {stdout}");
     assert!(!stdout.contains("--term <"), "deprecated --term flag must be hidden: {stdout}");
+}
+
+#[test]
+fn term_new_rejects_removed_term_flag() {
+    let repo = setup();
+    let output = mf(&repo).args(["--project", "alpha", "term", "new", "--term", "FooBar"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("unexpected argument '--term'"), "stderr: {stderr}");
 }
 
 // ── T064: JSON envelope field names — `term` / `alias`, never `original` / `correct` ──

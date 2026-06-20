@@ -42,7 +42,7 @@ fn setup_project_with_source(name: &str, source_name: &str) -> (common::TempDir,
 
     // Add the source first so we can rename/remove it
     let _ = mf(&repo)
-        .args(["source", "add", source_file.to_str().unwrap(), "--name", source_name, "--project", name])
+        .args(["source", "new", source_file.to_str().unwrap(), "--name", source_name, "--project", name])
         .output()
         .unwrap();
     (repo, project)
@@ -56,7 +56,7 @@ fn setup_project_with_asset(name: &str, asset_name: &str) -> (common::TempDir, s
 
     // Add the asset first
     let _ = mf(&repo)
-        .args(["asset", "add", asset_path.to_str().unwrap(), "--name", asset_name, "--project", name])
+        .args(["asset", "new", asset_path.to_str().unwrap(), "--name", asset_name, "--project", name])
         .output()
         .unwrap();
     (repo, project)

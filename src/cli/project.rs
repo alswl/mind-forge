@@ -6,9 +6,12 @@ use serde::Serialize;
 use clap::ValueEnum;
 
 use crate::cli::deprecation::DeprecationContext;
+use crate::cli::shared_flags::DryRunFlag;
+use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::LintFlags;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
+use crate::cli::shared_flags::YesFlag;
 use crate::cli::{CommandOutcome, RepoRequirement};
 use crate::error::{MfError, Result};
 use crate::model::project::LintKind;
@@ -37,8 +40,6 @@ pub enum ProjectSubcommand {
     List(ProjectListArgs),
     #[command(about = "Archive a project")]
     Archive(ProjectArchiveArgs),
-    #[command(about = "Show project status (deprecated: use `show`)", hide = true)]
-    Status(ProjectStatusArgs),
     #[command(about = "Lint a project")]
     Lint(ProjectLintArgs),
     #[command(about = "Index projects")]
@@ -61,10 +62,10 @@ pub struct ProjectNewArgs {
     pub path: String,
     #[arg(long)]
     pub template: Option<String>,
-    #[arg(long)]
-    pub force: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -78,16 +79,13 @@ pub struct ProjectListArgs {
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectArchiveArgs {
     pub name_or_path: String,
-    #[arg(short = 'f', long)]
-    pub force: bool,
-    #[arg(short = 'y', long)]
-    pub yes: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub yes: YesFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
-
-#[derive(Debug, Clone, Args, Serialize)]
-pub struct ProjectStatusArgs {}
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectLintArgs {
@@ -97,24 +95,24 @@ pub struct ProjectLintArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectIndexArgs {
-    #[arg(long)]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectShowArgs {
-    pub name: String,
+    pub path: String,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectUpdateArgs {
-    pub name: String,
+    pub path: String,
     #[arg(long)]
     pub description: Option<String>,
     #[arg(long = "clear-description")]
     pub clear_description: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -126,31 +124,31 @@ pub struct ProjectImportArgs {
     pub source: Option<String>,
     #[arg(long)]
     pub assets: Option<String>,
-    #[arg(short = 'f', long)]
-    pub force: bool,
-    #[arg(short = 'y', long = "non-interactive")]
-    pub non_interactive: bool,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub yes: YesFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectRenameArgs {
-    pub old_name: String,
-    pub new_name: String,
-    #[arg(short = 'f', long)]
-    pub force: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    pub old_path: String,
+    pub new_path: String,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args)]
 pub struct ProjectRemoveArgs {
-    pub name: String,
-    #[arg(short = 'f', long)]
-    pub force: bool,
-    #[arg(short = 'y', long)]
-    pub yes: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    pub path: String,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub yes: YesFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 impl ProjectCmd {
@@ -168,17 +166,13 @@ pub fn dispatch(
     repo_root: Option<&PathBuf>,
     format: Format,
     project: Option<&str>,
-    deprecation: &mut DeprecationContext,
+    _deprecation: &mut DeprecationContext,
 ) -> Result<CommandOutcome> {
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("project")),
         Some(ProjectSubcommand::New(args)) => handle_new(args, repo_root, format),
         Some(ProjectSubcommand::List(args)) => handle_list(args, repo_root, format),
         Some(ProjectSubcommand::Archive(args)) => handle_archive(args, repo_root, format),
-        Some(ProjectSubcommand::Status(args)) => {
-            deprecation.warn_subject("project status", "project show");
-            handle_status(args, repo_root, format, project)
-        }
         Some(ProjectSubcommand::Lint(args)) => handle_lint(args, repo_root, format, project),
         Some(ProjectSubcommand::Index(args)) => handle_index(args, repo_root, format),
         Some(ProjectSubcommand::Show(args)) => handle_show(args, repo_root, format),
@@ -210,7 +204,7 @@ fn handle_new(args: ProjectNewArgs, repo_root: Option<&PathBuf>, format: Format)
         }
     }
 
-    if args.dry_run {
+    if args.dry_run.dry_run {
         let result = VerbResult {
             verb: Verb::Create,
             kind: "project",
@@ -230,9 +224,14 @@ fn handle_new(args: ProjectNewArgs, repo_root: Option<&PathBuf>, format: Format)
         };
     }
 
-    let report =
-        svc::project::scaffold(root, &identity.requested_path, &identity.path, &identity.resolved_path, args.force)?;
-    let entry = svc::project::upsert_project_entry(root, &identity.path, &report.created_at, args.force)?;
+    let report = svc::project::scaffold(
+        root,
+        &identity.requested_path,
+        &identity.path,
+        &identity.resolved_path,
+        args.force.force,
+    )?;
+    let entry = svc::project::upsert_project_entry(root, &identity.path, &report.created_at, args.force.force)?;
 
     let result = VerbResult {
         verb: Verb::Create,
@@ -334,25 +333,6 @@ fn format_iso_date(iso: &str) -> String {
                 .map(|dt| dt.and_utc().format("%Y-%m-%d %H:%M").to_string())
         })
         .unwrap_or_else(|_| "-".to_string())
-}
-
-// ---------------------------------------------------------------------------
-// US3: mf project status
-// ---------------------------------------------------------------------------
-
-fn handle_status(
-    _args: ProjectStatusArgs,
-    repo_root: Option<&PathBuf>,
-    _format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
-    let cwd = std::env::current_dir().map_err(MfError::Io)?;
-    let project_path = svc::project::resolve_project(root, project, &cwd)?;
-    let snapshot = svc::project::status_for(root, &project_path)?;
-
-    let data = serde_json::json!(snapshot);
-    Ok(CommandOutcome::Success(data, Vec::new(), None))
 }
 
 // ---------------------------------------------------------------------------
@@ -473,7 +453,7 @@ fn handle_index(args: ProjectIndexArgs, repo_root: Option<&PathBuf>, format: For
     let kept_count = manifest.projects.len().saturating_sub(removed_count);
     let scanned_count = scanned.len();
 
-    if args.dry_run {
+    if args.dry_run.dry_run {
         let details = serde_json::json!({
             "added": diff.added,
             "removed": diff.removed,
@@ -540,8 +520,8 @@ fn handle_show(
 ) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
-    let project_path = svc::project::resolve_project(root, Some(&args.name), &cwd)?;
-    let details = svc::project::show(&project_path, &args.name)?;
+    let project_path = svc::project::resolve_project(root, Some(&args.path), &cwd)?;
+    let details = svc::project::show(&project_path, &args.path)?;
 
     let mut fields: Vec<ShowField> = vec![
         ShowField { label: "Name", value: ShowValue::Text(details.name.clone()) },
@@ -604,12 +584,12 @@ fn handle_archive(
         verb_label: "archiving",
         kind: "project",
         identity: &args.name_or_path,
-        yes: args.yes,
-        force: args.force,
+        yes: args.yes.yes,
+        force: args.force.force,
     })?;
 
     // --force with non-existent target: no-op success
-    if args.force {
+    if args.force.force {
         let projects_dir = crate::service::repo::projects_dir_for(root)?;
         let project_path = crate::service::util::project_dir_for(root, &projects_dir, &args.name_or_path);
         if !project_path.exists() {
@@ -619,7 +599,7 @@ fn handle_archive(
                 identity: args.name_or_path.clone(),
                 old_identity: None,
                 path: None,
-                dry_run: args.dry_run,
+                dry_run: args.dry_run.dry_run,
                 details: serde_json::json!({"archived": false, "reason": "not found"}),
             };
             return match format {
@@ -633,7 +613,7 @@ fn handle_archive(
         }
     }
 
-    if args.dry_run {
+    if args.dry_run.dry_run {
         let result = VerbResult {
             verb: Verb::Remove,
             kind: "project",
@@ -688,8 +668,8 @@ fn handle_import(
         args.r#type.as_deref(),
         args.source.as_deref(),
         args.assets.as_deref(),
-        args.force,
-        args.non_interactive,
+        args.force.force,
+        args.yes.yes,
     )?;
 
     match format {
@@ -719,10 +699,10 @@ fn handle_update(
     let report = svc::project::update_project(
         root,
         svc::project::ProjectUpdate {
-            name: &args.name,
+            name: &args.path,
             description: args.description.as_deref(),
             clear_description: args.clear_description,
-            dry_run: args.dry_run,
+            dry_run: args.dry_run.dry_run,
         },
     )?;
 
@@ -757,12 +737,12 @@ fn handle_rename(
 ) -> Result<CommandOutcome> {
     let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
 
-    if args.dry_run {
+    if args.dry_run.dry_run {
         let result = VerbResult {
             verb: Verb::Rename,
             kind: "project",
-            identity: args.new_name.clone(),
-            old_identity: Some(args.old_name.clone()),
+            identity: args.new_path.clone(),
+            old_identity: Some(args.old_path.clone()),
             path: None,
             dry_run: true,
             details: serde_json::json!({}),
@@ -777,7 +757,7 @@ fn handle_rename(
         };
     }
 
-    let report = svc::project::rename_project(root, &args.old_name, &args.new_name)?;
+    let report = svc::project::rename_project(root, &args.old_path, &args.new_path)?;
 
     let result = VerbResult {
         verb: Verb::Rename,
@@ -812,23 +792,23 @@ fn handle_remove(
     require_confirmation(&ConfirmArgs {
         verb_label: "removal",
         kind: "project",
-        identity: &args.name,
-        yes: args.yes,
-        force: args.force,
+        identity: &args.path,
+        yes: args.yes.yes,
+        force: args.force.force,
     })?;
 
     // --force with non-existent target: no-op success
-    if args.force {
+    if args.force.force {
         let projects_dir = crate::service::repo::projects_dir_for(root)?;
-        let project_path = crate::service::util::project_dir_for(root, &projects_dir, &args.name);
+        let project_path = crate::service::util::project_dir_for(root, &projects_dir, &args.path);
         if !project_path.exists() {
             let result = VerbResult {
                 verb: Verb::Remove,
                 kind: "project",
-                identity: args.name.clone(),
+                identity: args.path.clone(),
                 old_identity: None,
                 path: None,
-                dry_run: args.dry_run,
+                dry_run: args.dry_run.dry_run,
                 details: serde_json::json!({"removed": false, "reason": "not found"}),
             };
             return match format {
@@ -842,7 +822,7 @@ fn handle_remove(
         }
     }
 
-    let report = svc::project::remove_project(root, &args.name, args.force, args.dry_run)?;
+    let report = svc::project::remove_project(root, &args.path, args.force.force, args.dry_run.dry_run)?;
 
     let result = VerbResult {
         verb: Verb::Remove,
@@ -850,7 +830,7 @@ fn handle_remove(
         identity: report.before.name.clone(),
         old_identity: None,
         path: Some(report.before.path.clone()),
-        dry_run: args.dry_run,
+        dry_run: args.dry_run.dry_run,
         details: serde_json::json!({"removed": true, "path": report.before.path}),
     };
     match format {

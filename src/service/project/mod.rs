@@ -2,7 +2,7 @@ use std::path::Path;
 
 pub use self::archive::archive_project;
 pub use self::import::import_project;
-pub use self::index::{resolve_project, status_for};
+pub use self::index::resolve_project;
 pub use self::lifecycle::{lint_project, lint_repo};
 pub use self::list::list_projects;
 pub(crate) use self::new::{scaffold, upsert_project_entry};

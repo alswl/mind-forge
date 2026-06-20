@@ -132,7 +132,7 @@ pub fn update(
     let (record, action) =
         upsert_decision(existing, &indexed_article_path, &args.target, status_arg, args.target_url.as_deref())?;
 
-    if !args.dry_run {
+    if !args.dry_run.dry_run {
         let recs = index.publish_records.get_or_insert_with(Vec::new);
         if let Some(pos) = recs.iter().position(|r| r.path == indexed_article_path && r.target_name == args.target) {
             recs[pos] = record.clone();
@@ -147,7 +147,7 @@ pub fn update(
         target_name: args.target.clone(),
         action,
         record,
-        dry_run: args.dry_run,
+        dry_run: args.dry_run.dry_run,
     })
 }
 
@@ -404,7 +404,7 @@ fn run_local(
         eprintln!("warning: build artifact is empty");
     }
 
-    if args.dry_run {
+    if args.dry_run.dry_run {
         return Ok(LocalRunOutcome {
             target_name: target.name.clone(),
             article: args.article.clone(),
@@ -418,7 +418,7 @@ fn run_local(
 
     fs::create_dir_all(&dest_dir).map_err(MfError::Io)?;
 
-    if dest_file.exists() && !args.force {
+    if dest_file.exists() && !args.force.force {
         return Err(MfError::file_exists(dest_file));
     }
 
@@ -476,7 +476,7 @@ After publishing, run:\n\
         prompt,
         envelope,
         suggested_update_command,
-        dry_run: args.dry_run,
+        dry_run: args.dry_run.dry_run,
     })
 }
 

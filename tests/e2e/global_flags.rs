@@ -135,7 +135,7 @@ fn unknown_command_fails() {
 #[test]
 fn missing_required_arg_fails() {
     let outside = Dataset::outside();
-    let (_, stderr, code) = run_in(outside.path(), &["source", "add"]);
+    let (_, stderr, code) = run_in(outside.path(), &["source", "new"]);
     assert_eq!(code, 2);
     assert!(stderr.contains("required"));
 }

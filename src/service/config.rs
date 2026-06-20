@@ -1,12 +1,11 @@
-//! Config service: load, merge, schema generation, init template, and atomic write.
+//! Config service: load, merge, schema generation, and atomic write.
 //!
-//! This module implements the business logic for `mf config {schema,show,init}`.
+//! This module implements the business logic for `mf config {schema,show}`.
 //! It strictly separates from `src/cli/` (dispatch + formatting) and `src/model/` (pure data).
 
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use chrono::Utc;
 use schemars::schema_for;
 use serde::Serialize;
 
@@ -442,88 +441,6 @@ fn find_mind_yaml(start: &Path, repo_root: Option<&Path>) -> Result<Option<PathB
 }
 
 // ---------------------------------------------------------------------------
-// Init template
-// ---------------------------------------------------------------------------
-
-const INIT_PROJECT_TEMPLATE: &str = r#"schema: "{schema_version}"
-project:
-  name: "{name}"
-  created_at: "{created_at}"
-
-# layout:
-#   articles: "{articles_dir}"       # 文章目录
-#   sources: "{sources_dir}"         # 源文件目录
-#   assets: "{assets_dir}"           # 资源目录
-#   templates: "{templates_dir}"     # 文章创建指南模板目录
-#   build_output: "{build_output_dir}"  # 构建输出目录
-
-# build:
-#   merge_order: []            # 合并优先级（按文件名模式）
-
-# publish:
-#   default_target: null       # 默认发布目标名称
-#   targets: null              # 发布目标列表
-
-# source:
-#   scan_paths: []             # 源文件扫描路径
-#   types: []                  # 源文件类型筛选
-
-# term:
-#   enabled: true              # 术语检查启用
-#   case_sensitive: false      # 术语大小写敏感
-"#;
-
-/// Generate the default `mind.yaml` content for `mf config init`.
-pub fn init_template(name: &str, created_at: &str) -> String {
-    INIT_PROJECT_TEMPLATE
-        .replace("{schema_version}", defaults::SCHEMA_VERSION)
-        .replace("{name}", name)
-        .replace("{created_at}", created_at)
-        .replace("{articles_dir}", defaults::LAYOUT_ARTICLES_DEFAULT)
-        .replace("{sources_dir}", defaults::LAYOUT_SOURCES_DEFAULT)
-        .replace("{assets_dir}", defaults::LAYOUT_ASSETS_DEFAULT)
-        .replace("{templates_dir}", defaults::LAYOUT_TEMPLATES_DEFAULT)
-        .replace("{build_output_dir}", defaults::LAYOUT_BUILD_OUTPUT_DEFAULT)
-}
-
-/// Sanitize a directory name to kebab-case for use as project name.
-///
-/// Rules: lowercase; replace whitespace, `_`, `.` with `-`; strip non `[a-z0-9-]`;
-/// collapse consecutive `-`; trim leading/trailing `-`; fallback to "untitled" if empty.
-pub fn sanitize_project_name(raw: &str) -> String {
-    let sanitized: String = raw
-        .to_lowercase()
-        .chars()
-        .map(|c| match c {
-            'a'..='z' | '0'..='9' => c,
-            ' ' | '_' | '.' => '-',
-            _ => '-',
-        })
-        .collect();
-
-    // Collapse consecutive dashes, strip leading/trailing dashes
-    let collapsed: String = sanitized
-        .chars()
-        .fold(String::new(), |mut acc, c| {
-            let last_is_dash = acc.ends_with('-');
-            if c == '-' && last_is_dash {
-                // skip duplicate dash
-            } else {
-                acc.push(c);
-            }
-            acc
-        })
-        .trim_matches('-')
-        .to_string();
-
-    if collapsed.is_empty() {
-        "untitled".to_string()
-    } else {
-        collapsed
-    }
-}
-
-// ---------------------------------------------------------------------------
 // JSON Schema generation
 // ---------------------------------------------------------------------------
 
@@ -564,38 +481,6 @@ pub fn show_effective(cwd: &Path, repo_root: Option<&Path>, output_format: &str)
         "json" => to_json(&effective),
         _ => to_yaml(&effective),
     }
-}
-
-/// Run `mf config init`: generate mind.yaml and atomic-write it.
-/// Returns the output file path.
-pub fn init_config(cwd: &Path, output: Option<&Path>, target: &str, force: bool) -> Result<PathBuf> {
-    if target != "project" {
-        return Err(MfError::not_implemented("--target user"));
-    }
-
-    let output_path = match output {
-        Some(p) => {
-            if p.is_absolute() {
-                p.to_path_buf()
-            } else {
-                cwd.join(p)
-            }
-        }
-        None => cwd.join("mind.yaml"),
-    };
-
-    if output_path.exists() && !force {
-        return Err(MfError::file_exists(output_path));
-    }
-
-    // Derive project name from cwd directory name
-    let dir_name = cwd.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-    let project_name = sanitize_project_name(&dir_name);
-    let created_at = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let content = init_template(&project_name, &created_at);
-
-    util::atomic_write(&output_path, &content)?;
-    Ok(output_path)
 }
 
 /// Run `mf config schema`: generate JSON Schema and serialize to `output_format`.
@@ -666,53 +551,6 @@ mod tests {
         };
         let result = merge(base, overlay);
         assert_eq!(result.project.unwrap().name, "my-project");
-    }
-
-    // --- sanitize tests ---
-
-    #[test]
-    fn test_sanitize_normal() {
-        assert_eq!(sanitize_project_name("my-project"), "my-project");
-    }
-
-    #[test]
-    fn test_sanitize_whitespace() {
-        assert_eq!(sanitize_project_name("My Project"), "my-project");
-    }
-
-    #[test]
-    fn test_sanitize_underscores() {
-        assert_eq!(sanitize_project_name("hello_world"), "hello-world");
-    }
-
-    #[test]
-    fn test_sanitize_dots() {
-        assert_eq!(sanitize_project_name("my.project"), "my-project");
-    }
-
-    #[test]
-    fn test_sanitize_special_chars() {
-        assert_eq!(sanitize_project_name("Hello! @World#"), "hello-world");
-    }
-
-    #[test]
-    fn test_sanitize_chinese_fallback() {
-        assert_eq!(sanitize_project_name("中文"), "untitled");
-    }
-
-    #[test]
-    fn test_sanitize_empty_fallback() {
-        assert_eq!(sanitize_project_name(""), "untitled");
-    }
-
-    // --- template tests ---
-
-    #[test]
-    fn test_init_template_renders() {
-        let result = init_template("test-proj", "2026-04-29T12:00:00Z");
-        assert!(result.contains("test-proj"));
-        assert!(result.contains("2026-04-29T12:00:00Z"));
-        assert!(result.contains("schema: \"1\""));
     }
 
     // --- serde helpers ---

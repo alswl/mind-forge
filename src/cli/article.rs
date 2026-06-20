@@ -4,9 +4,12 @@ use clap::{Args, Subcommand};
 use serde::Serialize;
 
 use crate::cli::deprecation::DeprecationContext;
+use crate::cli::shared_flags::DryRunFlag;
+use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::LintFlags;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
+use crate::cli::shared_flags::YesFlag;
 use crate::cli::CommandOutcome;
 use crate::defaults;
 use crate::error::{MfError, Result};
@@ -63,10 +66,10 @@ pub struct ArticleNewArgs {
     pub tag: Vec<String>,
     #[arg(long, default_value_t = true)]
     pub draft: bool,
-    #[arg(short = 'f', long)]
-    pub force: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -85,8 +88,8 @@ pub struct ArticleLintArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ArticleIndexArgs {
-    #[arg(long, short = 'n')]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -102,20 +105,20 @@ pub struct ArticleUpdateArgs {
     /// Article publication status
     #[arg(long)]
     pub status: Option<String>,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleRemoveArgs {
     /// Article path (e.g. docs/weekly.md) or title
     pub path: String,
-    #[arg(short = 'f', long)]
-    pub force: bool,
-    #[arg(short = 'y', long)]
-    pub yes: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub yes: YesFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -124,10 +127,10 @@ pub struct ArticleRenameArgs {
     pub old_path: String,
     /// New article path or title
     pub new_path: String,
-    #[arg(short = 'f', long)]
-    pub force: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -139,8 +142,8 @@ pub struct ArticleConvertArgs {
     #[arg(long = "to-directory", conflicts_with = "to_single_file")]
     pub to_directory: bool,
     /// Preview conversions without writing changes
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 pub fn dispatch(
@@ -159,7 +162,7 @@ pub fn dispatch(
         Some(ArticleSubcommand::New(args)) => {
             let project_path = svc_util::resolve_project(root, project, &cwd)?;
 
-            if args.dry_run {
+            if args.dry_run.dry_run {
                 let filename = svc_util::to_filename(&args.title);
                 let layout = config_svc::effective_layout(&project_path)?;
                 let identity = if args.file {
@@ -196,7 +199,7 @@ pub fn dispatch(
                 args.file,
                 &args.tag,
                 args.draft,
-                args.force,
+                args.force.force,
             )?;
 
             let article_path = if svc_result.shape == "directory" {
@@ -402,7 +405,7 @@ pub fn dispatch(
             let kept_count = index.articles.as_ref().map(|a| a.len()).unwrap_or(0).saturating_sub(removed_count);
             let scanned_count = scanned.len();
 
-            if args.dry_run {
+            if args.dry_run.dry_run {
                 let details = serde_json::json!({
                     "added": diff.added,
                     "removed": diff.removed,
@@ -523,7 +526,7 @@ pub fn dispatch(
 
             let report = article_svc::update_article(
                 &project_path,
-                article_svc::ArticleUpdate { selector: &args.path, status, dry_run: args.dry_run },
+                article_svc::ArticleUpdate { selector: &args.path, status, dry_run: args.dry_run.dry_run },
             )?;
 
             let result = VerbResult {
@@ -552,7 +555,7 @@ pub fn dispatch(
             identity::validate_entity_path(&project_path, &args.old_path)?;
             identity::validate_entity_path(&project_path, &args.new_path)?;
 
-            if args.dry_run {
+            if args.dry_run.dry_run {
                 let result = VerbResult {
                     verb: Verb::Rename,
                     kind: "article",
@@ -575,7 +578,7 @@ pub fn dispatch(
                 };
             }
 
-            let report = article_svc::rename_article(&project_path, &args.old_path, &args.new_path, args.force)?;
+            let report = article_svc::rename_article(&project_path, &args.old_path, &args.new_path, args.force.force)?;
 
             let result = VerbResult {
                 verb: Verb::Rename,
@@ -606,11 +609,12 @@ pub fn dispatch(
                 verb_label: "removal",
                 kind: "article",
                 identity: &args.path,
-                yes: args.yes,
-                force: args.force,
+                yes: args.yes.yes,
+                force: args.force.force,
             })?;
 
-            let report = article_svc::remove_article(&project_path, &args.path, args.force, args.dry_run)?;
+            let report =
+                article_svc::remove_article(&project_path, &args.path, args.force.force, args.dry_run.dry_run)?;
 
             let result = VerbResult {
                 verb: Verb::Remove,
@@ -618,7 +622,7 @@ pub fn dispatch(
                 identity: args.path.clone(),
                 old_identity: None,
                 path: Some(report.before.article_path.clone()),
-                dry_run: args.dry_run,
+                dry_run: args.dry_run.dry_run,
                 details: serde_json::json!({"removed": true}),
             };
             match format {
@@ -841,7 +845,7 @@ fn handle_convert(
             continue;
         }
 
-        if args.dry_run {
+        if args.dry_run.dry_run {
             converted.push(inspection.to_result(ConversionStatus::WouldConvert, direction, None, false, false));
             continue;
         }
@@ -880,7 +884,7 @@ fn handle_convert(
         kind: "article".to_string(),
         direction,
         direction_source,
-        dry_run: args.dry_run,
+        dry_run: args.dry_run.dry_run,
         converted_count: converted.len(),
         skipped_count: skipped.len(),
         failed_count: failed.len(),
@@ -955,6 +959,29 @@ fn confirm_inferred_direction(direction: ConversionDirection, count: usize) -> R
     }
 }
 
+fn render_convert_text(summary: &ConversionSummary) -> String {
+    let prefix = if summary.dry_run { "[dry-run] " } else { "" };
+    let convert_verb = if summary.dry_run { "would convert" } else { "converted" };
+    let mut lines: Vec<String> = Vec::new();
+
+    for r in &summary.converted {
+        lines.push(format!("{prefix}{convert_verb} article: {} -> {}", r.source_path, r.target_path));
+    }
+    for r in &summary.skipped {
+        lines.push(format!("skipped article: {} ({})", r.source_path, r.reason.as_deref().unwrap_or("unknown")));
+    }
+    for r in &summary.failed {
+        lines.push(format!("failed article: {} ({})", r.source_path, r.reason.as_deref().unwrap_or("unknown error")));
+    }
+
+    lines.push(format!(
+        "{prefix}article convert {}: {} {}, {} skipped, {} failed",
+        summary.direction, summary.converted_count, convert_verb, summary.skipped_count, summary.failed_count
+    ));
+
+    lines.join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -977,27 +1004,4 @@ mod tests {
         assert_eq!(format_mtime(0), "-"); // 0 is special-cased
         assert_eq!(format_mtime(1), "1970-01-01 00:00");
     }
-}
-
-fn render_convert_text(summary: &ConversionSummary) -> String {
-    let prefix = if summary.dry_run { "[dry-run] " } else { "" };
-    let convert_verb = if summary.dry_run { "would convert" } else { "converted" };
-    let mut lines: Vec<String> = Vec::new();
-
-    for r in &summary.converted {
-        lines.push(format!("{prefix}{convert_verb} article: {} -> {}", r.source_path, r.target_path));
-    }
-    for r in &summary.skipped {
-        lines.push(format!("skipped article: {} ({})", r.source_path, r.reason.as_deref().unwrap_or("unknown")));
-    }
-    for r in &summary.failed {
-        lines.push(format!("failed article: {} ({})", r.source_path, r.reason.as_deref().unwrap_or("unknown error")));
-    }
-
-    lines.push(format!(
-        "{prefix}article convert {}: {} {}, {} skipped, {} failed",
-        summary.direction, summary.converted_count, convert_verb, summary.skipped_count, summary.failed_count
-    ));
-
-    lines.join("\n")
 }

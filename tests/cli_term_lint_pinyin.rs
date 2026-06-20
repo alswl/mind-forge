@@ -186,10 +186,10 @@ terms:
     assert!(!stdout.contains("开飞地"), "pinyin must not match inside exempt regions: {stdout}");
 }
 
-// ── Scenario 8: fix with --all applies pinyin finding ──
+// ── Scenario 8: fix with --include-suggested applies pinyin finding ──
 
 #[test]
-fn pinyin_fix_with_all_applies() {
+fn pinyin_fix_with_include_suggested_applies() {
     let repo = setup_cjk_repo();
     let project = repo.path().join("alpha");
     let index = r#"schema_version: '1'
@@ -203,9 +203,11 @@ terms:
     write_index(&repo, index);
     write_doc(&project, "voice", "会议由开飞地主持。\n");
 
-    let output =
-        mf(&repo).args(["term", "fix", "--project", "alpha", "docs/voice.md", "--all", "-y"]).output().unwrap();
-    assert!(output.status.success(), "all fix should succeed");
+    let output = mf(&repo)
+        .args(["term", "fix", "--project", "alpha", "docs/voice.md", "--include-suggested", "-y"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "--include-suggested fix should succeed");
 
     let doc = fs::read_to_string(project.join("docs/voice.md")).unwrap();
     assert!(doc.contains("凯飞迪"), "file must be corrected to 凯飞迪: {doc}");

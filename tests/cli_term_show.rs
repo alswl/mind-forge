@@ -98,45 +98,4 @@ fn term_show_nonexistent_errors() {
 // T091: mf term list --term "API" routes to show + D5 warning
 // ---------------------------------------------------------------------------
 
-#[test]
-fn term_list_term_routes_to_show() {
-    let repo = setup_with_term();
-
-    let (stdout_list_term, stderr_list_term, code) =
-        run(&["--root", &repo.path().to_string_lossy(), "term", "list", "--term", "API", "--project", "alpha"]);
-
-    // Should succeed
-    assert_eq!(code, 0, "should succeed, stderr: {stderr_list_term:?}");
-
-    // D5 deprecation warning on stderr
-    assert!(stderr_list_term.contains("[deprecated]"), "stderr should have deprecation warning: {stderr_list_term:?}");
-
-    // Output should match term show output
-    let (stdout_show, _stderr_show, _code_show) =
-        run(&["--root", &repo.path().to_string_lossy(), "term", "show", "API", "--project", "alpha"]);
-
-    assert_eq!(stdout_list_term, stdout_show, "--term output should match term show output");
-}
-
-#[test]
-fn term_list_term_json_shape() {
-    let repo = setup_with_term();
-
-    let (stdout, stderr, code) = run(&[
-        "--root",
-        &repo.path().to_string_lossy(),
-        "--format",
-        "json",
-        "term",
-        "list",
-        "--term",
-        "API",
-        "--project",
-        "alpha",
-    ]);
-
-    assert_eq!(code, 0, "should succeed, stderr: {stderr:?}");
-    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
-    assert_eq!(parsed["status"], "ok");
-    assert_eq!(parsed["data"]["term"], "API");
-}
+// term list --term flag removed (use term show directly)

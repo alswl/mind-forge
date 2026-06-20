@@ -191,7 +191,7 @@ fn source_add_text_confirm() {
     fs::write(&source_file, b"fake pdf content").unwrap();
 
     let output =
-        mf(&repo).args(["source", "add", source_file.to_str().unwrap(), "--project", "alpha"]).output().unwrap();
+        mf(&repo).args(["source", "new", source_file.to_str().unwrap(), "--project", "alpha"]).output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("✓ added source:"), "stdout: {stdout}");
@@ -205,7 +205,7 @@ fn source_add_json_envelope() {
     fs::write(&source_file, b"fake pdf content").unwrap();
 
     let output =
-        mf_json(&repo).args(["source", "add", source_file.to_str().unwrap(), "--project", "alpha"]).output().unwrap();
+        mf_json(&repo).args(["source", "new", source_file.to_str().unwrap(), "--project", "alpha"]).output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
@@ -225,7 +225,7 @@ fn source_add_dry_run_no_mutation() {
     fs::write(&source_file, b"fake pdf content").unwrap();
 
     let output = mf(&repo)
-        .args(["source", "add", source_file.to_str().unwrap(), "--project", "alpha", "--dry-run"])
+        .args(["source", "new", source_file.to_str().unwrap(), "--project", "alpha", "--dry-run"])
         .output()
         .unwrap();
     assert!(output.status.success());
@@ -249,7 +249,7 @@ fn asset_add_text_confirm() {
     let asset_path = asset_file.path().join("chart.png");
     fs::write(&asset_path, b"fake png").unwrap();
 
-    let output = mf(&repo).args(["asset", "add", asset_path.to_str().unwrap(), "--project", "alpha"]).output().unwrap();
+    let output = mf(&repo).args(["asset", "new", asset_path.to_str().unwrap(), "--project", "alpha"]).output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("✓ added asset:"), "stdout: {stdout}");
@@ -264,7 +264,7 @@ fn asset_add_json_envelope() {
     fs::write(&asset_path, b"fake png").unwrap();
 
     let output =
-        mf_json(&repo).args(["asset", "add", asset_path.to_str().unwrap(), "--project", "alpha"]).output().unwrap();
+        mf_json(&repo).args(["asset", "new", asset_path.to_str().unwrap(), "--project", "alpha"]).output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
@@ -285,7 +285,7 @@ fn asset_add_dry_run_no_mutation() {
     fs::write(&asset_path, b"fake png").unwrap();
 
     let output = mf(&repo)
-        .args(["asset", "add", asset_path.to_str().unwrap(), "--project", "alpha", "--dry-run"])
+        .args(["asset", "new", asset_path.to_str().unwrap(), "--project", "alpha", "--dry-run"])
         .output()
         .unwrap();
     assert!(output.status.success());
@@ -317,10 +317,8 @@ terms:
 "#;
     common::write_index(&repo, "alpha", index_yaml);
 
-    let output = mf(&repo)
-        .args(["term", "add", "--term", "Mind Repo", "--alias", "mindrepo", "--project", "alpha"])
-        .output()
-        .unwrap();
+    let output =
+        mf(&repo).args(["term", "new", "Mind Repo", "--alias", "mindrepo", "--project", "alpha"]).output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("added alias") || stdout.contains("created term"), "stdout: {stdout}");
@@ -343,7 +341,7 @@ terms:
     common::write_index(&repo, "alpha", index_yaml);
 
     let output = mf_json(&repo)
-        .args(["term", "add", "--term", "Mind Repo", "--alias", "mindrepo", "--project", "alpha"])
+        .args(["term", "new", "Mind Repo", "--alias", "mindrepo", "--project", "alpha"])
         .output()
         .unwrap();
     assert!(output.status.success());
@@ -375,7 +373,7 @@ terms:
     let initial = fs::read_to_string(project.join("mind-index.yaml")).unwrap();
 
     let output = mf(&repo)
-        .args(["term", "add", "--term", "Mind Repo", "--alias", "mindrepo", "--project", "alpha", "--dry-run"])
+        .args(["term", "new", "Mind Repo", "--alias", "mindrepo", "--project", "alpha", "--dry-run"])
         .output()
         .unwrap();
     assert!(output.status.success());
@@ -417,7 +415,7 @@ fn all_create_json_data_is_object() {
     let sf = tempfile::TempDir::new().unwrap();
     let s = sf.path().join("f.pdf");
     fs::write(&s, b"x").unwrap();
-    let out = mf_json(&repo).args(["source", "add", s.to_str().unwrap(), "--project", "alpha"]).output().unwrap();
+    let out = mf_json(&repo).args(["source", "new", s.to_str().unwrap(), "--project", "alpha"]).output().unwrap();
     let v: serde_json::Value = serde_json::from_str(&String::from_utf8(out.stdout).unwrap()).unwrap();
     assert!(v["data"].is_object(), "source add: data should be object");
 
@@ -426,7 +424,7 @@ fn all_create_json_data_is_object() {
     let af = tempfile::TempDir::new().unwrap();
     let a = af.path().join("c.png");
     fs::write(&a, b"x").unwrap();
-    let out = mf_json(&repo).args(["asset", "add", a.to_str().unwrap(), "--project", "alpha"]).output().unwrap();
+    let out = mf_json(&repo).args(["asset", "new", a.to_str().unwrap(), "--project", "alpha"]).output().unwrap();
     let v: serde_json::Value = serde_json::from_str(&String::from_utf8(out.stdout).unwrap()).unwrap();
     assert!(v["data"].is_object(), "asset add: data should be object");
 
@@ -440,10 +438,8 @@ terms:
     corrections: []
 "#;
     common::write_index(&repo, "alpha", index_yaml);
-    let out = mf_json(&repo)
-        .args(["term", "add", "--term", "Mind Repo", "--alias", "mr", "--project", "alpha"])
-        .output()
-        .unwrap();
+    let out =
+        mf_json(&repo).args(["term", "new", "Mind Repo", "--alias", "mr", "--project", "alpha"]).output().unwrap();
     let v: serde_json::Value = serde_json::from_str(&String::from_utf8(out.stdout).unwrap()).unwrap();
     assert!(v["data"].is_object(), "term add: data should be object");
 }

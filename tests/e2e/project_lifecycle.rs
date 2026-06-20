@@ -186,10 +186,10 @@ fn e2e_list_json_envelope() {
 fn e2e_status_shows_counts_for_named_project() {
     let ds = repo_008_with_data();
 
-    let (stdout, _, code) = run_in(ds.root(), &["project", "status", "--project", "alpha"]);
+    let (stdout, _, code) = run_in(ds.root(), &["project", "show", "alpha", "--project", "alpha"]);
 
     assert_eq!(code, 0, "stdout: {stdout}");
-    assert!(stdout.contains("articles"), "should show articles: {stdout}");
+    assert!(stdout.contains("Articles"), "should show articles: {stdout}");
     // alpha 有 2 articles, 1 asset, 1 source, 0 terms
 }
 
@@ -198,7 +198,7 @@ fn e2e_status_shows_counts_for_named_project() {
 fn e2e_status_detects_project_from_cwd() {
     let ds = repo_008_with_data();
 
-    let (stdout, _, code) = run_in(ds.root().join("projects/alpha/docs"), &["project", "status"]);
+    let (stdout, _, code) = run_in(ds.root().join("projects/alpha/docs"), &["project", "show", "alpha"]);
 
     assert_eq!(code, 0, "should detect alpha from cwd: {stdout}");
     assert!(stdout.contains("alpha"), "should show project name");
@@ -209,10 +209,10 @@ fn e2e_status_detects_project_from_cwd() {
 fn e2e_status_empty_index() {
     let ds = repo_008_empty_projects();
 
-    let (stdout, _, code) = run_in(ds.root(), &["project", "status", "--project", "alpha"]);
+    let (stdout, _, code) = run_in(ds.root(), &["project", "show", "alpha", "--project", "alpha"]);
 
     assert_eq!(code, 0);
-    assert!(stdout.contains("articles"), "should show articles: {stdout}");
+    assert!(stdout.contains("Articles"), "should show articles: {stdout}");
     assert!(stdout.contains("0") || stdout.contains("-"), "empty project should show zero: {stdout}");
 }
 
@@ -221,7 +221,7 @@ fn e2e_status_empty_index() {
 fn e2e_status_rejects_unknown_project() {
     let ds = Dataset::empty();
 
-    let (_, stderr, code) = run_in(ds.root(), &["project", "status", "--project", "nonexistent"]);
+    let (_, stderr, code) = run_in(ds.root(), &["project", "show", "nonexistent", "--project", "nonexistent"]);
 
     assert_eq!(code, 2, "should reject unknown project: {stderr}");
     assert!(stderr.contains("usage") || stderr.contains("not found") || stderr.contains("list"), "stderr: {stderr}");
@@ -372,8 +372,8 @@ fn e2e_full_lifecycle_quickstart() {
     assert_eq!(code, 0, "list failed");
     assert!(stdout.contains("my-project"), "list should show new project: {stdout}");
 
-    // status（指定 project）
-    let (stdout, _, code) = run_in(ds.root(), &["project", "status", "--project", "my-project"]);
+    // show（指定 project）
+    let (stdout, _, code) = run_in(ds.root(), &["project", "show", "my-project", "--project", "my-project"]);
     assert_eq!(code, 0, "status failed: {stdout}");
 
     // lint（刚创建的项目应该没有 issues）

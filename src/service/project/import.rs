@@ -15,7 +15,7 @@ pub fn import_project(
     source_dir: Option<&str>,
     assets_dir: Option<&str>,
     force: bool,
-    _non_interactive: bool,
+    _yes: bool,
 ) -> Result<ProjectImportReport> {
     let dir_path = Path::new(directory);
     let canonical_dir = dir_path.canonicalize().map_err(|e| {

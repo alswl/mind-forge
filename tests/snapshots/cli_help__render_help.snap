@@ -51,16 +51,6 @@ Options:
   -p, --project <NAME>
           Project name for project-scoped operations
 
-      --install-completion <INSTALL_COMPLETION>
-          Install shell completion script
-          
-          [possible values: bash, zsh, fish, powershell, elvish]
-
-      --show-completion <SHOW_COMPLETION>
-          Show shell completion script
-          
-          [possible values: bash, zsh, fish, powershell, elvish]
-
   -h, --help
           Print help (see a summary with '-h')
 

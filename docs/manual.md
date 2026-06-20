@@ -94,7 +94,7 @@ Shared mutating flags:
 | Flag | Applies to | Description |
 | --- | --- | --- |
 | `--dry-run` | Mutating commands | Preview without writing |
-| `--force` | Create, rename, remove, archive | Skip safety checks where supported |
+| `--force` | Create, rename, remove, archive | Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others |
 | `--yes` | Remove, archive | Confirm destructive actions in scripts |
 
 JSON output always uses:
@@ -268,8 +268,8 @@ mf config default
 mf config terminal
 ```
 
-`mf config init` still exists for compatibility, but `mf init` is the preferred
-repo bootstrap command.
+`mf init` is the repo bootstrap command. Use it to create `minds.yaml` and the
+default `projects/` container in a new or existing directory.
 
 `mf config terminal` reports terminal capability detection for colors,
 hyperlinks, and relevant environment overrides.

@@ -147,7 +147,7 @@ fn asset_add_uses_configured_assets_dir() {
     fs::write(&src_file, b"fake png").unwrap();
 
     mf().current_dir(repo.path().join("proj"))
-        .args(["--root", repo.path().to_str().unwrap(), "asset", "add", src_file.to_str().unwrap()])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "new", src_file.to_str().unwrap()])
         .assert()
         .success();
 

@@ -15,13 +15,10 @@ fn e2e_quickstart_workflow() {
     assert_eq!(code, 0, "step 1: term new should succeed, got: {stdout} {_stderr}");
     assert!(stdout.contains("created term"), "step 1: created term: {stdout}");
 
-    // ── Step 2: Legacy form still works with deprecation WARN ──
-    let (stdout, stderr, code) = run_in(root, &["term", "add", "--term", "FooBar", "--alias", "foobar2"]);
-    assert_eq!(code, 0, "step 2: legacy add should succeed, got: {stdout} {stderr}");
-    assert!(
-        stderr.contains("WARN:") && stderr.contains("`term add --term --alias` is deprecated"),
-        "step 2: must emit deprecation WARN: {stderr}"
-    );
+    // ── Step 2: term new --alias is the canonical form (term add removed) ──
+    let (stdout, stderr, code) = run_in(root, &["term", "new", "FooBar", "--alias", "foobar2"]);
+    assert_eq!(code, 0, "step 2: term new --alias should succeed, got: {stdout} {stderr}");
+    assert!(stderr.is_empty(), "step 2: canonical form should have clean stderr: {stderr}");
 
     // ── Step 3: Safe-by-default fix (US1) ──
     let sources_dir = root.join("sources");
@@ -36,7 +33,7 @@ fn e2e_quickstart_workflow() {
     run_in(root, &["term", "new", "六十", "--misrecognition", "60"]);
     run_in(root, &["term", "new", "<name>", "--misrecognition", "小文"]);
 
-    let (stdout, stderr, code) = run_in(root, &["term", "fix", "sources/notes.md", "-f", "--include-suggested"]);
+    let (stdout, stderr, code) = run_in(root, &["term", "fix", "sources/notes.md", "-y", "--include-suggested"]);
     assert_eq!(code, 0, "step 3: fix should succeed, got: {stdout} {stderr}");
 
     let fixed = std::fs::read_to_string(sources_dir.join("notes.md")).unwrap();
@@ -81,12 +78,9 @@ fn e2e_quickstart_workflow() {
         run_in(root, &["term", "fix", "sources/fresh.md", "--include-suggested", "-y", "--dry-run"]);
     assert_eq!(code, 1, "step 6: dry-run with --include-suggested should find suggested: {_stdout} {_stderr}");
 
-    // Legacy --all still works with WARN.
-    let (_stdout, stderr, _code) = run_in(root, &["term", "lint", "sources/fresh.md", "--all"]);
-    assert!(
-        stderr.contains("--all is deprecated; use --include-suggested instead"),
-        "step 6: --all must warn: {stderr}"
-    );
+    let (_stdout, stderr, code) = run_in(root, &["term", "lint", "sources/fresh.md", "--all"]);
+    assert_eq!(code, 2, "step 6: removed --all must be rejected: {stderr}");
+    assert!(stderr.contains("unexpected argument '--all'"), "step 6: stderr should identify --all: {stderr}");
 
     // ── Step 7: asset/source new rename (US5) ──
     let asset1 = root.join("icon.svg");
@@ -97,9 +91,9 @@ fn e2e_quickstart_workflow() {
     let (_stdout, _stderr, code) = run_in(root, &["-p", "alpha", "asset", "new", &asset1.to_string_lossy()]);
     assert_eq!(code, 0, "step 7: asset new should succeed");
 
-    let (_stdout, stderr, code) = run_in(root, &["-p", "alpha", "asset", "add", &asset2.to_string_lossy()]);
-    assert_eq!(code, 0, "step 7: legacy asset add should still work");
-    assert!(stderr.contains("`asset add` is deprecated"), "step 7: legacy asset add must warn: {stderr}");
+    let (_stdout, stderr, code) = run_in(root, &["-p", "alpha", "asset", "new", &asset2.to_string_lossy()]);
+    assert_eq!(code, 0, "step 7: asset new should succeed");
+    assert!(stderr.is_empty(), "step 7: asset new should have clean stderr: {stderr}");
 
     // ── Step 8: Path resolution sanity (US4) ──
     // All forms should address the same file.

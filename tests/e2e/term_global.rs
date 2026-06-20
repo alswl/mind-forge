@@ -24,7 +24,7 @@ fn global_term_full_lifecycle() {
     assert!(stdout.contains("created term"), "stdout: {stdout}");
 
     // 2. Add correction (alias) for the term
-    let (stdout, _stderr, code) = run_in(root, &["term", "add", "--term", "Kubernetes", "--alias", "k8s"]);
+    let (stdout, _stderr, code) = run_in(root, &["term", "new", "Kubernetes", "--alias", "k8s"]);
     assert_eq!(code, 0, "term add should succeed, got: {stdout} {_stderr}");
     assert!(stdout.contains("added alias") || stdout.contains("created term"), "stdout: {stdout}");
 
@@ -57,7 +57,7 @@ fn global_term_lint_no_project() {
 
     // Register a global term with correction
     run_in(root, &["term", "new", "Kubernetes", "--definition", "Orchestration"]);
-    run_in(root, &["term", "add", "--term", "Kubernetes", "--alias", "kube"]);
+    run_in(root, &["term", "new", "Kubernetes", "--alias", "kube"]);
 
     // Lint should find "kube" without --project
     let (stdout, _stderr, code) = run_in(root, &["term", "lint", "docs/test.md"]);

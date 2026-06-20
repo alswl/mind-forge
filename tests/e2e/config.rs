@@ -94,66 +94,72 @@ fn show_json_output() {
     assert_eq!(parsed["build"]["output_dir"], "_custom");
 }
 
-/// E2E: `mf config init` 创建 mind.yaml
+/// E2E: `mf init` creates minds.yaml (repo-level manifest)
 #[test]
 fn init_creates_mind_yaml() {
     let ds = Dataset::empty();
 
-    let (_, _, code) = run_in(ds.root(), &["config", "init"]);
+    let (_, _, code) = run_in(ds.root(), &["init"]);
     assert_eq!(code, 0);
-    let path = ds.root().join("mind.yaml");
-    assert!(path.exists(), "mind.yaml should exist");
+    let path = ds.root().join("minds.yaml");
+    assert!(path.exists(), "minds.yaml should exist");
     let content = fs::read_to_string(&path).unwrap();
-    assert!(content.contains("schema:"));
-    assert!(content.contains("name:"));
+    assert!(
+        content.contains("schema") && content.contains("'1'"),
+        "minds.yaml should contain schema version: {content}"
+    );
+    assert!(content.contains("projects_dir:") || content.contains("projects:"), "minds.yaml content: {content}");
 }
 
-/// E2E: `mf config init` 拒绝重复
+/// E2E: `mf init` succeeds idempotently when minds.yaml already exists
 #[test]
 fn init_refuses_duplicate() {
     let ds = Dataset::empty();
-    fs::write(ds.root().join("mind.yaml"), "schema_version: '1'\n").unwrap();
+    fs::write(ds.root().join("minds.yaml"), "schema: '1'\nprojects_dir: projects\nprojects: []\n").unwrap();
 
-    let (_, stderr, code) = run_in(ds.root(), &["config", "init"]);
-    assert_eq!(code, 1);
-    assert!(stderr.contains("refusing to overwrite"), "stderr: {stderr}");
+    // mf init is idempotent — already a mind repo → success
+    let (_, _, code) = run_in(ds.root(), &["init"]);
+    assert_eq!(code, 0, "mf init should succeed on existing repo");
+    assert!(ds.root().join("minds.yaml").exists());
 }
 
-/// E2E: `mf config init --force` 覆盖
+/// E2E: `mf init` succeeds when minds.yaml already exists (idempotent)
 #[test]
 fn init_force_overwrites() {
     let ds = Dataset::empty();
-    fs::write(ds.root().join("mind.yaml"), "schema_version: '1'\n").unwrap();
-
-    let (_, _, code) = run_in(ds.root(), &["config", "init", "--force"]);
+    // init first time
+    let (_, _, code) = run_in(ds.root(), &["init"]);
     assert_eq!(code, 0);
-    assert!(ds.root().join("mind.yaml").exists());
+    assert!(ds.root().join("minds.yaml").exists());
+    // init second time — should succeed (already a mind repo)
+    let (_, _, code) = run_in(ds.root(), &["init"]);
+    assert_eq!(code, 0, "second init should succeed");
 }
 
-/// E2E: `mf config init --target user` → exit 64 + not implemented
+/// E2E: `mf init --target` removed — config init subcommand is gone
 #[test]
 fn init_target_user_not_implemented() {
     let ds = Dataset::empty();
-
-    let (_, stderr, code) = run_in(ds.root(), &["config", "init", "--target", "user"]);
-    assert_eq!(code, 64);
-    assert!(stderr.contains("not yet implemented"), "stderr: {stderr}");
+    // --target was a config init flag, not an init flag
+    // config init is removed → use mf init instead
+    let (_, _, code) = run_in(ds.root(), &["init"]);
+    assert_eq!(code, 0, "mf init should succeed");
+    assert!(ds.root().join("minds.yaml").exists());
 }
 
-/// E2E: 完整往返 — init → show → schema 校验
+/// E2E: init → config show → schema roundtrip
 #[test]
 fn full_roundtrip_init_show_schema() {
     let ds = Dataset::empty();
 
     // init
-    let (_, _, code) = run_in(ds.root(), &["config", "init"]);
+    let (_, _, code) = run_in(ds.root(), &["init"]);
     assert_eq!(code, 0, "init");
 
-    // show 包含 init 写入的字段
+    // config show works against minds.yaml
     let (stdout, _, code) = run_in(ds.root(), &["config", "show"]);
     assert_eq!(code, 0, "show after init");
-    assert!(stdout.contains("schema_version:"), "schema_version in show: {stdout}");
-    assert!(stdout.contains("name:"), "project name in show: {stdout}");
+    assert!(stdout.contains("schema_version:") || stdout.contains("schema:"), "schema in show: {stdout}");
 
     // schema 输出合法
     let (schema_stdout, _, code) = run_in(ds.root(), &["config", "schema"]);

@@ -274,35 +274,29 @@ fn new_schema_version_misrecognition_flag() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// T024 — term add legacy deprecation WARN
+// T024 — canonical alias attachment via term new
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn term_add_legacy_emits_deprecation_warn() {
+fn term_new_attaches_alias_to_existing_term() {
     let repo = common::setup_repo();
     std::fs::write(repo.path().join("minds-terms.yaml"), "schema_version: '1'\nterms: []\n").unwrap();
 
-    // Seed a term so `term add` can attach to it.
+    // Seed a term so `term new --alias` can attach to it.
     Command::cargo_bin("mf")
         .unwrap()
         .args(["--root", repo.path().to_str().unwrap(), "term", "new", "FooBar"])
         .assert()
         .code(0);
 
+    // term add removed — use `term new <NAME> --alias ALIAS` instead
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "term", "add", "--term", "FooBar", "--alias", "foobar"])
+        .args(["--root", repo.path().to_str().unwrap(), "term", "new", "FooBar", "--alias", "foobar"])
         .output()
         .unwrap();
 
     assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
-
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("WARN:"), "legacy add must warn: {stderr}");
-    assert!(
-        stderr.contains("`term add --term --alias` is deprecated; use `mf term new FooBar --alias foobar` instead."),
-        "deprecation message must name new equivalent: {stderr}"
-    );
 
     // Verify the alias actually landed.
     let content = fs::read_to_string(repo.path().join("minds-terms.yaml")).unwrap();

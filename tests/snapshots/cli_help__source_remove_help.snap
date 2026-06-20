@@ -10,35 +10,18 @@ Arguments:
   <NAME_OR_PATH>  Source path (e.g. sources/yuque/foo.md) or source name (deprecated)
 
 Options:
-      --keep-file
-          
-      --root <PATH>
-          Mind Repo root directory
-      --config <PATH>
-          Config file path
-  -f, --force
-          
-  -v, --verbose...
-          Verbose output
-  -y, --yes
-          
-      --dry-run
-          
-  -q, --quiet
-          Silence non-error output
-      --format <FORMAT>
-          Output format [default: text] [possible values: text, json]
-      --json
-          Shorthand for --format json
-      --no-color
-          Disable colored output
-  -p, --project <NAME>
-          Project name for project-scoped operations
-      --install-completion <INSTALL_COMPLETION>
-          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
-      --show-completion <SHOW_COMPLETION>
-          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
-  -h, --help
-          Print help
-  -V, --version
-          Print version
+      --keep-file        
+      --root <PATH>      Mind Repo root directory
+      --config <PATH>    Config file path
+  -f, --force            Proceed despite safety checks: overwrite an existing target, or remove an
+                         entity referenced by others
+  -v, --verbose...       Verbose output
+  -y, --yes              Skip interactive confirmation prompt
+      --dry-run          Preview changes without writing
+  -q, --quiet            Silence non-error output
+      --format <FORMAT>  Output format [default: text] [possible values: text, json]
+      --json             Shorthand for --format json
+      --no-color         Disable colored output
+  -p, --project <NAME>   Project name for project-scoped operations
+  -h, --help             Print help
+  -V, --version          Print version

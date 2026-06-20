@@ -182,64 +182,6 @@ pub fn fix_term(repo_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Re
     Ok(result)
 }
 
-/// Find a global term by its main name or alias. Returns the index.
-fn find_term_index(terms: &[Term], correct: &str) -> Result<usize> {
-    let matches: Vec<usize> = terms
-        .iter()
-        .enumerate()
-        .filter(|(_, t)| t.term == correct || t.aliases.iter().any(|a| a == correct))
-        .map(|(i, _)| i)
-        .collect();
-
-    match matches.len() {
-        0 => Err(MfError::usage(
-            format!("no term registers '{correct}' as its main name or alias"),
-            Some(format!("register first with `mf term new {correct}` or `mf term fix --alias {correct}`")),
-        )),
-        1 => Ok(matches[0]),
-        _ => {
-            let candidates: Vec<&str> = matches.iter().map(|&i| terms[i].term.as_str()).collect();
-            Err(MfError::usage(
-                format!("multiple terms claim '{correct}': {candidates:?}"),
-                Some("disambiguate by editing `mf term fix` for the chosen term".to_string()),
-            ))
-        }
-    }
-}
-
-/// Register a correction for an existing global term.
-pub fn learn_correction(repo_root: &Path, original: &str, correct: &str) -> Result<(Term, bool)> {
-    if original.trim().is_empty() {
-        return Err(MfError::usage("variant cannot be empty", None));
-    }
-    if correct.trim().is_empty() {
-        return Err(MfError::usage("canonical term cannot be empty", None));
-    }
-
-    let mut terms = load_terms(repo_root)?;
-
-    let idx = find_term_index(&terms, correct)?;
-    let canonical_name = terms[idx].term.clone();
-
-    if original == terms[idx].term || terms[idx].aliases.iter().any(|a| a == original) {
-        return Err(MfError::usage(
-            format!("'{original}' is already a recognized form for term '{}'", canonical_name),
-            None,
-        ));
-    }
-
-    let already_exists = terms[idx].corrections.iter().any(|c| c.original == original && c.correct == canonical_name);
-    if already_exists {
-        return Ok((terms[idx].clone(), false));
-    }
-
-    terms[idx].corrections.push(Correction::misrecognition(original, &canonical_name));
-    let result = terms[idx].clone();
-    sort_terms_by_name(&mut terms);
-    save_terms(repo_root, &terms)?;
-    Ok((result, true))
-}
-
 // ── Global term lint ──────────────────────────────────────────────────────────
 
 fn global_index(terms: Vec<Term>) -> IndexFile {
@@ -477,30 +419,6 @@ mod tests {
         let t = fix_term(root, "k8s", TermUpdate { definition: Some("Kubernetes (K8s)"), ..TermUpdate::default() })
             .unwrap();
         assert_eq!(t.definition.as_deref(), Some("Kubernetes (K8s)"));
-    }
-
-    #[test]
-    fn learn_correction_adds() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-        seed(root);
-        let aliases = vec!["k8s".to_string()];
-        new_term(root, "Kubernetes", aliases_input(&aliases), &[]).unwrap();
-
-        let (t, appended) = learn_correction(root, "kube", "Kubernetes").unwrap();
-        assert!(appended);
-        assert!(t.corrections.iter().any(|c| c.original == "kube" && c.correct == "Kubernetes"));
-    }
-
-    #[test]
-    fn learn_correction_idempotent() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-        seed(root);
-        new_term(root, "Kubernetes", TermInput::default(), &[]).unwrap();
-        learn_correction(root, "kube", "Kubernetes").unwrap();
-        let (_, appended) = learn_correction(root, "kube", "Kubernetes").unwrap();
-        assert!(!appended);
     }
 
     #[test]

@@ -80,7 +80,8 @@ fn cli_compat_project_list_string_manifest() {
 #[test]
 fn cli_compat_status_empty_mind_yaml() {
     let dir = setup_compat_repo();
-    let (value, stderr, code) = run_json(&dir, &["project", "status", "--project", "2026-hcs-tickets", "--json"]);
+    let (value, stderr, code) =
+        run_json(&dir, &["project", "show", "2026-hcs-tickets", "--project", "2026-hcs-tickets", "--json"]);
     assert_eq!(code, 0, "empty mind.yaml: {stderr}");
     assert_eq!(value["status"], "ok");
 }
@@ -88,16 +89,17 @@ fn cli_compat_status_empty_mind_yaml() {
 #[test]
 fn cli_compat_status_top_level_metadata() {
     let dir = setup_compat_repo();
-    let (value, stderr, code) = run_json(&dir, &["project", "status", "--project", "2026-meetings", "--json"]);
+    let (value, stderr, code) =
+        run_json(&dir, &["project", "show", "2026-meetings", "--project", "2026-meetings", "--json"]);
     assert_eq!(code, 0, "top-level metadata: {stderr}");
     assert_eq!(value["status"], "ok");
-    assert_eq!(value["data"]["name"], "2026 Meetings");
+    assert_eq!(value["data"]["name"], "2026-meetings");
 }
 
 #[test]
 fn cli_compat_status_wrapped_project() {
     let dir = setup_compat_repo();
-    let (value, stderr, code) = run_json(&dir, &["project", "status", "--project", "2026-blogs", "--json"]);
+    let (value, stderr, code) = run_json(&dir, &["project", "show", "2026-blogs", "--project", "2026-blogs", "--json"]);
     assert_eq!(code, 0, "wrapped project: {stderr}");
     assert_eq!(value["status"], "ok");
 }
@@ -105,7 +107,8 @@ fn cli_compat_status_wrapped_project() {
 #[test]
 fn cli_compat_status_team_reports() {
     let dir = setup_compat_repo();
-    let (value, stderr, code) = run_json(&dir, &["project", "status", "--project", "team-reports", "--json"]);
+    let (value, stderr, code) =
+        run_json(&dir, &["project", "show", "team-reports", "--project", "team-reports", "--json"]);
     assert_eq!(code, 0, "team-reports: {stderr}");
     assert_eq!(value["status"], "ok");
 }

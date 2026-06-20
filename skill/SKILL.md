@@ -40,7 +40,7 @@ Every command honors these uniform contracts:
 - **Modify family envelope:** Per-verb `{ kind, identity, ... }`; rename adds `old_identity`/`new_identity`; remove adds `removed: bool`; update adds `changes: { field: {from, to} }`; index adds `{ added, removed, kept_count, scanned_count }`.
 - **Lint envelope:** `{ kind, issues, summary: { errors, warnings, info }, dry_run }`.
 - **TTY adaptation:** Pipes drop ANSI and headers, preserve row shape; `NO_COLOR` env disables color.
-- **Confirmation protocol:** `remove` and `archive` open `/dev/tty` for a `[y/N]` prompt on stderr. Non-TTY without `--yes`/`--force` exits 1 with hint `pass --yes to confirm`.
+- **Confirmation protocol:** `remove` and `archive` open `/dev/tty` for a `[y/N]` prompt on stderr. Non-TTY without `--yes` exits 1 with hint `pass --yes to confirm`.
 
 ## Flags
 
@@ -63,9 +63,9 @@ Shared flag families (uniform across all commands they apply to):
 
 | Flag family | Applies to | Description |
 |---|---|---|
-| `--dry-run` | every mutating command (`new`, `add`, `rename`, `remove`, `archive`, `update`, `index`, lint `--fix`) | Preview without writing; JSON envelope sets `dry_run: true` |
-| `-f`, `--force` | every `new` / `add` / `rename` / `remove` / `archive` | Overwrite or skip safety checks; on remove/archive also satisfies confirmation |
-| `-y`, `--yes` | every `remove` and `archive` | Confirm destructive action non-interactively |
+| `--dry-run` | every mutating command (`new`, `rename`, `remove`, `archive`, `update`, `index`, lint `--fix`) | Preview without writing; JSON envelope sets `dry_run: true` |
+| `-f`, `--force` | every `new` / `rename` / `remove` / `archive` | Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others |
+| `-y`, `--yes` | every `remove` and `archive` | Skip interactive confirmation prompt |
 | `--no-headers`, `--no-trunc` | every `list` | Suppress table header / disable column truncation |
 | `--fix`, `--rule <RULE>`, `--severity <LEVEL>`, `--max-warnings <N>` | every `lint` | Auto-fix; restrict to one rule kind; filter at-or-above severity (`error`/`warning`/`info`); exit 1 when warnings exceed N |
 
@@ -87,18 +87,18 @@ Create a project. Accepts cwd-relative or repo-relative paths with Unicode, emoj
 
 **`mf project list`** (alias `ls`) — List all projects.
 
-**`mf project show <NAME>`** — Show project details (key-value block + JSON envelope `{ kind: "project", identity, ... }`).
+**`mf project show <PATH>`** — Show project details (key-value block + JSON envelope `{ kind: "project", identity, ... }`).
 
-**`mf project update <NAME>`**
+**`mf project update <PATH>`**
 Update project metadata in `mind.yaml`.
 `--description <TEXT>` — Set `project.description`
 `--clear-description` — Clear `project.description`
 
-**`mf project rename <OLD_NAME> <NEW_NAME>`** — Rename a project.
+**`mf project rename <OLD_PATH> <NEW_PATH>`** — Rename a project.
 
-**`mf project remove <NAME>`** (alias `rm`) — Remove a project. Interactive TTY confirmation unless `--yes` or `--force` is set.
+**`mf project remove <PATH>`** (alias `rm`) — Remove a project. Interactive TTY confirmation unless `--yes` is set.
 
-**`mf project archive <NAME_OR_PATH>`** — Move project to `_archived/`. Interactive TTY confirmation unless `--yes` or `--force` is set.
+**`mf project archive <NAME_OR_PATH>`** — Move project to `_archived/`. Interactive TTY confirmation unless `--yes` is set.
 
 **`mf project lint`**
 Lint project(s). Requires `-p, --project <PROJECT>`.
@@ -111,7 +111,7 @@ Import a directory as a project.
 `--type <TYPE>` — Project type
 `--source <DIR>` — Source directory override
 `--assets <DIR>` — Assets directory override
-`-y`, `--non-interactive` — Skip prompts
+`-y`, `--yes` — Skip prompts
 
 ### `mf article` — Manage articles
 
@@ -136,7 +136,7 @@ Update article metadata in `mind-index.yaml`.
 
 **`mf article rename <OLD_PATH> <NEW_PATH>`** — Rename an article.
 
-**`mf article remove <PATH>`** (alias `rm`) — Remove an article. Interactive TTY confirmation unless `--yes` or `--force` is set.
+**`mf article remove <PATH>`** (alias `rm`) — Remove an article. Interactive TTY confirmation unless `--yes` is set.
 
 **`mf article lint`** — Lint articles.
 
@@ -147,26 +147,25 @@ Convert article shape between directory and single-file.
 Without a direction flag in a TTY, the CLI infers the unique reasonable direction and prompts for confirmation; non-TTY fails with a usage error if both directions are plausible.
 `--dry-run` reports the plan without mutating the filesystem or index.
 
-**`mf article index`** — Index articles (mf extension). `-n` is short for `--dry-run`.
+**`mf article index`** — Index articles (mf extension). `--dry-run` previews without writing.
 
 ### `mf source` — Manage content sources
 
-Subcommands: `list` (alias `ls`), `add`, `show`, `update`, `rename`, `remove` (alias `rm`), `index`, `clean`.
+Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (alias `rm`), `index`, `clean`.
 
-**`mf source add <INPUT>`**
+**`mf source new <INPUT>`**
 `-n`, `--name <NAME>` — Source name
 `--file-kind <auto|pdf|file|rss|web>` — File kind (mf primary)
 `--source-kind <yuque|meeting|misc>` — Source channel type (mind primary)
-`-t`, `--type <KIND>` — Deprecated: use `--file-kind` or `--source-kind` instead
 `--link` — Symlink instead of copy (local files)
 
 **`mf source list`** (alias `ls`)
 `--filter <PATTERN>` — Filter by name
 `-t`, `--type <auto|pdf|file|rss|web>` — Filter by file kind
 
-**`mf source show <NAME>`** — Show source details.
+**`mf source show <PATH>`** — Show source details.
 
-**`mf source update <NAME>`**
+**`mf source update <PATH>`**
 `--url <URL>` — Update URL
 `--rename <NAME>` — Rename source (legacy; prefer `mf source rename`)
 
@@ -181,9 +180,9 @@ Subcommands: `list` (alias `ls`), `add`, `show`, `update`, `rename`, `remove` (a
 
 ### `mf asset` — Manage project assets
 
-Subcommands: `list` (alias `ls`), `add`, `show`, `update`, `rename`, `remove` (alias `rm`), `index`, `clean`.
+Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (alias `rm`), `index`, `clean`.
 
-**`mf asset add <PATH>`**
+**`mf asset new <PATH>`**
 `--name <NAME>` — Asset name
 `--tag <TAG>` — Tag (repeatable)
 `--copy` — Copy file (mutually exclusive with `--link`)
@@ -193,7 +192,7 @@ Subcommands: `list` (alias `ls`), `add`, `show`, `update`, `rename`, `remove` (a
 `--filter <PATTERN>` — Filter by name
 `--type <image|video|audio|other>` — Filter by kind
 
-**`mf asset show <NAME>`** — Show asset details.
+**`mf asset show <PATH>`** — Show asset details.
 
 **`mf asset update [PATH]`**
 `--set-url <URL>` — Set publish URL
@@ -202,7 +201,7 @@ Subcommands: `list` (alias `ls`), `add`, `show`, `update`, `rename`, `remove` (a
 
 **`mf asset rename <OLD_PATH> <NEW_PATH>`** — Rename an asset.
 
-**`mf asset remove <FILE>`** (alias `rm`) — Remove an asset.
+**`mf asset remove <PATH>`** (alias `rm`) — Remove an asset.
 
 **`mf asset index`** — Index assets (mf extension). `--refresh-metadata` recomputes size/hash.
 
@@ -210,7 +209,7 @@ Subcommands: `list` (alias `ls`), `add`, `show`, `update`, `rename`, `remove` (a
 
 ### `mf term` (alias `mf terms`) — Manage terminology
 
-Subcommands: `list` (alias `ls`), `new`, `show`, `add`, `update`, `rename`, `remove` (alias `rm`), `lint`, `fix`.
+Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (alias `rm`), `lint`, `fix`.
 
 **`mf term new <TERM>`**
 Create a term (mf extension).
@@ -223,19 +222,11 @@ Create a term (mf extension).
 
 **`mf term list`** (alias `ls`)
 `--filter <PATTERN>` — Filter by name
-`--term <NAME>` — Look up a single term (deprecated: use `term show <NAME>`)
 
-**`mf term show <NAME>`** — Show term details (term + corrections sub-section).
-
-**`mf term add`**
-Add a term correction (canonical name; replaces the legacy `term learn`).
-`--term <CANONICAL>` — Canonical term name (mind primary)
-`--alias <VARIANT>` — Variant/alias for the term (mind primary)
-`--original <TEXT>` — Deprecated: use `--term` instead
-`--correct <TEXT>` — Deprecated: use `--alias` instead
+**`mf term show <TERM>`** — Show term details (term + corrections sub-section).
 
 **`mf term update <TERM>`**
-Update term metadata (mf extension; replaces the legacy `term fix`).
+Update term metadata (mf extension).
 `--definition <TEXT>` — Update definition
 `--description <TEXT>` — Update description (`--clear-description` to unset)
 `--confidence <N>` — Update confidence (`--clear-confidence` to unset)
@@ -252,19 +243,18 @@ Update term metadata (mf extension; replaces the legacy `term fix`).
 Rename a term.
 `--keep-alias` — Preserve the old name as an alias on the renamed term.
 
-**`mf term remove <TERM>`** (alias `rm`) — Remove a term. Interactive TTY confirmation unless `--yes` or `--force` is set.
+**`mf term remove <TERM>`** (alias `rm`) — Remove a term. Interactive TTY confirmation unless `--yes` is set.
 
 **`mf term lint [PATH]`**
 Lint term consistency in project docs. Detects misrecognized terms using configurable `Correction.match` modes: `word` (default — ASCII word boundaries; CJK requires a non-CJK neighbor), `substring` (exact match anywhere), or `pinyin` (tone-less pinyin scan with auto-conversion for CJK terms). Pinyin findings are always `fix: suggested` (trailing `?` marker).
-`--fix` — Auto-correct term usage in docs (pair with `--dry-run` to preview). Non-TTY exits 2 unless `-y`/`--force` is passed.
-`--all` — Apply suggested fixes (pinyin matches) in addition to required corrections.
+`--fix` — Auto-correct term usage in docs (pair with `--dry-run` to preview). Non-TTY exits 2 unless `-y`/`--yes` is passed.
+`--include-suggested` — Apply suggested fixes (pinyin matches) in addition to required corrections.
 `--rule <RULE>` — Restrict to one rule kind.
 `--severity <LEVEL>` — Filter at-or-above severity (`error`/`warning`/`info`).
 `--max-warnings <N>` — Exit 1 when warnings exceed N.
 
 **`mf term fix [PATH]`**
-First-class alias for `term lint --fix`. Same flags as `term lint`, plus `--all` to apply suggested corrections.
-Replaces the old deprecated `term fix` metadata subcommand (which is now `term update`).
+First-class alias for `term lint --fix`. Same flags as `term lint`, plus `--include-suggested` to apply suggested corrections.
 
 ### `mf build <ARTICLE>` — Build/assemble an article
 
@@ -302,7 +292,7 @@ Subcommands: `list`, `show`.
 
 ### `mf config` — Manage configuration
 
-Subcommands: `schema`, `show`, `generate`, `default`, `terminal`, `init` (deprecated).
+Subcommands: `schema`, `show`, `generate`, `default`, `terminal`.
 
 **`mf config schema`** — Show config JSON schema. `--output-format <json|yaml>` (default: `json`).
 
@@ -313,8 +303,6 @@ Subcommands: `schema`, `show`, `generate`, `default`, `terminal`, `init` (deprec
 **`mf config default`** — Show default config values. `--output-format <json|yaml>` (default: `yaml`). Generated config includes a `plugins.typora-front-matter` block with `enabled: true`.
 
 **`mf config terminal`** — Show terminal capability diagnostics (hyperlink support, color depth, terminfo probing). Environment-driven detection respects `TERM`, `COLORTERM`, `TERM_PROGRAM`, `NO_COLOR`, `MF_FORCE_HYPERLINKS`, and `MF_NO_HYPERLINKS`.
-
-**`mf config init`** — **Deprecated:** use `mf init`. `--output <PATH>`, `--target <project|repo>` (default: `project`), `--force`.
 
 ### `mf completion <SHELL>` — Generate shell completion scripts
 
@@ -346,8 +334,8 @@ mf project lint --project my-project --fix
 mf project import /path/to/existing --force
 
 # Sources
-mf source add https://example.com/article --name ref-a --file-kind web --project my-project
-mf source add paper.pdf --file-kind pdf --project my-project
+mf source new https://example.com/article --name ref-a --file-kind web --project my-project
+mf source new paper.pdf --file-kind pdf --project my-project
 mf source list --project my-project
 mf source show ref-a --project my-project
 mf source rename ref-a ref-canonical --project my-project
@@ -357,7 +345,7 @@ mf source remove sources/yuque/foo.md --keep-file --project my-project
 mf source clean --dry-run --project my-project
 
 # Assets
-mf asset add image.png --project my-project
+mf asset new image.png --project my-project
 mf asset list --project my-project
 mf asset show image.png --project my-project
 mf asset rename old.png new.png --project my-project
@@ -400,15 +388,14 @@ mf term new "Zettelkasten" --definition "A note-taking method" --project my-proj
 mf term new "API" --alias "Application Programming Interface" --tag tech
 mf term list
 mf term show Zettelkasten --project my-project
-mf term add --term "API" --alias "Application Programming Interface" --project my-project
 mf term update "API" --definition "Updated definition" --project my-project
 mf term rename "API" "Application API" --keep-alias --project my-project
 mf term remove obsolete-term --yes --project my-project
 mf term lint --project my-project
-mf term lint --project my-project --fix --dry-run   # preview corrections
-mf term lint --project my-project --fix --all       # apply suggested pinyin fixes too
-mf term fix --project my-project                    # alias for term lint --fix
-mf term fix --project my-project --all              # apply suggested corrections
+mf term lint --project my-project --fix --dry-run                  # preview corrections
+mf term lint --project my-project --fix --include-suggested        # apply suggested pinyin fixes too
+mf term fix --project my-project                                   # alias for term lint --fix
+mf term fix --project my-project --include-suggested               # apply suggested corrections
 
 # Config
 mf config show
@@ -433,6 +420,5 @@ mf version --json
 - Prefer `schema` over `schema_version` in docs, examples, and generated YAML.
 - Global terms (created without `--project`) are stored in `minds-terms.yaml` at the repo root. Project-scoped terms are stored in each project's `mind-index.yaml`.
 - `term lint` requires a project context — it scans project docs for term usage.
-- Destructive verbs (`remove`, `archive`) prompt on `/dev/tty` in interactive shells. In scripts/CI pipe the command through `--yes` (confirms) or `--force` (also bypasses safety checks).
-- `term add` replaces the legacy `term learn`; `term update` replaced the old `term fix` metadata subcommand. The new `term fix` is a first-class verb (alias for `term lint --fix`).
-- `mf init` replaces `mf config init` for repo bootstrap; the latter still works but is deprecated.
+- Destructive verbs (`remove`, `archive`) prompt on `/dev/tty` in interactive shells. In scripts/CI, pass `--yes` to confirm or `--force` to also bypass safety checks. `--force` and `--yes` are separate flags: `-y`/`--yes` skips the confirmation prompt, `-f`/`--force` bypasses safety checks (overwrite / referential integrity).
+- Shell completion scripts should be regenerated after this release (`mf completion <SHELL>`), as some flags and subcommands have been renamed or removed.

@@ -10,43 +10,20 @@ Arguments:
   [PATH]  
 
 Options:
-      --fix
-          Auto-fix issues that have a fixer
-      --root <PATH>
-          Mind Repo root directory
-      --config <PATH>
-          Config file path
-      --rule <RULE>
-          Restrict to a specific lint rule kind
-      --severity <LEVEL>
-          Only emit issues at or above this severity (error|warning|info)
-  -v, --verbose...
-          Verbose output
-      --max-warnings <N>
-          Exit 1 when warnings exceed this count
-  -q, --quiet
-          Silence non-error output
-      --dry-run
-          Preview fixes without writing (only with --fix)
-      --format <FORMAT>
-          Output format [default: text] [possible values: text, json]
-      --include-suggested
-          Apply all corrections including suggested
-      --json
-          Shorthand for --format json
-      --no-color
-          Disable colored output
-  -y, --yes
-          Skip the interactive confirmation prompt (required in non-TTY)
-  -f, --force
-          Alias for --yes
-  -p, --project <NAME>
-          Project name for project-scoped operations
-      --install-completion <INSTALL_COMPLETION>
-          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
-      --show-completion <SHOW_COMPLETION>
-          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
-  -h, --help
-          Print help
-  -V, --version
-          Print version
+      --fix                Auto-fix issues that have a fixer
+      --root <PATH>        Mind Repo root directory
+      --config <PATH>      Config file path
+      --rule <RULE>        Restrict to a specific lint rule kind
+      --severity <LEVEL>   Only emit issues at or above this severity (error|warning|info)
+  -v, --verbose...         Verbose output
+      --max-warnings <N>   Exit 1 when warnings exceed this count
+  -q, --quiet              Silence non-error output
+      --dry-run            Preview fixes without writing (only with --fix)
+      --format <FORMAT>    Output format [default: text] [possible values: text, json]
+      --include-suggested  Apply all corrections including suggested
+      --json               Shorthand for --format json
+      --no-color           Disable colored output
+  -y, --yes                Skip interactive confirmation prompt
+  -p, --project <NAME>     Project name for project-scoped operations
+  -h, --help               Print help
+  -V, --version            Print version

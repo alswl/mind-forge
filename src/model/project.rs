@@ -19,18 +19,6 @@ pub struct ProjectListEntry {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub struct ProjectStatusSnapshot {
-    pub name: String,
-    pub path: String,
-    pub articles: u64,
-    pub assets: u64,
-    pub sources: u64,
-    pub terms: u64,
-    pub updated_at: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
 pub struct ProjectLintIssue {
     pub severity: LintSeverity,
     pub kind: LintKind,
@@ -178,40 +166,6 @@ mod tests {
         };
         let json = serde_json::to_value(&entry).unwrap();
         assert!(json.get("last_activity_at").unwrap().is_null());
-    }
-
-    #[test]
-    fn test_project_status_snapshot_serialization() {
-        let snap = ProjectStatusSnapshot {
-            name: "alpha".to_string(),
-            path: "./alpha".to_string(),
-            articles: 2,
-            assets: 1,
-            sources: 1,
-            terms: 0,
-            updated_at: Some("2026-04-30T12:15:00Z".to_string()),
-        };
-        let json = serde_json::to_value(&snap).unwrap();
-        assert_eq!(json["articles"], 2);
-        assert_eq!(json["assets"], 1);
-        assert_eq!(json["sources"], 1);
-        assert_eq!(json["terms"], 0);
-        assert_eq!(json["updated_at"], "2026-04-30T12:15:00Z");
-    }
-
-    #[test]
-    fn test_project_status_snapshot_null_updated_at() {
-        let snap = ProjectStatusSnapshot {
-            name: "empty".to_string(),
-            path: "./empty".to_string(),
-            articles: 0,
-            assets: 0,
-            sources: 0,
-            terms: 0,
-            updated_at: None,
-        };
-        let json = serde_json::to_value(&snap).unwrap();
-        assert!(json.get("updated_at").unwrap().is_null());
     }
 
     #[test]

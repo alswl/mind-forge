@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 173
 expression: stdout
 ---
 Create a term
@@ -8,45 +7,23 @@ Create a term
 Usage: mf term new [OPTIONS] [TERM]
 
 Arguments:
-  [TERM]  Canonical term name. Pass positionally; the deprecated `--term` flag still parses for one
-          release with a WARN
+  [TERM]  Canonical term name
 
 Options:
-      --root <PATH>
-          Mind Repo root directory
-      --config <PATH>
-          Config file path
-      --definition <DEFINITION>
-          
-      --description <DESCRIPTION>
-          
-  -v, --verbose...
-          Verbose output
-      --confidence <CONFIDENCE>
-          
-  -q, --quiet
-          Silence non-error output
-      --alias <ALIAS>
-          
-      --format <FORMAT>
-          Output format [default: text] [possible values: text, json]
-      --json
-          Shorthand for --format json
-      --tag <TAG>
-          
-      --misrecognition <MISRECOGNITION>
-          
-      --no-color
-          Disable colored output
-      --dry-run
-          
-  -p, --project <NAME>
-          Project name for project-scoped operations
-      --install-completion <INSTALL_COMPLETION>
-          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
-      --show-completion <SHOW_COMPLETION>
-          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
-  -h, --help
-          Print help
-  -V, --version
-          Print version
+      --definition <DEFINITION>          
+      --root <PATH>                      Mind Repo root directory
+      --config <PATH>                    Config file path
+      --description <DESCRIPTION>        
+      --confidence <CONFIDENCE>          
+  -v, --verbose...                       Verbose output
+      --alias <ALIAS>                    
+  -q, --quiet                            Silence non-error output
+      --format <FORMAT>                  Output format [default: text] [possible values: text, json]
+      --tag <TAG>                        
+      --json                             Shorthand for --format json
+      --misrecognition <MISRECOGNITION>  
+      --dry-run                          Preview changes without writing
+      --no-color                         Disable colored output
+  -p, --project <NAME>                   Project name for project-scoped operations
+  -h, --help                             Print help
+  -V, --version                          Print version

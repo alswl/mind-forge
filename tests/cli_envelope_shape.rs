@@ -367,7 +367,8 @@ fn envelope_config_compile_ok() {
     let dir = common::setup_repo();
     common::create_project(&dir, "my-project");
 
-    let (stdout, stderr, code) = run_json(&["--root", &dir.path().to_string_lossy(), "config", "compile"]);
+    // config compile removed → config show is the canonical replacement
+    let (stdout, stderr, code) = run_json(&["--root", &dir.path().to_string_lossy(), "config", "show"]);
     assert_eq!(code, 0, "stderr: {stderr:?}");
     assert_envelope_ok(&stdout);
 }
@@ -457,16 +458,12 @@ fn envelope_deprecated_term_list_term_json_matches_show() {
     let repo = common::setup_repo();
     setup_with_term(&repo);
 
-    let (stdout_dep, stderr_dep, code_dep) =
-        run_json(&["--root", &repo.path().to_string_lossy(), "term", "list", "--term", "API", "--project", "alpha"]);
-    assert_eq!(code_dep, 0, "deprecated form, stderr: {stderr_dep:?}");
-    assert!(stderr_dep.contains("[deprecated]"), "deprecated form should warn: {stderr_dep:?}");
-
-    let (stdout_primary, stderr_primary, code_primary) =
+    // --term flag removed from term list → use term show directly
+    let (stdout, stderr, code) =
         run_json(&["--root", &repo.path().to_string_lossy(), "term", "show", "API", "--project", "alpha"]);
-    assert_eq!(code_primary, 0, "primary form, stderr: {stderr_primary:?}");
-
-    assert_eq!(stdout_dep, stdout_primary, "deprecated --term output should match term show output byte-for-byte");
+    assert_eq!(code, 0, "stderr: {stderr:?}");
+    assert!(stderr.is_empty(), "term show should have clean stderr: {stderr:?}");
+    assert_envelope_ok(&stdout);
 }
 
 // ==========================================================================

@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 254
 expression: stdout
 ---
 Convert article shape between directory and single-file
@@ -8,33 +7,16 @@ Convert article shape between directory and single-file
 Usage: mf article convert [OPTIONS]
 
 Options:
-      --root <PATH>
-          Mind Repo root directory
-      --to-single-file
-          Convert directory articles to single-file articles
-      --config <PATH>
-          Config file path
-      --to-directory
-          Convert single-file articles to directory articles
-      --dry-run
-          Preview conversions without writing changes
-  -v, --verbose...
-          Verbose output
-  -q, --quiet
-          Silence non-error output
-      --format <FORMAT>
-          Output format [default: text] [possible values: text, json]
-      --json
-          Shorthand for --format json
-      --no-color
-          Disable colored output
-  -p, --project <NAME>
-          Project name for project-scoped operations
-      --install-completion <INSTALL_COMPLETION>
-          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
-      --show-completion <SHOW_COMPLETION>
-          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
-  -h, --help
-          Print help
-  -V, --version
-          Print version
+      --root <PATH>      Mind Repo root directory
+      --to-single-file   Convert directory articles to single-file articles
+      --config <PATH>    Config file path
+      --to-directory     Convert single-file articles to directory articles
+      --dry-run          Preview changes without writing
+  -v, --verbose...       Verbose output
+  -q, --quiet            Silence non-error output
+      --format <FORMAT>  Output format [default: text] [possible values: text, json]
+      --json             Shorthand for --format json
+      --no-color         Disable colored output
+  -p, --project <NAME>   Project name for project-scoped operations
+  -h, --help             Print help
+  -V, --version          Print version

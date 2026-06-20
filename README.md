@@ -209,7 +209,7 @@ Shared flag families (uniform across all commands they apply to):
 | Flag family | Applies to | Description |
 |------|------|------|
 | `--dry-run` | every mutating command (`new`, `rename`, `remove`, `archive`, `update`, `index`, lint `--fix`) | Preview without writing |
-| `-f`, `--force` | every `new`/`rename`/`remove`/`archive` | Overwrite or skip safety checks |
+| `-f`, `--force` | every `new`/`rename`/`remove`/`archive` | Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others |
 | `-y`, `--yes` | every `remove` and `archive` | Confirm destructive action non-interactively |
 | `--no-headers`, `--no-trunc` | every `list` | Suppress table header / disable column truncation |
 | `--fix`, `--rule <RULE>`, `--severity <LEVEL>`, `--max-warnings <N>` | every `lint` | Auto-fix, restrict rule, filter severity, fail on warnings > N |
@@ -233,14 +233,14 @@ default `projects/` container). Defaults to the current directory.
 |-----------|-------------|
 | `new <PATH>` | Create a project. Accepts cwd-relative or repo-relative paths with Unicode, emoji, dates, spaces. `--template <TEMPLATE>` |
 | `list` (ls) | List projects |
-| `show <NAME>` | Show project details |
-| `update <NAME>` | Update project metadata. `--description <TEXT>`, `--clear-description` |
-| `rename <OLD> <NEW>` | Rename a project |
-| `remove <NAME>` (rm) | Remove a project (interactive confirmation in TTY) |
+| `show <PATH>` | Show project details |
+| `update <PATH>` | Update project metadata. `--description <TEXT>`, `--clear-description` |
+| `rename <OLD_PATH> <NEW_PATH>` | Rename a project |
+| `remove <PATH>` (rm) | Remove a project (interactive confirmation in TTY) |
 | `archive <NAME_OR_PATH>` | Archive a project to `_archived/` (interactive confirmation in TTY) |
 | `lint` | Lint project(s). Rules: `missing_directory`, `stale_index_entry`, `name_convention`, `missing_manifest`, `duplicate_key`. Requires `-p, --project <PROJECT>` |
 | `index` | Index projects (mf extension) |
-| `import <DIRECTORY>` | Import a directory as a project. `--type <TYPE>`, `--source <DIR>`, `--assets <DIR>`, `-y, --non-interactive` |
+| `import <DIRECTORY>` | Import a directory as a project. `--type <TYPE>`, `--source <DIR>`, `--assets <DIR>`, `-y, --yes` |
 
 ### `mf article` — Manage articles
 
@@ -254,7 +254,7 @@ default `projects/` container). Defaults to the current directory.
 | `remove <PATH>` (rm) | Remove an article (interactive confirmation in TTY) |
 | `lint` | Lint articles |
 | `convert` | Convert article shape between directory and single-file. `--to-single-file`, `--to-directory`, `--dry-run` |
-| `index` | Index articles (mf extension). Also `-n` short for `--dry-run` |
+| `index` | Index articles (mf extension). `--dry-run` previews without writing |
 
 ### `mf source` — Manage content sources
 
@@ -262,8 +262,8 @@ default `projects/` container). Defaults to the current directory.
 |-----------|-------------|
 | `new <INPUT>` | Add a source. `-n, --name <NAME>`, `--file-kind auto\|pdf\|file\|rss\|web`, `--source-kind yuque\|meeting\|misc`, `--link` |
 | `list` (ls) | List sources. `--filter <PATTERN>`, `-t, --type <KIND>` |
-| `show <NAME>` | Show source details |
-| `update <NAME>` | Update a source (mf extension). `--url <URL>`, `--rename <NAME>` |
+| `show <PATH>` | Show source details |
+| `update <PATH>` | Update a source (mf extension). `--url <URL>`, `--rename <NAME>` |
 | `rename <OLD_PATH> <NEW_PATH>` | Rename a source |
 | `remove <NAME_OR_PATH>` (rm) | Remove a source. `--keep-file` |
 | `index` | Index sources (mf extension) |
@@ -275,10 +275,10 @@ default `projects/` container). Defaults to the current directory.
 |-----------|-------------|
 | `new <PATH>` | Add an asset. `--name <NAME>`, `--tag <TAG>`, `--copy`/`--link` |
 | `list` (ls) | List assets. `--filter <PATTERN>`, `--type image\|video\|audio\|other` |
-| `show <NAME>` | Show asset details |
+| `show <PATH>` | Show asset details |
 | `update [PATH]` | Update assets. `--set-url <URL>`, `--channel <CHANNEL>`, `--all` |
 | `rename <OLD_PATH> <NEW_PATH>` | Rename an asset |
-| `remove <FILE>` (rm) | Remove an asset |
+| `remove <PATH>` (rm) | Remove an asset |
 | `index` | Index assets (mf extension). `--refresh-metadata` |
 | `clean` | Clean stale index entries |
 
@@ -287,12 +287,12 @@ default `projects/` container). Defaults to the current directory.
 | Subcommand | Description |
 |-----------|-------------|
 | `new <TERM>` | Create a term (mf extension). `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--misrecognition <TEXT>` |
-| `list` (ls) | List terms. `--filter <PATTERN>`, `--term <NAME>` (deprecated: use `show`) |
-| `show <NAME>` | Show term details |
+| `list` (ls) | List terms. `--filter <PATTERN>` |
+| `show <TERM>` | Show term details |
 | `update <TERM>` | Update term metadata (mf extension; previously `fix`). `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--clear-description`, `--clear-confidence`, `--delete-alias <TEXT>`, `--delete-tag <TAG>`, `--delete-correction <ORIGINAL>`, `--correction-match <ORIGINAL:word\|substring\|pinyin>`, `--correction-fix <ORIGINAL:required\|suggested>`, `--correction-pinyin <ORIGINAL:PINYIN>` |
-| `rename <OLD> <NEW>` | Rename a term. `--keep-alias` keeps the old name as an alias |
+| `rename <OLD_TERM> <NEW_TERM>` | Rename a term. `--keep-alias` keeps the old name as an alias |
 | `remove <TERM>` (rm) | Remove a term (interactive confirmation in TTY) |
-| `lint [PATH]` | Lint term consistency in project docs. CJK/pinyin-aware matching, configurable `match` modes (`word`/`substring`/`pinyin`), `--fix`, `--include-suggested` to apply suggested corrections. Non-TTY `--fix` exits 2 without `-y`/`--force`. |
+| `lint [PATH]` | Lint term consistency in project docs. CJK/pinyin-aware matching, configurable `match` modes (`word`/`substring`/`pinyin`), `--fix`, `--include-suggested` to apply suggested corrections. Non-TTY `--fix` exits 2 without `-y`/`--yes`. |
 | `fix [PATH]` | First-class alias for `term lint --fix`. Same flags as `lint` + `--include-suggested` for suggested corrections. |
 
 Global terms (created without `--project`) are stored in `minds-terms.yaml` at
@@ -329,7 +329,6 @@ Directory articles are built by merging Markdown files in filename order.
 | `generate` | Generate effective config file. `--output-format json\|yaml` (default: `yaml`), `-o, --output <PATH>` |
 | `default` | Show default config values. `--output-format json\|yaml` (default: `yaml`) |
 | `terminal` | Show terminal capability diagnostics (hyperlink support, color depth, terminfo probing). Respects `TERM`, `COLORTERM`, `TERM_PROGRAM`, `NO_COLOR`, `MF_FORCE_HYPERLINKS`, `MF_NO_HYPERLINKS`. |
-| `init` | **Deprecated:** use `mf init`. `--output <PATH>`, `--target project\|repo` (default: `project`), `--force` |
 
 ### `mf completion <SHELL>` — Generate shell completion
 

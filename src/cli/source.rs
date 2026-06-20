@@ -4,9 +4,12 @@ use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 
 use crate::cli::deprecation::DeprecationContext;
+use crate::cli::shared_flags::DryRunFlag;
+use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
-use crate::cli::{merge_warnings, CommandOutcome};
+use crate::cli::shared_flags::YesFlag;
+use crate::cli::CommandOutcome;
 use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::source::{FileKind, SourceKind};
@@ -31,8 +34,6 @@ pub enum SourceSubcommand {
     List(SourceListArgs),
     #[command(about = "Create a source")]
     New(SourceAddArgs),
-    #[command(about = "Add a source", hide = true)]
-    Add(SourceAddArgs),
     #[command(about = "Update a source")]
     Update(SourceUpdateArgs),
     #[command(about = "Index sources")]
@@ -119,15 +120,12 @@ pub struct SourceAddArgs {
     /// Source channel type (mind primary).
     #[arg(long = "source-kind", value_enum)]
     pub source_kind: Option<CliSourceKindType>,
-    /// Deprecated: use --file-kind or --source-kind instead.
-    #[arg(short = 't', long = "type", value_enum)]
-    pub kind: Option<CliSourceKind>,
     #[arg(long)]
     pub link: bool,
-    #[arg(short = 'f', long)]
-    pub force: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 // ---------------------------------------------------------------------------
@@ -158,8 +156,8 @@ pub struct SourceUpdateArgs {
     pub rename: Option<String>,
     #[arg(long)]
     pub url: Option<String>,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 // ---------------------------------------------------------------------------
@@ -172,12 +170,12 @@ pub struct SourceRemoveArgs {
     pub name_or_path: String,
     #[arg(long = "keep-file")]
     pub keep_file: bool,
-    #[arg(short = 'f', long)]
-    pub force: bool,
-    #[arg(short = 'y', long)]
-    pub yes: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub yes: YesFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 // ---------------------------------------------------------------------------
@@ -186,8 +184,8 @@ pub struct SourceRemoveArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceIndexArgs {
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -196,16 +194,16 @@ pub struct SourceRenameArgs {
     pub old_path: String,
     /// New source path or name
     pub new_path: String,
-    #[arg(short = 'f', long)]
-    pub force: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceCleanArgs {
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -231,19 +229,6 @@ pub fn dispatch(
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("source")),
         Some(SourceSubcommand::New(args)) => handle_add(args, root, &cwd, format, project),
-        Some(SourceSubcommand::Add(args)) => {
-            // Deprecation warning for --type
-            if args.kind.is_some() {
-                deprecation.warn_subject("--type", "--file-kind or --source-kind");
-            }
-            let mut warnings: Vec<String> = Vec::new();
-            crate::output::warning::emit_warning(
-                &format!("`source add` is deprecated; use `mf source new {}` instead.", args.input),
-                &mut warnings,
-            );
-            let outcome = handle_add(args, root, &cwd, format, project)?;
-            Ok(merge_warnings(outcome, warnings))
-        }
         Some(SourceSubcommand::List(args)) => handle_list(args, root, &cwd, format, project),
         Some(SourceSubcommand::Update(args)) => handle_update(args, root, &cwd, format, project),
         Some(SourceSubcommand::Index(args)) => handle_index(args, root, &cwd, format, project),
@@ -325,7 +310,7 @@ fn handle_update(
     let project_path = svc_util::resolve_project(root, project, cwd)?;
     identity::validate_entity_path(&project_path, &args.path)?;
 
-    if args.dry_run {
+    if args.dry_run.dry_run {
         let mut changes = serde_json::Map::new();
         if let Some(ref rename) = args.rename {
             changes.insert("rename".to_string(), serde_json::json!({"from": args.path, "to": rename}));
@@ -397,7 +382,7 @@ fn handle_index(
 ) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, project, cwd)?;
 
-    let report = svc_source::reconcile(&project_path, args.dry_run)?;
+    let report = svc_source::reconcile(&project_path, args.dry_run.dry_run)?;
 
     let scanned_count = report.added.len() + report.removed.len() + report.kept_count as usize;
 
@@ -409,7 +394,7 @@ fn handle_index(
                 "removed": report.removed,
                 "kept_count": report.kept_count,
                 "scanned_count": scanned_count,
-                "dry_run": args.dry_run,
+                "dry_run": args.dry_run.dry_run,
             });
             Ok(CommandOutcome::Success(data, Vec::new(), None))
         }
@@ -426,7 +411,7 @@ fn handle_index(
                 identity: String::new(),
                 old_identity: None,
                 path: None,
-                dry_run: args.dry_run,
+                dry_run: args.dry_run.dry_run,
                 details,
             };
             Ok(CommandOutcome::Success(
@@ -457,12 +442,17 @@ fn handle_remove(
         verb_label: "removal",
         kind: "source",
         identity: &args.name_or_path,
-        yes: args.yes,
-        force: args.force,
+        yes: args.yes.yes,
+        force: args.force.force,
     })?;
 
-    let report =
-        svc_source::remove_source(&project_path, &args.name_or_path, args.keep_file, args.force, args.dry_run)?;
+    let report = svc_source::remove_source(
+        &project_path,
+        &args.name_or_path,
+        args.keep_file,
+        args.force.force,
+        args.dry_run.dry_run,
+    )?;
 
     let result = VerbResult {
         verb: Verb::Remove,
@@ -470,7 +460,7 @@ fn handle_remove(
         identity: report.source.name.clone(),
         old_identity: None,
         path: report.source.path.clone(),
-        dry_run: args.dry_run,
+        dry_run: args.dry_run.dry_run,
         details: serde_json::json!({"removed": true}),
     };
     match format {
@@ -492,7 +482,7 @@ fn handle_clean(
 ) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, project, cwd)?;
 
-    let report = svc_source::clean(&project_path, args.dry_run)?;
+    let report = svc_source::clean(&project_path, args.dry_run.dry_run)?;
 
     match format {
         Format::Json => {
@@ -508,7 +498,7 @@ fn handle_clean(
                 ));
             }
             let mut lines = Vec::new();
-            let prefix = if args.dry_run { "[dry-run] " } else { "" };
+            let prefix = if args.dry_run.dry_run { "[dry-run] " } else { "" };
 
             for entry in &report.removed {
                 let kind_str = entry.kind.as_str();
@@ -535,7 +525,7 @@ fn handle_rename(
     identity::validate_entity_path(&project_path, &args.old_path)?;
     identity::validate_entity_path(&project_path, &args.new_path)?;
 
-    if args.dry_run {
+    if args.dry_run.dry_run {
         let result = VerbResult {
             verb: Verb::Rename,
             kind: "source",
@@ -555,7 +545,7 @@ fn handle_rename(
         };
     }
 
-    let report = svc_source::rename_source(&project_path, &args.old_path, &args.new_path, args.force, false)?;
+    let report = svc_source::rename_source(&project_path, &args.old_path, &args.new_path, args.force.force, false)?;
 
     let result = VerbResult {
         verb: Verb::Rename,
@@ -659,9 +649,6 @@ fn handle_add(
             svc_source::InputForm::Path => FileKind::File,
         };
         Some(model_kind)
-    } else if let Some(k) = args.kind {
-        let model_kind = k.resolve(&input_form)?;
-        Some(model_kind)
     } else {
         None
     };
@@ -669,7 +656,7 @@ fn handle_add(
     // Resolve source_kind
     let source_kind = args.source_kind.map(SourceKind::from);
 
-    if args.dry_run {
+    if args.dry_run.dry_run {
         let name = args.name.as_deref().unwrap_or_else(|| {
             let p = std::path::Path::new(&args.input);
             p.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown")
@@ -699,7 +686,7 @@ fn handle_add(
         kind,
         source_kind,
         link: args.link,
-        force: args.force,
+        force: args.force.force,
     };
 
     let outcome = svc_source::add(&project_path, cwd, &add_args)?;

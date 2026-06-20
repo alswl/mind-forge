@@ -81,13 +81,6 @@ fn asset_help_snapshot() {
 }
 
 #[test]
-fn asset_add_help_snapshot() {
-    let (stdout, _, code) = run(&["asset", "add", "--help"]);
-    assert_eq!(code, 0);
-    assert_snapshot!("asset_add_help", stdout);
-}
-
-#[test]
 fn asset_list_help_snapshot() {
     let (stdout, _, code) = run(&["asset", "list", "--help"]);
     assert_eq!(code, 0);
@@ -113,13 +106,6 @@ fn asset_remove_help_snapshot() {
     let (stdout, _, code) = run(&["asset", "remove", "--help"]);
     assert_eq!(code, 0);
     assert_snapshot!("asset_remove_help", stdout);
-}
-
-#[test]
-fn source_add_help_snapshot() {
-    let (stdout, _, code) = run(&["source", "add", "--help"]);
-    assert_eq!(code, 0);
-    assert_snapshot!("source_add_help", stdout);
 }
 
 #[test]
@@ -185,13 +171,6 @@ fn term_lint_help_snapshot() {
     let (stdout, _, code) = run(&["term", "lint", "--help"]);
     assert_eq!(code, 0);
     assert_snapshot!("term_lint_help", stdout);
-}
-
-#[test]
-fn term_learn_help_snapshot() {
-    let (stdout, _, code) = run(&["term", "learn", "--help"]);
-    assert_eq!(code, 0);
-    assert_snapshot!("term_learn_help", stdout);
 }
 
 #[test]

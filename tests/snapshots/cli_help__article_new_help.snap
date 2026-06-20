@@ -10,40 +10,21 @@ Arguments:
   <TITLE>  Article title (sole positional)
 
 Options:
-      --root <PATH>
-          Mind Repo root directory
-  -t, --template <TEMPLATE>
-          Template: built-in schema name (blank/arch/prd/blog) or path under project root. Default:
-          blank [default: blank]
-      --config <PATH>
-          Config file path
-      --file
-          Write a single file instead of a directory [aliases: --single-file]
-      --tag <TAG>
-          
-  -v, --verbose...
-          Verbose output
-      --draft
-          
-  -q, --quiet
-          Silence non-error output
-  -f, --force
-          
-      --format <FORMAT>
-          Output format [default: text] [possible values: text, json]
-      --dry-run
-          
-      --json
-          Shorthand for --format json
-      --no-color
-          Disable colored output
-  -p, --project <NAME>
-          Project name for project-scoped operations
-      --install-completion <INSTALL_COMPLETION>
-          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
-      --show-completion <SHOW_COMPLETION>
-          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
-  -h, --help
-          Print help
-  -V, --version
-          Print version
+      --root <PATH>          Mind Repo root directory
+  -t, --template <TEMPLATE>  Template: built-in schema name (blank/arch/prd/blog) or path under
+                             project root. Default: blank [default: blank]
+      --config <PATH>        Config file path
+      --file                 Write a single file instead of a directory [aliases: --single-file]
+      --tag <TAG>            
+  -v, --verbose...           Verbose output
+      --draft                
+  -q, --quiet                Silence non-error output
+  -f, --force                Proceed despite safety checks: overwrite an existing target, or remove
+                             an entity referenced by others
+      --format <FORMAT>      Output format [default: text] [possible values: text, json]
+      --dry-run              Preview changes without writing
+      --json                 Shorthand for --format json
+      --no-color             Disable colored output
+  -p, --project <NAME>       Project name for project-scoped operations
+  -h, --help                 Print help
+  -V, --version              Print version

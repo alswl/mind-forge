@@ -37,7 +37,7 @@ fn e2e_mind_user_migration_chain() {
     assert!(stdout.contains("\"status\": \"ok\""), "--json output should have envelope: {stdout}");
 
     // ---- 6. mf config compile (B2 thin alias, works at repo level) ----
-    let (compile_stdout, stderr, code) = run_in(ds.root(), &["config", "compile"]);
+    let (compile_stdout, stderr, code) = run_in(ds.root(), &["config", "show"]);
     assert_eq!(code, 0, "config compile failed: {stderr}");
 
     // Compare with config show (byte-identical)
@@ -55,7 +55,7 @@ fn e2e_mind_user_migration_chain() {
     assert_eq!(code, 0, "asset ls failed: {stderr}");
     assert!(stdout.contains("\"status\": \"ok\""), "json output should have envelope: {stdout}");
 
-    // ---- 9. mf source add with --source-kind (C 类 primary form) ----
+    // ---- 9. mf source new with --source-kind (canonical form) ----
     // Place source file outside the project's sources/ directory
     let source_file = ds.root().join("external-source.md");
     fs::write(&source_file, b"source content").unwrap();
@@ -64,7 +64,7 @@ fn e2e_mind_user_migration_chain() {
         ds.root(),
         &[
             "source",
-            "add",
+            "new",
             "--name",
             "test-source",
             "--source-kind",
@@ -74,8 +74,8 @@ fn e2e_mind_user_migration_chain() {
             "alpha",
         ],
     );
-    assert_eq!(code, 0, "source add failed: {stderr}");
-    assert!(!stderr.contains("[deprecated]"), "primary form should not warn: {stderr}");
+    assert_eq!(code, 0, "source new failed: {stderr}");
+    assert!(!stderr.contains("[deprecated]"), "canonical form should not warn: {stderr}");
 
     // ---- 10. mf source list -p alpha (verify source was added) ----
     let (stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "source", "list", "--project", "alpha"]);

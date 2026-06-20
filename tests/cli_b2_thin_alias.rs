@@ -12,29 +12,18 @@ fn run(args: &[&str]) -> (String, String, i32) {
 }
 
 // ---------------------------------------------------------------------------
-// T086: mf config compile ≡ mf config show
+// T086: mf config compile removed — returns unknown subcommand error
 // ---------------------------------------------------------------------------
 
 #[test]
-fn config_compile_equals_config_show() {
+fn config_compile_removed() {
     let dir = common::setup_repo();
     common::create_project(&dir, "my-project");
 
-    let (stdout_compile, stderr_compile, code_compile) =
-        run(&["--root", &dir.path().to_string_lossy(), "config", "compile"]);
+    let (_stdout, stderr_compile, code_compile) = run(&["--root", &dir.path().to_string_lossy(), "config", "compile"]);
 
-    assert_eq!(code_compile, 0, "compile should succeed, stderr: {stderr_compile:?}");
-    assert!(
-        stderr_compile.contains("[deprecated]"),
-        "compile should emit deprecation warning, got: {stderr_compile:?}"
-    );
-
-    let (stdout_show, stderr_show, code_show) = run(&["--root", &dir.path().to_string_lossy(), "config", "show"]);
-
-    assert_eq!(code_show, 0, "show should succeed, stderr: {stderr_show:?}");
-    assert!(stderr_show.is_empty(), "show should have clean stderr, got: {stderr_show:?}");
-
-    assert_eq!(stdout_compile, stdout_show, "compile and show output should be byte-identical");
+    assert_eq!(code_compile, 2, "config compile should fail as unknown subcommand, got stderr: {stderr_compile:?}");
+    assert!(stderr_compile.contains("compile"), "error should mention 'compile', got: {stderr_compile:?}");
 }
 
 // ---------------------------------------------------------------------------

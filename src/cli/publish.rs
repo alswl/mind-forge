@@ -4,6 +4,8 @@ use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 
 use crate::cli::deprecation::DeprecationContext;
+use crate::cli::shared_flags::DryRunFlag;
+use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::CommandOutcome;
@@ -67,10 +69,10 @@ pub struct PublishRunArgs {
     pub article: String,
     #[arg(long)]
     pub target: Option<String>,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
-    #[arg(short = 'f', long)]
-    pub force: bool,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
+    #[command(flatten)]
+    pub force: ForceFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -85,8 +87,8 @@ pub struct PublishUpdateArgs {
     pub target_url: Option<String>,
     #[arg(long = "set", value_name = "KEY=VALUE")]
     pub set: Vec<String>,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 /// CLI-facing mirror of `model::index::PublishStatus` exposing `clap::ValueEnum`.

@@ -472,11 +472,11 @@ fn lint_fix_non_tty_without_yes_exits_2() {
 }
 
 #[test]
-fn lint_fix_force_flag_bypasses_confirmation() {
+fn lint_fix_yes_flag_bypasses_confirmation() {
     let (repo, project) = setup_with_term();
     write_doc(&project, "intro", "mindrepo here\n");
 
-    mf(&repo).args(["term", "lint", "--fix", "--force", "--project", "alpha"]).assert().code(0);
+    mf(&repo).args(["term", "lint", "--fix", "--yes", "--project", "alpha"]).assert().code(0);
     let content = fs::read_to_string(project.join("docs/intro.md")).unwrap();
     assert!(content.contains("Mind Repo"));
 }

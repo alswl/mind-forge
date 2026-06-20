@@ -7,31 +7,15 @@ Index assets
 Usage: mf asset index [OPTIONS]
 
 Options:
-      --dry-run
-          
-      --root <PATH>
-          Mind Repo root directory
-      --config <PATH>
-          Config file path
-      --refresh-metadata
-          
-  -v, --verbose...
-          Verbose output
-  -q, --quiet
-          Silence non-error output
-      --format <FORMAT>
-          Output format [default: text] [possible values: text, json]
-      --json
-          Shorthand for --format json
-      --no-color
-          Disable colored output
-  -p, --project <NAME>
-          Project name for project-scoped operations
-      --install-completion <INSTALL_COMPLETION>
-          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
-      --show-completion <SHOW_COMPLETION>
-          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
-  -h, --help
-          Print help
-  -V, --version
-          Print version
+      --dry-run           Preview changes without writing
+      --root <PATH>       Mind Repo root directory
+      --config <PATH>     Config file path
+      --refresh-metadata  
+  -v, --verbose...        Verbose output
+  -q, --quiet             Silence non-error output
+      --format <FORMAT>   Output format [default: text] [possible values: text, json]
+      --json              Shorthand for --format json
+      --no-color          Disable colored output
+  -p, --project <NAME>    Project name for project-scoped operations
+  -h, --help              Print help
+  -V, --version           Print version

@@ -62,31 +62,23 @@ fn json_flag_equals_format_json() {
     assert_eq!(stdout_json_flag, stdout_format, "--json and --format json output should match");
 }
 
-/// T045: `mf --install-completion bash` equals `mf completion bash` (with deprecation on stderr)
+/// `--install-completion` and `--show-completion` are removed; `mf completion bash` is the canonical path.
 #[test]
 fn install_completion_flag() {
-    let (stdout_install, stderr_install, code_install) = run(&["--install-completion", "bash"]);
-    assert_eq!(code_install, 0);
-    assert!(stdout_install.contains("_mf"), "completion output should contain 'mf' completion");
-    assert!(
-        stderr_install.contains("[deprecated]"),
-        "--install-completion should emit deprecation warning, got: {stderr_install:?}"
-    );
-    assert!(
-        stderr_install.contains("--install-completion"),
-        "deprecation should mention --install-completion, got: {stderr_install:?}"
-    );
+    let (stdout, stderr, code) = run(&["completion", "bash"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("_mf"), "completion output should contain 'mf' completion, got: {stdout}");
+    assert!(stderr.is_empty(), "mf completion should have clean stderr, got: {stderr}");
 
-    let (stdout_show, stderr_show, code_show) = run(&["--show-completion", "bash"]);
-    assert_eq!(code_show, 0);
-    assert!(stdout_show.contains("_mf"), "show-completion output should contain 'mf' completion");
-    assert!(
-        stderr_show.contains("[deprecated]"),
-        "--show-completion should emit deprecation warning, got: {stderr_show:?}"
-    );
+    // --install-completion removed → error
+    let (_, stderr_install, code_install) = run(&["--install-completion", "bash"]);
+    assert_eq!(code_install, 2);
+    assert!(stderr_install.contains("install-completion"), "should reject unknown flag: {stderr_install}");
 
-    // Both --install-completion and --show-completion produce identical output
-    assert_eq!(stdout_install, stdout_show, "--install-completion and --show-completion output should match");
+    // --show-completion removed → error
+    let (_, stderr_show, code_show) = run(&["--show-completion", "bash"]);
+    assert_eq!(code_show, 2);
+    assert!(stderr_show.contains("show-completion"), "should reject unknown flag: {stderr_show}");
 }
 
 /// T046: `mf version` ≡ `mf --version`
@@ -169,13 +161,13 @@ fn short_flag_type() {
     );
 }
 
-/// T047: short flag -f for --force in source add (parse only, no actual file)
+/// Short flag -f for --force in source new (parse only, no actual file)
 #[test]
 fn short_flag_force() {
     // Just verify -f parses in --help context
-    let (stdout, _, code) = run(&["source", "add", "--help"]);
+    let (stdout, _, code) = run(&["source", "new", "--help"]);
     assert_eq!(code, 0);
-    assert!(stdout.contains("-f"), "source add --help should show -f short flag");
+    assert!(stdout.contains("-f"), "source new --help should show -f short flag");
 }
 
 /// T047: short flag -o for --output in build
@@ -189,9 +181,9 @@ fn short_flag_output() {
 /// T047: short flag -n for --name in source add
 #[test]
 fn short_flag_name() {
-    let (stdout, _, code) = run(&["source", "add", "--help"]);
+    let (stdout, _, code) = run(&["source", "new", "--help"]);
     assert_eq!(code, 0);
-    assert!(stdout.contains("-n"), "source add --help should show -n short flag");
+    assert!(stdout.contains("-n"), "source new --help should show -n short flag");
 }
 
 /// Verify `mf project info` alias is removed (neither visible nor hidden)
@@ -208,16 +200,18 @@ fn project_info_alias_removed() {
     );
 }
 
-/// Verify `mf project status` is a hidden compatibility alias for `project show`
+/// Verify `mf project status` is removed — returns unknown subcommand error
 #[test]
 fn project_status_deprecated_alias() {
     let dir = common::setup_repo();
     common::create_project(&dir, "test-proj");
     let (_stdout, stderr, code) =
         run(&["--root", &dir.path().to_string_lossy(), "project", "status", "--project", "test-proj"]);
-    assert_eq!(code, 0, "project status should still succeed");
-    assert!(stderr.contains("[deprecated]"), "project status should emit deprecation warning, got: {stderr:?}");
-    assert!(stderr.contains("project show"), "deprecation should mention project show, got: {stderr:?}");
+    assert_eq!(code, 2, "project status should fail as unknown subcommand");
+    assert!(
+        stderr.contains("status") || stderr.contains("unrecognized"),
+        "should report unknown subcommand, got: {stderr:?}"
+    );
 }
 
 /// Verify `mf asset ls` alias works
@@ -420,4 +414,30 @@ fn term_ls_alias() {
         run(&["--root", &dir.path().to_string_lossy(), "term", "list", "--project", "test-proj"]);
     assert_eq!(code_list, 0);
     assert_eq!(stdout_ls, stdout_list, "term ls and list output should match");
+}
+
+/// SC-001: Every entity exposes new, list/ls, show, update, rename, remove/rm.
+/// Parametrized check that `--help` lists all 6 CRUD verbs for each entity.
+#[test]
+fn all_entities_expose_six_crud_verbs() {
+    let entities = ["article", "project", "asset", "source", "term"];
+    let required_verbs = ["new", "list", "ls", "show", "update", "rename", "remove", "rm"];
+    for entity in &entities {
+        let (stdout, stderr, code) = run(&[entity, "--help"]);
+        assert_eq!(code, 0, "{entity} --help should succeed, stderr: {stderr}");
+        assert!(!stderr.contains("unrecognized"), "{entity} should be recognized");
+        // Check that the help text explicitly lists every CRUD verb or alias
+        for verb in &required_verbs {
+            // clap shows subcommand names like `  new` or `  list [aliases: ls]`.
+            let listed = stdout.lines().any(|line| {
+                let trimmed = line.trim_start();
+                // Direct verb: "new", "show", "update", etc. or the aliases "ls", "rm"
+                let direct = trimmed.starts_with(&format!("{verb} "));
+                // Alias form: "list [aliases: ls]" or "remove [aliases: rm]"
+                let alias = trimmed.contains(&format!("[aliases: {verb}]"));
+                direct || alias
+            });
+            assert!(listed, "{entity} --help should list verb '{verb}', got:\n{stdout}");
+        }
+    }
 }

@@ -77,10 +77,10 @@ terms:
     assert!(doc.contains("rag"), "file must still contain rag: {doc}");
 }
 
-// ── Scenario 3: fix: suggested + --all → applies ──
+// ── Scenario 3: fix: suggested + --include-suggested → applies ──
 
 #[test]
-fn fix_suggested_applied_with_all_flag() {
+fn fix_suggested_applied_with_include_suggested_flag() {
     let repo = setup_repo_with_terms();
     let index = r#"schema_version: '1'
 terms:
@@ -93,12 +93,14 @@ terms:
     write_index(&repo, index);
     write_doc(&repo, "ascii", "we use rag in production\n");
 
-    let output =
-        mf(&repo).args(["term", "fix", "--project", "alpha", "docs/ascii.md", "--all", "-y"]).output().unwrap();
-    assert!(output.status.success(), "--all fix should succeed");
+    let output = mf(&repo)
+        .args(["term", "fix", "--project", "alpha", "docs/ascii.md", "--include-suggested", "-y"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "--include-suggested fix should succeed");
 
     let doc = fs::read_to_string(repo.path().join("alpha/docs/ascii.md")).unwrap();
-    assert!(doc.contains("RAG"), "--all must apply suggested: {doc}");
+    assert!(doc.contains("RAG"), "--include-suggested must apply suggested: {doc}");
 }
 
 // ── Scenario 4: mixed required + suggested → only required applied by default ──
@@ -148,10 +150,10 @@ terms:
     assert!(stdout.contains("\"fix_kind\": \"suggested\""), "JSON must have suggested fix_kind: {stdout}");
 }
 
-// ── Scenario 6: --all without -y in non-TTY → exit non-zero ──
+// ── Scenario 6: --include-suggested without -y in non-TTY → exit non-zero ──
 
 #[test]
-fn all_without_yes_in_non_tty_exits_non_zero() {
+fn include_suggested_without_yes_in_non_tty_exits_non_zero() {
     let repo = setup_repo_with_terms();
     let index = r#"schema_version: '1'
 terms:
@@ -163,8 +165,9 @@ terms:
     write_index(&repo, index);
     write_doc(&repo, "ascii", "we use rag\n");
 
-    let output = mf(&repo).args(["term", "fix", "--project", "alpha", "docs/ascii.md", "--all"]).output().unwrap();
-    assert!(!output.status.success(), "--all without -y should fail in non-TTY");
+    let output =
+        mf(&repo).args(["term", "fix", "--project", "alpha", "docs/ascii.md", "--include-suggested"]).output().unwrap();
+    assert!(!output.status.success(), "--include-suggested without -y should fail in non-TTY");
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("--yes") || stderr.contains("--fix"), "error must mention --yes: stderr={stderr}");
 }

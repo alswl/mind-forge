@@ -28,7 +28,7 @@ fn add_copies_file() {
     let (repo, _source_dir, project, source) = setup();
     let assert = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "asset", "add", source.to_str().unwrap(), "--project", "alpha"])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "new", source.to_str().unwrap(), "--project", "alpha"])
         .assert();
 
     assert.success();
@@ -57,7 +57,7 @@ fn add_with_tags() {
             "--root",
             repo.path().to_str().unwrap(),
             "asset",
-            "add",
+            "new",
             source.to_str().unwrap(),
             "--project",
             "alpha",
@@ -85,7 +85,7 @@ fn add_link_creates_symlink() {
             "--root",
             repo.path().to_str().unwrap(),
             "asset",
-            "add",
+            "new",
             source.to_str().unwrap(),
             "--project",
             "alpha",
@@ -113,7 +113,7 @@ fn add_copy_link_mutually_exclusive() {
             "--root",
             repo.path().to_str().unwrap(),
             "asset",
-            "add",
+            "new",
             source.to_str().unwrap(),
             "--project",
             "alpha",
@@ -136,14 +136,14 @@ fn add_rejects_existing() {
     // First add succeeds
     Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "asset", "add", source.to_str().unwrap(), "--project", "alpha"])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "new", source.to_str().unwrap(), "--project", "alpha"])
         .assert()
         .success();
 
     // Second add fails with file-exists — error goes to stderr
     let assert = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "asset", "add", source.to_str().unwrap(), "--project", "alpha"])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "new", source.to_str().unwrap(), "--project", "alpha"])
         .assert();
 
     assert.code(predicate::eq(1)).stderr(predicate::str::contains("refusing to overwrite"));
@@ -159,7 +159,7 @@ fn add_force_overwrites() {
     // First add
     Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "asset", "add", source.to_str().unwrap(), "--project", "alpha"])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "new", source.to_str().unwrap(), "--project", "alpha"])
         .assert()
         .success();
 
@@ -170,7 +170,7 @@ fn add_force_overwrites() {
             "--root",
             repo.path().to_str().unwrap(),
             "asset",
-            "add",
+            "new",
             source.to_str().unwrap(),
             "--project",
             "alpha",
@@ -191,7 +191,7 @@ fn add_outside_mind_repo() {
     let source = outside.path().join("test.png");
     std::fs::write(&source, b"content").unwrap();
 
-    let assert = Command::cargo_bin("mf").unwrap().args(["asset", "add", source.to_str().unwrap()]).assert();
+    let assert = Command::cargo_bin("mf").unwrap().args(["asset", "new", source.to_str().unwrap()]).assert();
 
     assert.code(predicate::eq(1)).stderr(predicate::str::contains("not in a mind repo"));
 }
@@ -205,7 +205,7 @@ fn add_without_project_context() {
     let (repo, _source_dir, _project, source) = setup();
     let assert = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "asset", "add", source.to_str().unwrap()])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "new", source.to_str().unwrap()])
         .assert();
 
     assert.code(predicate::eq(2));
@@ -228,7 +228,7 @@ fn add_creates_project_dir_if_not_exists() {
             "--root",
             repo.path().to_str().unwrap(),
             "asset",
-            "add",
+            "new",
             source.to_str().unwrap(),
             "--project",
             "nonexistent",
@@ -251,7 +251,7 @@ fn add_invalid_source() {
             "--root",
             repo.path().to_str().unwrap(),
             "asset",
-            "add",
+            "new",
             "/nonexistent/path/file.png",
             "--project",
             "alpha",
@@ -273,7 +273,7 @@ fn add_self_reference_rejected() {
 
     let assert = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "asset", "add", inside.to_str().unwrap(), "--project", "alpha"])
+        .args(["--root", repo.path().to_str().unwrap(), "asset", "new", inside.to_str().unwrap(), "--project", "alpha"])
         .assert();
 
     assert.code(predicate::eq(2));
@@ -302,7 +302,7 @@ fn add_uses_configured_asset_dir() {
             "--root",
             repo.path().to_str().unwrap(),
             "asset",
-            "add",
+            "new",
             source_file.to_str().unwrap(),
             "--project",
             "custom-assets",
@@ -339,7 +339,7 @@ fn add_self_reference_rejected_with_configured_asset_dir() {
             "--root",
             repo.path().to_str().unwrap(),
             "asset",
-            "add",
+            "new",
             source_file.to_str().unwrap(),
             "--project",
             "custom-assets",
@@ -357,7 +357,7 @@ fn add_self_reference_rejected_with_configured_asset_dir() {
             "--root",
             repo.path().to_str().unwrap(),
             "asset",
-            "add",
+            "new",
             inside.to_str().unwrap(),
             "--project",
             "custom-assets",

@@ -4,10 +4,13 @@ use clap::{Args, Subcommand};
 use serde::Serialize;
 
 use crate::cli::deprecation::DeprecationContext;
+use crate::cli::shared_flags::DryRunFlag;
+use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::LintFlags;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
-use crate::cli::{merge_warnings, CommandOutcome};
+use crate::cli::shared_flags::YesFlag;
+use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::model::Resource;
 use crate::output::confirm::{require_confirmation, ConfirmArgs};
@@ -33,8 +36,6 @@ pub enum TermSubcommand {
     New(TermNewArgs),
     #[command(about = "Lint term consistency in project docs")]
     Lint(TermLintArgs),
-    #[command(about = "Add a term correction", hide = true)]
-    Add(TermLearnArgs),
     #[command(about = "Update term metadata")]
     Update(TermUpdateArgs),
     #[command(about = "Show term details")]
@@ -43,8 +44,6 @@ pub enum TermSubcommand {
     Remove(TermRemoveArgs),
     #[command(about = "Rename a term")]
     Rename(TermRenameArgs),
-    #[command(about = "Learn a term correction (deprecated: use `term new <NAME> --alias <VARIANT>`)", hide = true)]
-    Learn(TermLearnArgs),
     #[command(about = "Apply term corrections to documents (alias of `term lint --fix`)")]
     Fix(TermFixArgs),
 }
@@ -53,9 +52,6 @@ pub enum TermSubcommand {
 pub struct TermListArgs {
     #[arg(long)]
     pub filter: Option<String>,
-    /// Look up a single term by name (deprecated: use `term show <NAME>`)
-    #[arg(long)]
-    pub term: Option<String>,
     #[command(flatten)]
     pub no_headers: NoHeadersFlag,
     #[command(flatten)]
@@ -64,13 +60,9 @@ pub struct TermListArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct TermNewArgs {
-    /// Canonical term name. Pass positionally; the deprecated `--term` flag
-    /// still parses for one release with a WARN.
+    /// Canonical term name.
     #[arg(value_name = "TERM")]
     pub term: Option<String>,
-    /// Deprecated alias of the positional `<TERM>` argument.
-    #[arg(long = "term", hide = true)]
-    pub term_legacy: Option<String>,
     #[arg(long)]
     pub definition: Option<String>,
     #[arg(long)]
@@ -83,8 +75,8 @@ pub struct TermNewArgs {
     pub tag: Vec<String>,
     #[arg(long = "misrecognition")]
     pub misrecognition: Vec<String>,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -92,28 +84,8 @@ pub struct TermLintArgs {
     pub path: Option<String>,
     #[command(flatten)]
     pub lint: LintFlags,
-    #[arg(short = 'y', long = "yes", help = "Skip the interactive confirmation prompt (required in non-TTY)")]
-    pub yes: bool,
-    #[arg(short = 'f', long = "force", help = "Alias for --yes")]
-    pub force: bool,
-}
-
-#[derive(Debug, Clone, Args, Serialize)]
-pub struct TermLearnArgs {
-    /// Canonical term name (mind primary)
-    #[arg(long)]
-    pub term: Option<String>,
-    /// Variant/alias for the term (mind primary)
-    #[arg(long)]
-    pub alias: Option<String>,
-    /// Deprecated: use --term (canonical) instead
-    #[arg(long)]
-    pub original: Option<String>,
-    /// Deprecated: use --alias (variant) instead
-    #[arg(long)]
-    pub correct: Option<String>,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub yes: YesFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -154,10 +126,8 @@ pub struct TermFixArgs {
     pub path: Option<String>,
     #[command(flatten)]
     pub lint: LintFlags,
-    #[arg(short = 'y', long = "yes", help = "Skip the interactive confirmation prompt (required in non-TTY)")]
-    pub yes: bool,
-    #[arg(short = 'f', long = "force", help = "Alias for --yes")]
-    pub force: bool,
+    #[command(flatten)]
+    pub yes: YesFlag,
 }
 
 // ---------------------------------------------------------------------------
@@ -166,18 +136,18 @@ pub struct TermFixArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct TermShowArgs {
-    pub name: String,
+    pub term: String,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct TermRemoveArgs {
     pub term: String,
-    #[arg(short = 'f', long)]
-    pub force: bool,
-    #[arg(short = 'y', long)]
-    pub yes: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub yes: YesFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -186,10 +156,10 @@ pub struct TermRenameArgs {
     pub new_term: String,
     #[arg(long)]
     pub keep_alias: bool,
-    #[arg(short = 'f', long)]
-    pub force: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 pub fn dispatch(
@@ -207,54 +177,15 @@ pub fn dispatch(
         Some(TermSubcommand::New(args)) => handle_new(args, root, &cwd, format, project),
         Some(TermSubcommand::List(args)) => handle_list(args, root, &cwd, format, project, deprecation),
         Some(TermSubcommand::Lint(args)) => handle_lint(args, root, &cwd, format, project),
-        Some(TermSubcommand::Add(args)) => {
-            warn_learn_flag_deprecations(&args, deprecation);
-            let mut warnings: Vec<String> = Vec::new();
-            let canonical = args.term.as_deref().or(args.correct.as_deref()).filter(|s| !s.is_empty());
-            let variant = args.alias.as_deref().or(args.original.as_deref()).filter(|s| !s.is_empty());
-            let term_name = canonical.unwrap_or("<NAME>");
-            let alias_str = variant.unwrap_or("<ALIAS>");
-            crate::output::warning::emit_warning(
-                &format!("`term add --term --alias` is deprecated; use `mf term new {term_name} --alias {alias_str}` instead."),
-                &mut warnings,
-            );
-            let new_args = TermNewArgs {
-                term: canonical.map(String::from),
-                term_legacy: None,
-                definition: None,
-                description: None,
-                confidence: None,
-                alias: variant.into_iter().map(String::from).collect(),
-                tag: vec![],
-                misrecognition: vec![],
-                dry_run: args.dry_run,
-            };
-            let outcome = handle_new(new_args, root, &cwd, format, project)?;
-            Ok(merge_warnings(outcome, warnings))
-        }
         Some(TermSubcommand::Update(args)) => handle_update(args, root, &cwd, format, project),
-        Some(TermSubcommand::Learn(args)) => {
-            deprecation.warn_subject("term learn", "term new <NAME> --alias <VARIANT>");
-            warn_learn_flag_deprecations(&args, deprecation);
-            handle_learn(args, root, &cwd, format, project)
-        }
         Some(TermSubcommand::Fix(args)) => {
-            let mut lint_args = TermLintArgs { path: args.path, lint: args.lint, yes: args.yes, force: args.force };
+            let mut lint_args = TermLintArgs { path: args.path, lint: args.lint, yes: args.yes.clone() };
             lint_args.lint.fix = true; // term fix is always lint --fix
             handle_lint(lint_args, root, &cwd, format, project)
         }
         Some(TermSubcommand::Show(args)) => handle_show(args, root, &cwd, format, project),
         Some(TermSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format, project),
         Some(TermSubcommand::Rename(args)) => handle_rename(args, root, &cwd, format, project),
-    }
-}
-
-fn warn_learn_flag_deprecations(args: &TermLearnArgs, deprecation: &mut DeprecationContext) {
-    if args.original.is_some() {
-        deprecation.warn_subject("--original", "--alias <variant>");
-    }
-    if args.correct.is_some() {
-        deprecation.warn_subject("--correct", "--term <canonical>");
     }
 }
 
@@ -338,34 +269,15 @@ fn handle_new(
     format: Format,
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
-    // T066/T067: reconcile positional and the deprecated `--term` flag.
-    // Positional wins when both are present; either way, the legacy flag earns a WARN.
-    let mut warnings: Vec<String> = Vec::new();
-    let term_name = match (args.term.clone(), args.term_legacy.clone()) {
-        (Some(t), None) => t,
-        (Some(positional), Some(_)) => {
-            crate::output::warning::emit_warning(
-                &format!("--term flag is deprecated; pass `{positional}` positionally instead."),
-                &mut warnings,
-            );
-            positional
-        }
-        (None, Some(legacy)) => {
-            crate::output::warning::emit_warning(
-                &format!("--term flag is deprecated; pass `{legacy}` positionally instead."),
-                &mut warnings,
-            );
-            legacy
-        }
-        (None, None) => {
-            return Err(MfError::usage(
-                "term name required",
-                Some("pass the canonical term as the positional argument: `mf term new <NAME>`".to_string()),
-            ))
-        }
-    };
+    let warnings: Vec<String> = Vec::new();
+    let term_name = args.term.clone().ok_or_else(|| {
+        MfError::usage(
+            "term name required",
+            Some("pass the canonical term as the positional argument: `mf term new <NAME>`".to_string()),
+        )
+    })?;
 
-    if args.dry_run {
+    if args.dry_run.dry_run {
         let has_aliases = !args.alias.is_empty();
         let mut actions = vec!["create canonical term".to_string()];
         if has_aliases {
@@ -443,27 +355,8 @@ fn handle_list(
     cwd: &Path,
     format: Format,
     project: Option<&str>,
-    deprecation: &mut DeprecationContext,
+    _deprecation: &mut DeprecationContext,
 ) -> Result<CommandOutcome> {
-    // D5: --term <X> redirects to term show
-    if let Some(ref name) = args.term {
-        deprecation.warn_subject("term list --term <X>", "term show <X>");
-        if let Some(project_name) = project {
-            let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
-            match term_svc::show_term(&project_path, name) {
-                Ok(term) => return render_term_show_with_scope(&term, Some(root), "project", format),
-                Err(MfError::NotFound { .. }) => {
-                    let term = term_svc::global::show_term(root, name)?;
-                    return render_term_show_with_scope(&term, Some(root), "global", format);
-                }
-                Err(e) => return Err(e),
-            }
-        } else {
-            let term = term_svc::global::show_term(root, name)?;
-            return render_term_show(&term, Some(root), format);
-        }
-    }
-
     let (terms, scope_map) = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         let mut merged = term_svc::list_terms(&project_path, args.filter.as_deref())?;
@@ -547,14 +440,10 @@ fn handle_lint(
     let effective_fix = args.lint.fix;
     let effective_dry_run = args.lint.fix && args.lint.dry_run;
     let include_suggested = args.lint.include_suggested;
-    // T008: Detect legacy --all form and emit deprecation warning
-    let mut warnings: Vec<String> = Vec::new();
-    if std::env::args().any(|a| a == "--all") {
-        crate::output::warning::emit_warning("--all is deprecated; use --include-suggested instead.", &mut warnings);
-    }
+    let warnings: Vec<String> = Vec::new();
 
     // US1: confirmation gate for --fix (non-dry-run)
-    if effective_fix && !effective_dry_run && !args.yes && !args.force {
+    if effective_fix && !effective_dry_run && !args.yes.yes {
         if !std::io::stdout().is_terminal() {
             return Err(MfError::usage(
                 "--fix in non-interactive context requires -y / --yes",
@@ -766,74 +655,6 @@ fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_
     }
 
     lines.join("\n")
-}
-
-// ── Handle: mf term learn (US5 / T037) ───────────────────────────────────────
-
-fn handle_learn(
-    args: TermLearnArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
-    // The service layer's signature is (variant, canonical) — historically named
-    // (original, correct). Resolve canonical/variant from either the primary
-    // (--term/--alias) or the deprecated (--original/--correct) form.
-    let canonical = args.term.as_deref().or(args.correct.as_deref()).filter(|s| !s.is_empty());
-    let variant = args.alias.as_deref().or(args.original.as_deref()).filter(|s| !s.is_empty());
-
-    let (Some(canonical), Some(variant)) = (canonical, variant) else {
-        return Err(MfError::usage(
-            "requires --term <canonical> and --alias <variant> (or deprecated --original/--correct)",
-            Some("use `mf term learn --term <canonical> --alias <variant>`".to_string()),
-        ));
-    };
-
-    if args.dry_run {
-        let result = VerbResult {
-            verb: Verb::Add,
-            kind: "term_correction",
-            identity: format!("{canonical}::{variant}"),
-            old_identity: None,
-            path: None,
-            dry_run: true,
-            details: serde_json::json!({"canonical": canonical, "variant": variant}),
-        };
-        return match format {
-            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
-            Format::Text => Ok(CommandOutcome::Success(
-                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
-                Vec::new(),
-                None,
-            )),
-        };
-    }
-
-    let (term, _appended) = if let Some(project_name) = project {
-        let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
-        term_svc::learn_correction(&project_path, variant, canonical)?
-    } else {
-        term_svc::global::learn_correction(root, variant, canonical)?
-    };
-
-    let result = VerbResult {
-        verb: Verb::Add,
-        kind: "term_correction",
-        identity: format!("{}::{}", term.term, variant),
-        old_identity: None,
-        path: None,
-        dry_run: false,
-        details: serde_json::to_value(&term).map_err(MfError::Json)?,
-    };
-    match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
-        Format::Text => Ok(CommandOutcome::Success(
-            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
-            Vec::new(),
-            None,
-        )),
-    }
 }
 
 // ── Handle: mf term update (metadata) ─────────────────────────────────────────
@@ -1052,17 +873,17 @@ fn handle_show(
 ) -> Result<CommandOutcome> {
     if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
-        match term_svc::show_term(&project_path, &args.name) {
+        match term_svc::show_term(&project_path, &args.term) {
             Ok(term) => render_term_show_with_scope(&term, Some(root), "project", format),
             Err(MfError::NotFound { .. }) => {
                 // Fall through to global
-                let term = term_svc::global::show_term(root, &args.name)?;
+                let term = term_svc::global::show_term(root, &args.term)?;
                 render_term_show_with_scope(&term, Some(root), "global", format)
             }
             Err(e) => Err(e),
         }
     } else {
-        let term = term_svc::global::show_term(root, &args.name)?;
+        let term = term_svc::global::show_term(root, &args.term)?;
         render_term_show(&term, Some(root), format)
     }
 }
@@ -1080,17 +901,17 @@ fn handle_remove(
         verb_label: "removal",
         kind: "term",
         identity: &args.term,
-        yes: args.yes,
-        force: args.force,
+        yes: args.yes.yes,
+        force: args.force.force,
     })?;
 
     let mut warnings: Vec<String> = Vec::new();
     let report = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
-        match term_svc::remove_term(&project_path, &args.term, args.force, args.dry_run) {
+        match term_svc::remove_term(&project_path, &args.term, args.force.force, args.dry_run.dry_run) {
             Ok(report) => report,
             Err(MfError::NotFound { .. }) => {
-                let report = term_svc::remove_term_global(root, &args.term, args.force, args.dry_run)?;
+                let report = term_svc::remove_term_global(root, &args.term, args.force.force, args.dry_run.dry_run)?;
                 crate::output::warning::emit_warning(
                     &format!("-p {project_name} was ignored; the write applied to global scope because \"{}\" does not exist as a project-local term.", args.term),
                     &mut warnings,
@@ -1100,7 +921,7 @@ fn handle_remove(
             Err(e) => return Err(e),
         }
     } else {
-        term_svc::remove_term_global(root, &args.term, args.force, args.dry_run)?
+        term_svc::remove_term_global(root, &args.term, args.force.force, args.dry_run.dry_run)?
     };
 
     let result = VerbResult {
@@ -1109,7 +930,7 @@ fn handle_remove(
         identity: report.before.name.clone(),
         old_identity: None,
         path: None,
-        dry_run: args.dry_run,
+        dry_run: args.dry_run.dry_run,
         details: serde_json::json!({"removed": true}),
     };
     match format {
@@ -1131,7 +952,7 @@ fn handle_rename(
     format: Format,
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
-    if args.dry_run {
+    if args.dry_run.dry_run {
         let result = VerbResult {
             verb: Verb::Rename,
             kind: "term",
@@ -1154,7 +975,14 @@ fn handle_rename(
     let mut rename_warnings: Vec<String> = Vec::new();
     let report = if let Some(project_name) = project {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
-        match term_svc::rename_term(&project_path, &args.old_term, &args.new_term, args.keep_alias, args.force, false) {
+        match term_svc::rename_term(
+            &project_path,
+            &args.old_term,
+            &args.new_term,
+            args.keep_alias,
+            args.force.force,
+            false,
+        ) {
             Ok(report) => report,
             Err(MfError::NotFound { .. }) => {
                 let report = term_svc::global::rename_term(
@@ -1162,7 +990,7 @@ fn handle_rename(
                     &args.old_term,
                     &args.new_term,
                     args.keep_alias,
-                    args.force,
+                    args.force.force,
                     false,
                 )?;
                 crate::output::warning::emit_warning(
@@ -1174,7 +1002,7 @@ fn handle_rename(
             Err(e) => return Err(e),
         }
     } else {
-        term_svc::global::rename_term(root, &args.old_term, &args.new_term, args.keep_alias, args.force, false)?
+        term_svc::global::rename_term(root, &args.old_term, &args.new_term, args.keep_alias, args.force.force, false)?
     };
 
     let result = VerbResult {

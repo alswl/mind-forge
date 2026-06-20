@@ -51,7 +51,7 @@ pub enum MfError {
     FileExists { path: PathBuf },
 
     /// A feature is not yet implemented. Construct with
-    /// [`MfError::not_implemented`] or [`MfError::not_implemented_with_hint`].
+    /// [`MfError::not_implemented_with_hint`].
     #[error("{feature} is not yet implemented")]
     NotImplemented { feature: String, hint: Option<String> },
 
@@ -111,10 +111,6 @@ impl MfError {
 
     pub fn file_exists(path: PathBuf) -> Self {
         Self::FileExists { path }
-    }
-
-    pub fn not_implemented(feature: impl Into<String>) -> Self {
-        Self::NotImplemented { feature: feature.into(), hint: None }
     }
 
     pub fn not_implemented_with_hint(feature: impl Into<String>, hint: impl Into<String>) -> Self {
@@ -277,7 +273,7 @@ mod tests {
 
     #[test]
     fn not_implemented_kind_is_not_implemented() {
-        let err = MfError::not_implemented("feature x");
+        let err = MfError::not_implemented_with_hint("feature x", "hint");
         assert_eq!(err.kind(), "not-implemented");
     }
 
@@ -409,7 +405,7 @@ mod tests {
                 detail: "syntax".to_string(),
             },
             MfError::file_exists(PathBuf::from("/tmp/x")),
-            MfError::not_implemented("x"),
+            MfError::not_implemented_with_hint("x", "hint"),
             MfError::not_found("x", Some("hint".to_string())),
             MfError::UnknownPlaceholder { token: "{x}".to_string() },
             MfError::NoEffectiveDate,

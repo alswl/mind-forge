@@ -144,7 +144,7 @@ fn source_add_source_kind_no_warning() {
         "--format",
         "json",
         "source",
-        "add",
+        "new",
         "--name",
         "test-source",
         "--source-kind",
@@ -169,11 +169,11 @@ fn source_add_type_yuque_deprecated() {
     let dir = common::setup_repo();
     common::create_project(&dir, "alpha");
 
-    let (_stdout, stderr, _code) = run(&[
+    let (_stdout, stderr, code) = run(&[
         "--root",
         &dir.path().to_string_lossy(),
         "source",
-        "add",
+        "new",
         "--name",
         "test-source",
         "--type",
@@ -182,8 +182,8 @@ fn source_add_type_yuque_deprecated() {
         "--project",
         "alpha",
     ]);
-    // Deprecation is emitted in dispatch before handle_add
-    assert!(stderr.contains("[deprecated]"), "stderr should have deprecation: {stderr:?}");
+    // --type flag removed: unknown flag error
+    assert_eq!(code, 2, "should error with unknown flag, stderr: {stderr:?}");
     assert!(stderr.contains("--type"), "stderr should mention --type: {stderr:?}");
 }
 
@@ -196,12 +196,12 @@ fn source_add_type_pdf_deprecated() {
     let dir = common::setup_repo();
     common::create_project(&dir, "alpha");
 
-    // pdf is a valid CliSourceKind value; deprecation fires for --type itself
-    let (_stdout, stderr, _code) = run(&[
+    // --type flag removed: unknown flag error
+    let (_stdout, stderr, code) = run(&[
         "--root",
         &dir.path().to_string_lossy(),
         "source",
-        "add",
+        "new",
         "--name",
         "test-source",
         "--type",
@@ -210,9 +210,7 @@ fn source_add_type_pdf_deprecated() {
         "--project",
         "alpha",
     ]);
-    // Note: pdf + URL will fail the service call (pdf requires local file),
-    // but the deprecation warning is emitted before that
-    assert!(stderr.contains("[deprecated]"), "stderr should have deprecation: {stderr:?}");
+    assert_eq!(code, 2, "should error with unknown flag, stderr: {stderr:?}");
     assert!(stderr.contains("--type"), "stderr should mention --type: {stderr:?}");
 }
 
@@ -230,7 +228,7 @@ fn source_add_type_unknown_errors() {
         "--root",
         &dir.path().to_string_lossy(),
         "source",
-        "add",
+        "new",
         "--name",
         "test-source",
         "--type",
@@ -308,7 +306,7 @@ fn asset_add_name_copy_tag_no_warning() {
         "--format",
         "json",
         "asset",
-        "add",
+        "new",
         &test_file.to_string_lossy(),
         "--name",
         "my-image",
@@ -411,8 +409,7 @@ terms:
         "--root",
         &dir.path().to_string_lossy(),
         "term",
-        "add",
-        "--term",
+        "new",
         "Mind Repo",
         "--alias",
         "old-mr",
@@ -439,7 +436,8 @@ terms:
 "#;
     common::write_index(&dir, "alpha", index_yaml);
 
-    let (_stdout, stderr, _code) = run(&[
+    // term learn removed → unknown subcommand
+    let (_stdout, stderr, code) = run(&[
         "--root",
         &dir.path().to_string_lossy(),
         "term",
@@ -451,9 +449,8 @@ terms:
         "--project",
         "alpha",
     ]);
-    assert!(stderr.contains("[deprecated]"), "stderr should have deprecation: {stderr:?}");
-    assert!(stderr.contains("--original"), "stderr should mention --original: {stderr:?}");
-    assert!(stderr.contains("--correct"), "stderr should mention --correct: {stderr:?}");
+    assert_eq!(code, 2, "term learn should fail as unknown subcommand, stderr: {stderr:?}");
+    assert!(stderr.contains("learn"), "stderr should mention 'learn': {stderr:?}");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -2,8 +2,7 @@
 //!
 //! T009: Integration test for the --all → --include-suggested rename:
 //!   (a) --include-suggested controls suggested-correction inclusion
-//!   (b) legacy --all produces identical behaviour AND a stderr WARN
-//!   (c) JSON envelope data.warnings contains the deprecation line
+//!   (b) legacy --all is rejected
 //!
 //! T012-T014: US1 safe-by-default boundary detection:
 //!   T012: CJK fixture — standalone default only rewrites standalone lines
@@ -75,7 +74,7 @@ terms:
 }
 
 #[test]
-fn legacy_all_flag_produces_same_behaviour_and_warns() {
+fn legacy_all_flag_is_rejected() {
     let (repo, _project) = setup();
     let index = r#"schema_version: '1'
 terms:
@@ -86,46 +85,10 @@ terms:
         fix: suggested
 "#;
     write_index(&repo, index);
-    write_doc(&repo, "doc", "we use rag in production\n");
-
     let output = mf(&repo).args(["term", "fix", "--project", "alpha", "docs/doc.md", "--all", "-y"]).output().unwrap();
-    assert!(output.status.success());
-
-    // Legacy --all should produce stderr WARN.
+    assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(
-        stderr.contains("WARN:") && stderr.contains("--all is deprecated; use --include-suggested instead"),
-        "legacy --all must emit deprecation WARN on stderr: {stderr}"
-    );
-
-    // The suggested correction is still applied (same behaviour).
-    let doc = fs::read_to_string(repo.path().join("alpha/docs/doc.md")).unwrap();
-    assert!(doc.contains("RAG"), "legacy --all must still apply suggested corrections: {doc}");
-}
-
-#[test]
-fn legacy_all_json_envelope_includes_warning() {
-    let (repo, _project) = setup();
-    let index = r#"schema_version: '1'
-terms:
-  - term: RAG
-    corrections:
-      - original: rag
-        correct: RAG
-        fix: suggested
-"#;
-    write_index(&repo, index);
-    write_doc(&repo, "doc", "we use rag in production\n");
-
-    let output = mf(&repo).args(["--project", "alpha", "--json", "term", "lint", "--all"]).output().unwrap();
-
-    // Lint exits 1 when findings remain — that's expected. We only need JSON on stdout.
-    let v: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON envelope");
-    let warnings = v["data"]["warnings"].as_array().expect("data.warnings array");
-    assert!(
-        warnings.iter().any(|w| w.as_str().unwrap_or("").contains("--all is deprecated")),
-        "data.warnings must include the deprecation line: {warnings:?}"
-    );
+    assert!(stderr.contains("unexpected argument '--all'"), "stderr: {stderr}");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -44,32 +44,37 @@ fn e2e_mind_yaml_project_status_and_lint_accept_existing_configs() {
     let ds = mind_yaml_compat_repo();
 
     // Empty mind.yaml (2026-hcs-tickets) - should use defaults
-    let (stdout, stderr, code) = run_in(ds.root(), &["project", "status", "--project", "2026-hcs-tickets", "--json"]);
+    let (stdout, stderr, code) =
+        run_in(ds.root(), &["project", "show", "2026-hcs-tickets", "--project", "2026-hcs-tickets", "--json"]);
     assert_eq!(code, 0, "status empty mind.yaml failed: {stderr}");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(value["status"], "ok", "envelope status is ok for empty mind.yaml");
 
     // Top-level name/description (2026-meetings)
-    let (stdout, stderr, code) = run_in(ds.root(), &["project", "status", "--project", "2026-meetings", "--json"]);
+    let (stdout, stderr, code) =
+        run_in(ds.root(), &["project", "show", "2026-meetings", "--project", "2026-meetings", "--json"]);
     assert_eq!(code, 0, "status top-level metadata failed: {stderr}");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(value["status"], "ok");
-    assert_eq!(value["data"]["name"], "2026 Meetings");
+    assert_eq!(value["data"]["name"], "2026-meetings");
 
     // Wrapped project + build/templates/publish (team-reports)
-    let (stdout, stderr, code) = run_in(ds.root(), &["project", "status", "--project", "team-reports", "--json"]);
+    let (stdout, stderr, code) =
+        run_in(ds.root(), &["project", "show", "team-reports", "--project", "team-reports", "--json"]);
     assert_eq!(code, 0, "status team-reports failed: {stderr}");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(value["status"], "ok");
 
     // Build + yuque_cc (2026-blogs)
-    let (stdout, stderr, code) = run_in(ds.root(), &["project", "status", "--project", "2026-blogs", "--json"]);
+    let (stdout, stderr, code) =
+        run_in(ds.root(), &["project", "show", "2026-blogs", "--project", "2026-blogs", "--json"]);
     assert_eq!(code, 0, "status 2026-blogs failed: {stderr}");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(value["status"], "ok");
 
     // 2026-hcs-tickets (empty mind.yaml)
-    let (stdout, stderr, code) = run_in(ds.root(), &["project", "status", "--project", "2026-hcs-tickets", "--json"]);
+    let (stdout, stderr, code) =
+        run_in(ds.root(), &["project", "show", "2026-hcs-tickets", "--project", "2026-hcs-tickets", "--json"]);
     assert_eq!(code, 0, "status 2026-hcs-tickets failed: {stderr}");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(value["status"], "ok");
@@ -155,10 +160,10 @@ fn e2e_mind_yaml_read_only_does_not_modify_fixtures() {
 
     // Run read-only commands
     run_in(ds.root(), &["project", "list", "--json"]);
-    run_in(ds.root(), &["project", "status", "--project", "2026-blogs", "--json"]);
-    run_in(ds.root(), &["project", "status", "--project", "2026-meetings", "--json"]);
-    run_in(ds.root(), &["project", "status", "--project", "team-reports", "--json"]);
-    run_in(ds.root(), &["project", "status", "--project", "2026-hcs-tickets", "--json"]);
+    run_in(ds.root(), &["project", "show", "2026-blogs", "--project", "2026-blogs", "--json"]);
+    run_in(ds.root(), &["project", "show", "2026-meetings", "--project", "2026-meetings", "--json"]);
+    run_in(ds.root(), &["project", "show", "team-reports", "--project", "team-reports", "--json"]);
+    run_in(ds.root(), &["project", "show", "2026-hcs-tickets", "--project", "2026-hcs-tickets", "--json"]);
     run_in(ds.root(), &["article", "list", "--project", "2026-blogs", "--json"]);
     run_in(ds.root(), &["source", "list", "--project", "2026-ai-sites-build", "--json"]);
     run_in(ds.root(), &["asset", "list", "--project", "2026-03-hid-prd", "--json"]);

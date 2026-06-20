@@ -73,33 +73,6 @@ fn deprecation_positional_d3_warning() {
 }
 
 // ---------------------------------------------------------------------------
-// T017: Value deprecation warning — D2a (--type with source-kind value)
-// ---------------------------------------------------------------------------
-
-#[test]
-fn deprecation_value_d2a_warning() {
-    let dir = common::setup_repo();
-    common::create_project(&dir, "alpha");
-
-    // source add --type auto triggers deprecation warning (--type is the deprecated flag)
-    let (_stdout, stderr, _code) = run(&[
-        "--root",
-        &dir.path().to_string_lossy(),
-        "source",
-        "add",
-        "--name",
-        "test-source",
-        "--type",
-        "auto",
-        "https://example.com/doc",
-        "--project",
-        "alpha",
-    ]);
-    assert!(stderr.contains("[deprecated]"), "stderr should contain deprecation marker: {stderr:?}");
-    assert!(stderr.contains("--type"), "stderr should mention '--type': {stderr:?}");
-}
-
-// ---------------------------------------------------------------------------
 // T018: Multiple deprecation warnings — D1a + D1b together
 // ---------------------------------------------------------------------------
 
@@ -131,43 +104,6 @@ fn deprecation_multiple_warnings() {
         stderr.lines().any(|l| l.contains("--target-url")),
         "stderr should contain --target-url deprecation: {stderr:?}"
     );
-}
-
-// ---------------------------------------------------------------------------
-// T019: --format json envelope unchanged with deprecation on stderr
-// ---------------------------------------------------------------------------
-
-#[test]
-fn deprecation_json_envelope_unchanged() {
-    let dir = common::setup_repo();
-    common::create_project(&dir, "alpha");
-
-    // Use source add with --type (deprecated) that should succeed with URL input
-    let (stdout, stderr, code) = run(&[
-        "--root",
-        &dir.path().to_string_lossy(),
-        "--format",
-        "json",
-        "source",
-        "add",
-        "--name",
-        "test-source",
-        "--type",
-        "auto",
-        "https://example.com/doc",
-        "--project",
-        "alpha",
-    ]);
-    // Deprecation should be on stderr
-    assert!(stderr.contains("[deprecated]"), "stderr should have deprecation: {stderr:?}");
-
-    // Command should succeed
-    assert_eq!(code, 0, "source add should succeed, stderr: {stderr:?}");
-
-    // JSON envelope should be valid and unchanged format
-    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("stdout should be valid JSON");
-    assert_eq!(parsed["status"], "ok", "envelope should have status=ok: {stdout}");
-    assert!(parsed["data"].is_object(), "envelope should have data object: {stdout}");
 }
 
 // ---------------------------------------------------------------------------
@@ -269,15 +205,17 @@ fn deprecation_d1b_warning_format() {
 
 #[test]
 fn deprecation_d2_subject_warning_format() {
+    // D2a (--type flag) removed — tests removed feature
+    // This test is kept for D2 coverage but refactored
     let dir = common::setup_repo();
     common::create_project(&dir, "alpha");
 
-    // --type triggers the subject-level warning
-    let (_stdout, stderr, _code) = run(&[
+    // --type is now an unknown flag → error
+    let (_stdout, stderr, code) = run(&[
         "--root",
         &dir.path().to_string_lossy(),
         "source",
-        "add",
+        "new",
         "--name",
         "test-source",
         "--type",
@@ -286,7 +224,8 @@ fn deprecation_d2_subject_warning_format() {
         "--project",
         "alpha",
     ]);
-    assert!(stderr.contains("[deprecated] --type is deprecated, use --file-kind or --source-kind instead"));
+    assert_eq!(code, 2, "supplying removed --type flag should error, stderr: {stderr:?}");
+    assert!(stderr.contains("--type"), "error should mention --type: {stderr:?}");
 }
 
 #[test]
@@ -305,7 +244,8 @@ fn deprecation_d4a_warning_format() {
     let dir = common::setup_repo();
     common::create_project(&dir, "alpha");
 
-    let (_stdout, stderr, _code) = run(&[
+    // term learn removed → unknown subcommand
+    let (_stdout, stderr, code) = run(&[
         "--root",
         &dir.path().to_string_lossy(),
         "term",
@@ -317,15 +257,18 @@ fn deprecation_d4a_warning_format() {
         "--project",
         "alpha",
     ]);
-    assert!(stderr.contains("[deprecated] --original is deprecated, use --alias <variant> instead"));
+    assert_eq!(code, 2, "term learn should be unknown subcommand, stderr: {stderr:?}");
+    assert!(stderr.contains("learn"), "error should mention 'learn': {stderr:?}");
 }
 
 #[test]
 fn deprecation_d4b_warning_format() {
+    // D4b (--correct flag) was part of term learn — removed
+    // term learn is now an unknown subcommand
     let dir = common::setup_repo();
     common::create_project(&dir, "alpha");
 
-    let (_stdout, stderr, _code) = run(&[
+    let (_stdout, stderr, code) = run(&[
         "--root",
         &dir.path().to_string_lossy(),
         "term",
@@ -337,14 +280,15 @@ fn deprecation_d4b_warning_format() {
         "--project",
         "alpha",
     ]);
-    assert!(stderr.contains("[deprecated] --correct is deprecated, use --term <canonical> instead"));
+    assert_eq!(code, 2, "term learn should fail as unknown subcommand, stderr: {stderr:?}");
+    assert!(stderr.contains("learn"), "error should mention 'learn': {stderr:?}");
 }
 
 #[test]
 fn deprecation_d5_warning_format() {
     let dir = common::setup_repo();
     common::create_project(&dir, "alpha");
-    // Add a term so term list --term has something to find
+    // Add a term so term list has data
     let index_yaml = r#"schema_version: '1'
 terms:
   - term: API
@@ -354,7 +298,9 @@ terms:
 "#;
     common::write_index(&dir, "alpha", index_yaml);
 
-    let (_stdout, stderr, _code) =
+    // --term flag removed from term list → unknown flag
+    let (_stdout, stderr, code) =
         run(&["--root", &dir.path().to_string_lossy(), "term", "list", "--term", "API", "--project", "alpha"]);
-    assert!(stderr.contains("[deprecated] term list --term <X> is deprecated, use term show <X> instead"));
+    assert_eq!(code, 2, "supplying removed --term should error, stderr: {stderr:?}");
+    assert!(stderr.contains("--term"), "error should mention --term: {stderr:?}");
 }

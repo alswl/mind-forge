@@ -4,6 +4,7 @@ use clap::Args;
 use serde::Serialize;
 
 use crate::cli::deprecation::DeprecationContext;
+use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::service::{build as build_svc, util as svc_util};
@@ -13,8 +14,8 @@ pub struct BuildArgs {
     pub article: String,
     #[arg(short = 'o', long)]
     pub output: Option<PathBuf>,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 pub fn dispatch(
@@ -49,10 +50,16 @@ pub fn dispatch(
     };
 
     let output = match article_path {
-        Some(article_path) => {
-            build_svc::build_article_path(&project_path, root, &article_path, args.dry_run, args.output.as_deref())?
+        Some(article_path) => build_svc::build_article_path(
+            &project_path,
+            root,
+            &article_path,
+            args.dry_run.dry_run,
+            args.output.as_deref(),
+        )?,
+        None => {
+            build_svc::build_article(&project_path, root, &article_name, args.dry_run.dry_run, args.output.as_deref())?
         }
-        None => build_svc::build_article(&project_path, root, &article_name, args.dry_run, args.output.as_deref())?,
     };
 
     match output {

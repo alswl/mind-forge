@@ -18,7 +18,6 @@ use std::path::PathBuf;
 use clap::{ArgAction, Args, Parser, Subcommand};
 use serde::Serialize;
 
-use crate::cli::completion::ShellKind;
 use crate::cli::deprecation::DeprecationContext;
 use crate::error::{MfError, Result};
 use crate::output::Format;
@@ -70,10 +69,6 @@ pub struct GlobalOpts {
     pub no_color: bool,
     #[arg(short = 'p', long, global = true, value_name = "NAME", help = "Project name for project-scoped operations")]
     pub project: Option<String>,
-    #[arg(long = "install-completion", global = true, value_enum, help = "Install shell completion script")]
-    pub install_completion: Option<ShellKind>,
-    #[arg(long = "show-completion", global = true, value_enum, help = "Show shell completion script")]
-    pub show_completion: Option<ShellKind>,
 }
 
 impl GlobalOpts {
@@ -215,15 +210,4 @@ fn dispatch_init(args: InitArgs) -> Result<CommandOutcome> {
     let report = repo::init_repo(&target, &kind)?;
     let data = serde_json::to_value(&report).map_err(|e| MfError::Internal(e.into()))?;
     Ok(CommandOutcome::Success(data, Vec::new(), None))
-}
-
-/// Merge additional warnings into a CommandOutcome that already carries warnings.
-pub fn merge_warnings(outcome: CommandOutcome, extra: Vec<String>) -> CommandOutcome {
-    match outcome {
-        CommandOutcome::Success(data, mut warnings, code) => {
-            warnings.extend(extra);
-            CommandOutcome::Success(data, warnings, code)
-        }
-        other => other,
-    }
 }

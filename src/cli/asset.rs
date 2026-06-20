@@ -4,9 +4,12 @@ use clap::{Args, Subcommand};
 use serde::Serialize;
 
 use crate::cli::deprecation::DeprecationContext;
+use crate::cli::shared_flags::DryRunFlag;
+use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
-use crate::cli::{merge_warnings, CommandOutcome};
+use crate::cli::shared_flags::YesFlag;
+use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::model::asset::AssetKind;
 use crate::model::Resource;
@@ -31,8 +34,6 @@ pub enum AssetSubcommand {
     List(AssetListArgs),
     #[command(about = "Create an asset")]
     New(AssetAddArgs),
-    #[command(about = "Add an asset", hide = true)]
-    Add(AssetAddArgs),
     #[command(about = "Update assets")]
     Update(AssetUpdateArgs),
     #[command(about = "Index assets")]
@@ -78,10 +79,10 @@ pub struct AssetAddArgs {
     pub copy: bool,
     #[arg(long, conflicts_with = "copy")]
     pub link: bool,
-    #[arg(short = 'f', long)]
-    pub force: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 // ---------------------------------------------------------------------------
@@ -97,8 +98,8 @@ pub struct AssetUpdateArgs {
     pub channel: Option<String>,
     #[arg(long)]
     pub all: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 // ---------------------------------------------------------------------------
@@ -107,8 +108,8 @@ pub struct AssetUpdateArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct AssetIndexArgs {
-    #[arg(long)]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
     #[arg(long = "refresh-metadata")]
     pub refresh_metadata: bool,
 }
@@ -119,8 +120,8 @@ pub struct AssetIndexArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct AssetCleanArgs {
-    #[arg(long)]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 // ---------------------------------------------------------------------------
@@ -135,23 +136,23 @@ pub struct AssetShowArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct AssetRemoveArgs {
-    pub file: String,
-    #[arg(short = 'f', long)]
-    pub force: bool,
-    #[arg(short = 'y', long)]
-    pub yes: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    pub path: String,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub yes: YesFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct AssetRenameArgs {
     pub old_path: String,
     pub new_path: String,
-    #[arg(short = 'f', long)]
-    pub force: bool,
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 // ---------------------------------------------------------------------------
@@ -171,15 +172,6 @@ pub fn dispatch(
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("asset")),
         Some(AssetSubcommand::New(args)) => handle_add(args, root, &cwd, format, project),
-        Some(AssetSubcommand::Add(args)) => {
-            let mut warnings: Vec<String> = Vec::new();
-            crate::output::warning::emit_warning(
-                &format!("`asset add` is deprecated; use `mf asset new {}` instead.", args.path.display()),
-                &mut warnings,
-            );
-            let outcome = handle_add(args, root, &cwd, format, project)?;
-            Ok(merge_warnings(outcome, warnings))
-        }
         Some(AssetSubcommand::List(args)) => handle_list(args, root, &cwd, format, project),
         Some(AssetSubcommand::Update(args)) => handle_update(args, root, &cwd, format, project),
         Some(AssetSubcommand::Index(args)) => handle_index(args, root, &cwd, format, project),
@@ -203,7 +195,7 @@ fn handle_add(
 ) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, project, cwd)?;
 
-    if args.dry_run {
+    if args.dry_run.dry_run {
         let name =
             args.name.as_deref().unwrap_or_else(|| args.path.file_name().and_then(|s| s.to_str()).unwrap_or("unknown"));
         let result = VerbResult {
@@ -230,7 +222,7 @@ fn handle_add(
         name: args.name,
         tags: args.tag,
         link_mode: args.link,
-        force: args.force,
+        force: args.force.force,
     };
     let asset = asset_svc::add(&project_path, cwd, &add_args)?;
     let mode = if add_args.link_mode { "link" } else { "copy" };
@@ -368,7 +360,7 @@ fn handle_update(
     }
 
     if let Some(path) = args.path {
-        if args.dry_run {
+        if args.dry_run.dry_run {
             let result = VerbResult {
                 verb: Verb::Update,
                 kind: "asset",
@@ -467,7 +459,7 @@ fn handle_index(
 ) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, project, cwd)?;
 
-    let report = asset_svc::reconcile(&project_path, args.dry_run, args.refresh_metadata)?;
+    let report = asset_svc::reconcile(&project_path, args.dry_run.dry_run, args.refresh_metadata)?;
 
     let scanned_count = report.added.len() + report.removed.len() + report.kept_count as usize;
 
@@ -479,7 +471,7 @@ fn handle_index(
                 "removed": report.removed,
                 "kept_count": report.kept_count,
                 "scanned_count": scanned_count,
-                "dry_run": args.dry_run,
+                "dry_run": args.dry_run.dry_run,
                 "details": {
                     "refreshed": report.refreshed,
                 },
@@ -500,7 +492,7 @@ fn handle_index(
                 identity: String::new(),
                 old_identity: None,
                 path: None,
-                dry_run: args.dry_run,
+                dry_run: args.dry_run.dry_run,
                 details,
             };
             Ok(CommandOutcome::Success(
@@ -519,7 +511,7 @@ fn handle_index(
 fn handle_clean(args: AssetCleanArgs, root: &Path, format: Format, project: Option<&str>) -> Result<CommandOutcome> {
     let cwd = std::env::current_dir().map_err(MfError::Io)?;
     let project_path = svc_util::resolve_project(root, project, &cwd)?;
-    let report = asset_svc::clean(&project_path, args.dry_run)?;
+    let report = asset_svc::clean(&project_path, args.dry_run.dry_run)?;
 
     match format {
         Format::Json => {
@@ -531,7 +523,7 @@ fn handle_clean(args: AssetCleanArgs, root: &Path, format: Format, project: Opti
             Ok(CommandOutcome::Success(data, Vec::new(), None))
         }
         Format::Text => {
-            let dry_msg = if args.dry_run { "[dry-run] " } else { "" };
+            let dry_msg = if args.dry_run.dry_run { "[dry-run] " } else { "" };
             if report.stale_entries.is_empty() {
                 Ok(CommandOutcome::Success(
                     serde_json::Value::String(format!("{dry_msg}No stale entries found.")),
@@ -562,25 +554,25 @@ fn handle_remove(
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, project, cwd)?;
-    identity::validate_entity_path(&project_path, &args.file)?;
+    identity::validate_entity_path(&project_path, &args.path)?;
 
     require_confirmation(&ConfirmArgs {
         verb_label: "removal",
         kind: "asset",
-        identity: &args.file,
-        yes: args.yes,
-        force: args.force,
+        identity: &args.path,
+        yes: args.yes.yes,
+        force: args.force.force,
     })?;
 
-    let _report = asset_svc::remove_asset(&project_path, &args.file, args.force, args.dry_run)?;
+    let _report = asset_svc::remove_asset(&project_path, &args.path, args.force.force, args.dry_run.dry_run)?;
 
     let result = VerbResult {
         verb: Verb::Remove,
         kind: "asset",
-        identity: args.file.clone(),
+        identity: args.path.clone(),
         old_identity: None,
         path: None,
-        dry_run: args.dry_run,
+        dry_run: args.dry_run.dry_run,
         details: serde_json::json!({"removed": true}),
     };
     match format {
@@ -606,7 +598,7 @@ fn handle_rename(
     identity::validate_entity_path(&project_path, &args.old_path)?;
     identity::validate_entity_path(&project_path, &args.new_path)?;
 
-    if args.dry_run {
+    if args.dry_run.dry_run {
         let result = VerbResult {
             verb: Verb::Rename,
             kind: "asset",
@@ -626,7 +618,7 @@ fn handle_rename(
         };
     }
 
-    let report = asset_svc::rename_asset(&project_path, &args.old_path, &args.new_path, args.force, false)?;
+    let report = asset_svc::rename_asset(&project_path, &args.old_path, &args.new_path, args.force.force, false)?;
 
     let result = VerbResult {
         verb: Verb::Rename,

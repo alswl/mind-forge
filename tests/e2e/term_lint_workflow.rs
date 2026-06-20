@@ -7,9 +7,9 @@ use crate::helpers::*;
 /// Registers three corrections covering all 误改 scenarios:
 ///  - 机器 (default word, CJK)   → only match standalone, not embedded in 机器人
 ///  - 凯飞迪 (match: pinyin)     → finds 开飞地 via pinyin match, force suggested
-///  - rag (fix: suggested)        → requires --all to apply
+///  - rag (fix: suggested)        → requires --include-suggested to apply
 ///
-/// Then exercises: lint → fix -y (only required) → fix --all -y (all)
+/// Then exercises: lint → fix -y (only required) → fix --include-suggested -y (all)
 #[test]
 fn e2e_term_lint_workflow_all_findings_then_fix() {
     // 1. Setup: create repo root with global terms + doc
@@ -63,13 +63,13 @@ terms:
     let (_stdout, _stderr, code) = run_in(root, &["term", "fix", "docs/mixed.md", "-y"]);
     assert_eq!(code, 0, "fix should succeed");
     let content = fs::read_to_string(docs.join("mixed.md")).unwrap();
-    assert!(content.contains("开飞地"), "suggested should not apply without --all: {content}");
-    assert!(content.contains("rag"), "suggested should not apply without --all: {content}");
+    assert!(content.contains("开飞地"), "suggested should not apply without --include-suggested: {content}");
+    assert!(content.contains("rag"), "suggested should not apply without --include-suggested: {content}");
 
-    // ── 4. term fix --all -y: applies suggested too ──
-    let (_stdout, _stderr, code) = run_in(root, &["term", "fix", "docs/mixed.md", "--all", "-y"]);
-    assert_eq!(code, 0, "fix --all should succeed");
+    // ── 4. term fix --include-suggested -y: applies suggested too ──
+    let (_stdout, _stderr, code) = run_in(root, &["term", "fix", "docs/mixed.md", "--include-suggested", "-y"]);
+    assert_eq!(code, 0, "fix --include-suggested should succeed");
     let content = fs::read_to_string(docs.join("mixed.md")).unwrap();
-    assert!(content.contains("凯飞迪"), "pinyin fix should apply with --all: {content}");
-    assert!(content.contains("RAG"), "suggested fix should apply with --all: {content}");
+    assert!(content.contains("凯飞迪"), "pinyin fix should apply with --include-suggested: {content}");
+    assert!(content.contains("RAG"), "suggested fix should apply with --include-suggested: {content}");
 }
