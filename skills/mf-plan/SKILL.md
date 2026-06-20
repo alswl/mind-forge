@@ -21,7 +21,7 @@ If the prompt is absent, use [prompt.md](assets/prompt.md). If the article is ab
 
 - Treat frontmatter `article` as authoritative; the filename is only for discovery.
 - Reserve `constitution` as a project prompt name. If an article key collides, ask for an explicit non-conflicting prompt filename and keep the canonical `article` binding.
-- Before this skill runs `mf article rename`, preview it and confirm the proposed destination preserves the article's current file/directory shape. After success, verify the new identity resolves and its content is not blocked; only then rename the unique bound prompt and update its frontmatter. Stop if the current CLI cannot preserve the shape.
+- `mf article rename` now preserves the article's file/directory shape and automatically renames the bound prompt file while updating its `article:` frontmatter. After rename, verify the new identity resolves and its content is not blocked. If the prompt association needs manual adjustment, report it.
 - For a rename performed outside this workflow, never infer the old identity from title similarity alone. Report orphan prompts and candidate articles; mutate only after the user confirms one mapping.
 - When zero prompts match, offer to create one. When multiple prompts claim an identity, stop without mutation and list them.
 

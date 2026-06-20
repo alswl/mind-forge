@@ -1227,7 +1227,7 @@ fn article_rename_success() {
             "article",
             "rename",
             "Old Title",
-            "New Title",
+            "new-slug",
             "--project",
             "my-project",
         ])
@@ -1236,14 +1236,15 @@ fn article_rename_success() {
 
     assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
 
-    // Old file should be renamed
+    // Old file should be renamed to new slug
     let project = repo.path().join("my-project");
     assert!(!project.join("docs/old-title.md").exists(), "old file should be renamed");
-    assert!(project.join("docs/new-title.md").exists(), "new file should exist");
+    assert!(project.join("docs/new-slug.md").exists(), "new file should exist at new slug");
 
-    // Index should have new title
+    // Title should be unchanged (rename only changes slug)
     let index_content = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
-    assert!(index_content.contains("New Title"), "new title should be in index: {index_content}");
+    assert!(index_content.contains("Old Title"), "title should be unchanged: {index_content}");
+    assert!(index_content.contains("new-slug"), "slug should be updated: {index_content}");
 }
 
 #[test]
@@ -1285,7 +1286,7 @@ fn article_rename_json_envelope() {
             "article",
             "rename",
             "Old Title",
-            "New Title",
+            "new-slug",
             "--project",
             "my-project",
             "--format",
@@ -1299,9 +1300,145 @@ fn article_rename_json_envelope() {
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok");
     assert_eq!(v["data"]["details"]["old_title"], "Old Title");
-    assert_eq!(v["data"]["details"]["new_title"], "New Title");
+    assert_eq!(v["data"]["details"]["new_title"], "Old Title", "title should be unchanged after rename");
     assert!(v["data"]["old_identity"].as_str().is_some_and(|s| s.contains("old-title")));
-    assert!(v["data"]["identity"].as_str().is_some_and(|s| s.contains("new-title")));
+    assert!(v["data"]["identity"].as_str().is_some_and(|s| s.contains("new-slug")));
+}
+
+// ── Article rename: preserves title ──────────────────────────────────────
+
+#[test]
+fn article_rename_preserves_title() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    seed_article(&repo, "my-project", "Keep This Title", "docs/keep-this-title.md");
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "rename",
+            "Keep This Title",
+            "different-slug",
+            "--project",
+            "my-project",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let project = repo.path().join("my-project");
+    assert!(project.join("docs/different-slug.md").exists(), "file should be renamed to new slug");
+    let index_content = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert!(index_content.contains("Keep This Title"), "title should be preserved: {index_content}");
+    assert!(index_content.contains("different-slug"), "slug should be updated: {index_content}");
+}
+
+#[test]
+fn article_rename_directory() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Create a directory article
+    let article_dir = repo.path().join("my-project/docs/old-dir");
+    std::fs::create_dir_all(&article_dir).unwrap();
+    std::fs::write(article_dir.join("01-opening.md"), "# Old Dir\n\nContent.\n").unwrap();
+    std::fs::write(article_dir.join("02-body.md"), "## Body\n\nMore.\n").unwrap();
+
+    // Write index with directory path (no .md)
+    let index_yaml = r#"schema_version: '1'
+articles:
+  - title: 'Old Dir'
+    project: 'my-project'
+    article_type: blog
+    article_path: 'docs/old-dir'
+    status: draft
+    created_at: '2026-05-08T10:00:00Z'
+    updated_at: '2026-05-08T10:00:00Z'
+"#;
+    common::write_index(&repo, "my-project", index_yaml);
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "rename",
+            "Old Dir",
+            "new-dir",
+            "--project",
+            "my-project",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let project = repo.path().join("my-project");
+    assert!(!project.join("docs/old-dir").exists(), "old directory should be renamed");
+    assert!(project.join("docs/new-dir").is_dir(), "new directory should exist");
+    assert!(project.join("docs/new-dir/01-opening.md").exists(), "block files should be preserved");
+    assert!(project.join("docs/new-dir/02-body.md").exists(), "block files should be preserved");
+
+    let index_content = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert!(index_content.contains("Old Dir"), "title should be unchanged: {index_content}");
+    assert!(index_content.contains("docs/new-dir"), "path should be updated: {index_content}");
+}
+
+// ── Article update --title tests ──────────────────────────────────────────
+
+#[test]
+fn article_update_title_success() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    seed_article(&repo, "my-project", "Old Title", "docs/old-title.md");
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "article",
+            "update",
+            "Old Title",
+            "--title",
+            "New Title",
+            "--project",
+            "my-project",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let project = repo.path().join("my-project");
+    // File path should NOT change
+    assert!(project.join("docs/old-title.md").exists(), "file path should not change on title update");
+
+    let index_content = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert!(index_content.contains("New Title"), "title should be updated: {index_content}");
+    assert!(index_content.contains("docs/old-title.md"), "path should be unchanged: {index_content}");
+}
+
+#[test]
+fn article_update_nothing_to_change() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    seed_article(&repo, "my-project", "Some Title", "docs/some-title.md");
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "article", "update", "Some Title", "--project", "my-project"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("nothing to update"), "stderr: {stderr}");
 }
 
 // ── Article convert tests: US1 directory-to-file ──────────────────────────

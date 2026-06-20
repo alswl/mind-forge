@@ -132,8 +132,9 @@ JSON envelope `details`: `template`, `shape` (`directory`|`file`), `path`, `file
 **`mf article update <PATH>`**
 Update article metadata in `mind-index.yaml`.
 `--status <draft|published>` — Set article status
+`--title <TITLE>` — Change display title (metadata only, does not rename files)
 
-**`mf article rename <OLD_PATH> <NEW_PATH>`** — Rename an article.
+**`mf article rename <OLD_PATH> <NEW_SLUG>`** — Rename an article (slug only). Changes the file/directory path on disk; the title is left unchanged. Use `_title` on `article update` to change the title. Handles both single-file and directory articles. Automatically renames the associated prompt file and updates its `article:` frontmatter binding.
 
 **`mf article remove <PATH>`** (alias `rm`) — Remove an article. Interactive TTY confirmation unless `--yes` or `--force` is set.
 
@@ -364,7 +365,8 @@ mf article new "Single Page" --file --project my-project
 mf article list --project my-project
 mf article show docs/my-first-post --project my-project
 mf article update docs/my-first-post --status published --project my-project
-mf article rename docs/old-title docs/new-title --project my-project
+mf article update docs/my-first-post --title "Better Title" --project my-project
+mf article rename docs/old-title new-slug --project my-project
 mf article index --project my-project
 mf article lint --fix --project my-project
 mf article convert --to-single-file --project my-project
@@ -417,7 +419,7 @@ mf version --json
 - `mf article convert` supports bidirectional shape conversion (`--to-single-file` / `--to-directory`). Without a direction flag in a TTY, it infers the unique reasonable direction; non-TTY requires an explicit flag.
 - `--project` accepts repo-relative paths or project names. When running inside a project directory, it can be omitted — the CLI auto-detects the current project.
 - Project identity is path-based: `mf project new` accepts cwd-relative or repo-relative paths with Unicode, emoji, dates, spaces, and underscores.
-- `mf project update` currently updates `project.description`; `mf article update` currently updates indexed article `status`.
+- `mf project update` currently updates `project.description`; `mf article update` updates indexed article `status` and/or `title`.
 - Index subcommands reconcile `mind-index.yaml` with the filesystem; run them after manual file changes.
 - Prefer `schema` over `schema_version` in docs, examples, and generated YAML.
 - Global terms (created without `--project`) are stored in `minds-terms.yaml` at the repo root. Project-scoped terms are stored in each project's `mind-index.yaml`.

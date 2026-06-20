@@ -105,6 +105,9 @@ pub struct ArticleUpdateArgs {
     /// Article publication status
     #[arg(long)]
     pub status: Option<String>,
+    /// New article title (metadata only, does not rename files)
+    #[arg(long)]
+    pub title: Option<String>,
     #[command(flatten)]
     pub dry_run: DryRunFlag,
 }
@@ -125,7 +128,7 @@ pub struct ArticleRemoveArgs {
 pub struct ArticleRenameArgs {
     /// Current article path or title
     pub old_path: String,
-    /// New article path or title
+    /// New slug (e.g. "new-slug") — renames the file/directory, title is unchanged
     pub new_path: String,
     #[command(flatten)]
     pub force: ForceFlag,
@@ -526,7 +529,12 @@ pub fn dispatch(
 
             let report = article_svc::update_article(
                 &project_path,
-                article_svc::ArticleUpdate { selector: &args.path, status, dry_run: args.dry_run.dry_run },
+                article_svc::ArticleUpdate {
+                    selector: &args.path,
+                    status,
+                    title: args.title.as_deref(),
+                    dry_run: args.dry_run.dry_run,
+                },
             )?;
 
             let result = VerbResult {

@@ -149,7 +149,8 @@ mf article new "Quick Note" --file --project blog
 mf article list --project blog
 mf article show docs/first-post --project blog
 mf article update docs/first-post --status published --project blog
-mf article rename docs/first-post docs/first-post-v2 --project blog
+mf article update docs/first-post --title "Better Title" --project blog
+mf article rename docs/first-post first-post-v2 --project blog
 mf article remove docs/first-post-v2 --project blog --yes
 
 mf article convert docs/quick-note --to-directory --project blog
@@ -162,8 +163,11 @@ Notes:
 
 - Article selectors accept a project-relative article path or an unambiguous
   title.
-- `article update` currently updates only the indexed article status:
-  `draft` or `published`.
+- `article update` updates article metadata in the index:
+  `--status draft|published` toggles publication status,
+  `--title "New Title"` changes the display title without renaming files.
+- `article rename` changes only the article slug (file/directory path); the
+  title is left unchanged. Use `--title` on `article update` to change the title.
 - `article list` without `--project` outside a project scans all projects and
   sorts by most recently modified.
 
@@ -280,7 +284,7 @@ Prefer JSON output in scripts:
 
 ```bash
 mf project update blog --description "Writing" --json
-mf article update docs/first-post --status published --project blog --json
+mf article update docs/first-post --status published --title "New Title" --project blog --json
 ```
 
 Use `--dry-run` before mutating commands:

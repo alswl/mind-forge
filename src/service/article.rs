@@ -1078,86 +1078,190 @@ pub struct ArticleRenameReport {
     pub dry_run: bool,
 }
 
-/// Rename an article: renames the file on disk and updates the index.
+/// Rename an article: renames the file/directory on disk and updates the index.
 ///
-/// `old_title` is matched against article titles in the index. `new_title`
-/// is the desired display title; the filename is derived from it via
-/// [`util::to_filename`].
+/// `old_selector` is matched against article title or path in the index.
+/// `new_slug` is the new filename/directory slug (NOT a title); the title is
+/// left unchanged. The article shape (single-file or directory) is preserved.
 pub fn rename_article(
     project_path: &Path,
-    old_title: &str,
-    new_title: &str,
+    old_selector: &str,
+    new_slug: &str,
     force: bool,
 ) -> Result<ArticleRenameReport> {
-    let new_filename = util::to_filename(new_title);
     let layout = config_svc::effective_layout(project_path)?;
 
-    // Load the index and find the article by title
+    // Load the index and find the article
     let mut index = index::load(project_path)?;
     let articles = index.articles.as_mut().ok_or_else(|| {
         MfError::not_found(
-            format!("article '{old_title}' not found"),
+            format!("article '{old_selector}' not found"),
             Some("use `mf article list --project <project>` to see available articles".to_string()),
         )
     })?;
 
     let article =
-        articles.iter_mut().find(|a| a.title == old_title || a.article_path == old_title).ok_or_else(|| {
+        articles.iter_mut().find(|a| a.title == old_selector || a.article_path == old_selector).ok_or_else(|| {
             MfError::not_found(
-                format!("article '{old_title}' not found"),
+                format!("article '{old_selector}' not found"),
                 Some("use `mf article list --project <project>` to see available articles".to_string()),
             )
         })?;
 
     let old_article_path = article.article_path.clone();
-    let new_article_path = format!("{}/{}.{}", layout.articles, new_filename, defaults::MARKDOWN_EXTENSION);
+    let old_article_title = article.title.clone();
 
-    // Rename the file on disk (only if the path actually differs)
+    // Detect article shape: directory or single-file
+    let old_full = project_path.join(&old_article_path);
+    let is_directory = old_full.is_dir();
+
+    // Sanitize slug via to_filename (lowercase, hyphens, etc.)
+    let slug = util::to_filename(new_slug);
+
+    // Construct new path preserving the original shape
+    let new_article_path = if is_directory {
+        format!("{}/{}", layout.articles, slug)
+    } else {
+        format!("{}/{}.{}", layout.articles, slug, defaults::MARKDOWN_EXTENSION)
+    };
+
+    // Rename on disk (only if the path actually differs)
+    let mut side_effects: Vec<crate::model::lifecycle::PlannedChange> = Vec::new();
     if old_article_path != new_article_path {
-        let old_full = project_path.join(&old_article_path);
         let new_full = project_path.join(&new_article_path);
 
         if !old_full.exists() {
             return Err(MfError::not_found(
-                format!("article file not found at {}", old_full.display()),
+                format!("article not found at {}", old_full.display()),
                 Some("the index may be out of date; try `mf article index`".to_string()),
             ));
         }
 
         if new_full.exists() {
             if force {
-                fs::remove_file(&new_full).map_err(MfError::Io)?;
+                if new_full.is_dir() {
+                    fs::remove_dir_all(&new_full).map_err(MfError::Io)?;
+                } else {
+                    fs::remove_file(&new_full).map_err(MfError::Io)?;
+                }
             } else {
                 return Err(MfError::file_exists(new_full));
             }
         }
 
         fs::rename(&old_full, &new_full).map_err(MfError::Io)?;
+
+        let rename_op = if is_directory {
+            crate::model::lifecycle::PlannedOp::RenameDir
+        } else {
+            crate::model::lifecycle::PlannedOp::RenameFile
+        };
+        side_effects.push(crate::model::lifecycle::PlannedChange {
+            op: rename_op,
+            path: new_full.to_string_lossy().to_string(),
+            old: Some(old_article_path.clone()),
+            new: Some(new_article_path.clone()),
+        });
+
+        // Rename associated prompt file if it exists
+        let old_key = index::article_output_stem(&old_article_path);
+        let new_key = &slug;
+        let old_prompt_path = project_path.join("prompts").join(format!("{old_key}.md"));
+        if old_prompt_path.exists() {
+            let new_prompt_path = project_path.join("prompts").join(format!("{new_key}.md"));
+            if new_prompt_path.exists() && force {
+                fs::remove_file(&new_prompt_path).map_err(MfError::Io)?;
+            }
+            if !new_prompt_path.exists() {
+                fs::rename(&old_prompt_path, &new_prompt_path).map_err(MfError::Io)?;
+                // Update the article: frontmatter binding in the prompt
+                if let Ok(content) = fs::read_to_string(&new_prompt_path) {
+                    let updated = update_prompt_article_binding(&content, &old_article_path, &new_article_path);
+                    let _ = fs::write(&new_prompt_path, updated);
+                }
+                side_effects.push(crate::model::lifecycle::PlannedChange {
+                    op: crate::model::lifecycle::PlannedOp::RenameFile,
+                    path: new_prompt_path.to_string_lossy().to_string(),
+                    old: Some(old_prompt_path.to_string_lossy().to_string()),
+                    new: Some(new_prompt_path.to_string_lossy().to_string()),
+                });
+            }
+        }
     }
 
-    // Update the index entry
+    // Update the index entry — title is left unchanged
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    article.title = new_title.to_string();
     article.article_path = new_article_path.clone();
     article.updated_at = now;
     index::save(project_path, &index)?;
 
     Ok(ArticleRenameReport {
-        old_title: old_title.to_string(),
-        new_title: new_title.to_string(),
+        old_title: old_article_title.clone(),
+        new_title: old_article_title,
         old_article_path,
         new_article_path,
         references: vec![],
-        side_effects: vec![],
+        side_effects,
         force,
         dry_run: false,
     })
+}
+
+/// Replace the `article:` binding in a prompt's YAML frontmatter.
+fn update_prompt_article_binding(content: &str, old_path: &str, new_path: &str) -> String {
+    let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+    let mut in_frontmatter = false;
+    let mut frontmatter_open = false;
+    for line in &mut lines {
+        if line.trim() == "---" {
+            if !frontmatter_open {
+                frontmatter_open = true;
+                in_frontmatter = true;
+                continue;
+            } else if in_frontmatter {
+                break;
+            }
+        }
+        if in_frontmatter {
+            if let Some(rest) = line.strip_prefix("article:") {
+                if rest.trim() == old_path {
+                    *line = format!("article: {}", new_path);
+                }
+            }
+        }
+    }
+    lines.join("\n") + if content.ends_with('\n') { "\n" } else { "" }
+}
+
+/// Replace the `title:` binding in a prompt's YAML frontmatter.
+fn update_prompt_title(content: &str, new_title: &str) -> String {
+    let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+    let mut in_frontmatter = false;
+    let mut frontmatter_open = false;
+    for line in &mut lines {
+        if line.trim() == "---" {
+            if !frontmatter_open {
+                frontmatter_open = true;
+                in_frontmatter = true;
+                continue;
+            } else if in_frontmatter {
+                break;
+            }
+        }
+        if in_frontmatter {
+            if let Some(_rest) = line.strip_prefix("title:") {
+                *line = format!("title: {}", new_title);
+            }
+        }
+    }
+    lines.join("\n") + if content.ends_with('\n') { "\n" } else { "" }
 }
 
 #[derive(Debug, Clone)]
 pub struct ArticleUpdate<'a> {
     pub selector: &'a str,
     pub status: Option<ArticleStatus>,
+    pub title: Option<&'a str>,
     pub dry_run: bool,
 }
 
@@ -1170,10 +1274,10 @@ pub struct ArticleUpdateReport {
 }
 
 pub fn update_article(project_path: &Path, update: ArticleUpdate<'_>) -> Result<ArticleUpdateReport> {
-    if update.status.is_none() {
+    if update.status.is_none() && update.title.is_none() {
         return Err(MfError::usage(
-            "nothing to update: use --status",
-            Some("pass --status draft or --status published".to_string()),
+            "nothing to update: use --status and/or --title",
+            Some("pass --status draft|published or --title \"New Title\"".to_string()),
         ));
     }
 
@@ -1190,6 +1294,27 @@ pub fn update_article(project_path: &Path, update: ArticleUpdate<'_>) -> Result<
         if !update.dry_run {
             article.status = status;
             article.updated_at = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        }
+    }
+    if let Some(title) = update.title {
+        let trimmed = title.trim();
+        if trimmed.is_empty() {
+            return Err(MfError::usage("title must not be empty", Some("pass a non-empty title".to_string())));
+        }
+        changes.insert("title".to_string(), serde_json::json!({"from": article.title, "to": trimmed}));
+        if !update.dry_run {
+            article.title = trimmed.to_string();
+            article.updated_at = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+            // Update title in associated prompt frontmatter if it exists
+            let key = crate::service::index::article_output_stem(&article.article_path);
+            let prompt_path = project_path.join("prompts").join(format!("{key}.md"));
+            if prompt_path.exists() {
+                if let Ok(content) = fs::read_to_string(&prompt_path) {
+                    let updated = update_prompt_title(&content, trimmed);
+                    let _ = fs::write(&prompt_path, updated);
+                }
+            }
         }
     }
 

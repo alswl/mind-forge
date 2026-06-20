@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
+### `mf article rename` + `update --title` 拆分
+
+#### Breaking Changes
+- **`mf article rename <OLD> <NEW>` 第二个参数改为 slug**：不再同时改 title，只重命名文件/目录路径。title 保持不变。如需改 title，请使用 `mf article update --title "New Title"`。
+
+#### New Features
+- **`mf article update --title <TITLE>`**：修改 article 的 display title（仅 index 元数据，不动文件）。
+- **`mf article rename` 支持目录型文章**：自动检测单文件/目录形态并保持，目录冲突使用 `remove_dir_all` 处理。
+- **`mf article rename` 自动联动 prompt 文件**：rename 时同步重命名 `prompts/<key>.md` 并更新其 `article:` frontmatter 绑定。
+- **`mf article update --title` 联动 prompt 文件**：更新 title 时同步修改 prompt 的 `title:` frontmatter。
+
 ### `mf term lint` 误改防护 + 语音输入感知 (042-term-ux-improvements)
 
 #### Breaking Changes
