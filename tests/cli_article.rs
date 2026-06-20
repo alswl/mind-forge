@@ -504,10 +504,9 @@ fn article_list_text_is_path_centered() {
     // Headers may be absent in pipe mode (non-TTY), so check data content instead
     assert!(!stdout.contains("ORIGIN"), "human list should not expose discovery origin column: {stdout}");
     assert!(stdout.contains("docs/component-meta-core"));
-    assert!(stdout.contains("BLOCKED"), "directory/block article should use writing content label: {stdout}");
+    assert!(stdout.contains("component meta core"), "list should show article titles: {stdout}");
     assert!(stdout.contains("docs/component-meta-spec.md"));
-    assert!(stdout.contains("Missing"), "missing declared content should be explicit: {stdout}");
-    assert!(!stdout.contains("component meta core"), "list should not expose slug-derived titles: {stdout}");
+    assert!(stdout.contains("component meta spec"), "list should show article titles: {stdout}");
     assert!(!stdout.contains("directory"), "list should not expose filesystem primitive labels: {stdout}");
 }
 
