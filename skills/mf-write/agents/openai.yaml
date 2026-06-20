@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mind Forge Write"
+  short_description: "Draft, revise, build, and safely publish articles"
+  default_prompt: "Use $mf-write to continue writing this article from its current prompt and source."

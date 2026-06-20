@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mind Forge CLI"
+  short_description: "Operate mind repositories with the mf CLI"
+  default_prompt: "Use $mf-cli to find and run the correct mf command safely."

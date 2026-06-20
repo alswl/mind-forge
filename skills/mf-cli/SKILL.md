@@ -1,10 +1,9 @@
 ---
-name: mind-forge
-version: "0.2.1"
-description: "Rust CLI for mind 0.3.0-compatible local knowledge repos. Manage projects, directory or file articles, sources, assets, glossary terms, builds, publishing, and publish targets using mind-format YAML."
+name: mf-cli
+description: Use the mf Rust CLI to manage mind 0.3.0-compatible local knowledge repositories, including projects, articles, sources, assets, glossary terms, builds, publishing, render templates, configuration, JSON contracts, and exact command flags. Use for CLI operations, command lookup, automation safety, or structured output reference; use mf-plan or mf-write for article workflows.
 ---
 
-# mind-forge — Knowledge Repo CLI
+# mf-cli — Knowledge Repo CLI
 
 ## Overview
 
@@ -12,7 +11,7 @@ description: "Rust CLI for mind 0.3.0-compatible local knowledge repos. Manage p
 
 **Key concepts:**
 - **Mind Repo**: A directory rooted at `minds.yaml`. Most commands require running inside one.
-- **Project**: A subdirectory with `docs/`, `sources/`, `assets/`, and `mind.yaml`. Project identity is a repo-relative path.
+- **Project**: A subdirectory with `docs/`, `sources/`, `assets/`, and `mind.yaml`. Some repositories also use `prompts/` for writing intent. Project identity is a repo-relative path.
 - **Index**: `mind-index.yaml` per project — source of truth for articles, sources, assets, terms, and publish records.
 - **Output**: Text by default, JSON with `--json` or `--format json`.
 
@@ -36,11 +35,11 @@ Every command honors these uniform contracts:
 - **Identity round-trip:** Every list emits `data.<plural-noun>[].identity`; that exact value is accepted as input by the matching `show`/`rename`/`remove`/etc.
 - **List layout:** Header row + two-space gap between columns; missing values rendered as `-`; long values truncated with `…` (ASCII fallback `...`).
 - **Show layout:** Aligned `Key:  Value` block with optional sub-sections.
-- **Create family envelope:** `{ kind, identity, created_at, path?, dry_run, details }` plus text `✓ created|added {kind}: {identity}`.
+- **Create family envelope:** `{ kind, identity, created_at, path?, dry_run, details }` plus text `✓ created {kind}: {identity}`.
 - **Modify family envelope:** Per-verb `{ kind, identity, ... }`; rename adds `old_identity`/`new_identity`; remove adds `removed: bool`; update adds `changes: { field: {from, to} }`; index adds `{ added, removed, kept_count, scanned_count }`.
 - **Lint envelope:** `{ kind, issues, summary: { errors, warnings, info }, dry_run }`.
 - **TTY adaptation:** Pipes drop ANSI and headers, preserve row shape; `NO_COLOR` env disables color.
-- **Confirmation protocol:** `remove` and `archive` open `/dev/tty` for a `[y/N]` prompt on stderr. Non-TTY without `--yes` exits 1 with hint `pass --yes to confirm`.
+- **Confirmation protocol:** `remove` and `archive` open `/dev/tty` for a `[y/N]` prompt on stderr. Non-TTY without `--yes` exits 1 with a confirmation hint. `--force` bypasses safety checks but does not replace confirmation.
 
 ## Flags
 
@@ -64,8 +63,8 @@ Shared flag families (uniform across all commands they apply to):
 | Flag family | Applies to | Description |
 |---|---|---|
 | `--dry-run` | every mutating command (`new`, `rename`, `remove`, `archive`, `update`, `index`, lint `--fix`) | Preview without writing; JSON envelope sets `dry_run: true` |
-| `-f`, `--force` | every `new` / `rename` / `remove` / `archive` | Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others |
-| `-y`, `--yes` | every `remove` and `archive` | Skip interactive confirmation prompt |
+| `-f`, `--force` | every `new` / `rename` / `remove` / `archive` | Overwrite a target or bypass safety checks; it does not confirm remove/archive |
+| `-y`, `--yes` | every `remove` and `archive` | Confirm destructive action non-interactively |
 | `--no-headers`, `--no-trunc` | every `list` | Suppress table header / disable column truncation |
 | `--fix`, `--rule <RULE>`, `--severity <LEVEL>`, `--max-warnings <N>` | every `lint` | Auto-fix; restrict to one rule kind; filter at-or-above severity (`error`/`warning`/`info`); exit 1 when warnings exceed N |
 
@@ -98,7 +97,7 @@ Update project metadata in `mind.yaml`.
 
 **`mf project remove <PATH>`** (alias `rm`) — Remove a project. Interactive TTY confirmation unless `--yes` is set.
 
-**`mf project archive <NAME_OR_PATH>`** — Move project to `_archived/`. Interactive TTY confirmation unless `--yes` is set.
+**`mf project archive <NAME_OR_PATH>`** — Move project to `_archived/`. Interactive TTY confirmation unless `--yes` or `--force` is set.
 
 **`mf project lint`**
 Lint project(s). Requires `-p, --project <PROJECT>`.
@@ -111,7 +110,7 @@ Import a directory as a project.
 `--type <TYPE>` — Project type
 `--source <DIR>` — Source directory override
 `--assets <DIR>` — Assets directory override
-`-y`, `--yes` — Skip prompts
+`-y`, `--non-interactive` — Skip prompts
 
 ### `mf article` — Manage articles
 
@@ -136,18 +135,18 @@ Update article metadata in `mind-index.yaml`.
 
 **`mf article rename <OLD_PATH> <NEW_PATH>`** — Rename an article.
 
-**`mf article remove <PATH>`** (alias `rm`) — Remove an article. Interactive TTY confirmation unless `--yes` is set.
+**`mf article remove <PATH>`** (alias `rm`) — Remove an article. Interactive TTY confirmation unless `--yes` or `--force` is set.
 
 **`mf article lint`** — Lint articles.
 
-**`mf article convert [PATH]`**
+**`mf article convert`**
 Convert article shape between directory and single-file.
 `--to-single-file` — Collapse eligible single-section directory articles into single-file articles.
 `--to-directory` — Expand single-file articles into directory mode with an opening section.
 Without a direction flag in a TTY, the CLI infers the unique reasonable direction and prompts for confirmation; non-TTY fails with a usage error if both directions are plausible.
 `--dry-run` reports the plan without mutating the filesystem or index.
 
-**`mf article index`** — Index articles (mf extension). `--dry-run` previews without writing.
+**`mf article index`** — Index articles (mf extension). `-n` is short for `--dry-run`.
 
 ### `mf source` — Manage content sources
 
@@ -157,6 +156,7 @@ Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (a
 `-n`, `--name <NAME>` — Source name
 `--file-kind <auto|pdf|file|rss|web>` — File kind (mf primary)
 `--source-kind <yuque|meeting|misc>` — Source channel type (mind primary)
+`-t`, `--type <KIND>` — Deprecated: use `--file-kind` or `--source-kind` instead
 `--link` — Symlink instead of copy (local files)
 
 **`mf source list`** (alias `ls`)
@@ -222,8 +222,9 @@ Create a term (mf extension).
 
 **`mf term list`** (alias `ls`)
 `--filter <PATTERN>` — Filter by name
-
 **`mf term show <TERM>`** — Show term details (term + corrections sub-section).
+
+Add or change a term's corrections (canonical/alias pairs) via `mf term update --alias` and the `--correction-*` flags below.
 
 **`mf term update <TERM>`**
 Update term metadata (mf extension).
@@ -243,18 +244,18 @@ Update term metadata (mf extension).
 Rename a term.
 `--keep-alias` — Preserve the old name as an alias on the renamed term.
 
-**`mf term remove <TERM>`** (alias `rm`) — Remove a term. Interactive TTY confirmation unless `--yes` is set.
+**`mf term remove <TERM>`** (alias `rm`) — Remove a term. Interactive TTY confirmation unless `--yes` or `--force` is set.
 
 **`mf term lint [PATH]`**
 Lint term consistency in project docs. Detects misrecognized terms using configurable `Correction.match` modes: `word` (default — ASCII word boundaries; CJK requires a non-CJK neighbor), `substring` (exact match anywhere), or `pinyin` (tone-less pinyin scan with auto-conversion for CJK terms). Pinyin findings are always `fix: suggested` (trailing `?` marker).
-`--fix` — Auto-correct term usage in docs (pair with `--dry-run` to preview). Non-TTY exits 2 unless `-y`/`--yes` is passed.
+`--fix` — Auto-correct term usage in docs (pair with `--dry-run` to preview). Non-TTY exits 2 unless `-y`/`--force` is passed.
 `--include-suggested` — Apply suggested fixes (pinyin matches) in addition to required corrections.
 `--rule <RULE>` — Restrict to one rule kind.
 `--severity <LEVEL>` — Filter at-or-above severity (`error`/`warning`/`info`).
 `--max-warnings <N>` — Exit 1 when warnings exceed N.
 
 **`mf term fix [PATH]`**
-First-class alias for `term lint --fix`. Same flags as `term lint`, plus `--include-suggested` to apply suggested corrections.
+First-class alias for `term lint --fix`. Same flags as `term lint`, including `--include-suggested` to apply suggested corrections.
 
 ### `mf build <ARTICLE>` — Build/assemble an article
 
@@ -274,17 +275,16 @@ Publish article to a target (supported: `local`, `yuque-prompt`).
 **`mf publish update <ARTICLE>`**
 Update a `publish_records` entry in `mind-index.yaml`.
 `--target <TARGET>` — Target name (required)
-`--status <draft|published|archived>` — Set status
-`--target-url <URL>` — Set target URL
-`--set <KEY=VALUE>` — Set arbitrary field (repeatable)
+`--set <KEY=VALUE>` — Set fields such as `status=published` or `url=<URL>` (repeatable, preferred)
+`--status <draft|published|archived>` / `--target-url <URL>` — Accepted compatibility flags; prefer `--set`
 
 **`mf publish target list`** — List publish targets and diagnostics.
 
 **`mf publish target show <NAME>`** — Show publish target details.
 
-### `mf render template` — Render templates
+### `mf render [ARTICLE]` — Generate render prompts
 
-Subcommands: `list`, `show`.
+With an article selector, emit a render prompt without writing output files. The `template` subcommand inspects templates.
 
 **`mf render template list`** — List built-in and project-local render templates.
 
@@ -292,7 +292,7 @@ Subcommands: `list`, `show`.
 
 ### `mf config` — Manage configuration
 
-Subcommands: `schema`, `show`, `generate`, `default`, `terminal`.
+Subcommands: `schema`, `show`, `generate`, `default`, `terminal`, `init` (deprecated).
 
 **`mf config schema`** — Show config JSON schema. `--output-format <json|yaml>` (default: `json`).
 
@@ -303,6 +303,8 @@ Subcommands: `schema`, `show`, `generate`, `default`, `terminal`.
 **`mf config default`** — Show default config values. `--output-format <json|yaml>` (default: `yaml`). Generated config includes a `plugins.typora-front-matter` block with `enabled: true`.
 
 **`mf config terminal`** — Show terminal capability diagnostics (hyperlink support, color depth, terminfo probing). Environment-driven detection respects `TERM`, `COLORTERM`, `TERM_PROGRAM`, `NO_COLOR`, `MF_FORCE_HYPERLINKS`, and `MF_NO_HYPERLINKS`.
+
+**`mf config init`** — Deprecated compatibility command; use `mf init`. Supports `--output`, `--target <project|repo>`, and `--force`.
 
 ### `mf completion <SHELL>` — Generate shell completion scripts
 
@@ -365,8 +367,8 @@ mf article update docs/my-first-post --status published --project my-project
 mf article rename docs/old-title docs/new-title --project my-project
 mf article index --project my-project
 mf article lint --fix --project my-project
-mf article convert docs/quick-note --to-single-file --project my-project
-mf article convert docs/single-page --to-directory --project my-project
+mf article convert --to-single-file --project my-project
+mf article convert --to-directory --project my-project
 mf article convert --dry-run --project my-project
 
 # Build & publish
@@ -375,7 +377,7 @@ mf build @projects/my-project/docs/2026-03-review/ --output ./_build/review.md
 mf build my-first-post --dry-run --project my-project
 mf publish run "My First Post" --target local --project my-project
 mf publish run "My First Post" --target yuque-prompt --project my-project
-mf publish update "My First Post" --target local --status published --project my-project
+mf publish update "My First Post" --target local --set status=published --project my-project
 mf publish target list
 mf publish target show local
 
@@ -392,10 +394,10 @@ mf term update "API" --definition "Updated definition" --project my-project
 mf term rename "API" "Application API" --keep-alias --project my-project
 mf term remove obsolete-term --yes --project my-project
 mf term lint --project my-project
-mf term lint --project my-project --fix --dry-run                  # preview corrections
-mf term lint --project my-project --fix --include-suggested        # apply suggested pinyin fixes too
-mf term fix --project my-project                                   # alias for term lint --fix
-mf term fix --project my-project --include-suggested               # apply suggested corrections
+mf term lint --project my-project --fix --dry-run            # preview corrections
+mf term lint --project my-project --fix --include-suggested  # apply suggested pinyin fixes too
+mf term fix --project my-project                             # alias for term lint --fix
+mf term fix --project my-project --include-suggested         # apply suggested corrections
 
 # Config
 mf config show
@@ -420,5 +422,8 @@ mf version --json
 - Prefer `schema` over `schema_version` in docs, examples, and generated YAML.
 - Global terms (created without `--project`) are stored in `minds-terms.yaml` at the repo root. Project-scoped terms are stored in each project's `mind-index.yaml`.
 - `term lint` requires a project context — it scans project docs for term usage.
-- Destructive verbs (`remove`, `archive`) prompt on `/dev/tty` in interactive shells. In scripts/CI, pass `--yes` to confirm or `--force` to also bypass safety checks. `--force` and `--yes` are separate flags: `-y`/`--yes` skips the confirmation prompt, `-f`/`--force` bypasses safety checks (overwrite / referential integrity).
-- Shell completion scripts should be regenerated after this release (`mf completion <SHELL>`), as some flags and subcommands have been renamed or removed.
+- Destructive verbs (`remove`, `archive`) prompt on `/dev/tty` in interactive shells. In scripts/CI pass `--yes` to confirm; add `--force` separately only when bypassing overwrite or referential-integrity checks is intended.
+- `term lint --fix` and `term fix` treat `--force` as an alias for `--yes`; do not generalize that exception to entity removal.
+- `term update` manages term metadata and corrections. `term fix` is a first-class alias for `term lint --fix`.
+- `article convert` evaluates eligible articles project-wide; it does not take an article selector.
+- `mf init` is the preferred bootstrap command; `mf config init` remains deprecated compatibility.
