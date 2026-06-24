@@ -120,6 +120,112 @@ fn lint_skips_inline_code_html_comment_url() {
 }
 
 // ---------------------------------------------------------------------------
+// 5a. immunity proof — bare http(s) URL is exempt, prose hit still caught
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lint_exempts_bare_http_url() {
+    let (repo, project) = setup_with_term();
+    write_doc(&project, "bare_url", "real mindrepo here\nlink https://example.com/mindrepo/guide\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    // The occurrence inside the URL is immune; only the prose occurrence counts.
+    assert_eq!(stdout.matches("→ \"Mind Repo\"").count(), 1, "only prose hit, URL immune: {stdout}");
+}
+
+// ---------------------------------------------------------------------------
+// 5b. immunity proof — markdown link URL `](...)` is exempt
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lint_exempts_markdown_link_url() {
+    let (repo, project) = setup_with_term();
+    write_doc(&project, "link_url", "real mindrepo here\n[guide](https://example.com/mindrepo)\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    // Term inside the link target is immune; link text carries no term.
+    assert_eq!(stdout.matches("→ \"Mind Repo\"").count(), 1, "only prose hit, link URL immune: {stdout}");
+}
+
+// ---------------------------------------------------------------------------
+// 5c. immunity proof — HTML comment is exempt
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lint_exempts_html_comment() {
+    let (repo, project) = setup_with_term();
+    write_doc(&project, "html_comment", "real mindrepo here\n<!-- mindrepo note -->\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    // Term inside the HTML comment is immune; only the prose occurrence counts.
+    assert_eq!(stdout.matches("→ \"Mind Repo\"").count(), 1, "only prose hit, comment immune: {stdout}");
+}
+
+// ---------------------------------------------------------------------------
+// 5d. immunity proof — substring match_kind cannot penetrate link URL exemption
+//     Regression guard: `tps` (substring) is present inside `https` of a link
+//     target. Exemption happens before matching, so even the most aggressive
+//     match_kind must not fire there — only the standalone prose `tps` counts.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lint_substring_does_not_penetrate_link_url() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    common::write_index(
+        &repo,
+        "alpha",
+        "schema_version: '1'\nterms:\n  - term: TPS\n    definition: transactions per second\n    corrections:\n      - original: tps\n        correct: TPS\n        match_kind: substring\n",
+    );
+    write_doc(&project, "link_tps", "see [url](https://test.com) and raw tps word\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    // `tps` inside `https://test.com` is exempt; only the prose `tps` is caught.
+    assert_eq!(stdout.matches("→ \"TPS\"").count(), 1, "substring must not fire inside link URL: {stdout}");
+}
+
+// ---------------------------------------------------------------------------
+// 5e. regression — `--fix` must not corrupt URLs whose scheme shares the
+//     correction's leading byte. `hcs` once matched `h\0\0` inside `https://`
+//     (leaked scheme byte + `\0` wildcard), rewriting `https` -> `HCSps`.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lint_fix_does_not_corrupt_url_with_scheme_shared_leading_byte() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    common::write_index(
+        &repo,
+        "alpha",
+        "schema_version: '1'\nterms:\n  - term: HCS\n    definition: Hybrid Cloud Storage\n    corrections:\n      - original: hcs\n        correct: HCS\n        match_kind: word\n        boundary: standalone\n",
+    );
+    write_doc(
+        &project,
+        "urls",
+        "plain https://test.com here\nhost https://hcs.example.com here\nprose the hcs system\n",
+    );
+
+    let output = mf(&repo).args(["term", "lint", "--fix", "--yes", "--project", "alpha"]).output().unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let content = fs::read_to_string(project.join("docs").join("urls.md")).unwrap();
+    // URLs are exempt and must survive verbatim — including the `hcs` host.
+    assert!(content.contains("https://test.com"), "scheme must not be mangled: {content}");
+    assert!(content.contains("https://hcs.example.com"), "URL `hcs` host must not be touched: {content}");
+    assert!(!content.contains("HCSps"), "the `https -> HCSps` corruption must not occur: {content}");
+    // The standalone prose occurrence is still corrected.
+    assert!(content.contains("the HCS system"), "prose hcs must still be fixed: {content}");
+}
+
+// ---------------------------------------------------------------------------
 // 6. front-matter skip
 // ---------------------------------------------------------------------------
 
