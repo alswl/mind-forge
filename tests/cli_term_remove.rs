@@ -76,7 +76,7 @@ fn remove_term_json_envelope() {
             "--project",
             "alpha",
             "--yes",
-            "--format",
+            "--output",
             "json",
         ])
         .output()

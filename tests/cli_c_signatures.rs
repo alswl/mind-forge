@@ -27,7 +27,7 @@ fn article_new_type_title_succeeds() {
     let (stdout, stderr, code) = run(&[
         "--root",
         &dir.path().to_string_lossy(),
-        "--format",
+        "--output",
         "json",
         "article",
         "new",
@@ -141,7 +141,7 @@ fn source_add_source_kind_no_warning() {
     let (stdout, stderr, code) = run(&[
         "--root",
         &dir.path().to_string_lossy(),
-        "--format",
+        "--output",
         "json",
         "source",
         "new",
@@ -303,7 +303,7 @@ fn asset_add_name_copy_tag_no_warning() {
     let (stdout, stderr, code) = run(&[
         "--root",
         &dir.path().to_string_lossy(),
-        "--format",
+        "--output",
         "json",
         "asset",
         "new",
@@ -339,7 +339,7 @@ fn asset_update_set_url_channel_succeeds() {
     let (stdout, stderr, code) = run(&[
         "--root",
         &dir.path().to_string_lossy(),
-        "--format",
+        "--output",
         "json",
         "asset",
         "update",
@@ -370,7 +370,7 @@ fn asset_update_all_succeeds() {
     let (stdout, stderr, code) = run(&[
         "--root",
         &dir.path().to_string_lossy(),
-        "--format",
+        "--output",
         "json",
         "asset",
         "update",

@@ -316,7 +316,7 @@ fn lint_json_shape() {
     let (repo, project) = setup_with_term();
     write_doc(&project, "intro", "mindrepo here\n");
 
-    let output = mf(&repo).args(["--format", "json", "term", "lint", "--project", "alpha"]).output().unwrap();
+    let output = mf(&repo).args(["--output", "json", "term", "lint", "--project", "alpha"]).output().unwrap();
 
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8(output.stdout).unwrap();
@@ -550,7 +550,7 @@ fn lint_fix_json_shape() {
     write_doc(&project, "intro", "mindrepo\n");
 
     let output =
-        mf(&repo).args(["--format", "json", "term", "lint", "--fix", "-y", "--project", "alpha"]).output().unwrap();
+        mf(&repo).args(["--output", "json", "term", "lint", "--fix", "-y", "--project", "alpha"]).output().unwrap();
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();

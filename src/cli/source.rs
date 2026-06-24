@@ -1,14 +1,12 @@
-use std::path::{Path, PathBuf};
-
 use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 
-use crate::cli::deprecation::DeprecationContext;
 use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::shared_flags::YesFlag;
+use crate::cli::CommandCtx;
 use crate::cli::CommandOutcome;
 use crate::defaults;
 use crate::error::{MfError, Result};
@@ -216,37 +214,22 @@ pub struct SourceShowArgs {
 // T017: Dispatch — replaced by user story tasks
 // ---------------------------------------------------------------------------
 
-pub fn dispatch(
-    command: SourceCmd,
-    repo_root: Option<&PathBuf>,
-    format: Format,
-    project: Option<&str>,
-    deprecation: &mut DeprecationContext,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
-    let cwd = std::env::current_dir().map_err(MfError::Io)?;
-
+pub fn dispatch(command: SourceCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("source")),
-        Some(SourceSubcommand::New(args)) => handle_add(args, root, &cwd, format, project),
-        Some(SourceSubcommand::List(args)) => handle_list(args, root, &cwd, format, project),
-        Some(SourceSubcommand::Update(args)) => handle_update(args, root, &cwd, format, project),
-        Some(SourceSubcommand::Index(args)) => handle_index(args, root, &cwd, format, project),
-        Some(SourceSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format, project, deprecation),
-        Some(SourceSubcommand::Rename(args)) => handle_rename(args, root, &cwd, format, project),
-        Some(SourceSubcommand::Clean(args)) => handle_clean(args, root, &cwd, format, project),
-        Some(SourceSubcommand::Show(args)) => handle_source_show(args, root, &cwd, format, project),
+        Some(SourceSubcommand::New(args)) => handle_add(args, ctx),
+        Some(SourceSubcommand::List(args)) => handle_list(args, ctx),
+        Some(SourceSubcommand::Update(args)) => handle_update(args, ctx),
+        Some(SourceSubcommand::Index(args)) => handle_index(args, ctx),
+        Some(SourceSubcommand::Remove(args)) => handle_remove(args, ctx),
+        Some(SourceSubcommand::Rename(args)) => handle_rename(args, ctx),
+        Some(SourceSubcommand::Clean(args)) => handle_clean(args, ctx),
+        Some(SourceSubcommand::Show(args)) => handle_source_show(args, ctx),
     }
 }
 
-fn handle_list(
-    args: SourceListArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, project, cwd)?;
+fn handle_list(args: SourceListArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
 
     // Resolve type filter (CliSourceKind → model FileKind; Auto is rejected)
     let type_filter = match args.kind {
@@ -268,7 +251,7 @@ fn handle_list(
     let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
         .with_repo_root(Some(project_path.to_path_buf()));
 
-    match format {
+    match ctx.format() {
         Format::Json => {
             let items: Vec<serde_json::Value> = sources
                 .iter()
@@ -300,14 +283,8 @@ fn handle_list(
     }
 }
 
-fn handle_update(
-    args: SourceUpdateArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, project, cwd)?;
+fn handle_update(args: SourceUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
     identity::validate_entity_path(&project_path, &args.path)?;
 
     if args.dry_run.dry_run {
@@ -329,7 +306,7 @@ fn handle_update(
             dry_run: true,
             details: serde_json::json!({"changes": changes}),
         };
-        return match format {
+        return match ctx.format() {
             Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
             Format::Text => Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
@@ -363,7 +340,7 @@ fn handle_update(
         dry_run: false,
         details: serde_json::json!({"changes": changes, "source": source}),
     };
-    match format {
+    match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
@@ -373,20 +350,14 @@ fn handle_update(
     }
 }
 
-fn handle_index(
-    args: SourceIndexArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, project, cwd)?;
+fn handle_index(args: SourceIndexArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
 
     let report = svc_source::reconcile(&project_path, args.dry_run.dry_run)?;
 
     let scanned_count = report.added.len() + report.removed.len() + report.kept_count as usize;
 
-    match format {
+    match ctx.format() {
         Format::Json => {
             let data = serde_json::json!({
                 "kind": "source",
@@ -423,19 +394,12 @@ fn handle_index(
     }
 }
 
-fn handle_remove(
-    args: SourceRemoveArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-    deprecation: &mut DeprecationContext,
-) -> Result<CommandOutcome> {
+fn handle_remove(args: SourceRemoveArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     let is_path = args.name_or_path.contains('/') || args.name_or_path.starts_with(defaults::SOURCES_DIR);
     if !is_path {
-        deprecation.warn_subject("positional NAME", "full PATH (e.g., sources/yuque/foo.md)");
+        ctx.warn_subject("positional NAME", "full PATH (e.g., sources/yuque/foo.md)");
     }
-    let project_path = svc_util::resolve_project(root, project, cwd)?;
+    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
     identity::validate_entity_path(&project_path, &args.name_or_path)?;
 
     require_confirmation(&ConfirmArgs {
@@ -463,7 +427,7 @@ fn handle_remove(
         dry_run: args.dry_run.dry_run,
         details: serde_json::json!({"removed": true}),
     };
-    match format {
+    match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
@@ -473,18 +437,12 @@ fn handle_remove(
     }
 }
 
-fn handle_clean(
-    args: SourceCleanArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, project, cwd)?;
+fn handle_clean(args: SourceCleanArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
 
     let report = svc_source::clean(&project_path, args.dry_run.dry_run)?;
 
-    match format {
+    match ctx.format() {
         Format::Json => {
             let data = serde_json::to_value(&report).map_err(MfError::Json)?;
             Ok(CommandOutcome::Success(data, Vec::new(), None))
@@ -514,14 +472,8 @@ fn handle_clean(
 
 // ── Handle: mf source rename ────────────────────────────────────────────────
 
-fn handle_rename(
-    args: SourceRenameArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, project, cwd)?;
+fn handle_rename(args: SourceRenameArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
     identity::validate_entity_path(&project_path, &args.old_path)?;
     identity::validate_entity_path(&project_path, &args.new_path)?;
 
@@ -535,7 +487,7 @@ fn handle_rename(
             dry_run: true,
             details: serde_json::json!({}),
         };
-        return match format {
+        return match ctx.format() {
             Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
             Format::Text => Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
@@ -556,7 +508,7 @@ fn handle_rename(
         dry_run: false,
         details: serde_json::json!({}),
     };
-    match format {
+    match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
@@ -570,14 +522,8 @@ fn handle_rename(
 // Handle: mf source show
 // ---------------------------------------------------------------------------
 
-fn handle_source_show(
-    args: SourceShowArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, project, cwd)?;
+fn handle_source_show(args: SourceShowArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
     identity::validate_entity_path(&project_path, &args.path)?;
     let sources = svc_source::list(&project_path, None, None)?;
 
@@ -609,7 +555,7 @@ fn handle_source_show(
                 sections: vec![],
             };
 
-            match format {
+            match ctx.format() {
                 Format::Json => {
                     let source_json = serde_json::to_value(source).map_err(MfError::Json)?;
                     let extra = source_json.as_object().cloned().unwrap_or_default();
@@ -628,14 +574,8 @@ fn handle_source_show(
 // Handle: mf source add
 // ---------------------------------------------------------------------------
 
-fn handle_add(
-    args: SourceAddArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, project, cwd)?;
+fn handle_add(args: SourceAddArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
 
     let input_form = svc_source::classify_input(&args.input);
 
@@ -670,7 +610,7 @@ fn handle_add(
             dry_run: true,
             details: serde_json::json!({"input": args.input}),
         };
-        return match format {
+        return match ctx.format() {
             Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
             Format::Text => Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
@@ -689,7 +629,7 @@ fn handle_add(
         force: args.force.force,
     };
 
-    let outcome = svc_source::add(&project_path, cwd, &add_args)?;
+    let outcome = svc_source::add(&project_path, ctx.cwd(), &add_args)?;
 
     let result = VerbResult {
         verb: Verb::Add,
@@ -713,7 +653,7 @@ fn handle_add(
             "replaced": outcome.replaced,
         }),
     };
-    match format {
+    match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),

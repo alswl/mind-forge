@@ -17,7 +17,7 @@ fn source_index_discovers_existing_yuque_files() {
     assert_eq!(code, 0, "source index failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     assert!(stdout.contains("+1"), "source index should report one added source: {stdout}");
 
-    let (stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "source", "list", "--project", "alpha"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "source", "list", "--project", "alpha"]);
     assert_eq!(code, 0, "source list failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
 
     let envelope: Value = serde_json::from_str(&stdout).expect("source list stdout should be json");

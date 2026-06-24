@@ -57,7 +57,7 @@ fn end_to_end_generated_publish() {
 
     // Dry-run publish using the generated article ID
     let (parsed, stderr, code) = json_run(
-        &["--format", "json", "publish", "run", "daily_report/2026-05-15", "--target", "local-out", "--dry-run"],
+        &["--output", "json", "publish", "run", "daily_report/2026-05-15", "--target", "local-out", "--dry-run"],
         project_path.as_path(),
     );
     assert_eq!(code, Some(0), "dry-run publish of generated article should succeed: stderr={stderr} parsed={parsed}",);
@@ -115,7 +115,7 @@ fn publish_auto_reindexes_on_miss() {
 
     // Publish without prior index — should auto-reindex and succeed
     let (parsed, stderr, code) = json_run(
-        &["--format", "json", "publish", "run", "daily_report/2026-05-16", "--target", "local-out", "--dry-run"],
+        &["--output", "json", "publish", "run", "daily_report/2026-05-16", "--target", "local-out", "--dry-run"],
         project_path.as_path(),
     );
     assert_eq!(code, Some(0), "publish should auto-reindex on cache miss: stderr={stderr} parsed={parsed}",);
@@ -153,11 +153,11 @@ fn publish_still_missing_after_reindex() {
 
     // Request a non-existent generated article ID
     let (parsed, stderr, code) = json_run(
-        &["--format", "json", "publish", "run", "daily_report/9999-01-01", "--target", "local-out", "--dry-run"],
+        &["--output", "json", "publish", "run", "daily_report/9999-01-01", "--target", "local-out", "--dry-run"],
         project_path.as_path(),
     );
     assert_ne!(code, Some(0), "publish of non-existent generated article should fail: {stderr}");
-    assert_eq!(parsed["error"]["kind"], "not-found", "should report not-found: {parsed}");
+    assert_eq!(parsed["error"]["kind"], "not_found", "should report not_found: {parsed}");
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +173,7 @@ fn generated_publish_source_is_template_file() {
     assert_eq!(code, Some(0), "index: stderr={stderr}");
 
     let (parsed, stderr, code) = json_run(
-        &["--format", "json", "publish", "run", "daily_report/2026-05-15", "--target", "local-test", "--dry-run"],
+        &["--output", "json", "publish", "run", "daily_report/2026-05-15", "--target", "local-test", "--dry-run"],
         project_path.as_path(),
     );
     assert_eq!(code, Some(0), "publish generated should succeed: stderr={stderr}");
@@ -197,7 +197,7 @@ fn generated_publish_date_expansion_and_prefix_destination() {
     assert_eq!(code, Some(0), "index: stderr={stderr}");
 
     let (parsed, stderr, code) = json_run(
-        &["--format", "json", "publish", "run", "daily_report/2026-05-15", "--target", "local-test", "--dry-run"],
+        &["--output", "json", "publish", "run", "daily_report/2026-05-15", "--target", "local-test", "--dry-run"],
         project_path.as_path(),
     );
     assert_eq!(code, Some(0), "publish generated should succeed: stderr={stderr}");

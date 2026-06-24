@@ -308,7 +308,7 @@ fn article_lint_json_output() {
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["--format", "json", "article", "lint"])
+        .args(["--output", "json", "article", "lint"])
         .output()
         .expect("command runs");
     assert_eq!(output.status.code(), Some(0));
@@ -325,7 +325,7 @@ fn article_lint_json_output() {
 // ---------------------------------------------------------------------------
 
 fn json_index(args: &[&str], cwd: &std::path::Path) -> (serde_json::Value, std::process::Output) {
-    let mut all = vec!["--format", "json", "article", "index"];
+    let mut all = vec!["--output", "json", "article", "index"];
     all.extend_from_slice(args);
     let output =
         Command::cargo_bin("mf").expect("binary exists").current_dir(cwd).args(&all).output().expect("command runs");
@@ -525,7 +525,7 @@ fn article_list_json_shows_article_dir_field() {
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["--format", "json", "article", "list"])
+        .args(["--output", "json", "article", "list"])
         .output()
         .expect("command runs");
     assert_eq!(output.status.code(), Some(0));
@@ -586,7 +586,7 @@ fn article_list_json_with_configured_article_dir() {
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["--format", "json", "article", "list"])
+        .args(["--output", "json", "article", "list"])
         .output()
         .expect("command runs");
     assert_eq!(output.status.code(), Some(0));
@@ -697,7 +697,7 @@ fn article_index_uses_configured_article_key_for_directory_article_dir() {
     let list_output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["--format", "json", "article", "list"])
+        .args(["--output", "json", "article", "list"])
         .output()
         .expect("command runs");
     let stdout = String::from_utf8(list_output.stdout).unwrap();
@@ -842,7 +842,7 @@ fn list_discovers_generated_articles() {
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["--format", "json", "article", "list"])
+        .args(["--output", "json", "article", "list"])
         .output()
         .expect("command runs");
     assert_eq!(output.status.code(), Some(0), "list should succeed");
@@ -899,7 +899,7 @@ fn list_is_byte_idempotent() {
         let output = Command::cargo_bin("mf")
             .expect("binary exists")
             .current_dir(repo.path().join("my-project"))
-            .args(["--format", "json", "article", "list"])
+            .args(["--output", "json", "article", "list"])
             .output()
             .expect("command runs");
         assert_eq!(output.status.code(), Some(0), "{name} should succeed");
@@ -930,7 +930,7 @@ fn list_works_without_prior_index() {
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["--format", "json", "article", "list"])
+        .args(["--output", "json", "article", "list"])
         .output()
         .expect("command runs");
     assert_eq!(output.status.code(), Some(0), "list should succeed without prior index");
@@ -1135,7 +1135,7 @@ fn article_remove_json_envelope() {
             "My Article",
             "--project",
             "my-project",
-            "--format",
+            "--output",
             "json",
             "--yes",
         ])
@@ -1289,7 +1289,7 @@ fn article_rename_json_envelope() {
             "new-slug",
             "--project",
             "my-project",
-            "--format",
+            "--output",
             "json",
         ])
         .output()
@@ -2259,7 +2259,7 @@ fn article_list_all_projects_json() {
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path())
-        .args(["--format", "json", "article", "list"])
+        .args(["--output", "json", "article", "list"])
         .output()
         .expect("command runs");
     assert!(output.status.success());
@@ -2299,7 +2299,7 @@ fn article_list_all_projects_sorted_by_mtime() {
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path())
-        .args(["--format", "json", "article", "list"])
+        .args(["--output", "json", "article", "list"])
         .output()
         .expect("command runs");
     assert!(output.status.success());

@@ -36,14 +36,14 @@ Options:
   -q, --quiet
           Silence non-error output
 
-      --format <FORMAT>
+  -o, --output <FORMAT>
           Output format
           
           [default: text]
           [possible values: text, json]
 
       --json
-          Shorthand for --format json
+          Shorthand for --output json
 
       --no-color
           Disable colored output

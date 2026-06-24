@@ -63,7 +63,7 @@ fn e2e_new_rejects_existing_dir() {
     assert!(
         stderr.contains("already exists")
             || stderr.contains("file exists")
-            || stderr.contains("file-exists")
+            || stderr.contains("file_exists")
             || stderr.contains("refusing to overwrite"),
         "stderr: {stderr}"
     );
@@ -169,7 +169,7 @@ fn e2e_list_missing_index_shows_zero() {
 fn e2e_list_json_envelope() {
     let ds = repo_008_with_data();
 
-    let (stdout, _, code) = run_in(ds.root(), &["--format", "json", "project", "list"]);
+    let (stdout, _, code) = run_in(ds.root(), &["--output", "json", "project", "list"]);
 
     assert_eq!(code, 0);
     let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
@@ -380,7 +380,7 @@ fn e2e_full_lifecycle_quickstart() {
     let (stdout, _, code) = run_in(ds.root(), &["project", "lint", "--project", "my-project"]);
     assert_eq!(code, 0, "lint of fresh project failed: {stdout}");
 
-    // archive → works or errors (no longer not-implemented)
+    // archive → works or errors (no longer not_implemented)
     let (_, stderr, code) = run_in(ds.root(), &["project", "archive", "my-project"]);
-    assert!(code != 64, "should not be not-implemented: {stderr}");
+    assert!(code != 64, "should not be not_implemented: {stderr}");
 }

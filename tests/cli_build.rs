@@ -569,7 +569,7 @@ fn build_auto_indexes_article_in_mind_index_yaml() {
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["--format", "json", "article", "list"])
+        .args(["--output", "json", "article", "list"])
         .output()
         .expect("command runs");
     let stdout = String::from_utf8(output.stdout).unwrap();
@@ -735,7 +735,7 @@ articles:
     let output = Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(repo.path().join("my-project"))
-        .args(["--format", "json", "build", "my-article", "--dry-run"])
+        .args(["--output", "json", "build", "my-article", "--dry-run"])
         .output()
         .expect("command runs");
     assert!(output.status.success());

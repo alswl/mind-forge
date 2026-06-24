@@ -10,14 +10,14 @@ use crate::helpers::*;
 fn json_error_envelope_structure() {
     let outside = Dataset::outside();
 
-    let (_stdout, stderr, code) = run_in(outside.path(), &["--format", "json", "project", "list"]);
+    let (_stdout, stderr, code) = run_in(outside.path(), &["--output", "json", "project", "list"]);
 
     assert_eq!(code, 1);
 
     let parsed: serde_json::Value = serde_json::from_str(&stderr).expect("valid JSON error envelope");
     assert_eq!(parsed["status"], "error");
     assert_eq!(parsed["command"], "mf");
-    assert_eq!(parsed["error"]["kind"], "not-in-mind-repo");
+    assert_eq!(parsed["error"]["kind"], "not_in_mind_repo");
     assert!(parsed["error"]["message"].as_str().unwrap_or("").contains("not in a mind repo"));
     assert!(parsed["error"]["hint"].is_string());
 }
@@ -28,7 +28,7 @@ fn json_usage_error_envelope() {
     let outside = Dataset::outside();
 
     let (_stdout, stderr, code) =
-        run_in(outside.path(), &["--format", "json", "--verbose", "--quiet", "source", "list"]);
+        run_in(outside.path(), &["--output", "json", "--verbose", "--quiet", "source", "list"]);
 
     assert_eq!(code, 2);
 
@@ -37,30 +37,30 @@ fn json_usage_error_envelope() {
     assert_eq!(parsed["error"]["kind"], "usage");
 }
 
-/// E2E: JSON 格式的 incompatible-schema 错误
+/// E2E: JSON 格式的 incompatible_schema 错误
 #[test]
 fn json_incompatible_schema_envelope() {
     let ds = Dataset::incompatible_schema();
 
-    let (_stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "project", "index"]);
+    let (_stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "project", "index"]);
 
     assert_eq!(code, 1);
 
     let parsed: serde_json::Value = serde_json::from_str(&stderr).expect("valid JSON");
-    assert_eq!(parsed["error"]["kind"], "incompatible-schema");
+    assert_eq!(parsed["error"]["kind"], "incompatible_schema");
 }
 
-/// E2E: JSON 格式的 parse-error 错误
+/// E2E: JSON 格式的 parse_error 错误
 #[test]
 fn json_parse_error_envelope() {
     let ds = Dataset::not_yaml();
 
-    let (_stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "project", "index"]);
+    let (_stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "project", "index"]);
 
     assert_eq!(code, 1);
 
     let parsed: serde_json::Value = serde_json::from_str(&stderr).expect("valid JSON");
-    assert_eq!(parsed["error"]["kind"], "parse-error");
+    assert_eq!(parsed["error"]["kind"], "parse_error");
 }
 
 /// E2E: CLI parse 错误（如未知 flag）在 JSON 模式下仍输出 JSON error
@@ -68,12 +68,29 @@ fn json_parse_error_envelope() {
 fn json_cli_parse_error_envelope() {
     let ds = Dataset::empty();
 
-    let (_stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "term", "list", "--bogus-flag"]);
+    let (_stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "term", "list", "--bogus-flag"]);
 
     assert_eq!(code, 2);
 
     let parsed: serde_json::Value = serde_json::from_str(&stderr).expect("valid JSON");
     assert_eq!(parsed["error"]["kind"], "usage");
+}
+
+/// E2E: 短选项 `-o json` 与 `--output=json` 同样应在 parse 错误时输出 JSON envelope
+#[test]
+fn json_cli_parse_error_envelope_short_and_equals_forms() {
+    let variants: [&[&str]; 2] =
+        [&["-o", "json", "term", "list", "--bogus-flag"], &["--output=json", "term", "list", "--bogus-flag"]];
+
+    for argv in variants {
+        let ds = Dataset::empty();
+        let (_stdout, stderr, code) = run_in(ds.root(), argv);
+
+        assert_eq!(code, 2, "args={argv:?}");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&stderr).unwrap_or_else(|_| panic!("expected JSON for args={argv:?}, got: {stderr}"));
+        assert_eq!(parsed["error"]["kind"], "usage", "args={argv:?}");
+    }
 }
 
 /// E2E: 文本格式中 usage 错误应包含 hint
@@ -87,7 +104,7 @@ fn text_usage_has_hint() {
     assert!(stderr.contains("mf article list"), "hint should mention article list: {stderr}");
 }
 
-/// E2E: 文本格式中 not-in-mind-repo 应包含 hint
+/// E2E: 文本格式中 not_in_mind_repo 应包含 hint
 #[test]
 fn text_not_in_mind_repo_has_hint() {
     let outside = Dataset::outside();
@@ -116,7 +133,7 @@ fn text_incompatible_schema_has_hint() {
 fn json_error_hint_is_string_or_null() {
     let outside = Dataset::outside();
 
-    let (_, stderr, _) = run_in(outside.path(), &["--format", "json", "project", "list"]);
+    let (_, stderr, _) = run_in(outside.path(), &["--output", "json", "project", "list"]);
     let parsed: serde_json::Value = serde_json::from_str(&stderr).expect("valid JSON");
     let hint = &parsed["error"]["hint"];
     assert!(hint.is_string() || hint.is_null(), "hint should be string or null, got: {hint}");

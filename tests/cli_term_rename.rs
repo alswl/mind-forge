@@ -175,7 +175,7 @@ fn rename_term_json_envelope() {
             "Knowledge Base",
             "--project",
             "alpha",
-            "--format",
+            "--output",
             "json",
         ])
         .output()

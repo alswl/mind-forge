@@ -256,7 +256,7 @@ fn update_unknown_name() {
 }
 
 // ---------------------------------------------------------------------------
-// 8. update_json_envelope — --format json returns full Source object
+// 8. update_json_envelope — --output json returns full Source object
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -274,7 +274,7 @@ fn update_json_envelope() {
             "paper-v2",
             "--project",
             "alpha",
-            "--format",
+            "--output",
             "json",
         ])
         .output()

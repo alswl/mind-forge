@@ -3,6 +3,27 @@
 All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
+### Rust CLI Guide Alignment Refactor (v0.3.0)
+
+#### Breaking Changes
+- **`--format` 重命名为 `--output/-o`**：全局输出格式选择器由 `--format <FORMAT>` 改为 `--output <FORMAT>`（短标志 `-o`）。`--json` 简写保留不变。迁移：将所有 `--format json` 替换为 `--output json`（或 `-o json`、`--json`）。
+- **`error.kind` 值统一为 snake_case**：JSON 错误信封中 `error.kind` 的 6 个 kebab-case 值改为 snake_case。迁移：更新脚本/Agent 对以下 kind 值的匹配：
+
+  | Before | After |
+  |---|---|
+  | `not-in-mind-repo` | `not_in_mind_repo` |
+  | `incompatible-schema` | `incompatible_schema` |
+  | `parse-error` | `parse_error` |
+  | `file-exists` | `file_exists` |
+  | `not-implemented` | `not_implemented` |
+  | `not-found` | `not_found` |
+- **`mf build` 和 `mf config generate` 的 `-o/--output` 重命名为 `--out`**：这两个子命令的本地输出路径标志改为 `--out`，避免与全局 `-o/--output` 冲突。
+
+#### Internal
+- **引入 `CommandCtx`**：所有命令处理函数通过 `CommandCtx` 获取运行时配置，不再手传 `repo_root`/`format`/`project`/`cwd`。
+- **移除 `std::env::set_var("NO_COLOR")`**：color 偏好通过 `CommandCtx` 显式传递到 render 入口。
+- **`AppContext` 字段私有化**：所有字段通过 accessor 方法访问。
+
 ### `mf article rename` + `update --title` 拆分
 
 #### Breaking Changes

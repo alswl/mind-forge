@@ -127,7 +127,7 @@ fn all_mf_commands_in_hints_exist() {
         // Global flags
         "--help",
         "--json",
-        "--format",
+        "--output",
         "--no-headers",
         "--no-trunc",
         "--version",

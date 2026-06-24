@@ -114,7 +114,7 @@ fn remove_asset_json_envelope() {
             "assets/images/diagram.png",
             "--project",
             "alpha",
-            "--format",
+            "--output",
             "json",
             "--yes",
         ])

@@ -199,7 +199,7 @@ fn remove_json_envelope() {
             "paper",
             "--project",
             "alpha",
-            "--format",
+            "--output",
             "json",
             "--yes",
         ])

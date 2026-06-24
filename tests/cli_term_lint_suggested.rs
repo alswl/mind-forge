@@ -145,7 +145,7 @@ terms:
     write_index(&repo, index);
     write_doc(&repo, "ascii", "we use rag in production\n");
 
-    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--format", "json"]).output().unwrap();
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("\"fix_kind\": \"suggested\""), "JSON must have suggested fix_kind: {stdout}");
 }

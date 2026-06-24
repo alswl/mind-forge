@@ -204,7 +204,7 @@ fn rename_source_json_envelope() {
             "whitepaper",
             "--project",
             "alpha",
-            "--format",
+            "--output",
             "json",
         ])
         .output()

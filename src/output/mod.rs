@@ -39,15 +39,20 @@ pub enum Payload<'a> {
     Error(&'a MfError),
 }
 
-pub fn render(writer: &mut dyn Write, format: Format, payload: Payload<'_>) -> Result<()> {
+pub fn render(writer: &mut dyn Write, format: Format, color: bool, payload: Payload<'_>) -> Result<()> {
     match payload {
-        Payload::Success(data) => render_success_inner(writer, format, data),
-        Payload::Raw(content) => render_raw_inner(writer, format, content),
-        Payload::Error(error) => render_error_inner(writer, format, error),
+        Payload::Success(data) => render_success_inner(writer, format, color, data),
+        Payload::Raw(content) => render_raw_inner(writer, format, color, content),
+        Payload::Error(error) => render_error_inner(writer, format, color, error),
     }
 }
 
-pub(super) fn render_success_inner(writer: &mut dyn Write, format: Format, data: &serde_json::Value) -> Result<()> {
+pub(super) fn render_success_inner(
+    writer: &mut dyn Write,
+    format: Format,
+    _color: bool,
+    data: &serde_json::Value,
+) -> Result<()> {
     match format {
         Format::Text => match data {
             serde_json::Value::String(s) => writeln!(writer, "{s}")?,
@@ -77,7 +82,7 @@ pub(super) fn render_success_inner(writer: &mut dyn Write, format: Format, data:
 /// In text mode the string is printed as-is.
 /// In JSON mode the string is parsed as JSON (if valid) and embedded
 /// directly into the `{ status, data }` envelope, avoiding double-encoding.
-pub(super) fn render_raw_inner(writer: &mut dyn Write, format: Format, content: &str) -> Result<()> {
+pub(super) fn render_raw_inner(writer: &mut dyn Write, format: Format, _color: bool, content: &str) -> Result<()> {
     match format {
         Format::Text => {
             writeln!(writer, "{content}")?;
@@ -93,7 +98,7 @@ pub(super) fn render_raw_inner(writer: &mut dyn Write, format: Format, content: 
     Ok(())
 }
 
-pub(super) fn render_error_inner(writer: &mut dyn Write, format: Format, error: &MfError) -> Result<()> {
+pub(super) fn render_error_inner(writer: &mut dyn Write, format: Format, _color: bool, error: &MfError) -> Result<()> {
     let message = error.message();
     match format {
         Format::Text => {

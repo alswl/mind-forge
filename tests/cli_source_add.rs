@@ -140,7 +140,7 @@ fn add_file_link_creates_symlink() {
 }
 
 // ---------------------------------------------------------------------------
-// 5. add_file_rejects_existing — same name second time → file-exists
+// 5. add_file_rejects_existing — same name second time → file_exists
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -179,7 +179,7 @@ fn add_file_rejects_existing() {
     assert!(!output.status.success(), "should fail on duplicate");
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
-        stderr.contains("file-exists") || stderr.contains("already exists") || stderr.contains("refusing to overwrite"),
+        stderr.contains("file_exists") || stderr.contains("already exists") || stderr.contains("refusing to overwrite"),
         "stderr: {stderr}"
     );
 }
@@ -234,7 +234,7 @@ fn add_file_force_overwrites() {
 }
 
 // ---------------------------------------------------------------------------
-// 7. add_outside_mind_repo — cwd not in a repo → not-in-mind-repo
+// 7. add_outside_mind_repo — cwd not in a repo → not_in_mind_repo
 // ---------------------------------------------------------------------------
 
 #[test]

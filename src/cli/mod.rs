@@ -21,7 +21,53 @@ use serde::Serialize;
 use crate::cli::deprecation::DeprecationContext;
 use crate::error::{MfError, Result};
 use crate::output::Format;
+use crate::runtime::AppContext;
 use crate::service::repo;
+
+/// Command-scope context threaded by `&mut` into dispatch and every handler.
+///
+/// Wraps a reference to the owned `AppContext` and the mutable diagnostics sink.
+/// Handlers call accessors instead of threading loose params or reading globals.
+pub struct CommandCtx<'a> {
+    app: &'a AppContext,
+    diagnostics: &'a mut DeprecationContext<'a>,
+}
+
+impl<'a> CommandCtx<'a> {
+    pub fn new(app: &'a AppContext, diagnostics: &'a mut DeprecationContext<'a>) -> Self {
+        Self { app, diagnostics }
+    }
+
+    // ── Delegating accessors ──
+
+    pub fn format(&self) -> Format {
+        self.app.format()
+    }
+
+    pub fn repo_root(&self) -> Option<&PathBuf> {
+        self.app.repo_root()
+    }
+
+    pub fn cwd(&self) -> &PathBuf {
+        self.app.cwd()
+    }
+
+    pub fn project(&self) -> Option<&str> {
+        self.app.project()
+    }
+
+    pub fn quiet(&self) -> bool {
+        self.app.quiet()
+    }
+
+    pub fn require_repo_path(&self) -> Result<&PathBuf> {
+        self.app.require_repo_path()
+    }
+
+    pub fn warn_subject(&mut self, subject: &str, replacement: &str) {
+        self.diagnostics.warn_subject(subject, replacement);
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepoRequirement {
@@ -61,9 +107,9 @@ pub struct GlobalOpts {
     pub verbose: u8,
     #[arg(short = 'q', long = "quiet", global = true, help = "Silence non-error output")]
     pub quiet: bool,
-    #[arg(long, global = true, value_enum, default_value_t = Format::Text, help = "Output format")]
+    #[arg(long = "output", short = 'o', global = true, value_enum, default_value_t = Format::Text, help = "Output format")]
     pub format: Format,
-    #[arg(long, global = true, help = "Shorthand for --format json")]
+    #[arg(long, global = true, help = "Shorthand for --output json")]
     pub json: bool,
     #[arg(long = "no-color", global = true, help = "Disable colored output")]
     pub no_color: bool,
@@ -139,39 +185,24 @@ impl RootCli {
         self.command.as_ref().map(|c| c.requires_repo()).unwrap_or(RepoRequirement::NotRequired)
     }
 
-    pub fn dispatch(
-        self,
-        repo_root: Option<&std::path::PathBuf>,
-        format: Format,
-        deprecation: &mut DeprecationContext,
-    ) -> Result<CommandOutcome> {
-        let project = repo_root.and(self.global.project.as_deref());
-        let quiet = self.global.quiet;
+    pub fn dispatch(self, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
         let outcome = match self.command {
             None => return Ok(CommandOutcome::RootHelp),
-            Some(TopLevelCommand::Version) => version::handle_version(format),
-            Some(TopLevelCommand::Source(command)) => {
-                source::dispatch(command, repo_root, format, project, deprecation)
-            }
-            Some(TopLevelCommand::Asset(command)) => asset::dispatch(command, repo_root, format, project, deprecation),
-            Some(TopLevelCommand::Project(command)) => {
-                project::dispatch(command, repo_root, format, project, deprecation)
-            }
-            Some(TopLevelCommand::Article(command)) => {
-                article::dispatch(command, repo_root, format, project, deprecation)
-            }
-            Some(TopLevelCommand::Term(command)) => term::dispatch(command, repo_root, format, project, deprecation),
-            Some(TopLevelCommand::Completion(command)) => completion::dispatch(command),
-            Some(TopLevelCommand::Build(args)) => build::dispatch(args, repo_root, format, project, deprecation),
-            Some(TopLevelCommand::Publish(command)) => {
-                publish::dispatch(command, repo_root, format, project, deprecation)
-            }
-            Some(TopLevelCommand::Config(command)) => config::dispatch(command, repo_root, format, deprecation),
-            Some(TopLevelCommand::Render(command)) => render::dispatch(command, repo_root, format, project),
+            Some(TopLevelCommand::Version) => version::handle_version(ctx),
+            Some(TopLevelCommand::Source(command)) => source::dispatch(command, ctx),
+            Some(TopLevelCommand::Asset(command)) => asset::dispatch(command, ctx),
+            Some(TopLevelCommand::Project(command)) => project::dispatch(command, ctx),
+            Some(TopLevelCommand::Article(command)) => article::dispatch(command, ctx),
+            Some(TopLevelCommand::Term(command)) => term::dispatch(command, ctx),
+            Some(TopLevelCommand::Completion(command)) => completion::dispatch(command, ctx),
+            Some(TopLevelCommand::Build(args)) => build::dispatch(args, ctx),
+            Some(TopLevelCommand::Publish(command)) => publish::dispatch(command, ctx),
+            Some(TopLevelCommand::Config(command)) => config::dispatch(command, ctx),
+            Some(TopLevelCommand::Render(command)) => render::dispatch(command, ctx),
             Some(TopLevelCommand::Init(args)) => dispatch_init(args),
         }?;
         // FR-080: in quiet mode, suppress success stdout (non-error data).
-        if quiet {
+        if ctx.quiet() {
             match &outcome {
                 CommandOutcome::Success(_, _, _) => {
                     return Ok(CommandOutcome::Success(serde_json::Value::String(String::new()), Vec::new(), None));

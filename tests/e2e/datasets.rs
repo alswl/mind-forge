@@ -13,7 +13,7 @@ pub const MANIFEST_VALID: &str = "schema_version: '1'\nprojects: []\n";
 /// schema_version = "999" 的不兼容 manifest
 pub const MANIFEST_INCOMPATIBLE: &str = "schema_version: '999'\nprojects: []\n";
 
-/// 非 YAML 内容，用于 parse-error 场景
+/// 非 YAML 内容，用于 parse_error 场景
 pub const MANIFEST_NOT_YAML: &str = "<<<not yaml>>>";
 
 /// 空文件

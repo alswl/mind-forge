@@ -80,7 +80,7 @@ fn term_new_rejects_removed_term_flag() {
 
 fn run_json(repo: &common::TempDir, args: &[&str]) -> serde_json::Value {
     let mut cmd = mf(repo);
-    cmd.args(args).arg("--format").arg("json");
+    cmd.args(args).arg("--output").arg("json");
     let output = cmd.output().unwrap();
     assert!(
         output.status.success(),

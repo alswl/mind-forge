@@ -381,9 +381,9 @@ fn project_new_rejects_duplicate_path_identity() {
     let error_output = if stderr.trim().is_empty() { &stdout } else { &stderr };
     let v: serde_json::Value = serde_json::from_str(error_output).unwrap();
     assert_eq!(v["status"], "error");
-    // Either "file-exists" (scaffold check) or "usage" (upsert check) is valid
+    // Either "file_exists" (scaffold check) or "usage" (upsert check) is valid
     let kind = v["error"]["kind"].as_str().unwrap_or("");
-    assert!(kind == "file-exists" || kind == "usage", "unexpected error kind: {kind}");
+    assert!(kind == "file_exists" || kind == "usage", "unexpected error kind: {kind}");
 }
 
 #[test]
@@ -424,7 +424,7 @@ fn duplicate_project_path_shows_diagnostic() {
 #[test]
 fn simple_project_new_flat_name_still_works() {
     let repo = setup();
-    let out = mf_in(&repo).args(["--format", "json", "project", "new", "simple-report"]).output().unwrap();
+    let out = mf_in(&repo).args(["--output", "json", "project", "new", "simple-report"]).output().unwrap();
     let stdout = String::from_utf8(out.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok", "stderr: {}", String::from_utf8_lossy(&out.stderr));

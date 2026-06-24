@@ -692,7 +692,7 @@ mod tests {
         std::fs::write(dir.path().join("mind-index.yaml"), "schema_version: \"99\"\n").unwrap();
         let err = load(dir.path()).unwrap_err();
         assert!(matches!(err, MfError::IncompatibleSchema { .. }));
-        assert_eq!(err.kind(), "incompatible-schema");
+        assert_eq!(err.kind(), "incompatible_schema");
     }
 
     #[test]
@@ -701,7 +701,7 @@ mod tests {
         std::fs::write(dir.path().join("mind-index.yaml"), "not: : valid: yaml").unwrap();
         let err = load(dir.path()).unwrap_err();
         assert!(matches!(err, MfError::ParseError { .. }));
-        assert_eq!(err.kind(), "parse-error");
+        assert_eq!(err.kind(), "parse_error");
     }
 
     #[test]

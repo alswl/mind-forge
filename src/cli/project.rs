@@ -1,17 +1,15 @@
-use std::path::PathBuf;
-
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
 use clap::ValueEnum;
 
-use crate::cli::deprecation::DeprecationContext;
 use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::LintFlags;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::shared_flags::YesFlag;
+use crate::cli::CommandCtx;
 use crate::cli::{CommandOutcome, RepoRequirement};
 use crate::error::{MfError, Result};
 use crate::model::project::LintKind;
@@ -161,25 +159,19 @@ impl ProjectCmd {
 }
 
 /// dispatch 现在接受 repo_root 参数用于需要文件系统操作的子命令
-pub fn dispatch(
-    command: ProjectCmd,
-    repo_root: Option<&PathBuf>,
-    format: Format,
-    project: Option<&str>,
-    _deprecation: &mut DeprecationContext,
-) -> Result<CommandOutcome> {
+pub fn dispatch(command: ProjectCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("project")),
-        Some(ProjectSubcommand::New(args)) => handle_new(args, repo_root, format),
-        Some(ProjectSubcommand::List(args)) => handle_list(args, repo_root, format),
-        Some(ProjectSubcommand::Archive(args)) => handle_archive(args, repo_root, format),
-        Some(ProjectSubcommand::Lint(args)) => handle_lint(args, repo_root, format, project),
-        Some(ProjectSubcommand::Index(args)) => handle_index(args, repo_root, format),
-        Some(ProjectSubcommand::Show(args)) => handle_show(args, repo_root, format),
-        Some(ProjectSubcommand::Update(args)) => handle_update(args, repo_root, format),
-        Some(ProjectSubcommand::Import(args)) => handle_import(args, repo_root, format),
-        Some(ProjectSubcommand::Rename(args)) => handle_rename(args, repo_root, format),
-        Some(ProjectSubcommand::Remove(args)) => handle_remove(args, repo_root, format),
+        Some(ProjectSubcommand::New(args)) => handle_new(args, ctx),
+        Some(ProjectSubcommand::List(args)) => handle_list(args, ctx),
+        Some(ProjectSubcommand::Archive(args)) => handle_archive(args, ctx),
+        Some(ProjectSubcommand::Lint(args)) => handle_lint(args, ctx),
+        Some(ProjectSubcommand::Index(args)) => handle_index(args, ctx),
+        Some(ProjectSubcommand::Show(args)) => handle_show(args, ctx),
+        Some(ProjectSubcommand::Update(args)) => handle_update(args, ctx),
+        Some(ProjectSubcommand::Import(args)) => handle_import(args, ctx),
+        Some(ProjectSubcommand::Rename(args)) => handle_rename(args, ctx),
+        Some(ProjectSubcommand::Remove(args)) => handle_remove(args, ctx),
     }
 }
 
@@ -187,12 +179,13 @@ pub fn dispatch(
 // US3: mf project new
 // ---------------------------------------------------------------------------
 
-fn handle_new(args: ProjectNewArgs, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
-    let cwd = std::env::current_dir().map_err(MfError::Io)?;
+fn handle_new(args: ProjectNewArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let format = ctx.format();
+    let cwd = ctx.cwd();
 
     // Normalize the user-provided selector into a canonical project identity
-    let identity = svc::identity::normalize_project_selector(root, &args.path, &cwd)?;
+    let identity = svc::identity::normalize_project_selector(root, &args.path, cwd)?;
 
     // Reject if the resolved path is inside another existing project (nested).
     if let Some(parent) = identity.resolved_path.parent() {
@@ -261,8 +254,9 @@ fn handle_new(args: ProjectNewArgs, repo_root: Option<&PathBuf>, format: Format)
 // US2: mf project list
 // ---------------------------------------------------------------------------
 
-fn handle_list(args: ProjectListArgs, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+fn handle_list(args: ProjectListArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let format = ctx.format();
     let entries = svc::project::list_projects(root)?;
 
     let opts =
@@ -339,13 +333,10 @@ fn format_iso_date(iso: &str) -> String {
 // US4: mf project lint
 // ---------------------------------------------------------------------------
 
-fn handle_lint(
-    args: ProjectLintArgs,
-    repo_root: Option<&PathBuf>,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+fn handle_lint(args: ProjectLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let format = ctx.format();
+    let project = ctx.project();
 
     // Parse --rule args into LintKind values
     let rules: Vec<LintKind> = if args.lint.rule.is_empty() {
@@ -369,8 +360,8 @@ fn handle_lint(
     };
 
     let (mut issues, mut summary) = if let Some(project_name) = project {
-        let cwd = std::env::current_dir().map_err(MfError::Io)?;
-        let project_path = svc::project::resolve_project(root, Some(project_name), &cwd)?;
+        let cwd = ctx.cwd();
+        let project_path = svc::project::resolve_project(root, Some(project_name), cwd)?;
         svc::project::lint_project(&project_path, &rules, args.lint.fix)?
     } else {
         svc::project::lint_repo(root, &rules, args.lint.fix)?
@@ -435,8 +426,9 @@ fn severity_rank_str(s: &str) -> u8 {
 // mf project index
 // ---------------------------------------------------------------------------
 
-fn handle_index(args: ProjectIndexArgs, repo_root: Option<&PathBuf>, format: Format) -> Result<CommandOutcome> {
-    let root = repo_root.cloned().or_else(|| std::env::current_dir().ok()).ok_or_else(MfError::not_in_mind_repo)?;
+fn handle_index(args: ProjectIndexArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.repo_root().cloned().or_else(|| Some(ctx.cwd().clone())).ok_or_else(MfError::not_in_mind_repo)?;
+    let format = ctx.format();
 
     let minds_path = root.join("minds.yaml");
     let manifest = if minds_path.exists() {
@@ -513,14 +505,11 @@ fn handle_index(args: ProjectIndexArgs, repo_root: Option<&PathBuf>, format: For
 // Handle: mf project show
 // ---------------------------------------------------------------------------
 
-fn handle_show(
-    args: ProjectShowArgs,
-    repo_root: Option<&std::path::PathBuf>,
-    format: Format,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
-    let cwd = std::env::current_dir().map_err(MfError::Io)?;
-    let project_path = svc::project::resolve_project(root, Some(&args.path), &cwd)?;
+fn handle_show(args: ProjectShowArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let format = ctx.format();
+    let cwd = ctx.cwd();
+    let project_path = svc::project::resolve_project(root, Some(&args.path), cwd)?;
     let details = svc::project::show(&project_path, &args.path)?;
 
     let mut fields: Vec<ShowField> = vec![
@@ -562,10 +551,7 @@ fn handle_show(
             let extra = details_json.as_object().cloned().unwrap_or_default();
             Ok(CommandOutcome::Success(json_envelope(&block, extra), Vec::new(), None))
         }
-        Format::Text => Ok(CommandOutcome::Raw(
-            render_show_text(&block, &ShowOpts::from_repo_root(repo_root.map(|r| r.as_path()))),
-            None,
-        )),
+        Format::Text => Ok(CommandOutcome::Raw(render_show_text(&block, &ShowOpts::from_repo_root(Some(root))), None)),
     }
 }
 
@@ -573,12 +559,9 @@ fn handle_show(
 // Handle: mf project archive
 // ---------------------------------------------------------------------------
 
-fn handle_archive(
-    args: ProjectArchiveArgs,
-    repo_root: Option<&std::path::PathBuf>,
-    format: Format,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+fn handle_archive(args: ProjectArchiveArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let format = ctx.format();
 
     require_confirmation(&ConfirmArgs {
         verb_label: "archiving",
@@ -656,12 +639,9 @@ fn handle_archive(
 // Handle: mf project import
 // ---------------------------------------------------------------------------
 
-fn handle_import(
-    args: ProjectImportArgs,
-    repo_root: Option<&std::path::PathBuf>,
-    format: Format,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+fn handle_import(args: ProjectImportArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let format = ctx.format();
     let report = svc::project::import_project(
         root,
         &args.directory,
@@ -689,12 +669,9 @@ fn handle_import(
     }
 }
 
-fn handle_update(
-    args: ProjectUpdateArgs,
-    repo_root: Option<&std::path::PathBuf>,
-    format: Format,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+fn handle_update(args: ProjectUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let format = ctx.format();
 
     let report = svc::project::update_project(
         root,
@@ -730,12 +707,9 @@ fn handle_update(
 // Handle: mf project rename
 // ---------------------------------------------------------------------------
 
-fn handle_rename(
-    args: ProjectRenameArgs,
-    repo_root: Option<&std::path::PathBuf>,
-    format: Format,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+fn handle_rename(args: ProjectRenameArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let format = ctx.format();
 
     if args.dry_run.dry_run {
         let result = VerbResult {
@@ -782,12 +756,9 @@ fn handle_rename(
 // Handle: mf project remove
 // ---------------------------------------------------------------------------
 
-fn handle_remove(
-    args: ProjectRemoveArgs,
-    repo_root: Option<&std::path::PathBuf>,
-    format: Format,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+fn handle_remove(args: ProjectRemoveArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let format = ctx.format();
 
     require_confirmation(&ConfirmArgs {
         verb_label: "removal",

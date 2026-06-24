@@ -1,15 +1,13 @@
-use std::path::Path;
-
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
-use crate::cli::deprecation::DeprecationContext;
 use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::LintFlags;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::shared_flags::YesFlag;
+use crate::cli::CommandCtx;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::model::Resource;
@@ -162,30 +160,21 @@ pub struct TermRenameArgs {
     pub dry_run: DryRunFlag,
 }
 
-pub fn dispatch(
-    command: TermCmd,
-    repo_root: Option<&std::path::PathBuf>,
-    format: Format,
-    project: Option<&str>,
-    deprecation: &mut DeprecationContext,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
-    let cwd = std::env::current_dir().map_err(MfError::Io)?;
-
+pub fn dispatch(command: TermCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("term")),
-        Some(TermSubcommand::New(args)) => handle_new(args, root, &cwd, format, project),
-        Some(TermSubcommand::List(args)) => handle_list(args, root, &cwd, format, project, deprecation),
-        Some(TermSubcommand::Lint(args)) => handle_lint(args, root, &cwd, format, project),
-        Some(TermSubcommand::Update(args)) => handle_update(args, root, &cwd, format, project),
+        Some(TermSubcommand::New(args)) => handle_new(args, ctx),
+        Some(TermSubcommand::List(args)) => handle_list(args, ctx),
+        Some(TermSubcommand::Lint(args)) => handle_lint(args, ctx),
+        Some(TermSubcommand::Update(args)) => handle_update(args, ctx),
         Some(TermSubcommand::Fix(args)) => {
             let mut lint_args = TermLintArgs { path: args.path, lint: args.lint, yes: args.yes.clone() };
             lint_args.lint.fix = true; // term fix is always lint --fix
-            handle_lint(lint_args, root, &cwd, format, project)
+            handle_lint(lint_args, ctx)
         }
-        Some(TermSubcommand::Show(args)) => handle_show(args, root, &cwd, format, project),
-        Some(TermSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format, project),
-        Some(TermSubcommand::Rename(args)) => handle_rename(args, root, &cwd, format, project),
+        Some(TermSubcommand::Show(args)) => handle_show(args, ctx),
+        Some(TermSubcommand::Remove(args)) => handle_remove(args, ctx),
+        Some(TermSubcommand::Rename(args)) => handle_rename(args, ctx),
     }
 }
 
@@ -262,13 +251,7 @@ fn parse_boundary(raw: &str) -> Result<crate::model::term::Boundary> {
 
 // ── Handle: mf term new (US1 / T017) ─────────────────────────────────────────
 
-fn handle_new(
-    args: TermNewArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
+fn handle_new(args: TermNewArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     let warnings: Vec<String> = Vec::new();
     let term_name = args.term.clone().ok_or_else(|| {
         MfError::usage(
@@ -301,7 +284,7 @@ fn handle_new(
             dry_run: true,
             details,
         };
-        return match format {
+        return match ctx.format() {
             Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
             Format::Text => {
                 let mut lines: Vec<String> = Vec::new();
@@ -314,8 +297,9 @@ fn handle_new(
         };
     }
 
-    let result = if let Some(project_name) = project {
-        let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
+    let root = ctx.require_repo_path()?;
+    let result = if let Some(project_name) = ctx.project() {
+        let project_path = svc_util::resolve_project(root, Some(project_name), ctx.cwd())?;
         term_svc::new_term(&project_path, &term_name, new_input(&args), &args.misrecognition)?
     } else {
         term_svc::global::new_term(root, &term_name, new_input(&args), &args.misrecognition)?
@@ -341,7 +325,7 @@ fn handle_new(
         format!("term \"{}\" already up to date", result.term.term)
     };
 
-    match format {
+    match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(data, warnings, None)),
         Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(text_output), warnings, None)),
     }
@@ -349,16 +333,10 @@ fn handle_new(
 
 // ── Handle: mf term list (US2 / T021) ────────────────────────────────────────
 
-fn handle_list(
-    args: TermListArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-    _deprecation: &mut DeprecationContext,
-) -> Result<CommandOutcome> {
-    let (terms, scope_map) = if let Some(project_name) = project {
-        let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
+fn handle_list(args: TermListArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let (terms, scope_map) = if let Some(project_name) = ctx.project() {
+        let project_path = svc_util::resolve_project(root, Some(project_name), ctx.cwd())?;
         let mut merged = term_svc::list_terms(&project_path, args.filter.as_deref())?;
         let global_terms = term_svc::global::list_terms(root, args.filter.as_deref())?;
         let mut scope_map: std::collections::HashMap<String, &'static str> = std::collections::HashMap::new();
@@ -381,7 +359,7 @@ fn handle_list(
     let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
         .with_repo_root(Some(root.to_path_buf()));
 
-    match format {
+    match ctx.format() {
         Format::Json => {
             let items: Vec<serde_json::Value> = terms
                 .iter()
@@ -428,15 +406,10 @@ fn handle_list(
 
 // ── Handle: mf term lint (US3 / T027 + US4 / T033) ──────────────────────────
 
-fn handle_lint(
-    args: TermLintArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
+fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     use std::io::IsTerminal;
 
+    let root = ctx.require_repo_path()?;
     let effective_fix = args.lint.fix;
     let effective_dry_run = args.lint.fix && args.lint.dry_run;
     let include_suggested = args.lint.include_suggested;
@@ -451,9 +424,9 @@ fn handle_lint(
             ));
         }
         // Show dry-run preview in text mode before prompting
-        if matches!(format, Format::Text) {
-            let preview = if let Some(pn) = project {
-                let pp = svc_util::resolve_project(root, Some(pn), cwd)?;
+        if matches!(ctx.format(), Format::Text) {
+            let preview = if let Some(pn) = ctx.project() {
+                let pp = svc_util::resolve_project(root, Some(pn), ctx.cwd())?;
                 if let Some(ref path) = args.path {
                     term_svc::lint_path_with_global(&pp, root, path, true, true, include_suggested)?
                 } else {
@@ -482,7 +455,8 @@ fn handle_lint(
         }
     }
 
-    let report = if let Some(project_name) = project {
+    let cwd = ctx.cwd();
+    let report = if let Some(project_name) = ctx.project() {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
         if let Some(ref path) = args.path {
             let resolved = svc_util::path::resolve_lint_path(path, Some(&project_path), cwd, root)?;
@@ -527,7 +501,7 @@ fn handle_lint(
     let exit_code =
         if args.lint.max_warnings.is_some_and(|max| warnings_count > max) { Some(1) } else { Some(base_exit) };
 
-    match format {
+    match ctx.format() {
         Format::Json => {
             let report_value = serde_json::to_value(&report).map_err(MfError::Json)?;
             let mut data = serde_json::Map::new();
@@ -659,19 +633,15 @@ fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_
 
 // ── Handle: mf term update (metadata) ─────────────────────────────────────────
 
-fn handle_update(
-    args: TermUpdateArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
+fn handle_update(args: TermUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     if args.description.is_some() && args.clear_description {
         return Err(MfError::usage("--description and --clear-description are mutually exclusive", None));
     }
     if args.confidence.is_some() && args.clear_confidence {
         return Err(MfError::usage("--confidence and --clear-confidence are mutually exclusive", None));
     }
+
+    let root = ctx.require_repo_path()?;
 
     let mut correction_match: Vec<(String, crate::model::term::MatchKind)> = Vec::new();
     for raw in &args.correction_match {
@@ -696,8 +666,8 @@ fn handle_update(
 
     let update = update_input(&args, &correction_match, &correction_fix, &correction_pinyin, &correction_boundary);
     let mut warnings: Vec<String> = Vec::new();
-    let (term, global_fallback) = if let Some(project_name) = project {
-        let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
+    let (term, global_fallback) = if let Some(project_name) = ctx.project() {
+        let project_path = svc_util::resolve_project(root, Some(project_name), ctx.cwd())?;
         match term_svc::fix_term(&project_path, &args.term, update) {
             Ok(term) => (term, false),
             Err(MfError::NotFound { .. }) => {
@@ -767,7 +737,7 @@ fn handle_update(
             map.insert("scope".to_string(), serde_json::json!("global"));
         }
     }
-    match format {
+    match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
@@ -864,15 +834,11 @@ fn render_term_show_inner(
     }
 }
 
-fn handle_show(
-    args: TermShowArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
-    if let Some(project_name) = project {
-        let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
+fn handle_show(args: TermShowArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let format = ctx.format();
+    if let Some(project_name) = ctx.project() {
+        let project_path = svc_util::resolve_project(root, Some(project_name), ctx.cwd())?;
         match term_svc::show_term(&project_path, &args.term) {
             Ok(term) => render_term_show_with_scope(&term, Some(root), "project", format),
             Err(MfError::NotFound { .. }) => {
@@ -890,13 +856,7 @@ fn handle_show(
 
 // ── Handle: mf term remove / rm ────────────────────────────────────────────
 
-fn handle_remove(
-    args: TermRemoveArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
+fn handle_remove(args: TermRemoveArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     require_confirmation(&ConfirmArgs {
         verb_label: "removal",
         kind: "term",
@@ -905,9 +865,10 @@ fn handle_remove(
         force: args.force.force,
     })?;
 
+    let root = ctx.require_repo_path()?;
     let mut warnings: Vec<String> = Vec::new();
-    let report = if let Some(project_name) = project {
-        let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
+    let report = if let Some(project_name) = ctx.project() {
+        let project_path = svc_util::resolve_project(root, Some(project_name), ctx.cwd())?;
         match term_svc::remove_term(&project_path, &args.term, args.force.force, args.dry_run.dry_run) {
             Ok(report) => report,
             Err(MfError::NotFound { .. }) => {
@@ -933,7 +894,7 @@ fn handle_remove(
         dry_run: args.dry_run.dry_run,
         details: serde_json::json!({"removed": true}),
     };
-    match format {
+    match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
@@ -945,13 +906,8 @@ fn handle_remove(
 
 // ── Handle: mf term rename ──────────────────────────────────────────────────
 
-fn handle_rename(
-    args: TermRenameArgs,
-    root: &Path,
-    cwd: &Path,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
+fn handle_rename(args: TermRenameArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
     if args.dry_run.dry_run {
         let result = VerbResult {
             verb: Verb::Rename,
@@ -962,7 +918,7 @@ fn handle_rename(
             dry_run: true,
             details: serde_json::json!({"keep_alias": args.keep_alias}),
         };
-        return match format {
+        return match ctx.format() {
             Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
             Format::Text => Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
@@ -973,8 +929,8 @@ fn handle_rename(
     }
 
     let mut rename_warnings: Vec<String> = Vec::new();
-    let report = if let Some(project_name) = project {
-        let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
+    let report = if let Some(project_name) = ctx.project() {
+        let project_path = svc_util::resolve_project(root, Some(project_name), ctx.cwd())?;
         match term_svc::rename_term(
             &project_path,
             &args.old_term,
@@ -1014,7 +970,7 @@ fn handle_rename(
         dry_run: false,
         details: serde_json::json!({"keep_alias": args.keep_alias}),
     };
-    match format {
+    match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), rename_warnings, None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),

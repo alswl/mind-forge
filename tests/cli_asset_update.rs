@@ -227,7 +227,7 @@ fn update_json_envelope() {
         .args([
             "--root",
             repo.path().to_str().unwrap(),
-            "--format",
+            "--output",
             "json",
             "asset",
             "update",

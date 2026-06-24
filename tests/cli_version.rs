@@ -57,7 +57,7 @@ fn version_json_output_via_json_flag() {
 
 #[test]
 fn version_json_output_via_format_json() {
-    let (stdout, stderr, code) = run(&["--format", "json", "version"]);
+    let (stdout, stderr, code) = run(&["--output", "json", "version"]);
     assert_eq!(code, 0, "stderr: {stderr:?}");
     assert!(stderr.is_empty(), "stderr should be empty on success");
     let v: Value = serde_json::from_str(&stdout).expect("stdout should be valid JSON");

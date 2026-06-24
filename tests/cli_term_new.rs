@@ -211,7 +211,7 @@ fn new_term_without_project_context() {
 }
 
 // ---------------------------------------------------------------------------
-// 9. new_term_json_output_shape — --format json envelope
+// 9. new_term_json_output_shape — --output json envelope
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -222,7 +222,7 @@ fn new_term_json_output_shape() {
         .args([
             "--root",
             repo.path().to_str().unwrap(),
-            "--format",
+            "--output",
             "json",
             "term",
             "new",

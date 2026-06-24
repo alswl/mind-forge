@@ -4,7 +4,7 @@ use clap::{Args, CommandFactory, ValueEnum};
 use clap_complete::{generate, Shell};
 use serde::Serialize;
 
-use crate::cli::{CommandOutcome, RootCli};
+use crate::cli::{CommandCtx, CommandOutcome, RootCli};
 use crate::error::Result;
 use crate::exit::ExitCode;
 
@@ -36,7 +36,7 @@ impl ShellKind {
     }
 }
 
-pub fn dispatch(command: CompletionArgs) -> Result<CommandOutcome> {
+pub fn dispatch(command: CompletionArgs, _ctx: &CommandCtx) -> Result<CommandOutcome> {
     Ok(CommandOutcome::Completion(command.shell.into_shell()))
 }
 

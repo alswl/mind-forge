@@ -81,7 +81,7 @@ fn update_project_json_envelope() {
         .args([
             "--root",
             repo.path().to_str().unwrap(),
-            "--format",
+            "--output",
             "json",
             "project",
             "update",

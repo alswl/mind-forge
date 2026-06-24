@@ -37,7 +37,7 @@ fn config_generate_writes_output_file() {
     let output_path = dir.path().join("mind.gen.yaml");
 
     let (_stdout, stderr, code) =
-        run(&["--root", &dir.path().to_string_lossy(), "config", "generate", "-o", &output_path.to_string_lossy()]);
+        run(&["--root", &dir.path().to_string_lossy(), "config", "generate", "--out", &output_path.to_string_lossy()]);
 
     assert_eq!(code, 0, "generate should succeed, stderr: {stderr:?}");
     assert!(stderr.is_empty(), "generate should have clean stderr, got: {stderr:?}");
@@ -68,7 +68,7 @@ fn config_default_outputs_valid_defaults() {
 
 #[test]
 fn config_default_json_output() {
-    let (stdout, stderr, code) = run(&["--format", "json", "config", "default", "--output-format", "json"]);
+    let (stdout, stderr, code) = run(&["--output", "json", "config", "default", "--output-format", "json"]);
 
     assert_eq!(code, 0, "default json should succeed, stderr: {stderr:?}");
     let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("stdout should be valid JSON");
