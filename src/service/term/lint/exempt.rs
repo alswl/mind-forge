@@ -69,17 +69,6 @@ pub(crate) fn strip_exempt_regions(content: &str, fm_end: Option<usize>) -> Vec<
                     continue;
                 }
 
-                if i + 3 < len
-                    && bytes[i] == b'<'
-                    && bytes[i + 1] == b'!'
-                    && bytes[i + 2] == b'-'
-                    && bytes[i + 3] == b'-'
-                {
-                    state = ScanCursor::HtmlComment;
-                    i += 1;
-                    continue;
-                }
-
                 if i + 1 < len && bytes[i] == b']' && bytes[i + 1] == b'(' {
                     state = ScanCursor::LinkUrl;
                     out[i] = bytes[i];
@@ -88,8 +77,11 @@ pub(crate) fn strip_exempt_regions(content: &str, fm_end: Option<usize>) -> Vec<
                 }
 
                 if starts_with_url_scheme(bytes, i, b"http://") || starts_with_url_scheme(bytes, i, b"https://") {
+                    // The scheme's first byte is URL *content* (not a delimiter like
+                    // `` ` `` or `<`), so it must be zeroed too. Leaving it visible let a
+                    // correction whose `original` shares that leading byte (e.g. `hcs` vs
+                    // `https`) match `h\0\0` via the `\0` wildcard in `find_subseq`.
                     state = ScanCursor::BareUrl;
-                    out[i] = bytes[i];
                     i += 1;
                     continue;
                 }
@@ -287,7 +279,8 @@ mod tests {
         let content = "visit https://example.com/mindrepo for info";
         let result = strip_exempt_regions(content, None);
         assert_eq!(result.len(), content.len());
-        let url_content_start = content.find("https://").unwrap() + 1;
+        // The entire URL is zeroed, including the scheme's leading byte.
+        let url_content_start = content.find("https://").unwrap();
         let url_end = content[url_content_start..].find(' ').map(|p| url_content_start + p).unwrap_or(content.len());
         for &b in &result[url_content_start..url_end] {
             assert_eq!(b, 0, "bare URL should be zeroed");
