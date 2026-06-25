@@ -170,6 +170,100 @@ pub struct TermLintFailure {
     pub reason: String,
 }
 
+// ── Correction selector & patch ─────────────────────────────────────────────
+
+/// Identifies a single correction within a term by its `original` text.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+#[allow(dead_code)] // used by US3 correction subresource
+pub struct CorrectionSelector {
+    pub original: String,
+}
+
+/// Fields that can be updated on a single correction.
+///
+/// `pinyin` is `Option<Option<String>>`:
+/// - `None` → not being changed
+/// - `Some(None)` → clear the pinyin
+/// - `Some(Some(v))` → set to `v`
+#[derive(Debug, Default, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+#[allow(dead_code)] // used by US3 correction subresource
+pub struct CorrectionPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correct: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r#match: Option<MatchKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fix: Option<FixKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pinyin: Option<Option<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub boundary: Option<Boundary>,
+}
+
+#[allow(dead_code)] // used by US3 implementation
+impl CorrectionPatch {
+    pub fn is_empty(&self) -> bool {
+        self.correct.is_none()
+            && self.r#match.is_none()
+            && self.fix.is_none()
+            && self.pinyin.is_none()
+            && self.boundary.is_none()
+    }
+}
+
+/// Report for a single-correction operation (add, update, remove, show).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+#[allow(dead_code)] // used by US3 correction subresource
+pub struct CorrectionChangeReport {
+    pub term: String,
+    pub scope: String,
+    pub correction: Correction,
+    pub dry_run: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changes: Vec<String>,
+}
+
+/// Planned or completed side-effect during a term move.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+#[allow(dead_code)] // used by US4 term move
+pub struct MoveSideEffect {
+    pub action: String,
+    pub scope: String,
+    pub description: String,
+}
+
+/// Report for a term relocation between scopes.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+#[allow(dead_code)] // used by US4 term move
+pub struct TermMoveReport {
+    pub term: String,
+    pub from_scope: String,
+    pub to_scope: String,
+    pub dry_run: bool,
+    pub force: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub side_effects: Vec<MoveSideEffect>,
+}
+
+/// Targeted check boundary for term lint/fix operations.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+#[allow(dead_code)] // used by US6 targeted lint/fix
+pub struct TermCheckTarget {
+    pub target_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub article: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
 // ── Lifecycle reports ──────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize)]
@@ -380,5 +474,128 @@ mod tests {
         let terms = vec![term_with(vec![correction("_aidc", MatchKind::Word, Boundary::Standalone)])];
         let err = validate_corrections(&terms).unwrap_err();
         assert!(err.contains("identifier-character edges"), "got: {err}");
+    }
+
+    // ── CorrectionSelector / CorrectionPatch / reports ──────────────────────
+
+    #[test]
+    fn correction_selector_serialization() {
+        let sel = CorrectionSelector { original: "typo".into() };
+        let json = serde_json::to_value(&sel).unwrap();
+        assert_eq!(json["original"], "typo");
+    }
+
+    #[test]
+    fn correction_patch_is_empty_when_all_none() {
+        let patch = CorrectionPatch::default();
+        assert!(patch.is_empty());
+    }
+
+    #[test]
+    fn correction_patch_is_not_empty_with_correct() {
+        let patch = CorrectionPatch { correct: Some("fix".into()), ..Default::default() };
+        assert!(!patch.is_empty());
+    }
+
+    #[test]
+    fn correction_patch_is_not_empty_with_match_kind() {
+        let patch = CorrectionPatch { r#match: Some(MatchKind::Substring), ..Default::default() };
+        assert!(!patch.is_empty());
+    }
+
+    #[test]
+    fn correction_patch_serialization_skips_none() {
+        let patch = CorrectionPatch { r#match: Some(MatchKind::Pinyin), ..Default::default() };
+        let json = serde_json::to_value(&patch).unwrap();
+        assert!(json.get("correct").is_none());
+        assert_eq!(json["match"], "pinyin");
+    }
+
+    #[test]
+    fn correction_patch_pinyin_clear() {
+        let patch = CorrectionPatch { pinyin: Some(None), ..Default::default() };
+        let json = serde_json::to_value(&patch).unwrap();
+        assert_eq!(json["pinyin"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn correction_change_report_serialization() {
+        let report = CorrectionChangeReport {
+            term: "RAG".into(),
+            scope: "project".into(),
+            correction: Correction {
+                original: "rag".into(),
+                correct: "RAG".into(),
+                r#match: MatchKind::Word,
+                fix: FixKind::Required,
+                boundary: Boundary::Standalone,
+                pinyin: None,
+            },
+            dry_run: false,
+            changes: vec!["correct: rag → RAG".into()],
+        };
+        let json = serde_json::to_value(&report).unwrap();
+        assert_eq!(json["term"], "RAG");
+        assert_eq!(json["scope"], "project");
+        assert_eq!(json["dry_run"], false);
+        assert_eq!(json["changes"][0], "correct: rag → RAG");
+    }
+
+    #[test]
+    fn term_move_report_serialization() {
+        let report = TermMoveReport {
+            term: "RAG".into(),
+            from_scope: "project".into(),
+            to_scope: "global".into(),
+            dry_run: true,
+            force: false,
+            side_effects: vec![],
+        };
+        let json = serde_json::to_value(&report).unwrap();
+        assert_eq!(json["term"], "RAG");
+        assert_eq!(json["from_scope"], "project");
+        assert_eq!(json["to_scope"], "global");
+        assert_eq!(json["dry_run"], true);
+        assert_eq!(json["force"], false);
+    }
+
+    #[test]
+    fn move_side_effect_serialization() {
+        let se = MoveSideEffect {
+            action: "remove".into(),
+            scope: "project".into(),
+            description: "remove RAG from project alpha".into(),
+        };
+        let json = serde_json::to_value(&se).unwrap();
+        assert_eq!(json["action"], "remove");
+        assert_eq!(json["scope"], "project");
+    }
+
+    #[test]
+    fn term_check_target_serialization() {
+        let target = TermCheckTarget {
+            target_type: "article".into(),
+            project: Some("alpha".into()),
+            article: Some("weekly-note".into()),
+            path: None,
+        };
+        let json = serde_json::to_value(&target).unwrap();
+        assert_eq!(json["target_type"], "article");
+        assert_eq!(json["project"], "alpha");
+        assert_eq!(json["article"], "weekly-note");
+        assert!(json.get("path").is_none());
+    }
+
+    #[test]
+    fn term_check_target_file_type() {
+        let target = TermCheckTarget {
+            target_type: "file".into(),
+            project: None,
+            article: None,
+            path: Some("docs/draft.md".into()),
+        };
+        let json = serde_json::to_value(&target).unwrap();
+        assert_eq!(json["target_type"], "file");
+        assert_eq!(json["path"], "docs/draft.md");
     }
 }

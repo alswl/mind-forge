@@ -225,6 +225,52 @@ mf term lint --project blog --fix --dry-run
 mf term fix --project blog
 ```
 
+`term update` changes metadata only. It never adds corrections — pass
+`--misrecognition` to `term new`, or use `term correction add` for an existing
+term. It can still adjust existing corrections by their `original` text
+(`--correction-match`, `--correction-fix`, `--correction-pinyin`,
+`--correction-boundary`, `--delete-correction`) and rejects targets that do not
+already exist. Use `--dry-run` to validate and preview without writing.
+
+### Corrections
+
+Corrections are a first-class subresource of a term:
+
+```bash
+mf term correction add API api API --match word
+mf term correction list API
+mf term correction show API api
+mf term correction update API api --fix suggested
+mf term correction remove API api --dry-run
+```
+
+`correction add` is idempotent on an exact `(original, correct)` pair. For
+boundary and pinyin matching details, see [term-lint.md](term-lint.md).
+
+### Moving between scopes
+
+```bash
+mf term move API --to-global --project blog
+mf term mv API --to-project blog --from-global
+mf term move API --to-project other --project blog --force
+```
+
+A move that would overwrite an existing term at the destination is rejected
+unless `--force` is given; the source copy is preserved on rejection.
+
+### Listing and targeted checks
+
+```bash
+mf term list --tag architecture --has-correction
+mf term list --scope global
+mf term lint --project blog --article weekly-note
+mf term lint docs/draft.md --project blog
+```
+
+List filters use AND semantics. `--scope` accepts `project`, `global`, or `all`
+(default: project terms with a global fallback). `term lint`/`term fix` can
+target a whole project, a single `--article`, or one Markdown file path.
+
 `term fix` is a first-class alias for `term lint --fix`. For boundary and
 pinyin matching details, see [term-lint.md](term-lint.md).
 

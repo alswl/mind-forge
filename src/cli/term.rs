@@ -10,6 +10,7 @@ use crate::cli::shared_flags::YesFlag;
 use crate::cli::CommandCtx;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
+use crate::model::term::{Boundary, FixKind, MatchKind};
 use crate::model::Resource;
 use crate::output::confirm::{require_confirmation, ConfirmArgs};
 use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
@@ -44,12 +45,28 @@ pub enum TermSubcommand {
     Rename(TermRenameArgs),
     #[command(about = "Apply term corrections to documents (alias of `term lint --fix`)")]
     Fix(TermFixArgs),
+    #[command(about = "Manage term corrections")]
+    Correction(TermCorrectionCmd),
+    #[command(about = "Move a term between scopes", visible_alias = "mv")]
+    Move(TermMoveArgs),
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct TermListArgs {
     #[arg(long)]
     pub filter: Option<String>,
+    /// Filter by tag
+    #[arg(long = "tag")]
+    pub tag: Vec<String>,
+    /// Filter by alias
+    #[arg(long = "alias")]
+    pub alias: Vec<String>,
+    /// Only show terms that have at least one correction
+    #[arg(long = "has-correction")]
+    pub has_correction: bool,
+    /// Filter by scope: project, global, or all (default: project + global fallback)
+    #[arg(long = "scope")]
+    pub scope: Option<String>,
     #[command(flatten)]
     pub no_headers: NoHeadersFlag,
     #[command(flatten)]
@@ -80,6 +97,9 @@ pub struct TermNewArgs {
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct TermLintArgs {
     pub path: Option<String>,
+    /// Target a specific article by slug or title
+    #[arg(long = "article")]
+    pub article: Option<String>,
     #[command(flatten)]
     pub lint: LintFlags,
     #[command(flatten)]
@@ -117,11 +137,20 @@ pub struct TermUpdateArgs {
     pub correction_pinyin: Vec<String>,
     #[arg(long = "correction-boundary", help = "Set correction boundary: ORIGINAL:loose|standalone")]
     pub correction_boundary: Vec<String>,
+    /// Misrecognition corrections are not supported on `term update`.
+    /// Use `mf term correction add` or `mf term new --misrecognition` instead.
+    #[arg(long = "misrecognition", hide = true)]
+    pub misrecognition: Vec<String>,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct TermFixArgs {
     pub path: Option<String>,
+    /// Target a specific article by slug or title
+    #[arg(long = "article")]
+    pub article: Option<String>,
     #[command(flatten)]
     pub lint: LintFlags,
     #[command(flatten)]
@@ -148,6 +177,100 @@ pub struct TermRemoveArgs {
     pub dry_run: DryRunFlag,
 }
 
+// ── Correction subcommand types ──────────────────────────────────────────
+
+#[derive(Debug, Clone, Args)]
+pub struct TermCorrectionCmd {
+    #[command(subcommand)]
+    pub command: TermCorrectionSubcommand,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum TermCorrectionSubcommand {
+    #[command(about = "Add a correction to a term")]
+    Add(TermCorrectionAddArgs),
+    #[command(about = "List corrections for a term")]
+    List(TermCorrectionListArgs),
+    #[command(about = "Show a single correction")]
+    Show(TermCorrectionShowArgs),
+    #[command(about = "Update correction attributes")]
+    Update(TermCorrectionUpdateArgs),
+    #[command(about = "Remove a correction from a term")]
+    Remove(TermCorrectionRemoveArgs),
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct TermCorrectionAddArgs {
+    pub term: String,
+    pub original: String,
+    pub correct: String,
+    #[arg(long)]
+    pub r#match: Option<String>,
+    #[arg(long)]
+    pub fix: Option<String>,
+    #[arg(long)]
+    pub pinyin: Option<String>,
+    #[arg(long)]
+    pub boundary: Option<String>,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct TermCorrectionListArgs {
+    pub term: String,
+    #[command(flatten)]
+    pub no_headers: NoHeadersFlag,
+    #[command(flatten)]
+    pub no_trunc: NoTruncFlag,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct TermCorrectionShowArgs {
+    pub term: String,
+    pub original: String,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct TermCorrectionUpdateArgs {
+    pub term: String,
+    pub original: String,
+    #[arg(long)]
+    pub correct: Option<String>,
+    #[arg(long)]
+    pub r#match: Option<String>,
+    #[arg(long)]
+    pub fix: Option<String>,
+    #[arg(long)]
+    pub pinyin: Option<String>,
+    #[arg(long)]
+    pub boundary: Option<String>,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct TermCorrectionRemoveArgs {
+    pub term: String,
+    pub original: String,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct TermMoveArgs {
+    pub term: String,
+    /// Destination project for the term
+    #[arg(long = "to-project")]
+    pub to_project: Option<String>,
+    /// Move to global scope
+    #[arg(long = "to-global")]
+    pub to_global: bool,
+    /// Source is global scope (default: project-scoped via -p)
+    #[arg(long = "from-global")]
+    pub from_global: bool,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
+}
+
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct TermRenameArgs {
     pub old_term: String,
@@ -160,6 +283,19 @@ pub struct TermRenameArgs {
     pub dry_run: DryRunFlag,
 }
 
+// ── Shared scope-warning plumbing ──────────────────────────────────────────
+
+/// Emit a WARN when a project-scoped write fell through to global scope.
+/// Reused by update, remove, and rename handlers.
+fn emit_scope_fallback_warning(project_name: &str, term_name: &str, warnings: &mut Vec<String>) {
+    crate::output::warning::emit_warning(
+        &format!(
+            "-p {project_name} was ignored; the write applied to global scope because \"{term_name}\" does not exist as a project-local term."
+        ),
+        warnings,
+    );
+}
+
 pub fn dispatch(command: TermCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("term")),
@@ -168,13 +304,16 @@ pub fn dispatch(command: TermCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome
         Some(TermSubcommand::Lint(args)) => handle_lint(args, ctx),
         Some(TermSubcommand::Update(args)) => handle_update(args, ctx),
         Some(TermSubcommand::Fix(args)) => {
-            let mut lint_args = TermLintArgs { path: args.path, lint: args.lint, yes: args.yes.clone() };
+            let mut lint_args =
+                TermLintArgs { path: args.path, article: args.article, lint: args.lint, yes: args.yes.clone() };
             lint_args.lint.fix = true; // term fix is always lint --fix
             handle_lint(lint_args, ctx)
         }
         Some(TermSubcommand::Show(args)) => handle_show(args, ctx),
         Some(TermSubcommand::Remove(args)) => handle_remove(args, ctx),
         Some(TermSubcommand::Rename(args)) => handle_rename(args, ctx),
+        Some(TermSubcommand::Correction(cmd)) => handle_correction(cmd, ctx),
+        Some(TermSubcommand::Move(args)) => handle_move(args, ctx),
     }
 }
 
@@ -335,10 +474,20 @@ fn handle_new(args: TermNewArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
 
 fn handle_list(args: TermListArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     let root = ctx.require_repo_path()?;
+    let filter_scope = args.scope.as_deref().unwrap_or("all");
+
     let (terms, scope_map) = if let Some(project_name) = ctx.project() {
         let project_path = svc_util::resolve_project(root, Some(project_name), ctx.cwd())?;
-        let mut merged = term_svc::list_terms(&project_path, args.filter.as_deref())?;
-        let global_terms = term_svc::global::list_terms(root, args.filter.as_deref())?;
+        let mut merged = if filter_scope == "global" {
+            Vec::new()
+        } else {
+            term_svc::list_terms(&project_path, args.filter.as_deref())?
+        };
+        let global_terms = if filter_scope == "project" {
+            Vec::new()
+        } else {
+            term_svc::global::list_terms(root, args.filter.as_deref())?
+        };
         let mut scope_map: std::collections::HashMap<String, &'static str> = std::collections::HashMap::new();
         for t in &merged {
             scope_map.insert(t.term.clone(), "project");
@@ -356,12 +505,32 @@ fn handle_list(args: TermListArgs, ctx: &mut CommandCtx) -> Result<CommandOutcom
         (terms, std::collections::HashMap::new())
     };
 
+    // Apply new filters (AND semantics)
+    let filtered_terms: Vec<&crate::model::term::Term> = terms
+        .iter()
+        .filter(|t| {
+            // --tag filter: term must have at least one matching tag
+            if !args.tag.is_empty() && !args.tag.iter().any(|tag| t.tags.contains(tag)) {
+                return false;
+            }
+            // --alias filter: term must have at least one matching alias
+            if !args.alias.is_empty() && !args.alias.iter().any(|alias| t.aliases.contains(alias)) {
+                return false;
+            }
+            // --has-correction filter: term must have at least one correction
+            if args.has_correction && t.corrections.is_empty() {
+                return false;
+            }
+            true
+        })
+        .collect();
+
     let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
         .with_repo_root(Some(root.to_path_buf()));
 
     match ctx.format() {
         Format::Json => {
-            let items: Vec<serde_json::Value> = terms
+            let items: Vec<serde_json::Value> = filtered_terms
                 .iter()
                 .map(|t| {
                     let mut v = serde_json::to_value(t).map_err(MfError::Json)?;
@@ -377,8 +546,8 @@ fn handle_list(args: TermListArgs, ctx: &mut CommandCtx) -> Result<CommandOutcom
             Ok(CommandOutcome::Success(json_collection("terms", items), Vec::new(), None))
         }
         Format::Text => {
-            let mut rows = Vec::with_capacity(terms.len());
-            for t in &terms {
+            let mut rows = Vec::with_capacity(filtered_terms.len());
+            for t in &filtered_terms {
                 let def = t.definition.as_deref().unwrap_or("-").to_string();
                 let alias_display = if t.aliases.is_empty() { "-".to_string() } else { t.aliases.join(", ") };
                 let tags_display = if t.tags.is_empty() { "-".to_string() } else { t.tags.join(", ") };
@@ -455,6 +624,15 @@ fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
         }
     }
 
+    // Determine effective target type for output
+    let target_type: &str = if args.article.is_some() {
+        "article"
+    } else if args.path.is_some() {
+        "file"
+    } else {
+        "project"
+    };
+
     let cwd = ctx.cwd();
     let report = if let Some(project_name) = ctx.project() {
         let project_path = svc_util::resolve_project(root, Some(project_name), cwd)?;
@@ -507,6 +685,7 @@ fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
             let mut data = serde_json::Map::new();
             data.insert("kind".to_string(), serde_json::Value::String("term".to_string()));
             data.insert("dry_run".to_string(), serde_json::Value::Bool(effective_dry_run));
+            data.insert("target_type".to_string(), serde_json::Value::String(target_type.to_string()));
             // Flatten report fields into data
             if let serde_json::Value::Object(obj) = report_value {
                 for (k, v) in obj {
@@ -518,7 +697,7 @@ fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
             Ok(CommandOutcome::Success(serde_json::Value::Object(data), warnings, exit_code))
         }
         Format::Text => {
-            let output = format_lint_text(&report, effective_fix, effective_dry_run);
+            let output = format_lint_text_with_target(&report, effective_fix, effective_dry_run, Some(target_type));
             Ok(CommandOutcome::Raw(output, exit_code))
         }
     }
@@ -532,7 +711,20 @@ fn compute_lint_exit_code(report: &crate::model::term::TermLintReport, fix: bool
 }
 
 fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_run: bool) -> String {
+    format_lint_text_with_target(report, fix, dry_run, None)
+}
+
+fn format_lint_text_with_target(
+    report: &crate::model::term::TermLintReport,
+    fix: bool,
+    dry_run: bool,
+    target_type: Option<&str>,
+) -> String {
     let mut lines = Vec::new();
+
+    if let Some(tt) = target_type {
+        lines.push(format!("target: {tt}"));
+    }
 
     if fix {
         if report.findings.is_empty() && report.failures.is_empty() {
@@ -634,6 +826,13 @@ fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_
 // ── Handle: mf term update (metadata) ─────────────────────────────────────────
 
 fn handle_update(args: TermUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    // US1: --misrecognition is unsupported on term update
+    if !args.misrecognition.is_empty() {
+        return Err(MfError::usage(
+            "--misrecognition is not supported on `term update`; use `mf term correction add` to add a correction to an existing term, or `mf term new --misrecognition` when creating a new term",
+            Some("use `mf term correction add <TERM> <ORIGINAL> <CORRECT>` to add a correction".to_string()),
+        ));
+    }
     if args.description.is_some() && args.clear_description {
         return Err(MfError::usage("--description and --clear-description are mutually exclusive", None));
     }
@@ -666,6 +865,10 @@ fn handle_update(args: TermUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutcom
 
     let update = update_input(&args, &correction_match, &correction_fix, &correction_pinyin, &correction_boundary);
     let mut warnings: Vec<String> = Vec::new();
+
+    if args.dry_run.dry_run {
+        return handle_update_dry_run(&args, &update, root, ctx, &mut warnings);
+    }
     let (term, global_fallback) = if let Some(project_name) = ctx.project() {
         let project_path = svc_util::resolve_project(root, Some(project_name), ctx.cwd())?;
         match term_svc::fix_term(&project_path, &args.term, update) {
@@ -673,10 +876,7 @@ fn handle_update(args: TermUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutcom
             Err(MfError::NotFound { .. }) => {
                 // Try global fallback; emit the WARN only when that write actually succeeds.
                 let term = term_svc::global::fix_term(root, &args.term, update)?;
-                crate::output::warning::emit_warning(
-                    &format!("-p {project_name} was ignored; the write applied to global scope because \"{}\" does not exist as a project-local term.", args.term),
-                    &mut warnings,
-                );
+                emit_scope_fallback_warning(project_name, &args.term, &mut warnings);
                 (term, true)
             }
             Err(e) => return Err(e),
@@ -744,6 +944,115 @@ fn handle_update(args: TermUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutcom
             warnings,
             None,
         )),
+    }
+}
+
+// ── Handle: mf term update (dry-run) ─────────────────────────────────────
+
+fn handle_update_dry_run(
+    args: &TermUpdateArgs,
+    update: &term_svc::TermUpdate<'_>,
+    root: &std::path::Path,
+    ctx: &CommandCtx,
+    warnings: &mut Vec<String>,
+) -> Result<CommandOutcome> {
+    // Resolve which term would be targeted (project or global)
+    let (scope, term) = resolve_update_target(root, ctx, &args.term)?;
+
+    // Validate correction targets even in dry-run (same safety as real run)
+    term_svc::validate_correction_targets_exist(&term, update)?;
+
+    // Build planned changes list
+    let mut planned = Vec::new();
+    if update.definition.is_some() {
+        planned.push("definition".to_string());
+    }
+    if update.description.is_some() || update.clear_description {
+        planned.push("description".to_string());
+    }
+    if update.confidence.is_some() || update.clear_confidence {
+        planned.push("confidence".to_string());
+    }
+    if !update.aliases.is_empty() {
+        planned.push(format!("add {} alias(es)", update.aliases.len()));
+    }
+    if !update.tags.is_empty() {
+        planned.push(format!("add {} tag(s)", update.tags.len()));
+    }
+    if !update.delete_aliases.is_empty() {
+        planned.push(format!("remove {} alias(es)", update.delete_aliases.len()));
+    }
+    if !update.delete_tags.is_empty() {
+        planned.push(format!("remove {} tag(s)", update.delete_tags.len()));
+    }
+    if !update.delete_corrections.is_empty() {
+        planned.push(format!("remove {} correction(s)", update.delete_corrections.len()));
+    }
+    for (original, _mk) in update.correction_match {
+        planned.push(format!("update correction \"{original}\" match"));
+    }
+    for (original, _fk) in update.correction_fix {
+        planned.push(format!("update correction \"{original}\" fix"));
+    }
+    for (original, _) in update.correction_pinyin {
+        planned.push(format!("update correction \"{original}\" pinyin"));
+    }
+    for (original, _) in update.correction_boundary {
+        planned.push(format!("update correction \"{original}\" boundary"));
+    }
+
+    let scope_str = scope.as_str();
+    if scope_str == "global" {
+        if let Some(pn) = ctx.project() {
+            emit_scope_fallback_warning(pn, &args.term, warnings);
+        }
+    }
+
+    let result = VerbResult {
+        verb: Verb::Update,
+        kind: "term",
+        identity: args.term.clone(),
+        old_identity: None,
+        path: None,
+        dry_run: true,
+        details: serde_json::json!({
+            "scope": scope_str,
+            "changes": planned,
+        }),
+    };
+
+    match ctx.format() {
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings.clone(), None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            warnings.clone(),
+            None,
+        )),
+    }
+}
+
+/// Resolve what term would be targeted by an update (project or global).
+/// Returns (scope, term) without writing anything.
+fn resolve_update_target(
+    root: &std::path::Path,
+    ctx: &CommandCtx,
+    term_name: &str,
+) -> Result<(term_svc::WriteScope, crate::model::term::Term)> {
+    use term_svc::WriteScope;
+
+    if let Some(project_name) = ctx.project() {
+        let project_path = crate::service::util::resolve_project(root, Some(project_name), ctx.cwd())?;
+        match term_svc::show_term(&project_path, term_name) {
+            Ok(term) => Ok((WriteScope::Project(project_path), term)),
+            Err(MfError::NotFound { .. }) => {
+                let term = term_svc::global::show_term(root, term_name)?;
+                Ok((WriteScope::Global(root.to_path_buf()), term))
+            }
+            Err(e) => Err(e),
+        }
+    } else {
+        let term = term_svc::global::show_term(root, term_name)?;
+        Ok((WriteScope::Global(root.to_path_buf()), term))
     }
 }
 
@@ -873,10 +1182,7 @@ fn handle_remove(args: TermRemoveArgs, ctx: &CommandCtx) -> Result<CommandOutcom
             Ok(report) => report,
             Err(MfError::NotFound { .. }) => {
                 let report = term_svc::remove_term_global(root, &args.term, args.force.force, args.dry_run.dry_run)?;
-                crate::output::warning::emit_warning(
-                    &format!("-p {project_name} was ignored; the write applied to global scope because \"{}\" does not exist as a project-local term.", args.term),
-                    &mut warnings,
-                );
+                emit_scope_fallback_warning(project_name, &args.term, &mut warnings);
                 report
             }
             Err(e) => return Err(e),
@@ -949,10 +1255,7 @@ fn handle_rename(args: TermRenameArgs, ctx: &CommandCtx) -> Result<CommandOutcom
                     args.force.force,
                     false,
                 )?;
-                crate::output::warning::emit_warning(
-                    &format!("-p {project_name} was ignored; the write applied to global scope because \"{}\" does not exist as a project-local term.", args.old_term),
-                    &mut rename_warnings,
-                );
+                emit_scope_fallback_warning(project_name, &args.old_term, &mut rename_warnings);
                 report
             }
             Err(e) => return Err(e),
@@ -979,3 +1282,370 @@ fn handle_rename(args: TermRenameArgs, ctx: &CommandCtx) -> Result<CommandOutcom
         )),
     }
 }
+
+// ── Correction subcommand dispatch ──────────────────────────────────────────
+
+fn parse_opt_match(raw: Option<&str>) -> Result<Option<MatchKind>> {
+    match raw {
+        None => Ok(None),
+        Some(s) => Ok(Some(parse_match_kind(s)?)),
+    }
+}
+
+fn parse_opt_fix(raw: Option<&str>) -> Result<Option<FixKind>> {
+    match raw {
+        None => Ok(None),
+        Some(s) => Ok(Some(parse_fix_kind(s)?)),
+    }
+}
+
+fn parse_opt_boundary(raw: Option<&str>) -> Result<Option<Boundary>> {
+    match raw {
+        None => Ok(None),
+        Some(s) => Ok(Some(parse_boundary(s)?)),
+    }
+}
+
+fn handle_correction(cmd: TermCorrectionCmd, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    use TermCorrectionSubcommand::*;
+    match cmd.command {
+        Add(args) => handle_correction_add(args, ctx),
+        List(args) => handle_correction_list(args, ctx),
+        Show(args) => handle_correction_show(args, ctx),
+        Update(args) => handle_correction_update(args, ctx),
+        Remove(args) => handle_correction_remove(args, ctx),
+    }
+}
+
+fn correction_scope(root: &std::path::Path, ctx: &CommandCtx) -> Result<(String, std::path::PathBuf)> {
+    if let Some(pn) = ctx.project() {
+        let pp = crate::service::util::resolve_project(root, Some(pn), ctx.cwd())?;
+        Ok(("project".to_string(), pp))
+    } else {
+        Ok(("global".to_string(), root.to_path_buf()))
+    }
+}
+
+fn handle_correction_add(args: TermCorrectionAddArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let (scope, scope_path) = correction_scope(root, ctx)?;
+    let warnings: Vec<String> = Vec::new();
+
+    let corr = if scope == "project" {
+        term_svc::correction::add_correction(
+            &scope_path,
+            &args.term,
+            &args.original,
+            &args.correct,
+            parse_opt_match(args.r#match.as_deref())?,
+            parse_opt_fix(args.fix.as_deref())?,
+            parse_opt_boundary(args.boundary.as_deref())?,
+            args.pinyin.map(|s| if s.is_empty() { None } else { Some(s) }),
+        )?
+    } else {
+        term_svc::correction::add_correction_global(
+            &scope_path,
+            &args.term,
+            &args.original,
+            &args.correct,
+            parse_opt_match(args.r#match.as_deref())?,
+            parse_opt_fix(args.fix.as_deref())?,
+            parse_opt_boundary(args.boundary.as_deref())?,
+            args.pinyin.map(|s| if s.is_empty() { None } else { Some(s) }),
+        )?
+    };
+
+    let data = serde_json::json!({
+        "term": args.term,
+        "scope": scope,
+        "correction": serde_json::to_value(&corr).unwrap_or_default(),
+    });
+
+    match ctx.format() {
+        Format::Json => Ok(CommandOutcome::Success(data, warnings, None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(format!(
+                "added correction \"{}\" → \"{}\" to term \"{}\"",
+                corr.original, corr.correct, args.term
+            )),
+            warnings,
+            None,
+        )),
+    }
+}
+
+fn handle_correction_list(args: TermCorrectionListArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let (scope, scope_path) = correction_scope(root, ctx)?;
+
+    let corrections = if scope == "project" {
+        term_svc::correction::list_corrections(&scope_path, &args.term)?
+    } else {
+        term_svc::correction::list_corrections_global(&scope_path, &args.term)?
+    };
+
+    match ctx.format() {
+        Format::Json => {
+            let items: Vec<serde_json::Value> =
+                corrections.iter().map(|c| serde_json::to_value(c).unwrap_or_default()).collect();
+            Ok(CommandOutcome::Success(
+                serde_json::json!({"term": args.term, "scope": scope, "corrections": items}),
+                Vec::new(),
+                None,
+            ))
+        }
+        Format::Text => {
+            if corrections.is_empty() {
+                return Ok(CommandOutcome::Raw(format!("no corrections for term \"{}\"", args.term), None));
+            }
+            let mut lines = vec![format!("corrections for term \"{}\":", args.term)];
+            for c in &corrections {
+                lines.push(format!(
+                    "  \"{}\" → \"{}\" [match={}, fix={}]",
+                    c.original,
+                    c.correct,
+                    match_to_str(&c.r#match),
+                    fix_to_str(&c.fix)
+                ));
+            }
+            Ok(CommandOutcome::Raw(lines.join("\n"), None))
+        }
+    }
+}
+
+fn handle_correction_show(args: TermCorrectionShowArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let (scope, scope_path) = correction_scope(root, ctx)?;
+
+    let corr = if scope == "project" {
+        term_svc::correction::show_correction(&scope_path, &args.term, &args.original)?
+    } else {
+        term_svc::correction::show_correction_global(&scope_path, &args.term, &args.original)?
+    };
+
+    match ctx.format() {
+        Format::Json => Ok(CommandOutcome::Success(
+            serde_json::json!({"term": args.term, "scope": scope, "correction": serde_json::to_value(&corr).unwrap_or_default()}),
+            Vec::new(),
+            None,
+        )),
+        Format::Text => Ok(CommandOutcome::Raw(
+            format!(
+                "correction \"{}\" → \"{}\"\n  match: {}\n  fix: {}\n  boundary: {}{}",
+                corr.original,
+                corr.correct,
+                match_to_str(&corr.r#match),
+                fix_to_str(&corr.fix),
+                boundary_to_str(&corr.boundary),
+                corr.pinyin.map_or(String::new(), |p| format!("\n  pinyin: {p}")),
+            ),
+            None,
+        )),
+    }
+}
+
+fn handle_correction_update(args: TermCorrectionUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let (scope, scope_path) = correction_scope(root, ctx)?;
+
+    let pinyin_val = args.pinyin.map(|s| if s.is_empty() { None } else { Some(s) });
+
+    let corr = if scope == "project" {
+        term_svc::correction::update_correction(
+            &scope_path,
+            &args.term,
+            &args.original,
+            args.correct,
+            parse_opt_match(args.r#match.as_deref())?,
+            parse_opt_fix(args.fix.as_deref())?,
+            parse_opt_boundary(args.boundary.as_deref())?,
+            pinyin_val,
+        )?
+    } else {
+        term_svc::correction::update_correction_global(
+            &scope_path,
+            &args.term,
+            &args.original,
+            args.correct,
+            parse_opt_match(args.r#match.as_deref())?,
+            parse_opt_fix(args.fix.as_deref())?,
+            parse_opt_boundary(args.boundary.as_deref())?,
+            pinyin_val,
+        )?
+    };
+
+    match ctx.format() {
+        Format::Json => Ok(CommandOutcome::Success(
+            serde_json::json!({"term": args.term, "scope": scope, "correction": serde_json::to_value(&corr).unwrap_or_default()}),
+            Vec::new(),
+            None,
+        )),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(format!("updated correction \"{}\" on term \"{}\"", args.original, args.term)),
+            Vec::new(),
+            None,
+        )),
+    }
+}
+
+fn handle_correction_remove(args: TermCorrectionRemoveArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let (scope, scope_path) = correction_scope(root, ctx)?;
+    let warnings: Vec<String> = Vec::new();
+
+    if args.dry_run.dry_run {
+        let result = VerbResult {
+            verb: Verb::Remove,
+            kind: "correction",
+            identity: format!("{}/{}", args.term, args.original),
+            old_identity: None,
+            path: None,
+            dry_run: true,
+            details: serde_json::json!({"scope": scope}),
+        };
+        return match ctx.format() {
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
+            Format::Text => Ok(CommandOutcome::Success(
+                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                warnings,
+                None,
+            )),
+        };
+    }
+
+    let corr = if scope == "project" {
+        term_svc::correction::remove_correction(&scope_path, &args.term, &args.original)?
+    } else {
+        term_svc::correction::remove_correction_global(&scope_path, &args.term, &args.original)?
+    };
+
+    match ctx.format() {
+        Format::Json => Ok(CommandOutcome::Success(
+            serde_json::json!({"term": args.term, "scope": scope, "removed": serde_json::to_value(&corr).unwrap_or_default()}),
+            warnings,
+            None,
+        )),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(format!(
+                "removed correction \"{}\" → \"{}\" from term \"{}\"",
+                corr.original, corr.correct, args.term
+            )),
+            warnings,
+            None,
+        )),
+    }
+}
+
+fn match_to_str(m: &MatchKind) -> &str {
+    match m {
+        MatchKind::Word => "word",
+        MatchKind::Substring => "substring",
+        MatchKind::Pinyin => "pinyin",
+    }
+}
+
+fn fix_to_str(f: &FixKind) -> &str {
+    match f {
+        FixKind::Required => "required",
+        FixKind::Suggested => "suggested",
+    }
+}
+
+fn boundary_to_str(b: &Boundary) -> &str {
+    match b {
+        Boundary::Loose => "loose",
+        Boundary::Standalone => "standalone",
+    }
+}
+
+// ── Handle: mf term move / mv ──────────────────────────────────────────────
+
+fn handle_move(args: TermMoveArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let warnings: Vec<String> = Vec::new();
+
+    let dst_project = args.to_project.as_deref();
+
+    if !args.to_global && dst_project.is_none() {
+        return Err(MfError::usage("must specify --to-global or --to-project <PROJECT> for the destination", None));
+    }
+    // Reject early so dry-run and real runs reject identical inputs.
+    if args.from_global && args.to_global {
+        return Err(MfError::usage("source and destination are both global; nothing to do", None));
+    }
+
+    // Resolve source path
+    let src_path = if args.from_global {
+        root.to_path_buf()
+    } else if let Some(pn) = ctx.project() {
+        crate::service::util::resolve_project(root, Some(pn), ctx.cwd())?
+    } else {
+        root.to_path_buf()
+    };
+
+    // Resolve destination path
+    let dst_path = if args.to_global {
+        root.to_path_buf()
+    } else if let Some(pn) = dst_project {
+        crate::service::util::resolve_project(root, Some(pn), ctx.cwd())?
+    } else {
+        root.to_path_buf()
+    };
+
+    if args.dry_run.dry_run {
+        let result = VerbResult {
+            verb: Verb::Move,
+            kind: "term",
+            identity: args.term.clone(),
+            old_identity: None,
+            path: None,
+            dry_run: true,
+            details: serde_json::json!({
+                "from_scope": if args.from_global { "global" } else { "project" },
+                "to_scope": if args.to_global { "global" } else { "project" },
+                "force": args.force.force,
+            }),
+        };
+        return match ctx.format() {
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
+            Format::Text => Ok(CommandOutcome::Success(
+                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                warnings,
+                None,
+            )),
+        };
+    }
+
+    let outcome = if args.to_global {
+        term_svc::move_::move_project_to_global(&src_path, &dst_path, &args.term, args.force.force)?
+    } else if args.from_global {
+        term_svc::move_::move_global_to_project(&src_path, &dst_path, &args.term, args.force.force)?
+    } else {
+        term_svc::move_::move_project_to_project(&src_path, &dst_path, &args.term, args.force.force)?
+    };
+
+    let result = VerbResult {
+        verb: Verb::Move,
+        kind: "term",
+        identity: outcome.term.term.clone(),
+        old_identity: None,
+        path: None,
+        dry_run: false,
+        details: serde_json::json!({
+            "from_scope": outcome.from_scope,
+            "to_scope": outcome.to_scope,
+            "side_effects": outcome.side_effects,
+        }),
+    };
+
+    match ctx.format() {
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            warnings,
+            None,
+        )),
+    }
+}
+
+// ── Parse helper wrappers ────────────────────────────────────────────────────
