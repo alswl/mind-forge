@@ -18,9 +18,9 @@ Options:
   -v, --verbose...                       Verbose output
       --alias <ALIAS>                    
   -q, --quiet                            Silence non-error output
-      --format <FORMAT>                  Output format [default: text] [possible values: text, json]
+  -o, --output <FORMAT>                  Output format [default: text] [possible values: text, json]
       --tag <TAG>                        
-      --json                             Shorthand for --format json
+      --json                             Shorthand for --output json
       --misrecognition <MISRECOGNITION>  
       --dry-run                          Preview changes without writing
       --no-color                         Disable colored output

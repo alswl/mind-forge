@@ -15,7 +15,7 @@ fn schema_outputs_valid_json() {
     assert!(schema.get("definitions").is_some(), "should have definitions");
 }
 
-/// E2E: `mf config schema --format yaml` 输出合法 YAML
+/// E2E: `mf config schema --output yaml` 输出合法 YAML
 #[test]
 fn schema_outputs_valid_yaml() {
     let dir = Dataset::outside();
@@ -82,7 +82,7 @@ fn show_invalid_yaml_returns_parse_error() {
     assert!(stderr.contains("parse error"), "stderr: {stderr}");
 }
 
-/// E2E: `mf config show --format json` 输出合法 JSON
+/// E2E: `mf config show --output json` 输出合法 JSON
 #[test]
 fn show_json_output() {
     let ds = Dataset::empty();

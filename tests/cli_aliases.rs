@@ -44,7 +44,7 @@ fn project_ls_alias() {
     assert_eq!(stdout_ls, stdout_list, "ls and list output should match");
 }
 
-/// T044: `mf --json source list` ≡ `--format json source list`
+/// T044: `mf --json source list` ≡ `--output json source list`
 #[test]
 fn json_flag_equals_format_json() {
     let dir = common::setup_repo();
@@ -55,11 +55,11 @@ fn json_flag_equals_format_json() {
     assert!(stderr_json_flag.is_empty(), "--json flag should produce no stderr warnings, got: {stderr_json_flag:?}");
 
     let (stdout_format, stderr_format, code_format) =
-        run(&["--root", &dir.path().to_string_lossy(), "--format", "json", "source", "list", "--project", "test-proj"]);
-    assert_eq!(code_format, 0, "--format json should succeed");
-    assert!(stderr_format.is_empty(), "--format json should have clean stderr");
+        run(&["--root", &dir.path().to_string_lossy(), "--output", "json", "source", "list", "--project", "test-proj"]);
+    assert_eq!(code_format, 0, "--output json should succeed");
+    assert!(stderr_format.is_empty(), "--output json should have clean stderr");
 
-    assert_eq!(stdout_json_flag, stdout_format, "--json and --format json output should match");
+    assert_eq!(stdout_json_flag, stdout_format, "--json and --output json output should match");
 }
 
 /// `--install-completion` and `--show-completion` are removed; `mf completion bash` is the canonical path.
@@ -96,24 +96,24 @@ fn version_subcommand_equals_version_flag() {
     assert!(stdout_flag.contains("mf "), "mf --version output should contain 'mf ', got: {stdout_flag:?}");
 }
 
-/// T048: `mf --json --format text` -> `--json` wins (no error)
+/// T048: `mf --json --output text` -> `--json` wins (no error)
 #[test]
 fn json_flag_wins_over_format() {
     let dir = common::setup_repo();
     common::create_project(&dir, "test-proj");
-    // When both --json and --format text are specified, --json should take precedence
+    // When both --json and --output text are specified, --json should take precedence
     let (_stdout, stderr, code) = run(&[
         "--root",
         &dir.path().to_string_lossy(),
         "--json",
-        "--format",
+        "--output",
         "text",
         "source",
         "list",
         "--project",
         "test-proj",
     ]);
-    assert_eq!(code, 0, "should succeed even with both --json and --format");
+    assert_eq!(code, 0, "should succeed even with both --json and --output");
     assert!(
         stderr.is_empty() || stderr.contains("[deprecated]"),
         "stderr should be clean or contain only deprecation warnings, got: {stderr:?}"
@@ -170,12 +170,13 @@ fn short_flag_force() {
     assert!(stdout.contains("-f"), "source new --help should show -f short flag");
 }
 
-/// T047: short flag -o for --output in build
+/// T047: short flag -o for --output (global flag, shown in build help)
 #[test]
 fn short_flag_output() {
     let (stdout, _, code) = run(&["build", "--help"]);
     assert_eq!(code, 0);
-    assert!(stdout.contains("-o"), "build --help should show -o short flag");
+    assert!(stdout.contains("-o"), "build --help should show -o short flag (global --output)");
+    assert!(stdout.contains("--output"), "build --help should show --output help");
 }
 
 /// T047: short flag -n for --name in source add

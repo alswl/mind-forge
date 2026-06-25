@@ -114,12 +114,12 @@ fn index_rejects_incompatible_schema() {
     assert!(stderr.contains("incompatible schema"));
 }
 
-/// E2E: --format json 时 project index 输出为 JSON
+/// E2E: --output json 时 project index 输出为 JSON
 #[test]
 fn index_json_output_format() {
     let ds = Dataset::empty().with_project("json-project");
 
-    let (stdout, _, code) = run_in(ds.root(), &["--format", "json", "project", "index"]);
+    let (stdout, _, code) = run_in(ds.root(), &["--output", "json", "project", "index"]);
     assert_eq!(code, 0);
 
     let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");

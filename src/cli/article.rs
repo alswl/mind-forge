@@ -1,15 +1,15 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
-use crate::cli::deprecation::DeprecationContext;
 use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::LintFlags;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::shared_flags::YesFlag;
+use crate::cli::CommandCtx;
 use crate::cli::CommandOutcome;
 use crate::defaults;
 use crate::error::{MfError, Result};
@@ -171,21 +171,17 @@ pub struct ArticleBlockRenameArgs {
     pub dry_run: DryRunFlag,
 }
 
-pub fn dispatch(
-    command: ArticleCmd,
-    repo_root: Option<&PathBuf>,
-    format: Format,
-    project: Option<&str>,
-    _deprecation: &mut DeprecationContext,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
 
-    let cwd = std::env::current_dir().map_err(MfError::Io)?;
+    let cwd = ctx.cwd();
+    let format = ctx.format();
+    let project = ctx.project();
 
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("article")),
         Some(ArticleSubcommand::New(args)) => {
-            let project_path = svc_util::resolve_project(root, project, &cwd)?;
+            let project_path = svc_util::resolve_project(root, project, cwd)?;
 
             if args.dry_run.dry_run {
                 let filename = svc_util::to_filename(&args.title);
@@ -265,8 +261,7 @@ pub fn dispatch(
             }
         }
         Some(ArticleSubcommand::List(args)) => {
-            let detected =
-                project.map_or_else(|| svc_util::detect_current_project(root, &cwd), |p| Some(p.to_string()));
+            let detected = project.map_or_else(|| svc_util::detect_current_project(root, cwd), |p| Some(p.to_string()));
 
             match detected {
                 None => {
@@ -311,7 +306,7 @@ pub fn dispatch(
                 }
                 Some(resolved) => {
                     // --project specified or detected from cwd: single-project behavior
-                    let project_path = svc_util::resolve_project(root, Some(&resolved), &cwd)?;
+                    let project_path = svc_util::resolve_project(root, Some(&resolved), cwd)?;
                     let articles = article_svc::list_articles(&project_path)?;
                     let config = config_svc::load_project(&project_path, Some(root))?;
 
@@ -396,11 +391,11 @@ pub fn dispatch(
             }
         }
         Some(ArticleSubcommand::Lint(args)) => {
-            let project_path = svc_util::resolve_project(root, project, &cwd)?;
+            let project_path = svc_util::resolve_project(root, project, cwd)?;
             handle_lint(args, &project_path, format)
         }
         Some(ArticleSubcommand::Index(args)) => {
-            let project_path = svc_util::resolve_project(root, project, &cwd)?;
+            let project_path = svc_util::resolve_project(root, project, cwd)?;
             let config = config_svc::load_project(&project_path, Some(root))?;
 
             let templates_scanned = config
@@ -532,11 +527,11 @@ pub fn dispatch(
             }
         }
         Some(ArticleSubcommand::Show(args)) => {
-            let project_path = svc_util::resolve_project(root, project, &cwd)?;
+            let project_path = svc_util::resolve_project(root, project, cwd)?;
             handle_article_show(args, &project_path, format)
         }
         Some(ArticleSubcommand::Update(args)) => {
-            let project_path = svc_util::resolve_project(root, project, &cwd)?;
+            let project_path = svc_util::resolve_project(root, project, cwd)?;
             let status = match args.status.as_deref() {
                 Some("draft") => Some(ArticleStatus::Draft),
                 Some("published") => Some(ArticleStatus::Published),
@@ -581,7 +576,7 @@ pub fn dispatch(
             }
         }
         Some(ArticleSubcommand::Rename(args)) => {
-            let project_path = svc_util::resolve_project(root, project, &cwd)?;
+            let project_path = svc_util::resolve_project(root, project, cwd)?;
             identity::validate_entity_path(&project_path, &args.old_path)?;
             identity::validate_entity_path(&project_path, &args.new_path)?;
 
@@ -632,7 +627,7 @@ pub fn dispatch(
             }
         }
         Some(ArticleSubcommand::Remove(args)) => {
-            let project_path = svc_util::resolve_project(root, project, &cwd)?;
+            let project_path = svc_util::resolve_project(root, project, cwd)?;
             identity::validate_entity_path(&project_path, &args.path)?;
 
             require_confirmation(&ConfirmArgs {
@@ -668,21 +663,17 @@ pub fn dispatch(
             }
         }
         Some(ArticleSubcommand::Block(block_cmd)) => match block_cmd {
-            ArticleBlockSubcommand::Rename(args) => handle_block_rename(args, root, format, project, &cwd),
+            ArticleBlockSubcommand::Rename(args) => handle_block_rename(args, ctx),
         },
-        Some(ArticleSubcommand::Convert(args)) => handle_convert(args, root, format, project, &cwd),
+        Some(ArticleSubcommand::Convert(args)) => handle_convert(args, ctx),
     }
 }
 
 /// ── Handle: mf article block rename ────────────────────────────────────
-fn handle_block_rename(
-    args: ArticleBlockRenameArgs,
-    root: &Path,
-    format: Format,
-    project: Option<&str>,
-    cwd: &Path,
-) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, project, cwd)?;
+fn handle_block_rename(args: ArticleBlockRenameArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let format = ctx.format();
+    let project_path = svc_util::resolve_project(root, ctx.project(), ctx.cwd())?;
 
     // Resolve article path (supports title lookup via index)
     let article_path = {
@@ -912,14 +903,10 @@ fn severity_rank(severity: Option<&str>) -> u8 {
 
 // ── Handle: mf article convert ────────────────────────────────────────────
 
-fn handle_convert(
-    args: ArticleConvertArgs,
-    root: &Path,
-    format: Format,
-    project: Option<&str>,
-    cwd: &Path,
-) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, project, cwd)?;
+fn handle_convert(args: ArticleConvertArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let format = ctx.format();
+    let project_path = svc_util::resolve_project(root, ctx.project(), ctx.cwd())?;
 
     let index = crate::service::index::load(&project_path)?;
     let article_paths: Vec<String> = index

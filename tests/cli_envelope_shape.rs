@@ -33,7 +33,7 @@ fn run(args: &[&str]) -> (String, String, i32) {
 }
 
 fn run_json(args: &[&str]) -> (String, String, i32) {
-    let mut full_args = vec!["--format", "json"];
+    let mut full_args = vec!["--output", "json"];
     full_args.extend_from_slice(args);
     run(&full_args)
 }
@@ -224,7 +224,7 @@ articles:
         "--yes",
     ]);
     assert_eq!(code, 2, "should error when referenced, stderr: {stderr:?}");
-    // Error may be on stderr, but with --format json it's on stdout
+    // Error may be on stderr, but with --output json it's on stdout
     if stdout.trim().is_empty() {
         assert!(!stderr.is_empty(), "stderr should have error message");
     } else {
@@ -388,7 +388,7 @@ fn envelope_config_generate_ok() {
         &dir.path().to_string_lossy(),
         "config",
         "generate",
-        "-o",
+        "--out",
         &output_path.to_string_lossy(),
     ]);
     assert_eq!(code, 0, "stderr: {stderr:?}");

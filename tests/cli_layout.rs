@@ -79,7 +79,7 @@ fn project_show_json_includes_effective_layout() {
 
     let output = mf()
         .current_dir(repo.path())
-        .args(["--format", "json", "project", "show", "blog"])
+        .args(["--output", "json", "project", "show", "blog"])
         .output()
         .expect("command runs");
     assert!(output.status.success());

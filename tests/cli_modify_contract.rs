@@ -11,7 +11,7 @@ fn mf(repo: &common::TempDir) -> Command {
 
 fn mf_json(repo: &common::TempDir) -> Command {
     let mut cmd = Command::cargo_bin("mf").unwrap();
-    cmd.args(["--root", repo.path().to_str().unwrap(), "--format", "json"]);
+    cmd.args(["--root", repo.path().to_str().unwrap(), "--output", "json"]);
     cmd
 }
 

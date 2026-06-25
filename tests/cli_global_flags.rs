@@ -50,7 +50,7 @@ fn json_placeholder_uses_json_shape() {
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(&project_dir)
-        .args(["--format", "json", "term", "list"])
+        .args(["--output", "json", "term", "list"])
         .assert()
         .code(0)
         .stdout(predicate::str::contains("\"status\": \"ok\""))

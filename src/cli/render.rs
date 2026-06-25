@@ -14,6 +14,7 @@ use crate::service::config as config_svc;
 use crate::service::render as render_svc;
 use crate::service::util as svc_util;
 
+use super::CommandCtx;
 use super::CommandOutcome;
 
 #[derive(Debug, Parser)]
@@ -65,31 +66,21 @@ pub struct TemplateShowArgs {
 }
 
 /// Dispatch the `mf render` command.
-pub fn dispatch(
-    args: RenderCmd,
-    repo_root: Option<&std::path::PathBuf>,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
+pub fn dispatch(args: RenderCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     match args.command {
         Some(RenderSubcommand::Template(tpl_cmd)) => match tpl_cmd.command {
-            TemplateSubcommand::List(tpl_args) => dispatch_list_templates(repo_root, format, tpl_args),
-            TemplateSubcommand::Show(args) => handle_template_show(repo_root, format, args),
+            TemplateSubcommand::List(tpl_args) => dispatch_list_templates(ctx, tpl_args),
+            TemplateSubcommand::Show(args) => handle_template_show(ctx, args),
         },
-        None => dispatch_render(args, repo_root, format, project),
+        None => dispatch_render(args, ctx),
     }
 }
 
-fn dispatch_render(
-    args: RenderCmd,
-    repo_root: Option<&std::path::PathBuf>,
-    format: Format,
-    project: Option<&str>,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+fn dispatch_render(args: RenderCmd, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
 
-    let cwd = std::env::current_dir().map_err(MfError::Io)?;
-    let (project_path, config) = render_svc::resolve_project_config(root, project, &cwd)?;
+    let cwd = ctx.cwd();
+    let (project_path, config) = render_svc::resolve_project_config(root, ctx.project(), cwd)?;
     let project_name = svc_util::dir_name(&project_path);
 
     let layout = config_svc::effective_layout(&project_path)?;
@@ -149,18 +140,14 @@ fn dispatch_render(
         "outputs": generated.outputs,
     });
 
-    match format {
+    match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(data, Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Raw(generated.prompt, None)),
     }
 }
 
-fn handle_template_show(
-    repo_root: Option<&std::path::PathBuf>,
-    format: Format,
-    args: TemplateShowArgs,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+fn handle_template_show(ctx: &CommandCtx, args: TemplateShowArgs) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
     let built_ins = render_svc::built_in_templates();
     let custom = render_svc::discover_custom_templates(root)?;
 
@@ -207,33 +194,29 @@ fn handle_template_show(
 
     let block = ShowBlock { kind: "render_template", identity: template.name.clone(), fields, sections };
 
-    match format {
+    match ctx.format() {
         Format::Json => {
             let tpl_json = serde_json::to_value(&template).map_err(MfError::Json)?;
             let extra = tpl_json.as_object().cloned().unwrap_or_default();
             Ok(CommandOutcome::Success(json_envelope(&block, extra), Vec::new(), None))
         }
         Format::Text => Ok(CommandOutcome::Raw(
-            render_show_text(&block, &ShowOpts::from_repo_root(repo_root.map(|r| r.as_path()))),
+            render_show_text(&block, &ShowOpts::from_repo_root(ctx.repo_root().map(|r| r.as_path()))),
             None,
         )),
     }
 }
 
-fn dispatch_list_templates(
-    repo_root: Option<&std::path::PathBuf>,
-    format: Format,
-    args: TemplateListArgs,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+fn dispatch_list_templates(ctx: &CommandCtx, args: TemplateListArgs) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
 
     let built_ins = render_svc::built_in_templates();
     let custom = render_svc::discover_custom_templates(root)?;
 
-    let opts =
-        ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc).with_repo_root(repo_root.cloned());
+    let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
+        .with_repo_root(ctx.repo_root().cloned());
 
-    match format {
+    match ctx.format() {
         Format::Json => {
             let mut items: Vec<serde_json::Value> = Vec::new();
             for t in &built_ins {

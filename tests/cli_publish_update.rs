@@ -52,7 +52,7 @@ fn creates_published_record_when_absent() {
     let out = run_update(
         &repo,
         &[
-            "--format",
+            "--output",
             "json",
             "publish",
             "update",
@@ -86,7 +86,7 @@ fn creates_draft_record_with_null_published_at() {
     let repo = setup_repo_with_target();
     let out = run_update(
         &repo,
-        &["--format", "json", "publish", "update", ARTICLE, "--target", "local-blog", "--status", "draft"],
+        &["--output", "json", "publish", "update", ARTICLE, "--target", "local-blog", "--status", "draft"],
     );
     assert_eq!(out.status.code(), Some(0));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -100,7 +100,7 @@ fn rejects_archived_creation_without_target_url() {
     let before = read_index_bytes(&repo);
     let out = run_update(
         &repo,
-        &["--format", "json", "publish", "update", ARTICLE, "--target", "local-blog", "--set", "status=archived"],
+        &["--output", "json", "publish", "update", ARTICLE, "--target", "local-blog", "--set", "status=archived"],
     );
     assert_eq!(out.status.code(), Some(2));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
@@ -115,7 +115,7 @@ fn creates_archived_record_with_target_url() {
     let out = run_update(
         &repo,
         &[
-            "--format",
+            "--output",
             "json",
             "publish",
             "update",
@@ -156,7 +156,7 @@ fn updates_existing_record_status_only() {
     // Update status only
     let out = run_update(
         &repo,
-        &["--format", "json", "publish", "update", ARTICLE, "--target", "local-blog", "--status", "archived"],
+        &["--output", "json", "publish", "update", ARTICLE, "--target", "local-blog", "--status", "archived"],
     );
     assert_eq!(out.status.code(), Some(0));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -186,7 +186,7 @@ fn updates_existing_record_target_url_only() {
     let out = run_update(
         &repo,
         &[
-            "--format",
+            "--output",
             "json",
             "publish",
             "update",
@@ -226,7 +226,7 @@ fn preserves_published_at_on_update() {
         &run_update(
             &repo,
             &[
-                "--format",
+                "--output",
                 "json",
                 "publish",
                 "update",
@@ -246,7 +246,7 @@ fn preserves_published_at_on_update() {
 
     let out = run_update(
         &repo,
-        &["--format", "json", "publish", "update", ARTICLE, "--target", "local-blog", "--status", "archived"],
+        &["--output", "json", "publish", "update", ARTICLE, "--target", "local-blog", "--status", "archived"],
     );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
@@ -260,7 +260,7 @@ fn preserves_published_at_on_update() {
 fn rejects_when_neither_status_nor_url_provided() {
     let repo = setup_repo_with_target();
     let before = read_index_bytes(&repo);
-    let out = run_update(&repo, &["--format", "json", "publish", "update", ARTICLE, "--target", "local-blog"]);
+    let out = run_update(&repo, &["--output", "json", "publish", "update", ARTICLE, "--target", "local-blog"]);
     assert_eq!(out.status.code(), Some(2));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "usage");
@@ -273,7 +273,7 @@ fn rejects_when_article_not_in_index() {
     let out = run_update(
         &repo,
         &[
-            "--format",
+            "--output",
             "json",
             "publish",
             "update",
@@ -286,7 +286,7 @@ fn rejects_when_article_not_in_index() {
     );
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
-    assert_eq!(v["error"]["kind"], "not-found");
+    assert_eq!(v["error"]["kind"], "not_found");
 }
 
 #[test]
@@ -294,11 +294,11 @@ fn rejects_when_target_not_in_config() {
     let repo = setup_repo_with_target();
     let out = run_update(
         &repo,
-        &["--format", "json", "publish", "update", ARTICLE, "--target", "ghost-target", "--set", "status=published"],
+        &["--output", "json", "publish", "update", ARTICLE, "--target", "ghost-target", "--set", "status=published"],
     );
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
-    assert_eq!(v["error"]["kind"], "not-found");
+    assert_eq!(v["error"]["kind"], "not_found");
 }
 
 #[test]
@@ -308,7 +308,7 @@ fn dry_run_does_not_write_index() {
     let out = run_update(
         &repo,
         &[
-            "--format",
+            "--output",
             "json",
             "publish",
             "update",
@@ -350,7 +350,7 @@ fn idempotent_repeat_invocation() {
     let out = run_update(
         &repo,
         &[
-            "--format",
+            "--output",
             "json",
             "publish",
             "update",

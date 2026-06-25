@@ -13,7 +13,7 @@ description: Use the mf Rust CLI to manage mind 0.3.0-compatible local knowledge
 - **Mind Repo**: A directory rooted at `minds.yaml`. Most commands require running inside one.
 - **Project**: A subdirectory with `docs/`, `sources/`, `assets/`, and `mind.yaml`. Some repositories also use `prompts/` for writing intent. Project identity is a repo-relative path.
 - **Index**: `mind-index.yaml` per project — source of truth for articles, sources, assets, terms, and publish records.
-- **Output**: Text by default, JSON with `--json` or `--format json`.
+- **Output**: Text by default, JSON with `--json` or `--output json` (`-o json`).
 
 ## YAML Format
 
@@ -52,8 +52,8 @@ Most commands accept these flags:
 | `-p`, `--project <PROJECT>` | Project selector for project-scoped commands |
 | `-v`, `--verbose...` | Verbose output (repeatable) |
 | `-q`, `--quiet` | Silence non-error output on success |
-| `--format <text\|json>` | Output format (default: `text`) |
-| `--json` | Shorthand for `--format json` |
+| `-o`, `--output <text\|json>` | Output format (default: `text`) |
+| `--json` | Shorthand for `--output json` |
 | `--no-color` | Disable colored output |
 | `-h`, `--help` | Show help |
 | `-V`, `--version` | Show version |

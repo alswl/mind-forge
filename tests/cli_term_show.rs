@@ -63,7 +63,7 @@ fn term_show_json() {
     let (stdout, stderr, code) = run(&[
         "--root",
         &repo.path().to_string_lossy(),
-        "--format",
+        "--output",
         "json",
         "term",
         "show",

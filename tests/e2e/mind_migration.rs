@@ -50,8 +50,8 @@ fn e2e_mind_user_migration_chain() {
     assert_eq!(code, 0, "config default failed: {stderr}");
     assert!(!stdout.is_empty(), "config default should produce output");
 
-    // ---- 8. mf --format json asset ls -p alpha (A 类: ls alias, -p short flag) ----
-    let (stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "asset", "ls", "--project", "alpha"]);
+    // ---- 8. mf --output json asset ls -p alpha (A 类: ls alias, -p short flag) ----
+    let (stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "asset", "ls", "--project", "alpha"]);
     assert_eq!(code, 0, "asset ls failed: {stderr}");
     assert!(stdout.contains("\"status\": \"ok\""), "json output should have envelope: {stdout}");
 
@@ -78,7 +78,7 @@ fn e2e_mind_user_migration_chain() {
     assert!(!stderr.contains("[deprecated]"), "canonical form should not warn: {stderr}");
 
     // ---- 10. mf source list -p alpha (verify source was added) ----
-    let (stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "source", "list", "--project", "alpha"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "source", "list", "--project", "alpha"]);
     assert_eq!(code, 0, "source list failed: {stderr}");
     assert!(stdout.contains("test-source"), "source list should show added source: {stdout}");
 

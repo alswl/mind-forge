@@ -33,7 +33,7 @@ fn multi_slot_template_rejected() {
     );
 
     let (parsed, _stderr, code) =
-        json_run(&["--format", "json", "article", "list"], repo.path().join("my-project").as_path());
+        json_run(&["--output", "json", "article", "list"], repo.path().join("my-project").as_path());
     assert_ne!(code, Some(0), "multi-slot template should be rejected");
     assert_eq!(parsed["error"]["kind"], "multi_slot_template", "error kind mismatch");
     let msg = parsed["error"]["message"].as_str().unwrap_or("");
@@ -55,7 +55,7 @@ fn unknown_placeholder_in_pattern() {
     );
 
     let (parsed, _stderr, code) =
-        json_run(&["--format", "json", "article", "list"], repo.path().join("my-project").as_path());
+        json_run(&["--output", "json", "article", "list"], repo.path().join("my-project").as_path());
     assert_ne!(code, Some(0), "unknown placeholder should be rejected");
     assert_eq!(parsed["error"]["kind"], "unknown_placeholder", "error kind mismatch");
 }
@@ -79,7 +79,7 @@ templates:
     common::write_mind_yaml(&repo, "my-project", mind_yaml);
 
     let (parsed, _stderr, code) =
-        json_run(&["--format", "json", "article", "list"], repo.path().join("my-project").as_path());
+        json_run(&["--output", "json", "article", "list"], repo.path().join("my-project").as_path());
     assert_ne!(code, Some(0), "invalid template name should be rejected");
     assert_eq!(parsed["error"]["kind"], "invalid_template_name", "error kind mismatch");
     let msg = parsed["error"]["message"].as_str().unwrap_or("");

@@ -71,7 +71,7 @@ fn update_article_json_envelope() {
         .args([
             "--root",
             repo.path().to_str().unwrap(),
-            "--format",
+            "--output",
             "json",
             "article",
             "update",

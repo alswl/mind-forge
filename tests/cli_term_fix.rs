@@ -177,7 +177,7 @@ fn fix_term_does_not_touch_corrections() {
 fn fix_term_json_shape() {
     let (repo, _project) = setup_with_term();
     let output = mf(&repo)
-        .args(["--format", "json", "term", "update", "Mind Repo", "--definition", "json-test", "--project", "alpha"])
+        .args(["--output", "json", "term", "update", "Mind Repo", "--definition", "json-test", "--project", "alpha"])
         .output()
         .unwrap();
 

@@ -31,12 +31,12 @@ fn publisher_list_text() {
 // T005: Publisher List JSON
 // ---------------------------------------------------------------------------
 
-/// E2E: `mf --format json publisher list` outputs structured JSON publisher list
+/// E2E: `mf --output json publisher list` outputs structured JSON publisher list
 #[test]
 fn publisher_list_json() {
     let ds = datasets::repo_with_publishers();
 
-    let (stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "publish", "target", "list"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "publish", "target", "list"]);
 
     assert_eq!(code, 0, "exit 0: stdout={stdout} stderr={stderr}");
 
@@ -93,7 +93,7 @@ fn invalid_publisher_diagnostics() {
     let project_dir = ds.root().join("projects").join("my-project");
 
     // Part 1: JSON listing should report diagnostics
-    let (stdout, stderr, code) = run_in(ds.root(), &["--format", "json", "publish", "target", "list"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "publish", "target", "list"]);
     assert_eq!(code, 0, "listing should succeed: stderr={stderr}");
     let parsed: serde_json::Value =
         serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("valid JSON: {e} stdout={stdout} stderr={stderr}"));
@@ -116,7 +116,7 @@ fn unknown_publisher_rejection() {
     let project_dir = ds.root().join("projects").join("my-project");
 
     let (stdout, stderr, code) =
-        run_in(&project_dir, &["--format", "json", "publish", "run", "my-article", "--target", "does-not-exist"]);
+        run_in(&project_dir, &["--output", "json", "publish", "run", "my-article", "--target", "does-not-exist"]);
 
     assert_ne!(code, 0, "unknown publisher should fail");
 

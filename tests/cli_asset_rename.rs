@@ -181,7 +181,7 @@ fn rename_asset_json_envelope() {
             "assets/images/architecture.png",
             "--project",
             "alpha",
-            "--format",
+            "--output",
             "json",
         ])
         .output()

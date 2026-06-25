@@ -3,12 +3,12 @@ use std::path::{Path, PathBuf};
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
-use crate::cli::deprecation::DeprecationContext;
 use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::shared_flags::YesFlag;
+use crate::cli::CommandCtx;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::model::asset::AssetKind;
@@ -159,26 +159,22 @@ pub struct AssetRenameArgs {
 // Dispatch
 // ---------------------------------------------------------------------------
 
-pub fn dispatch(
-    command: AssetCmd,
-    repo_root: Option<&PathBuf>,
-    format: Format,
-    project: Option<&str>,
-    _deprecation: &mut DeprecationContext,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
-    let cwd = std::env::current_dir().map_err(MfError::Io)?;
+pub fn dispatch(command: AssetCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let cwd = ctx.cwd();
+    let format = ctx.format();
+    let project = ctx.project();
 
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("asset")),
-        Some(AssetSubcommand::New(args)) => handle_add(args, root, &cwd, format, project),
-        Some(AssetSubcommand::List(args)) => handle_list(args, root, &cwd, format, project),
-        Some(AssetSubcommand::Update(args)) => handle_update(args, root, &cwd, format, project),
-        Some(AssetSubcommand::Index(args)) => handle_index(args, root, &cwd, format, project),
-        Some(AssetSubcommand::Clean(args)) => handle_clean(args, root, format, project),
-        Some(AssetSubcommand::Show(args)) => handle_asset_show(args, root, &cwd, format, project),
-        Some(AssetSubcommand::Remove(args)) => handle_remove(args, root, &cwd, format, project),
-        Some(AssetSubcommand::Rename(args)) => handle_rename(args, root, &cwd, format, project),
+        Some(AssetSubcommand::New(args)) => handle_add(args, root, cwd, format, project),
+        Some(AssetSubcommand::List(args)) => handle_list(args, root, cwd, format, project),
+        Some(AssetSubcommand::Update(args)) => handle_update(args, root, cwd, format, project),
+        Some(AssetSubcommand::Index(args)) => handle_index(args, root, cwd, format, project),
+        Some(AssetSubcommand::Clean(args)) => handle_clean(args, root, cwd, format, project),
+        Some(AssetSubcommand::Show(args)) => handle_asset_show(args, root, cwd, format, project),
+        Some(AssetSubcommand::Remove(args)) => handle_remove(args, root, cwd, format, project),
+        Some(AssetSubcommand::Rename(args)) => handle_rename(args, root, cwd, format, project),
     }
 }
 
@@ -508,9 +504,14 @@ fn handle_index(
 // Handle: mf asset clean
 // ---------------------------------------------------------------------------
 
-fn handle_clean(args: AssetCleanArgs, root: &Path, format: Format, project: Option<&str>) -> Result<CommandOutcome> {
-    let cwd = std::env::current_dir().map_err(MfError::Io)?;
-    let project_path = svc_util::resolve_project(root, project, &cwd)?;
+fn handle_clean(
+    args: AssetCleanArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let project_path = svc_util::resolve_project(root, project, cwd)?;
     let report = asset_svc::clean(&project_path, args.dry_run.dry_run)?;
 
     match format {

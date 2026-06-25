@@ -78,7 +78,7 @@ fn remove_project_json_envelope() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "project", "remove", "alpha", "--format", "json", "--yes"])
+        .args(["--root", repo.path().to_str().unwrap(), "project", "remove", "alpha", "--output", "json", "--yes"])
         .output()
         .unwrap();
 

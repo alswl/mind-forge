@@ -1,13 +1,11 @@
-use std::path::PathBuf;
-
 use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 
-use crate::cli::deprecation::DeprecationContext;
 use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
+use crate::cli::CommandCtx;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::model::index::PublishStatus;
@@ -111,20 +109,16 @@ impl From<PublishStatusArg> for PublishStatus {
 }
 
 /// Handle `publish target list` (moved from removed top-level `publisher list`).
-fn handle_target_list(
-    repo_root: Option<&PathBuf>,
-    format: Format,
-    args: &PublishTargetListArgs,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+fn handle_target_list(args: &PublishTargetListArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
 
     let report = publisher_svc::discover(root)?;
     let outcome = PublishersOutcome::from_report(&report, root);
 
-    let opts =
-        ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc).with_repo_root(repo_root.cloned());
+    let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
+        .with_repo_root(ctx.repo_root().cloned());
 
-    match format {
+    match ctx.format() {
         Format::Json => {
             let items: Vec<serde_json::Value> = outcome
                 .publishers
@@ -185,42 +179,34 @@ fn handle_target_list(
     }
 }
 
-pub fn dispatch(
-    command: PublishCmd,
-    repo_root: Option<&PathBuf>,
-    format: Format,
-    project: Option<&str>,
-    deprecation: &mut DeprecationContext,
-) -> Result<CommandOutcome> {
+pub fn dispatch(command: PublishCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("publish")),
         Some(PublishSubcommand::Run(args)) => {
-            let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
-            let cwd = std::env::current_dir().map_err(MfError::Io)?;
-            let outcome = publish_svc::run(&args, root, &cwd, project)?;
-            render_run_outcome(outcome, format)
+            let root = ctx.require_repo_path()?;
+            let outcome = publish_svc::run(&args, root, ctx.cwd(), ctx.project())?;
+            render_run_outcome(outcome, ctx.format())
         }
         Some(PublishSubcommand::Update(args)) => {
             // Emit deprecation warnings for --status and --target-url
             if args.status.is_some() {
-                deprecation.warn_subject("--status", "--set status=<value>");
+                ctx.warn_subject("--status", "--set status=<value>");
             }
             if args.target_url.is_some() {
-                deprecation.warn_subject("--target-url", "--set url=<value>");
+                ctx.warn_subject("--target-url", "--set url=<value>");
             }
 
             // Merge --set values into the existing fields
             let merged_args = merge_set_values(args);
 
-            let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
-            let cwd = std::env::current_dir().map_err(MfError::Io)?;
-            let outcome = publish_svc::update(&merged_args, root, &cwd, project)?;
-            render_update_outcome(outcome, format)
+            let root = ctx.require_repo_path()?;
+            let outcome = publish_svc::update(&merged_args, root, ctx.cwd(), ctx.project())?;
+            render_update_outcome(outcome, ctx.format())
         }
         Some(PublishSubcommand::Target(target_cmd)) => match target_cmd.command {
             None => Ok(CommandOutcome::GroupHelp("publish target")),
-            Some(PublishTargetSubcommand::List(args)) => handle_target_list(repo_root, format, &args),
-            Some(PublishTargetSubcommand::Show(args)) => handle_target_show(repo_root, format, &args),
+            Some(PublishTargetSubcommand::List(args)) => handle_target_list(&args, ctx),
+            Some(PublishTargetSubcommand::Show(args)) => handle_target_show(&args, ctx),
         },
     }
 }
@@ -254,12 +240,8 @@ fn merge_set_values(args: PublishUpdateArgs) -> PublishUpdateArgs {
     merged
 }
 
-fn handle_target_show(
-    repo_root: Option<&PathBuf>,
-    format: Format,
-    args: &PublishTargetShowArgs,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+fn handle_target_show(args: &PublishTargetShowArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
     let report = publisher_svc::discover(root)?;
     let outcome = PublishersOutcome::from_report(&report, root);
 
@@ -288,14 +270,14 @@ fn handle_target_show(
         sections: vec![],
     };
 
-    match format {
+    match ctx.format() {
         Format::Json => {
             let pub_json = serde_json::to_value(publisher).map_err(MfError::Json)?;
             let extra = pub_json.as_object().cloned().unwrap_or_default();
             Ok(CommandOutcome::Success(json_envelope(&block, extra), Vec::new(), None))
         }
         Format::Text => Ok(CommandOutcome::Raw(
-            render_show_text(&block, &ShowOpts::from_repo_root(repo_root.map(|r| r.as_path()))),
+            render_show_text(&block, &ShowOpts::from_repo_root(ctx.repo_root().map(|r| r.as_path()))),
             None,
         )),
     }

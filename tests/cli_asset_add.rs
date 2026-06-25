@@ -127,7 +127,7 @@ fn add_copy_link_mutually_exclusive() {
 }
 
 // ---------------------------------------------------------------------------
-// 5. file-exists rejection
+// 5. file_exists rejection
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -140,7 +140,7 @@ fn add_rejects_existing() {
         .assert()
         .success();
 
-    // Second add fails with file-exists — error goes to stderr
+    // Second add fails with file_exists — error goes to stderr
     let assert = Command::cargo_bin("mf")
         .unwrap()
         .args(["--root", repo.path().to_str().unwrap(), "asset", "new", source.to_str().unwrap(), "--project", "alpha"])

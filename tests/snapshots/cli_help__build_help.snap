@@ -10,14 +10,14 @@ Arguments:
   <ARTICLE>  
 
 Options:
-  -o, --output <OUTPUT>  
+      --out <OUTPUT>     
       --root <PATH>      Mind Repo root directory
       --config <PATH>    Config file path
       --dry-run          Preview changes without writing
   -v, --verbose...       Verbose output
   -q, --quiet            Silence non-error output
-      --format <FORMAT>  Output format [default: text] [possible values: text, json]
-      --json             Shorthand for --format json
+  -o, --output <FORMAT>  Output format [default: text] [possible values: text, json]
+      --json             Shorthand for --output json
       --no-color         Disable colored output
   -p, --project <NAME>   Project name for project-scoped operations
   -h, --help             Print help

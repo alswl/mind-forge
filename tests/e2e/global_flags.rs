@@ -2,15 +2,15 @@ use crate::datasets::Dataset;
 use crate::helpers::*;
 
 // ---------------------------------------------------------------------------
-// --format json 全局 flag
+// --output json 全局 flag
 // ---------------------------------------------------------------------------
 
-/// E2E: --format json 对所有命令输出结构化 JSON envelope
+/// E2E: --output json 对所有命令输出结构化 JSON envelope
 #[test]
 fn json_format_on_real_command() {
     let ds = Dataset::empty();
 
-    let (stdout, _stderr, code) = run_in(ds.root(), &["--format", "json", "term", "list"]);
+    let (stdout, _stderr, code) = run_in(ds.root(), &["--output", "json", "term", "list"]);
 
     assert_eq!(code, 0, "global terms, empty list should succeed");
     let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");

@@ -104,7 +104,7 @@ fn list_json_envelope() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "--format", "json", "asset", "list", "--project", "alpha"])
+        .args(["--root", repo.path().to_str().unwrap(), "--output", "json", "asset", "list", "--project", "alpha"])
         .output()
         .unwrap();
 

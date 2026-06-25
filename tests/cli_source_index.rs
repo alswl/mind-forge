@@ -287,7 +287,7 @@ fn index_json_envelope() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "source", "index", "--project", "alpha", "--format", "json"])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "index", "--project", "alpha", "--output", "json"])
         .output()
         .unwrap();
 

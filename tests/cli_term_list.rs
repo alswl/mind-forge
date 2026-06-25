@@ -95,7 +95,7 @@ fn list_terms_json_shape() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "--format", "json", "term", "list", "--project", "alpha"])
+        .args(["--root", repo.path().to_str().unwrap(), "--output", "json", "term", "list", "--project", "alpha"])
         .output()
         .unwrap();
 

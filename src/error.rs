@@ -149,12 +149,12 @@ impl MfError {
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Usage { .. } => "usage",
-            Self::NotInMindRepo { .. } => "not-in-mind-repo",
-            Self::IncompatibleSchema { .. } => "incompatible-schema",
-            Self::ParseError { .. } => "parse-error",
-            Self::FileExists { .. } => "file-exists",
-            Self::NotImplemented { .. } => "not-implemented",
-            Self::NotFound { .. } => "not-found",
+            Self::NotInMindRepo { .. } => "not_in_mind_repo",
+            Self::IncompatibleSchema { .. } => "incompatible_schema",
+            Self::ParseError { .. } => "parse_error",
+            Self::FileExists { .. } => "file_exists",
+            Self::NotImplemented { .. } => "not_implemented",
+            Self::NotFound { .. } => "not_found",
             Self::UnknownPlaceholder { .. } => "unknown_placeholder",
             Self::NoEffectiveDate => "no_effective_date",
             Self::MultiSlotTemplate { .. } => "multi_slot_template",
@@ -256,25 +256,25 @@ mod tests {
     #[test]
     fn not_in_mind_repo_kind_is_not_in_mind_repo() {
         let err = MfError::not_in_mind_repo();
-        assert_eq!(err.kind(), "not-in-mind-repo");
+        assert_eq!(err.kind(), "not_in_mind_repo");
     }
 
     #[test]
     fn file_exists_kind_is_file_exists() {
         let err = MfError::file_exists(PathBuf::from("/tmp/test"));
-        assert_eq!(err.kind(), "file-exists");
+        assert_eq!(err.kind(), "file_exists");
     }
 
     #[test]
     fn not_found_kind_is_not_found() {
         let err = MfError::not_found("missing", None::<String>);
-        assert_eq!(err.kind(), "not-found");
+        assert_eq!(err.kind(), "not_found");
     }
 
     #[test]
     fn not_implemented_kind_is_not_implemented() {
         let err = MfError::not_implemented_with_hint("feature x", "hint");
-        assert_eq!(err.kind(), "not-implemented");
+        assert_eq!(err.kind(), "not_implemented");
     }
 
     #[test]
@@ -284,7 +284,7 @@ mod tests {
             path: PathBuf::from("/tmp/test.yaml"),
             detail: "syntax error".to_string(),
         };
-        assert_eq!(err.kind(), "parse-error");
+        assert_eq!(err.kind(), "parse_error");
     }
 
     #[test]
@@ -330,7 +330,7 @@ mod tests {
             found: "2".to_string(),
             expected: vec!["1".to_string()],
         };
-        assert_eq!(err.kind(), "incompatible-schema");
+        assert_eq!(err.kind(), "incompatible_schema");
     }
 
     // ── hint tests (US9 / T066) ──
@@ -384,6 +384,55 @@ mod tests {
         assert_eq!(err.exit_code(), ExitCode::Failure);
         assert!(err.to_string().contains("directory"));
         assert!(err.to_string().contains("file"));
+    }
+
+    /// T028: Every MfError::kind() must be snake_case (matches ^[a-z][a-z0-9_]*$).
+    /// This encodes SC-006 — consistent error-kind contract per Principle V.
+    #[test]
+    fn all_kinds_are_snake_case() {
+        // Enumerate every variant so the compiler flags additions.
+        let all: Vec<MfError> = vec![
+            MfError::usage("test", Some("hint".to_string())),
+            MfError::Internal(anyhow::anyhow!("test")),
+            MfError::Io(std::io::Error::other("test")),
+            MfError::Json(serde_json::from_str::<serde_json::Value>("").unwrap_err()),
+            MfError::not_in_mind_repo(),
+            MfError::IncompatibleSchema {
+                path: PathBuf::from("/tmp/x.yaml"),
+                found: "2".to_string(),
+                expected: vec!["1".to_string()],
+            },
+            MfError::ParseError {
+                kind: "yaml".to_string(),
+                path: PathBuf::from("/tmp/x.yaml"),
+                detail: "syntax".to_string(),
+            },
+            MfError::file_exists(PathBuf::from("/tmp/x")),
+            MfError::not_implemented_with_hint("x", "hint"),
+            MfError::not_found("x", Some("hint".to_string())),
+            MfError::UnknownPlaceholder { token: "{x}".to_string() },
+            MfError::NoEffectiveDate,
+            MfError::MultiSlotTemplate { template_name: "t".to_string() },
+            MfError::InvalidTemplateName { name: "Bad".to_string() },
+            MfError::NoArticleFiles { article: "x".to_string(), article_path: "docs/x.md".to_string() },
+            MfError::BuildArtifactMissing { message: "missing".to_string(), hint: None },
+            MfError::UnknownTemplate { name: "x".to_string() },
+            MfError::DuplicateBlockSlug { slug: "x".to_string(), h1: "a".to_string(), h2: "b".to_string() },
+            MfError::ShapeConflict {
+                wanted_shape: "dir".to_string(),
+                existing_shape: "file".to_string(),
+                path: PathBuf::from("/tmp/x"),
+            },
+        ];
+        for err in &all {
+            let kind = err.kind();
+            assert!(
+                !kind.is_empty()
+                    && kind.chars().next().unwrap().is_ascii_lowercase()
+                    && kind.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'),
+                "kind() value '{kind}' is not snake_case; expected ^[a-z][a-z0-9_]*$"
+            );
+        }
     }
 
     #[test]

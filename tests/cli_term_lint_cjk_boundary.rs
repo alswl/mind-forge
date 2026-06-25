@@ -153,7 +153,7 @@ terms:
     write_cjk_index(&repo, "alpha", index_yaml);
     write_cjk_doc(&project, "cjk", "Python 机器 模型\n");
 
-    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--format", "json"]).output().unwrap();
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("\"match_kind\""), "JSON finding must have match_kind: {stdout}");
     assert!(stdout.contains("\"word\""), "default match_kind should be 'word': {stdout}");
@@ -176,7 +176,7 @@ terms:
     write_cjk_index(&repo, "alpha", index_yaml);
     write_cjk_doc(&project, "cjk", "机器人在工厂\n");
 
-    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--format", "json"]).output().unwrap();
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("\"match_kind\": \"substring\""), "JSON must have substring match_kind: {stdout}");
 }

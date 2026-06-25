@@ -21,9 +21,9 @@ Options:
   -q, --quiet                Silence non-error output
   -f, --force                Proceed despite safety checks: overwrite an existing target, or remove
                              an entity referenced by others
-      --format <FORMAT>      Output format [default: text] [possible values: text, json]
+  -o, --output <FORMAT>      Output format [default: text] [possible values: text, json]
       --dry-run              Preview changes without writing
-      --json                 Shorthand for --format json
+      --json                 Shorthand for --output json
       --no-color             Disable colored output
   -p, --project <NAME>       Project name for project-scoped operations
   -h, --help                 Print help

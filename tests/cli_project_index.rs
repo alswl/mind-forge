@@ -155,7 +155,7 @@ articles:
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(dir.path())
-        .args(["project", "lint", "--project", "dup-project", "--fix", "--format", "json"])
+        .args(["project", "lint", "--project", "dup-project", "--fix", "--output", "json"])
         .assert()
         .code(0);
 

@@ -93,7 +93,7 @@ fn list_empty_friendly_message() {
 }
 
 // ---------------------------------------------------------------------------
-// 3. list_json_envelope — --format json → data array
+// 3. list_json_envelope — --output json → data array
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -101,7 +101,7 @@ fn list_json_envelope() {
     let (repo, _project) = setup();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "source", "list", "--project", "alpha", "--format", "json"])
+        .args(["--root", repo.path().to_str().unwrap(), "source", "list", "--project", "alpha", "--output", "json"])
         .output()
         .unwrap();
 

@@ -18,7 +18,7 @@ fn run(args: &[&str]) -> (String, String, i32) {
 }
 
 fn run_json(args: &[&str]) -> (String, String, i32) {
-    let mut full_args = vec!["--format", "json"];
+    let mut full_args = vec!["--output", "json"];
     full_args.extend_from_slice(args);
     run(&full_args)
 }

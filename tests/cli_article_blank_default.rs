@@ -111,7 +111,7 @@ fn same_shape_conflict_and_force_replacement() {
         .expect("command runs");
     assert_eq!(output2.status.code(), Some(1), "duplicate without -f should exit 1");
     let stderr2 = String::from_utf8_lossy(&output2.stderr);
-    assert!(stderr2.contains("file-exists") || stderr2.contains("file_exists") || stderr2.contains("refusing"));
+    assert!(stderr2.contains("file_exists") || stderr2.contains("file_exists") || stderr2.contains("refusing"));
 
     // Filesystem + index unchanged
     let project = repo.path().join("demo");
@@ -639,7 +639,7 @@ fn unknown_template_exit_code_and_message() {
 
     assert_eq!(output.status.code(), Some(2), "unknown template should exit 2");
 
-    // Text stderr should mention built-ins and the not-found name
+    // Text stderr should mention built-ins and the not_found name
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("not-a-thing"), "stderr should mention the unknown template: '{stderr}'");
 

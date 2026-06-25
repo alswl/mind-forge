@@ -84,8 +84,8 @@ Global flags:
 | `--root <PATH>` | Mind Repo root directory |
 | `--config <PATH>` | Config file path |
 | `-p`, `--project <PROJECT>` | Project selector for project-scoped commands |
-| `--format <text|json>` | Output format |
-| `--json` | Shorthand for `--format json` |
+| `-o`, `--output <text|json>` | Output format (default: `text`) |
+| `--json` | Shorthand for `--output json` |
 | `-q`, `--quiet` | Suppress successful non-list output |
 | `--no-color` | Disable colored output |
 

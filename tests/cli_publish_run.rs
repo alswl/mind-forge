@@ -1,6 +1,6 @@
 //! Integration tests for `mf publish run` (feature 009-publish-mvp).
 //!
-//! Covers US1 (local target), US2 (yuque-prompt target), US4 (not-implemented), and
+//! Covers US1 (local target), US2 (yuque-prompt target), US4 (not_implemented), and
 //! the quickstart end-to-end scenario (SC-004).
 //!
 //! Success Criteria → Tests:
@@ -106,7 +106,7 @@ fn file_based_local_publisher_json_output() {
         &format!("type: local\nenabled: true\nconfig:\n  path: {}\n", dest_root.path().display()),
     );
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "blog"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "blog"]);
     assert_eq!(out.status.code(), Some(0));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["status"], "ok");
@@ -127,7 +127,7 @@ fn file_based_publisher_dry_run() {
         &format!("type: local\nenabled: true\nconfig:\n  path: {}\n", dest_root.path().display()),
     );
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "blog", "--dry-run"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "blog", "--dry-run"]);
     assert_eq!(out.status.code(), Some(0));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["data"]["dry_run"], true);
@@ -151,10 +151,10 @@ fn unknown_publisher_returns_not_found() {
     let dest_root = tempfile::tempdir().unwrap();
     let repo = setup_repo_with_targets(&local_target_yaml("existing-target", dest_root.path()));
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "does-not-exist"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "does-not-exist"]);
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
-    assert_eq!(v["error"]["kind"], "not-found");
+    assert_eq!(v["error"]["kind"], "not_found");
     assert!(
         v["error"]["message"].as_str().unwrap_or("").contains("does-not-exist"),
         "message should mention the requested name"
@@ -226,7 +226,7 @@ fn disabled_file_based_publisher_rejected_at_publish_time() {
         &format!("type: local\nenabled: false\nconfig:\n  path: {}\n", dest_root.path().display()),
     );
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "offline"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "offline"]);
     assert_eq!(out.status.code(), Some(2));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "usage");
@@ -257,7 +257,7 @@ fn duplicate_file_based_publisher_rejected_at_publish_time() {
         ],
     );
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "blog"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "blog"]);
     assert_eq!(out.status.code(), Some(2));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "usage");
@@ -273,7 +273,7 @@ fn secret_field_publisher_rejected_at_publish_time() {
         &format!("type: local\nenabled: true\nconfig:\n  path: {}\n  token: sk-123\n", dest_root.path().display()),
     );
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "leaky"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "leaky"]);
     assert_eq!(out.status.code(), Some(2));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "usage");
@@ -290,7 +290,7 @@ fn invalid_name_publisher_rejected_at_publish_time() {
         "name: BadName\ntype: local\nenabled: true\nconfig:\n  path: ./out\n",
     );
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "BadName"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "BadName"]);
     assert_eq!(out.status.code(), Some(2));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "usage");
@@ -329,7 +329,7 @@ fn local_happy_path_json_output() {
     let dest_root = tempfile::tempdir().unwrap();
     let repo = setup_repo_with_targets(&local_target_yaml("local-blog", dest_root.path()));
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "local-blog"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value =
@@ -353,7 +353,7 @@ fn local_dry_run_does_not_write() {
     let index_before = read_index_bytes(&repo);
 
     let out =
-        run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog", "--dry-run"]);
+        run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "local-blog", "--dry-run"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -370,10 +370,10 @@ fn local_rejects_existing_file_without_force() {
     let dest_file = dest_root.path().join("my-article.md");
     fs::write(&dest_file, b"PRE-EXISTING").unwrap();
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "local-blog"]);
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
-    assert_eq!(v["error"]["kind"], "file-exists");
+    assert_eq!(v["error"]["kind"], "file_exists");
     assert!(v["error"]["hint"].as_str().unwrap_or("").contains("--force"), "hint should mention --force: {v}");
 
     assert_eq!(fs::read(&dest_file).unwrap(), b"PRE-EXISTING", "destination bytes preserved");
@@ -417,7 +417,7 @@ fn missing_build_artifact_returns_build_artifact_missing() {
 
     fs::remove_file(repo.path().join("my-project/_build/my-article.md")).unwrap();
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "local-blog"]);
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "build_artifact_missing");
@@ -431,10 +431,10 @@ fn unknown_target_returns_not_found() {
     let dest_root = tempfile::tempdir().unwrap();
     let repo = setup_repo_with_targets(&local_target_yaml("local-blog", dest_root.path()));
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "does-not-exist"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "does-not-exist"]);
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
-    assert_eq!(v["error"]["kind"], "not-found");
+    assert_eq!(v["error"]["kind"], "not_found");
 
     let mut entries = fs::read_dir(dest_root.path()).unwrap();
     assert!(entries.next().is_none(), "no files written outside the repo on failure");
@@ -447,7 +447,7 @@ fn disabled_target_returns_usage() {
     yaml = yaml.replace("enabled: true", "enabled: false");
     let repo = setup_repo_with_targets(&yaml);
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "local-blog"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "local-blog"]);
     assert_eq!(out.status.code(), Some(2));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "usage");
@@ -496,7 +496,7 @@ fn no_target_no_default_returns_usage() {
     fs::create_dir_all(project_path.join("_build")).unwrap();
     fs::write(project_path.join("_build/my-article.md"), ARTICLE_BODY).unwrap();
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE]);
     assert_eq!(out.status.code(), Some(2));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "usage");
@@ -554,7 +554,7 @@ fn yuque_prompt_text_two_section_layout() {
 #[test]
 fn yuque_prompt_json_is_single_object() {
     let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
     assert_eq!(out.status.code(), Some(0));
 
     let v: serde_json::Value =
@@ -578,7 +578,7 @@ fn yuque_prompt_dry_run_marks_envelope() {
     let index_before = read_index_bytes(&repo);
 
     let out =
-        run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "yuque-draft", "--dry-run"]);
+        run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "yuque-draft", "--dry-run"]);
     assert_eq!(out.status.code(), Some(0));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["data"]["dry_run"], true);
@@ -589,7 +589,7 @@ fn yuque_prompt_dry_run_marks_envelope() {
 #[test]
 fn yuque_prompt_empty_config_defaults_to_object() {
     let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", false));
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
     assert_eq!(out.status.code(), Some(0));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["data"]["envelope"], serde_json::json!({}));
@@ -600,7 +600,7 @@ fn yuque_prompt_missing_build_artifact_returns_build_artifact_missing() {
     let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
     fs::remove_file(repo.path().join("my-project/_build/my-article.md")).unwrap();
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "build_artifact_missing");
@@ -755,7 +755,7 @@ fn quickstart_scenario_a_e2e() {
 }
 
 // ---------------------------------------------------------------------------
-// US4 — not-implemented target types
+// US4 — not_implemented target types
 // ---------------------------------------------------------------------------
 
 fn not_implemented_target_yaml(name: &str, type_: &str) -> String {
@@ -765,14 +765,14 @@ fn not_implemented_target_yaml(name: &str, type_: &str) -> String {
 fn assert_not_implemented(repo: &common::TempDir, target_name: &str, type_: &str) {
     let index_before = read_index_bytes(repo);
 
-    let out = run_publish(repo, &["--format", "json", "publish", "run", ARTICLE, "--target", target_name]);
+    let out = run_publish(repo, &["--output", "json", "publish", "run", ARTICLE, "--target", target_name]);
 
     // Must exit 64 per FR-008, FR-304, SC-006
-    assert_eq!(out.status.code(), Some(64), "exit code 64 expected for not-implemented target type '{type_}'");
+    assert_eq!(out.status.code(), Some(64), "exit code 64 expected for not_implemented target type '{type_}'");
 
     // Parse JSON error envelope from stderr
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).expect("stderr must be a single JSON object");
-    assert_eq!(v["error"]["kind"], "not-implemented", "error kind mismatch for '{type_}'");
+    assert_eq!(v["error"]["kind"], "not_implemented", "error kind mismatch for '{type_}'");
 
     let message = v["error"]["message"].as_str().unwrap_or("");
     assert!(message.contains(type_), "message '{message}' should contain target type '{type_}'");
@@ -782,10 +782,10 @@ fn assert_not_implemented(repo: &common::TempDir, target_name: &str, type_: &str
 
     // No stdout output on error
     let stdout = String::from_utf8(out.stdout).unwrap();
-    assert!(stdout.is_empty(), "no stdout output on not-implemented error: {stdout}");
+    assert!(stdout.is_empty(), "no stdout output on not_implemented error: {stdout}");
 
     // mind-index.yaml must be unchanged (SC-008)
-    assert_eq!(read_index_bytes(repo), index_before, "mind-index.yaml unchanged after not-implemented target (SC-008)");
+    assert_eq!(read_index_bytes(repo), index_before, "mind-index.yaml unchanged after not_implemented target (SC-008)");
 }
 
 #[test]
@@ -853,7 +853,7 @@ fn dry_run_expands_date_placeholder() {
 
     let out = run_publish(
         &repo,
-        &["--format", "json", "publish", "run", DATED_ARTICLE, "--target", "local-out", "--dry-run"],
+        &["--output", "json", "publish", "run", DATED_ARTICLE, "--target", "local-out", "--dry-run"],
     );
     assert_eq!(out.status.code(), Some(0));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -868,7 +868,7 @@ fn prefix_applied_to_file_name() {
 
     let out = run_publish(
         &repo,
-        &["--format", "json", "publish", "run", DATED_ARTICLE, "--target", "local-out", "--dry-run"],
+        &["--output", "json", "publish", "run", DATED_ARTICLE, "--target", "local-out", "--dry-run"],
     );
     assert_eq!(out.status.code(), Some(0));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -882,7 +882,7 @@ fn combined_date_and_prefix() {
 
     let out = run_publish(
         &repo,
-        &["--format", "json", "publish", "run", DATED_ARTICLE, "--target", "local-out", "--dry-run"],
+        &["--output", "json", "publish", "run", DATED_ARTICLE, "--target", "local-out", "--dry-run"],
     );
     assert_eq!(out.status.code(), Some(0));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -897,7 +897,7 @@ fn combined_date_and_prefix() {
 fn unknown_placeholder_errors() {
     let repo = setup_us1_project("/tmp/mf-test/{quarter:QQ}/daily/", "", DATED_ARTICLE);
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", DATED_ARTICLE, "--target", "local-out"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", DATED_ARTICLE, "--target", "local-out"]);
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "unknown_placeholder");
@@ -913,7 +913,7 @@ fn no_effective_date_errors() {
     // Article with no date prefix in filename
     let repo = setup_us1_project("/tmp/mf-test/{date:YYYY-MM}/daily/", "", "plain-article");
 
-    let out = run_publish(&repo, &["--format", "json", "publish", "run", "plain-article", "--target", "local-out"]);
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", "plain-article", "--target", "local-out"]);
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(v["error"]["kind"], "no_effective_date");
@@ -952,7 +952,7 @@ fn publish_run_declared_missing_source_returns_no_article_files() {
     // Try to publish legacy-blog (compat declared, no article content on disk)
     let (parsed, stderr, code) = json_run(
         &[
-            "--format",
+            "--output",
             "json",
             "publish",
             "run",
@@ -988,7 +988,7 @@ fn publish_run_declared_present_succeeds_dry_run() {
 
     // Publish the declared article
     let (parsed, stderr, code) = json_run(
-        &["--format", "json", "publish", "run", "reports", "--target", "simple-out", "--project", "q24", "--dry-run"],
+        &["--output", "json", "publish", "run", "reports", "--target", "simple-out", "--project", "q24", "--dry-run"],
         project_path.as_path(),
     );
     assert_eq!(code, Some(0), "publish declared should succeed: stderr={stderr} parsed={parsed}");
@@ -1015,7 +1015,7 @@ fn publish_run_auto_reindex_picks_up_declared_articles() {
 
     // Publish — should auto-reindex and find the declared article
     let (parsed, stderr, code) = json_run(
-        &["--format", "json", "publish", "run", "reports", "--target", "simple-out", "--project", "q24", "--dry-run"],
+        &["--output", "json", "publish", "run", "reports", "--target", "simple-out", "--project", "q24", "--dry-run"],
         project_path.as_path(),
     );
     assert_eq!(code, Some(0), "auto-reindex should find declared article: stderr={stderr} parsed={parsed}");
@@ -1059,7 +1059,7 @@ fn publish_declared_directory_article_dry_run() {
 
     // Publish dry-run by key
     let (parsed, stderr, code) = json_run(
-        &["--format", "json", "publish", "run", "2026-05-monthly", "--target", "local-out", "--dry-run"],
+        &["--output", "json", "publish", "run", "2026-05-monthly", "--target", "local-out", "--dry-run"],
         project_path.as_path(),
     );
     assert_eq!(code, Some(0), "publish declared dir article should succeed: stderr={stderr}");
@@ -1104,7 +1104,7 @@ fn publish_title_not_used_for_error_messages() {
 
     // Publish by key succeeds
     let (parsed, stderr, code) = json_run(
-        &["--format", "json", "publish", "run", "2026-05-monthly", "--target", "local-out", "--dry-run"],
+        &["--output", "json", "publish", "run", "2026-05-monthly", "--target", "local-out", "--dry-run"],
         project_path.as_path(),
     );
     assert_eq!(code, Some(0), "publish by key should succeed: stderr={stderr}");
@@ -1112,11 +1112,11 @@ fn publish_title_not_used_for_error_messages() {
 
     // Try to publish an article that doesn't exist — error should NOT use title
     let (parsed, stderr, code) = json_run(
-        &["--format", "json", "publish", "run", "nonexistent", "--target", "local-out", "--dry-run"],
+        &["--output", "json", "publish", "run", "nonexistent", "--target", "local-out", "--dry-run"],
         project_path.as_path(),
     );
     assert_ne!(code, Some(0), "publish of nonexistent article should fail");
-    assert_eq!(parsed["error"]["kind"], "not-found");
+    assert_eq!(parsed["error"]["kind"], "not_found");
     let msg = parsed["error"]["message"].as_str().unwrap_or("");
     // The error must NOT mention a kebab→title-space conversion (the old bug)
     assert!(!msg.contains("2026 05 monthly"), "error must not contain display-title: {msg}");
@@ -1160,7 +1160,7 @@ fn publish_dry_run_does_not_write_destination_file() {
 
     // Dry-run
     let (parsed, stderr, code) = json_run(
-        &["--format", "json", "publish", "run", "2026-05-monthly", "--target", "local-out", "--dry-run"],
+        &["--output", "json", "publish", "run", "2026-05-monthly", "--target", "local-out", "--dry-run"],
         project_path.as_path(),
     );
     assert_eq!(code, Some(0), "dry-run should succeed: stderr={stderr}");
@@ -1192,7 +1192,7 @@ fn publish_run_local_target_expands_date_and_prefix_for_generated() {
     // Publish generated article to paas-git target with date template + prefix
     let (parsed, stderr, code) = json_run(
         &[
-            "--format",
+            "--output",
             "json",
             "publish",
             "run",
@@ -1235,7 +1235,7 @@ fn publish_run_local_target_expands_date_and_prefix_for_docs() {
     // Publish docs article to paas-git target with date template + prefix
     let (parsed, stderr, code) = json_run(
         &[
-            "--format",
+            "--output",
             "json",
             "publish",
             "run",

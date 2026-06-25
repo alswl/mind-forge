@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
-use crate::cli::deprecation::DeprecationContext;
+use crate::cli::CommandCtx;
 use crate::cli::CommandOutcome;
 use crate::error::Result;
 use crate::model::terminal::{CapabilityDiagnosticReport, DiagnosticCheck, OutputFormat};
@@ -47,7 +47,7 @@ pub struct ConfigShowArgs {
 pub struct ConfigGenerateArgs {
     #[arg(long = "output-format", default_value = "yaml")]
     pub output_format: String,
-    #[arg(short = 'o', long)]
+    #[arg(long = "out")]
     pub output: PathBuf,
 }
 
@@ -57,19 +57,14 @@ pub struct ConfigDefaultArgs {
     pub output_format: String,
 }
 
-pub fn dispatch(
-    command: ConfigCmd,
-    repo_root: Option<&PathBuf>,
-    format: Format,
-    _deprecation: &mut DeprecationContext,
-) -> Result<CommandOutcome> {
+pub fn dispatch(command: ConfigCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("config")),
         Some(ConfigSubcommand::Schema(args)) => handle_schema(args),
-        Some(ConfigSubcommand::Show(args)) => handle_show(args, repo_root, format),
-        Some(ConfigSubcommand::Generate(args)) => handle_generate(args, repo_root),
+        Some(ConfigSubcommand::Show(args)) => handle_show(args, ctx),
+        Some(ConfigSubcommand::Generate(args)) => handle_generate(args, ctx),
         Some(ConfigSubcommand::Default(args)) => handle_default(args),
-        Some(ConfigSubcommand::Terminal) => handle_terminal(format),
+        Some(ConfigSubcommand::Terminal) => handle_terminal(ctx),
     }
 }
 
@@ -78,13 +73,13 @@ fn handle_schema(args: ConfigSchemaArgs) -> Result<CommandOutcome> {
     Ok(CommandOutcome::Raw(output, None))
 }
 
-fn handle_show(args: ConfigShowArgs, repo_root: Option<&PathBuf>, global_format: Format) -> Result<CommandOutcome> {
-    let cwd = std::env::current_dir()
-        .map_err(|e| crate::error::MfError::usage(format!("failed to get current directory: {e}"), None))?;
+fn handle_show(args: ConfigShowArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let cwd = ctx.cwd();
+    let global_format = ctx.format();
     // When global format is JSON, force internal JSON to return structured object
     // so data is a JSON object, not an embedded YAML/JSON string (FR-066 / FR-070).
     let internal_format = if global_format == Format::Json { "json" } else { args.output_format.as_str() };
-    let output = service::config::show_effective(&cwd, repo_root.map(|p| p.as_path()), internal_format)?;
+    let output = service::config::show_effective(cwd, ctx.repo_root().map(|p| p.as_path()), internal_format)?;
     if global_format == Format::Json {
         let data: serde_json::Value = serde_json::from_str(&output).map_err(crate::error::MfError::Json)?;
         Ok(CommandOutcome::Success(data, Vec::new(), None))
@@ -95,12 +90,11 @@ fn handle_show(args: ConfigShowArgs, repo_root: Option<&PathBuf>, global_format:
 
 // ── B2 thin alias: config generate (show + write to file) ───────────────────
 
-fn handle_generate(args: ConfigGenerateArgs, repo_root: Option<&PathBuf>) -> Result<CommandOutcome> {
+fn handle_generate(args: ConfigGenerateArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     use std::io::Write;
 
-    let cwd = std::env::current_dir()
-        .map_err(|e| crate::error::MfError::usage(format!("failed to get current directory: {e}"), None))?;
-    let output = service::config::show_effective(&cwd, repo_root.map(|p| p.as_path()), &args.output_format)?;
+    let cwd = ctx.cwd();
+    let output = service::config::show_effective(cwd, ctx.repo_root().map(|p| p.as_path()), &args.output_format)?;
     let mut file = std::fs::File::create(&args.output).map_err(crate::error::MfError::Io)?;
     file.write_all(output.as_bytes()).map_err(crate::error::MfError::Io)?;
     Ok(CommandOutcome::Success(
@@ -121,7 +115,8 @@ fn handle_default(args: ConfigDefaultArgs) -> Result<CommandOutcome> {
     Ok(CommandOutcome::Raw(output, None))
 }
 
-fn handle_terminal(format: Format) -> Result<CommandOutcome> {
+fn handle_terminal(ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let format = ctx.format();
     let profile = build_profile();
     let output_format = match format {
         Format::Text => OutputFormat::Text,

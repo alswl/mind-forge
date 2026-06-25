@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use clap::Args;
 use serde::Serialize;
 
-use crate::cli::deprecation::DeprecationContext;
 use crate::cli::shared_flags::DryRunFlag;
+use crate::cli::CommandCtx;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
 use crate::service::{build as build_svc, util as svc_util};
@@ -12,20 +12,14 @@ use crate::service::{build as build_svc, util as svc_util};
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct BuildArgs {
     pub article: String,
-    #[arg(short = 'o', long)]
+    #[arg(long = "out")]
     pub output: Option<PathBuf>,
     #[command(flatten)]
     pub dry_run: DryRunFlag,
 }
 
-pub fn dispatch(
-    args: BuildArgs,
-    repo_root: Option<&PathBuf>,
-    format: crate::output::Format,
-    project: Option<&str>,
-    _deprecation: &mut DeprecationContext,
-) -> Result<CommandOutcome> {
-    let root = repo_root.ok_or_else(MfError::not_in_mind_repo)?;
+pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
 
     if args.article.is_empty() {
         return Err(MfError::usage(
@@ -34,7 +28,9 @@ pub fn dispatch(
         ));
     }
 
-    let cwd = std::env::current_dir().map_err(MfError::Io)?;
+    let format = ctx.format();
+    let project = ctx.project();
+    let cwd = ctx.cwd();
     let (project_path, article_path, article_name) = if let Some(target) = args.article.strip_prefix('@') {
         let target_path = if Path::new(target).is_absolute() { PathBuf::from(target) } else { root.join(target) };
         let article_path = svc_util::canonicalize_within(root, &target_path)?;
@@ -46,7 +42,7 @@ pub fn dispatch(
             .unwrap_or_else(|| "article".to_string());
         (project_path, Some(article_path), article_name)
     } else {
-        (svc_util::resolve_project(root, project, &cwd)?, None, args.article.clone())
+        (svc_util::resolve_project(root, project, cwd)?, None, args.article.clone())
     };
 
     let output = match article_path {

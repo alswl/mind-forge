@@ -96,7 +96,7 @@ fn rename_project_json_envelope() {
 
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "project", "rename", "alpha", "gamma", "--format", "json"])
+        .args(["--root", repo.path().to_str().unwrap(), "project", "rename", "alpha", "gamma", "--output", "json"])
         .output()
         .unwrap();
 

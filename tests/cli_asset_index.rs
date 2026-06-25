@@ -231,7 +231,7 @@ fn index_json_envelope() {
     let (repo, _project) = setup_with_assets();
     let output = Command::cargo_bin("mf")
         .unwrap()
-        .args(["--root", repo.path().to_str().unwrap(), "--format", "json", "asset", "index", "--project", "alpha"])
+        .args(["--root", repo.path().to_str().unwrap(), "--output", "json", "asset", "index", "--project", "alpha"])
         .output()
         .unwrap();
 
