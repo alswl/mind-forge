@@ -135,7 +135,7 @@ fn force_overwrites_destination_conflict() {
     assert!(global.contains("from project"), "forced move should overwrite with the source copy, got: {global}");
 }
 
-// ── Dry-run ─────────────────────────────────────────────────────────────────
+// ── Dry-run (T054) ──────────────────────────────────────────────────────────
 
 #[test]
 fn dry_run_writes_nothing() {
@@ -148,4 +148,55 @@ fn dry_run_writes_nothing() {
 
     assert!(project_index(&repo, "alpha").contains("Widget"), "dry-run must not remove the source");
     assert!(!global_terms(&repo).contains("Widget"), "dry-run must not write the destination");
+}
+
+#[test]
+fn dry_run_json_envelope() {
+    let repo = setup();
+    mf(&repo).args(["--project", "alpha", "term", "new", "Widget"]).output().unwrap();
+
+    let output = mf(&repo)
+        .args(["--project", "alpha", "--json", "term", "move", "Widget", "--to-global", "--dry-run"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert_eq!(json["data"]["dry_run"], true);
+    assert_eq!(json["data"]["details"]["from_scope"], "project");
+    assert_eq!(json["data"]["details"]["to_scope"], "global");
+
+    // Storage must still be unchanged
+    assert!(project_index(&repo, "alpha").contains("Widget"), "dry-run must not remove the source");
+}
+
+// ── mv alias (T056) ─────────────────────────────────────────────────────────
+
+#[test]
+fn mv_alias_works_same_as_move() {
+    let repo = setup();
+    mf(&repo).args(["--project", "alpha", "term", "new", "Widget"]).output().unwrap();
+
+    let output = mf(&repo).args(["--project", "alpha", "term", "mv", "Widget", "--to-global"]).output().unwrap();
+    assert!(output.status.success(), "mv alias should work: {}", String::from_utf8_lossy(&output.stderr));
+
+    assert!(!project_index(&repo, "alpha").contains("Widget"), "term should leave the project");
+    assert!(global_terms(&repo).contains("Widget"), "term should land in global scope");
+}
+
+#[test]
+fn mv_alias_json_identity() {
+    let repo = setup();
+    mf(&repo).args(["--project", "alpha", "term", "new", "Widget"]).output().unwrap();
+
+    let output =
+        mf(&repo).args(["--project", "alpha", "--json", "term", "mv", "Widget", "--to-global"]).output().unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert_eq!(json["status"], "ok");
+    assert_eq!(json["data"]["kind"], "term");
+    assert_eq!(json["data"]["identity"], "Widget");
+    assert_eq!(json["data"]["details"]["from_scope"], "project");
+    assert_eq!(json["data"]["details"]["to_scope"], "global");
 }

@@ -224,16 +224,19 @@ Create a term (mf extension).
 `--misrecognition <TEXT>` — Common misrecognition variant (repeatable, global and project-scoped)
 
 **`mf term list`** (alias `ls`)
-`--filter <PATTERN>` — Filter by name
+`--filter <PATTERN>` — Filter by name substring
+`--tag <TAG>` — Filter to terms that have this tag (repeatable; AND semantics)
+`--alias <ALIAS>` — Filter to terms that have this alias (repeatable; AND semantics)
+`--has-correction` — Filter to terms that have at least one correction
+`--scope project|global|all` — Restrict to a scope; default merges project + global fallback
+
 **`mf term show <TERM>`** — Show term details (term + corrections sub-section).
 
-Add or change a term's corrections (canonical/alias pairs) via `mf term update --alias` and the `--correction-*` flags below.
-
 **`mf term update <TERM>`**
-Update term metadata (mf extension).
+Update term metadata. Rejects `--misrecognition` (use `mf term correction add` instead).
 `--definition <TEXT>` — Update definition
 `--description <TEXT>` — Update description (`--clear-description` to unset)
-`--confidence <N>` — Update confidence (`--clear-confidence` to unset)
+`--confidence <N>` — Update confidence 0.0–1.0 (`--clear-confidence` to unset)
 `--alias <TEXT>` — Add alias (repeatable)
 `--tag <TAG>` — Add tag (repeatable)
 `--delete-alias <TEXT>` — Remove an alias (repeatable)
@@ -242,6 +245,26 @@ Update term metadata (mf extension).
 `--correction-match <ORIGINAL:word|substring|pinyin>` — Set correction match kind (repeatable)
 `--correction-fix <ORIGINAL:required|suggested>` — Set correction fix kind (repeatable)
 `--correction-pinyin <ORIGINAL:<PINYIN>>` — Set correction pinyin (repeatable)
+`--correction-boundary <ORIGINAL:loose|standalone>` — Set correction boundary (repeatable)
+`--dry-run` — Preview planned changes without writing; validates correction targets first
+
+**`mf term correction <SUBCOMMAND>`** — Manage corrections as a first-class subresource.
+`add <TERM> <ORIGINAL> <CORRECT>` — Add a correction (idempotent on exact pair match)
+  `--match word|substring|pinyin` — Match kind (default: word)
+  `--fix required|suggested` — Fix kind (default: required)
+  `--boundary loose|standalone` — Boundary mode (default: standalone)
+  `--pinyin <TEXT>` — Pinyin string
+`list <TERM>` — List all corrections for a term
+`show <TERM> <ORIGINAL>` — Show one correction
+`update <TERM> <ORIGINAL>` — Update correction attributes (same flags as `add` minus positionals)
+`remove <TERM> <ORIGINAL>` — Remove a correction (`--dry-run` to preview)
+
+**`mf term move <TERM>`** (alias `mv`) — Move a term between project and global scopes.
+`--to-global` — Move to the global term pool
+`--to-project <PROJECT>` — Move to a named project
+`--from-global` — Source is the global pool (default: project scope via `-p`)
+`--force` — Overwrite if the term already exists at the destination
+`--dry-run` — Preview without writing
 
 **`mf term rename <OLD_TERM> <NEW_TERM>`**
 Rename a term.
@@ -252,6 +275,7 @@ Rename a term.
 **`mf term lint [PATH]`**
 Lint term consistency in project docs. Detects misrecognized terms using configurable `Correction.match` modes: `word` (default — ASCII word boundaries; CJK requires a non-CJK neighbor), `substring` (exact match anywhere), or `pinyin` (tone-less pinyin scan with auto-conversion for CJK terms). Pinyin findings are always `fix: suggested` (trailing `?` marker).
 `--fix` — Auto-correct term usage in docs (pair with `--dry-run` to preview). Non-TTY exits 2 unless `-y`/`--force` is passed.
+`--article <SLUG>` — Set `target_type: "article"` in JSON output; scope hint for downstream tooling.
 `--include-suggested` — Apply suggested fixes (pinyin matches) in addition to required corrections.
 `--rule <RULE>` — Restrict to one rule kind.
 `--severity <LEVEL>` — Filter at-or-above severity (`error`/`warning`/`info`).
@@ -393,13 +417,25 @@ mf render template show arch
 mf term new "Zettelkasten" --definition "A note-taking method" --project my-project
 mf term new "API" --alias "Application Programming Interface" --tag tech
 mf term list
+mf term list --tag tech --has-correction                     # AND-filter: tech tag + has correction
+mf term list --scope project                                 # project-only (no global fallback)
+mf term list --scope global                                  # global pool only
 mf term show Zettelkasten --project my-project
 mf term update "API" --definition "Updated definition" --project my-project
+mf term update "API" --tag tech --delete-alias "old-alias" --dry-run  # preview update
+mf term correction add "API" "api" "API"                     # add correction
+mf term correction list "API"                                # list corrections
+mf term correction update "API" "api" --fix suggested        # update correction attribute
+mf term correction remove "API" "api"                        # remove correction
+mf term move "API" --to-global                               # project → global
+mf term mv "API" --from-global --to-project my-project       # global → project (alias)
 mf term rename "API" "Application API" --keep-alias --project my-project
 mf term remove obsolete-term --yes --project my-project
 mf term lint --project my-project
 mf term lint --project my-project --fix --dry-run            # preview corrections
 mf term lint --project my-project --fix --include-suggested  # apply suggested pinyin fixes too
+mf term lint docs/my-article.md --project my-project        # scan a specific file only
+mf term lint --article weekly-note --json --project my-project  # article target, JSON output
 mf term fix --project my-project                             # alias for term lint --fix
 mf term fix --project my-project --include-suggested         # apply suggested corrections
 

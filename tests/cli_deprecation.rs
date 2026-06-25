@@ -304,3 +304,36 @@ terms:
     assert_eq!(code, 2, "supplying removed --term should error, stderr: {stderr:?}");
     assert!(stderr.contains("--term"), "error should mention --term: {stderr:?}");
 }
+
+// ---------------------------------------------------------------------------
+// D6 — spec-051: --misrecognition removed from `term update`
+//      (moved to `mf term correction add`)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn deprecation_d6_misrecognition_rejected_on_term_update() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "alpha");
+    common::write_index(
+        &dir,
+        "alpha",
+        "schema_version: '1'\nterms:\n  - term: API\n    definition: Application Programming Interface\n    aliases: []\n    corrections: []\n",
+    );
+
+    let (_stdout, stderr, code) = run(&[
+        "--root",
+        &dir.path().to_string_lossy(),
+        "--project",
+        "alpha",
+        "term",
+        "update",
+        "API",
+        "--misrecognition",
+        "api",
+    ]);
+    assert_ne!(code, 0, "--misrecognition on term update must be rejected");
+    assert!(
+        stderr.contains("misrecognition") || stderr.contains("correction add"),
+        "error should guide toward correction add: {stderr:?}"
+    );
+}
