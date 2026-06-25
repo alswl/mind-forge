@@ -212,7 +212,7 @@ Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (a
 
 ### `mf term` (alias `mf terms`) — Manage terminology
 
-Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (alias `rm`), `lint`, `fix`.
+Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (alias `rm`), `correction`, `move` (alias `mv`), `lint`, `fix`.
 
 **`mf term new <TERM>`**
 Create a term (mf extension).
