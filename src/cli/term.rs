@@ -286,8 +286,7 @@ pub struct TermRenameArgs {
 // ── Shared scope-warning plumbing ──────────────────────────────────────────
 
 /// Emit a WARN when a project-scoped write fell through to global scope.
-/// Reused by update, remove, rename, correction, and move handlers.
-#[allow(dead_code)] // used by US1-US4 implementation
+/// Reused by update, remove, and rename handlers.
 fn emit_scope_fallback_warning(project_name: &str, term_name: &str, warnings: &mut Vec<String>) {
     crate::output::warning::emit_warning(
         &format!(
@@ -877,10 +876,7 @@ fn handle_update(args: TermUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutcom
             Err(MfError::NotFound { .. }) => {
                 // Try global fallback; emit the WARN only when that write actually succeeds.
                 let term = term_svc::global::fix_term(root, &args.term, update)?;
-                crate::output::warning::emit_warning(
-                    &format!("-p {project_name} was ignored; the write applied to global scope because \"{}\" does not exist as a project-local term.", args.term),
-                    &mut warnings,
-                );
+                emit_scope_fallback_warning(project_name, &args.term, &mut warnings);
                 (term, true)
             }
             Err(e) => return Err(e),
@@ -1186,10 +1182,7 @@ fn handle_remove(args: TermRemoveArgs, ctx: &CommandCtx) -> Result<CommandOutcom
             Ok(report) => report,
             Err(MfError::NotFound { .. }) => {
                 let report = term_svc::remove_term_global(root, &args.term, args.force.force, args.dry_run.dry_run)?;
-                crate::output::warning::emit_warning(
-                    &format!("-p {project_name} was ignored; the write applied to global scope because \"{}\" does not exist as a project-local term.", args.term),
-                    &mut warnings,
-                );
+                emit_scope_fallback_warning(project_name, &args.term, &mut warnings);
                 report
             }
             Err(e) => return Err(e),
@@ -1262,10 +1255,7 @@ fn handle_rename(args: TermRenameArgs, ctx: &CommandCtx) -> Result<CommandOutcom
                     args.force.force,
                     false,
                 )?;
-                crate::output::warning::emit_warning(
-                    &format!("-p {project_name} was ignored; the write applied to global scope because \"{}\" does not exist as a project-local term.", args.old_term),
-                    &mut rename_warnings,
-                );
+                emit_scope_fallback_warning(project_name, &args.old_term, &mut rename_warnings);
                 report
             }
             Err(e) => return Err(e),
@@ -1574,12 +1564,14 @@ fn handle_move(args: TermMoveArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     let root = ctx.require_repo_path()?;
     let warnings: Vec<String> = Vec::new();
 
-    // Determine source and destination scopes
-    let _src_project = if args.from_global { None } else { ctx.project() };
     let dst_project = args.to_project.as_deref();
 
     if !args.to_global && dst_project.is_none() {
         return Err(MfError::usage("must specify --to-global or --to-project <PROJECT> for the destination", None));
+    }
+    // Reject early so dry-run and real runs reject identical inputs.
+    if args.from_global && args.to_global {
+        return Err(MfError::usage("source and destination are both global; nothing to do", None));
     }
 
     // Resolve source path
@@ -1624,11 +1616,9 @@ fn handle_move(args: TermMoveArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
         };
     }
 
-    let outcome = if args.from_global && args.to_global {
-        return Err(MfError::usage("source and destination are both global; nothing to do", None));
-    } else if !args.from_global && args.to_global {
+    let outcome = if args.to_global {
         term_svc::move_::move_project_to_global(&src_path, &dst_path, &args.term, args.force.force)?
-    } else if args.from_global && !args.to_global {
+    } else if args.from_global {
         term_svc::move_::move_global_to_project(&src_path, &dst_path, &args.term, args.force.force)?
     } else {
         term_svc::move_::move_project_to_project(&src_path, &dst_path, &args.term, args.force.force)?
