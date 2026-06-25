@@ -51,6 +51,8 @@ pub fn fix_term(project_root: &Path, term_name: &str, update: TermUpdate<'_>) ->
         }
 
         let t = &mut terms[pos];
+        // US1: validate all correction targets exist before mutating (atomic pre-check)
+        super::validate_correction_targets_exist(t, &update)?;
         apply_update(t, &update);
         t.clone()
     };

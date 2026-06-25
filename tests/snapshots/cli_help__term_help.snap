@@ -7,14 +7,16 @@ Manage terminology
 Usage: mf term [OPTIONS] [COMMAND]
 
 Commands:
-  list    List terms [aliases: ls]
-  new     Create a term
-  lint    Lint term consistency in project docs
-  update  Update term metadata
-  show    Show term details
-  remove  Remove a term [aliases: rm]
-  rename  Rename a term
-  fix     Apply term corrections to documents (alias of `term lint --fix`)
+  list        List terms [aliases: ls]
+  new         Create a term
+  lint        Lint term consistency in project docs
+  update      Update term metadata
+  show        Show term details
+  remove      Remove a term [aliases: rm]
+  rename      Rename a term
+  fix         Apply term corrections to documents (alias of `term lint --fix`)
+  correction  Manage term corrections
+  move        Move a term between scopes [aliases: mv]
 
 Options:
       --root <PATH>      Mind Repo root directory

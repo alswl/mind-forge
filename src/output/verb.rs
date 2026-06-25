@@ -6,6 +6,7 @@ pub enum Verb {
     Rename,
     Remove,
     Update,
+    Move,
     Index,
     Lint,
 }
@@ -57,6 +58,11 @@ pub fn render_text(result: &VerbResult, opts: &VerbOpts) -> String {
                     if n == 1 { "" } else { "s" }
                 )
             }
+            Verb::Move => {
+                let from = result.details.get("from_scope").and_then(|v| v.as_str()).unwrap_or("?");
+                let to = result.details.get("to_scope").and_then(|v| v.as_str()).unwrap_or("?");
+                format!("[dry-run] would move {}: {} ({} → {})", result.kind, result.identity, from, to)
+            }
             Verb::Index => render_index_text(result),
             Verb::Lint => render_lint_text(result, opts),
         };
@@ -73,6 +79,11 @@ pub fn render_text(result: &VerbResult, opts: &VerbOpts) -> String {
         Verb::Update => {
             let n = count_changes(&result.details);
             format!("✓ updated {}: {} ({} field{})", result.kind, result.identity, n, if n == 1 { "" } else { "s" })
+        }
+        Verb::Move => {
+            let from = result.details.get("from_scope").and_then(|v| v.as_str()).unwrap_or("?");
+            let to = result.details.get("to_scope").and_then(|v| v.as_str()).unwrap_or("?");
+            format!("✓ moved {}: {} ({} → {})", result.kind, result.identity, from, to)
         }
         Verb::Index => render_index_text(result),
         Verb::Lint => render_lint_text(result, opts),

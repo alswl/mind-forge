@@ -10,13 +10,18 @@ Options:
       --filter <FILTER>  
       --root <PATH>      Mind Repo root directory
       --config <PATH>    Config file path
-      --no-headers       Suppress the table header row
-      --no-trunc         Disable column truncation
+      --tag <TAG>        Filter by tag
+      --alias <ALIAS>    Filter by alias
   -v, --verbose...       Verbose output
+      --has-correction   Only show terms that have at least one correction
   -q, --quiet            Silence non-error output
   -o, --output <FORMAT>  Output format [default: text] [possible values: text, json]
+      --scope <SCOPE>    Filter by scope: project, global, or all (default: project + global
+                         fallback)
       --json             Shorthand for --output json
+      --no-headers       Suppress the table header row
       --no-color         Disable colored output
+      --no-trunc         Disable column truncation
   -p, --project <NAME>   Project name for project-scoped operations
   -h, --help             Print help
   -V, --version          Print version

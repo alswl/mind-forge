@@ -175,6 +175,8 @@ pub fn fix_term(repo_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Re
         });
     }
 
+    // US1: validate all correction targets exist before mutating (atomic pre-check)
+    super::validate_correction_targets_exist(&terms[pos], &update)?;
     apply_update(&mut terms[pos], &update);
     let result = terms[pos].clone();
     sort_terms_by_name(&mut terms);

@@ -1,17 +1,20 @@
 // Term service — implemented in 012-term-core.
 // Directory module facade: re-exports sub-module public items.
 
+pub mod correction;
 pub mod fix;
 pub mod global;
 pub mod lint;
 pub mod list;
+pub mod move_;
 pub mod new;
 pub mod remove;
 pub mod rename;
 pub mod repo_format;
 pub mod show;
 
-use crate::model::term::{Boundary, FixKind, MatchKind};
+#[allow(unused_imports)] // Correction used by tests
+use crate::model::term::{Boundary, Correction, FixKind, MatchKind};
 
 use std::collections::BTreeSet;
 
@@ -109,6 +112,132 @@ pub fn validate_confidence(value: Option<f64>) -> crate::error::Result<()> {
     Ok(())
 }
 
+// ── Correction target validation ─────────────────────────────────────────────
+
+/// Verify that every correction original referenced by `TermUpdate` exists on
+/// the target term. Returns a usage error listing missing originals if any are
+/// not found.
+///
+/// This is the atomic pre-check for US1: reject updates that reference missing
+/// correction targets before writing storage.
+#[allow(dead_code)] // used by US1 implementation
+pub fn validate_correction_targets_exist(
+    term: &crate::model::term::Term,
+    update: &TermUpdate<'_>,
+) -> crate::error::Result<()> {
+    let mut missing: Vec<String> = Vec::new();
+
+    for (original, _) in update.correction_match {
+        if !term.corrections.iter().any(|c| c.original == *original) {
+            missing.push(format!("--correction-match {original}:<kind>"));
+        }
+    }
+    for (original, _) in update.correction_fix {
+        if !term.corrections.iter().any(|c| c.original == *original) {
+            missing.push(format!("--correction-fix {original}:<kind>"));
+        }
+    }
+    for (original, _) in update.correction_pinyin {
+        if !term.corrections.iter().any(|c| c.original == *original) {
+            missing.push(format!("--correction-pinyin {original}:<pinyin>"));
+        }
+    }
+    for (original, _) in update.correction_boundary {
+        if !term.corrections.iter().any(|c| c.original == *original) {
+            missing.push(format!("--correction-boundary {original}:<mode>"));
+        }
+    }
+
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        let label = if missing.len() == 1 { "target" } else { "targets" };
+        Err(MfError::usage(
+            format!("correction {} {} not found on term \"{}\"", label, missing.join(", "), term.term),
+            Some("add the correction first with `mf term correction add`".to_string()),
+        ))
+    }
+}
+
+/// Find a correction by `original` on the given term. Returns the index for
+/// mutable access or a not-found error with guidance.
+#[allow(dead_code)] // used by US3 implementation
+pub fn find_correction_index(term: &crate::model::term::Term, original: &str) -> crate::error::Result<usize> {
+    term.corrections.iter().position(|c| c.original == original).ok_or_else(|| {
+        MfError::not_found(
+            format!("correction \"{original}\" not found on term \"{}\"", term.term),
+            Some("use `mf term correction list <TERM>` to see available corrections".to_string()),
+        )
+    })
+}
+
+/// Check whether a correction with the given `original` and `correct` pair
+/// already exists on the term (idempotent-add guard).
+#[allow(dead_code)] // used by US3 implementation
+pub fn correction_exists(term: &crate::model::term::Term, original: &str, correct: &str) -> bool {
+    term.corrections.iter().any(|c| c.original == original && c.correct == correct)
+}
+
+// ── Scope resolution helpers ──────────────────────────────────────────────────
+
+/// Resolved target for a mutating term operation.
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // used by US1-US4 implementations
+pub enum WriteScope {
+    Project(std::path::PathBuf),
+    Global(std::path::PathBuf),
+}
+
+#[allow(dead_code)] // methods used by US1-US4 implementations
+impl WriteScope {
+    pub fn as_str(&self) -> &str {
+        match self {
+            WriteScope::Project(_) => "project",
+            WriteScope::Global(_) => "global",
+        }
+    }
+
+    pub fn root(&self) -> &std::path::Path {
+        match self {
+            WriteScope::Project(p) | WriteScope::Global(p) => p.as_path(),
+        }
+    }
+}
+
+/// Resolve the effective write scope for a term operation.
+///
+/// When a project is specified, the project scope is preferred. When the term
+/// doesn't exist in the project scope, this returns `None` (callers should
+/// attempt a global fallback).
+#[allow(dead_code)] // used by US1-US4 handlers
+pub fn resolve_project_write_scope(
+    repo_root: &std::path::Path,
+    project_name: Option<&str>,
+    cwd: &std::path::Path,
+) -> crate::error::Result<Option<WriteScope>> {
+    if let Some(pn) = project_name {
+        let project_path = crate::service::util::resolve_project(repo_root, Some(pn), cwd)?;
+        Ok(Some(WriteScope::Project(project_path)))
+    } else {
+        Ok(Some(WriteScope::Global(repo_root.to_path_buf())))
+    }
+}
+
+/// Resolve read scope: project + global fallback.
+#[allow(dead_code)] // used by US2-US5 handlers
+pub fn resolve_read_scope(
+    repo_root: &std::path::Path,
+    project_name: Option<&str>,
+    cwd: &std::path::Path,
+) -> crate::error::Result<(WriteScope, Option<WriteScope>)> {
+    if let Some(pn) = project_name {
+        let project_path = crate::service::util::resolve_project(repo_root, Some(pn), cwd)?;
+        Ok((WriteScope::Project(project_path), Some(WriteScope::Global(repo_root.to_path_buf()))))
+    } else {
+        Ok((WriteScope::Global(repo_root.to_path_buf()), None))
+    }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -174,5 +303,100 @@ mod tests {
         let err = validate_confidence(Some(f64::NEG_INFINITY)).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("finite"), "got: {msg}");
+    }
+
+    // ── Correction target validation ────────────────────────────────────────
+
+    fn make_term(name: &str, corrections: Vec<Correction>) -> crate::model::term::Term {
+        crate::model::term::Term {
+            term: name.into(),
+            definition: None,
+            description: None,
+            confidence: None,
+            aliases: vec![],
+            tags: vec![],
+            corrections,
+        }
+    }
+
+    fn make_correction(original: &str, correct: &str) -> Correction {
+        Correction {
+            original: original.into(),
+            correct: correct.into(),
+            r#match: crate::model::term::MatchKind::Word,
+            fix: crate::model::term::FixKind::Required,
+            boundary: crate::model::term::Boundary::Standalone,
+            pinyin: None,
+        }
+    }
+
+    #[test]
+    fn validate_correction_targets_exist_all_present() {
+        let term = make_term("RAG", vec![make_correction("rag", "RAG"), make_correction("ragg", "RAG")]);
+        let update = TermUpdate {
+            correction_match: &[("rag".into(), crate::model::term::MatchKind::Substring)],
+            correction_fix: &[("ragg".into(), crate::model::term::FixKind::Suggested)],
+            ..Default::default()
+        };
+        assert!(validate_correction_targets_exist(&term, &update).is_ok());
+    }
+
+    #[test]
+    fn validate_correction_targets_exist_rejects_missing() {
+        let term = make_term("RAG", vec![make_correction("rag", "RAG")]);
+        let update = TermUpdate {
+            correction_match: &[("missing".into(), crate::model::term::MatchKind::Word)],
+            ..Default::default()
+        };
+        let err = validate_correction_targets_exist(&term, &update).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("missing"), "got: {msg}");
+        assert!(msg.contains("not found"), "got: {msg}");
+    }
+
+    #[test]
+    fn validate_correction_targets_exist_reports_all_missing() {
+        let term = make_term("RAG", vec![make_correction("rag", "RAG")]);
+        let update = TermUpdate {
+            correction_match: &[("a".into(), crate::model::term::MatchKind::Word)],
+            correction_fix: &[("b".into(), crate::model::term::FixKind::Required)],
+            ..Default::default()
+        };
+        let err = validate_correction_targets_exist(&term, &update).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("a"), "got: {msg}");
+        assert!(msg.contains("b"), "got: {msg}");
+        assert!(msg.contains("targets"), "expected plural; got: {msg}");
+    }
+
+    #[test]
+    fn validate_correction_targets_exist_empty_update_is_ok() {
+        let term = make_term("RAG", vec![]);
+        let update = TermUpdate::default();
+        assert!(validate_correction_targets_exist(&term, &update).is_ok());
+    }
+
+    #[test]
+    fn find_correction_index_returns_position() {
+        let term = make_term("RAG", vec![make_correction("a", "A"), make_correction("b", "B")]);
+        assert_eq!(find_correction_index(&term, "a").unwrap(), 0);
+        assert_eq!(find_correction_index(&term, "b").unwrap(), 1);
+    }
+
+    #[test]
+    fn find_correction_index_missing_is_error() {
+        let term = make_term("RAG", vec![make_correction("a", "A")]);
+        let err = find_correction_index(&term, "missing").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("missing"), "got: {msg}");
+        assert!(msg.contains("not found"), "got: {msg}");
+    }
+
+    #[test]
+    fn correction_exists_matches_original_and_correct() {
+        let term = make_term("RAG", vec![make_correction("rag", "RAG")]);
+        assert!(correction_exists(&term, "rag", "RAG"));
+        assert!(!correction_exists(&term, "rag", "OTHER"));
+        assert!(!correction_exists(&term, "missing", "RAG"));
     }
 }
