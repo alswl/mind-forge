@@ -158,7 +158,6 @@ impl ProjectCmd {
     }
 }
 
-/// dispatch 现在接受 repo_root 参数用于需要文件系统操作的子命令
 pub fn dispatch(command: ProjectCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("project")),

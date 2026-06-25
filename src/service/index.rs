@@ -441,7 +441,7 @@ pub struct ResolvedArticle<'a> {
 /// Resolve an article argument to its canonical index entry.
 ///
 /// Resolution order:
-/// 1. Exact canonical article key (path全名, e.g. `docs/2026-05-monthly`)
+/// 1. Exact canonical article key (full path, e.g. `docs/2026-05-monthly`)
 /// 2. Exact indexed article_path
 /// 3. DOCS_DIR relative name (e.g. `2026-05-monthly` for docs/ articles)
 /// 4. Template alias (`<template_name>/<slot_value>`, e.g. `daily_report/2026-05-15`)
@@ -460,7 +460,7 @@ pub fn resolve_article<'a>(index: &'a IndexFile, article_arg: &str) -> Result<Re
         }
     };
 
-    // 1. Exact canonical article key match (path全名)
+    // 1. Exact canonical article key match (full path)
     for a in articles {
         if let Ok(key) = article_key(a) {
             if key == article_arg {
@@ -567,7 +567,7 @@ mod tests {
     fn article_key_returns_full_path_for_docs_article() {
         let article = make_article("docs/weekly-summary.md", None);
         let key = article_key(&article).unwrap();
-        assert_eq!(key, "docs/weekly-summary", "key should be path全名: docs/weekly-summary");
+        assert_eq!(key, "docs/weekly-summary", "key should be full path: docs/weekly-summary");
     }
 
     #[test]

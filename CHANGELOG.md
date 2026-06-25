@@ -3,152 +3,140 @@
 All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
-### Rust CLI Guide Alignment Refactor (v0.3.0)
-
-#### Breaking Changes
-- **`--format` 重命名为 `--output/-o`**：全局输出格式选择器由 `--format <FORMAT>` 改为 `--output <FORMAT>`（短标志 `-o`）。`--json` 简写保留不变。迁移：将所有 `--format json` 替换为 `--output json`（或 `-o json`、`--json`）。
-- **`error.kind` 值统一为 snake_case**：JSON 错误信封中 `error.kind` 的 6 个 kebab-case 值改为 snake_case。迁移：更新脚本/Agent 对以下 kind 值的匹配：
-
-  | Before | After |
-  |---|---|
-  | `not-in-mind-repo` | `not_in_mind_repo` |
-  | `incompatible-schema` | `incompatible_schema` |
-  | `parse-error` | `parse_error` |
-  | `file-exists` | `file_exists` |
-  | `not-implemented` | `not_implemented` |
-  | `not-found` | `not_found` |
-- **`mf build` 和 `mf config generate` 的 `-o/--output` 重命名为 `--out`**：这两个子命令的本地输出路径标志改为 `--out`，避免与全局 `-o/--output` 冲突。
-
-#### Internal
-- **引入 `CommandCtx`**：所有命令处理函数通过 `CommandCtx` 获取运行时配置，不再手传 `repo_root`/`format`/`project`/`cwd`。
-- **移除 `std::env::set_var("NO_COLOR")`**：color 偏好通过 `CommandCtx` 显式传递到 render 入口。
-- **`AppContext` 字段私有化**：所有字段通过 accessor 方法访问。
-
-### `mf article rename` + `update --title` 拆分
-
-#### Breaking Changes
-- **`mf article rename <OLD> <NEW>` 第二个参数改为 slug**：不再同时改 title，只重命名文件/目录路径。title 保持不变。如需改 title，请使用 `mf article update --title "New Title"`。
-
-#### New Features
-- **`mf article update --title <TITLE>`**：修改 article 的 display title（仅 index 元数据，不动文件）。
-- **`mf article rename` 支持目录型文章**：自动检测单文件/目录形态并保持，目录冲突使用 `remove_dir_all` 处理。
-- **`mf article rename` 自动联动 prompt 文件**：rename 时同步重命名 `prompts/<key>.md` 并更新其 `article:` frontmatter 绑定。
-- **`mf article update --title` 联动 prompt 文件**：更新 title 时同步修改 prompt 的 `title:` frontmatter。
-
-### `mf term lint` 误改防护 + 语音输入感知 (042-term-ux-improvements)
-
-#### Breaking Changes
-- **CJK `original` 默认匹配模式从字面变为词边界**：`match: word`（默认）下，CJK 术语只在词边界命中（e.g., `机器` 不命中 `机器人`）。已有 CJK 术语需加 `match: substring` 还原 spec 012 行为。
-- **`mf term fix` 命令语义重定义**：从「修改 term metadata」变为「修改文档命中」（= `mf term lint --fix`）。旧 metadata 用法已删除，请使用 `mf term update` 替代。
-
-#### New Features
-- **`Correction.match` 字段**：`word`（默认）/ `substring` / `pinyin`。`word` 对 ASCII 按 `[A-Za-z0-9_]` 词边界匹配，CJK 按非 CJK 表意字符邻居判定。
-- **`mf term fix` 一级动词**：`mf term fix` 等价于 `mf term lint --fix`，新增 `--all` flag 支持应用 suggested 命中。
-- **拼音模糊匹配 `match: pinyin`**：使用 `pinyin` crate（MIT）对 CJK 术语做拼音扫描（忽略声调，distance 0），命中强制 `fix_kind=suggested`。适应语音输入场景。
-- **`Correction.fix` 字段**：`required`（默认，自动应用）/ `suggested`（需 `--all` 才应用）。文本输出 sugered finding 行末追加 `?`。
-- **JSON 新增字段**：每条 finding 含 `match_kind` / `fix_kind`；报告含 `would_apply_count`。
-
-#### Compatibility
-- 旧 YAML 文件（无 `match` / `fix` / `pinyin` 字段）加载后取默认值，行为非破坏（`match: word`、`fix: required`）。
-- 新 YAML（含 `match: pinyin` 等字段）被旧 mf binary 读取时静默忽略未知字段（serde default）。
-- 新增 `pinyin` crate 依赖（MIT，纯 Rust，无 transitive 外部依赖）。
-
-### Breaking Changes (JSON Envelope)
-
-All breaking changes are documented with before/after examples below.
-
-#### `term list --json` envelope
-- **Before**: `{ "status": "ok", "command": "mf", "data": [{"term": "RAG", ...}] }`
-- **After**: `{ "status": "ok", "command": "mf", "data": { "terms": [{"term": "RAG", "identity": "RAG", ...}] } }`
-
-#### `config show --json` envelope
-- **Before**: `{ "status": "ok", "command": "mf", "data": "<yaml string>" }`
-- **After**: `{ "status": "ok", "command": "mf", "data": { "projects_dir": "projects", ...structured config... } }`
-
-#### `source index --json` envelope
-- **Before**: `{ "status": "ok", "command": "mf", "data": "kept: N entries" }`
-- **After**: `{ "status": "ok", "command": "mf", "data": { "kind": "source", "added": [...], "removed": [...], "kept_count": N, "scanned_count": N, "dry_run": false } }`
-
-#### `asset index --json` envelope
-- **Before**: `{ "status": "ok", "command": "mf", "data": "N kept" }`
-- **After**: `{ "status": "ok", "command": "mf", "data": { "kind": "asset", "added": [...], "removed": [...], "kept_count": N, "scanned_count": N, "dry_run": false } }`
-
-#### Remove/archive confirmation in non-TTY
-- **Before**: `mf project remove demo | cat` → proceeded silently (exit 0)
-- **After**: `mf project remove demo | cat` → exits 1 with `pass --yes to confirm` hint
-
 ### Features
-- Default article new to directory blocks (by @alswl)
-- Add Typora front-matter plugin with config and article injection (by @alswl)
-- Add project layout mechanism (by @alswl)
-- Add top-level `mf init` repo lifecycle command (by @alswl)
-- Review and reorganize CLI command UX (by @alswl)
-- Add description and confidence metadata to terms (by @alswl)
+- Boundary-aware linting with standalone mode (spec 044)
+- Add model update commands
+- Safer defaults, single-step authoring, unified `new` verb (spec 046)
+- Show mtime in article list, sort by recency
+- CLI UX consistency audit & refactor
+- Simplify writing workflow
+- Split rename (slug-only) and update --title
+- Add block rename subcommand
+- Align CLI internals with rust-cli.md guide (spec 049)
 
 ### Bug Fixes
-- Strip typora front matter from build output (by @alswl)
+- Strip ./ prefix from project paths for consistency
+- Fall back to filesystem mtime when created_at is empty
+- Persist created_at fallback to minds.yaml
+- Update test for TITLE column, remove write-back from read-only list_projects
+- Zero scheme leading byte to stop URL exemption leak
 
 ### Documentation
-- Update (by @alswl)
-- Update README and SKILL for publisher→publish target rename (by @alswl)
-- No migration (by @alswl)
-- No changelog manual (by @alswl)
+- Update command examples for new verbs
+- Align manual, mf-cli skill, and README with --output/-o flag
 
 ### Refactoring
-- Rename article storage path fields (by @alswl)
+- Replace CONTENT column with TITLE in list view
 
 ### Miscellaneous
-- Merge branch '031-layout-mechanism' (by @alswl)
+- Align project ls with article ls format
+
+## [0.2.1] - 2026-06-18
+
+### Features
+- Default article new to directory blocks
+- Add Typora front-matter plugin with config and article injection
+- Add project layout mechanism
+- Add top-level `mf init` repo lifecycle command
+- Review and reorganize CLI command UX
+- Add description and confidence metadata to terms
+- Add unified remove and rename lifecycle operations for all primary objects
+- Elevate --project to global CLI parameter, fix term subcommand scope
+- Path-based entity identity for writing workflow parity
+- Path-centered article list output with content kind labels
+- Unified output infrastructure & flag conventions (spec 039)
+- Article shape conversion (spec 040)
+- Terminal capability detection (spec 041)
+- Wire OSC 8 hyperlink rendering into list/show/verb outputs
+- Tmux
+- Mf article ls auto-matches all projects when run outside a project dir
+- Mispronunciation-aware lint + first-class `term fix` verb (spec 042)
+- Add --delete-* flags, correction attr updates, and project-scoped --misrecognition
+
+### Bug Fixes
+- Strip typora front matter from build output
+- Discover source-kind files during source index
+- Cover article new missing index creation
+- Resolve relative paths to absolute file:// URIs in render_path_link
+- Broaden terminal hyperlink detection and encode file URIs
+- Prevent --fix panic when overlapping corrections match the same text
+
+### Documentation
+- Update
+- Update README and SKILL for publisher→publish target rename
+- No migration
+- No changelog manual
+- Add CHANGELOG.md and git-cliff configuration
+- Regenerate README and SKILL from latest CLI manual
+- Regenerate README and SKILL from latest CLI manual
+- Regenerate README and SKILL from latest CLI manual
+- Regenerate README and SKILL from latest CLI manual
+- Refresh SKILL.md and README after spec 040-042 features
+- Update README and SKILL.md with new term update flags
+
+### Refactoring
+- Rename article storage path fields
+- Remove repo-format, collapse to schema-version only
+- Clean up term lint path handling
+
+### Testing
+- Derive expected --version from CARGO_PKG_VERSION
+
+### Miscellaneous
+- Merge branch '031-layout-mechanism'
+- Add concurrency control, rust-cache, and pin macOS toolchain
+- Bump version to 0.2.0
+- Bump version to 0.2.1 and sync Cargo.lock
 
 ## [0.1.0] - 2026-05-19
 
 ### Features
-- Add configurable projects_dir to MindsManifest (#2) (by @alswl)
-- Complete 014-cli-mind-parity — full CLI parity with mind tool (#3) (by @alswl)
-- Add publisher channels and CLI skill, clean up codebase (by @alswl)
-- Add publisher e2e tests and CI enforcement (#4) (by @alswl)
-- Python mind 0.3.0 YAML compatibility (#017) (by @alswl)
-- Implement build banner, article source dirs, and asset layout (#018) (by @alswl)
-- Add rename subcommands for project and article (#019) (by @alswl)
-- Implement render command with template system (by @alswl)
-- Dual-shape terms file support — repo-format detection, read, and write (by @alswl)
-- Default article new to blank directory (by @alswl)
-- Add version management with draft release workflow (by @alswl)
+- Add configurable projects_dir to MindsManifest (#2)
+- Complete 014-cli-mind-parity — full CLI parity with mind tool (#3)
+- Add publisher channels and CLI skill, clean up codebase
+- Add publisher e2e tests and CI enforcement (#4)
+- Python mind 0.3.0 YAML compatibility (#017)
+- Implement build banner, article source dirs, and asset layout (#018)
+- Add rename subcommands for project and article (#019)
+- Implement render command with template system
+- Dual-shape terms file support — repo-format detection, read, and write
+- Default article new to blank directory
+- Add version management with draft release workflow
 
 ### Bug Fixes
-- Reconcile/clean 数据丢失修复及 P1 代码重构 (by @alswl)
-- Upgrade GitHub Actions to use node24 runtime (by @alswl)
-- Centralize defaults and honor project paths (by @alswl)
-- Remove docs/images/ from project scaffold and lint rules (by @alswl)
-- Harden index handling and render prompts (by @alswl)
-- Complete index bug handling (by @alswl)
-- Implement publish path expansion and generated-article discovery (by @alswl)
-- Close BUG-3 and BUG-5 — generated-article publish identity and declared-article index gaps (by @alswl)
-- Unify article resolver across index, build, and publish (by @alswl)
-- Support global terms via minds-terms.yaml without project context (by @alswl)
-- Converge article identity to path全名 and DOCS_DIR relative forms (by @alswl)
-- Strip outputs/ prefix in article_output_stem to avoid double path (by @alswl)
-- Centralize layout constants, eliminate hardcoded path strings (by @alswl)
-- Support schema-tagged repository terms (by @alswl)
+- Reconcile/clean 数据丢失修复及 P1 代码重构
+- Upgrade GitHub Actions to use node24 runtime
+- Centralize defaults and honor project paths
+- Remove docs/images/ from project scaffold and lint rules
+- Harden index handling and render prompts
+- Complete index bug handling
+- Implement publish path expansion and generated-article discovery
+- Close BUG-3 and BUG-5 — generated-article publish identity and declared-article index gaps
+- Unify article resolver across index, build, and publish
+- Support global terms via minds-terms.yaml without project context
+- Converge article identity to path全名 and DOCS_DIR relative forms
+- Strip outputs/ prefix in article_output_stem to avoid double path
+- Centralize layout constants, eliminate hardcoded path strings
+- Support schema-tagged repository terms
 
 ### Documentation
-- Update SKILL.md with rename subcommands (by @alswl)
-- Docs (by @alswl)
-- Skill (by @alswl)
-- Generate skills and readme (by @alswl)
+- Update SKILL.md with rename subcommands
+- Docs
+- Skill
+- Generate skills and readme
 
 ### Miscellaneous
-- Initial commit (by @alswl)
-- Implement mf CLI framework (by @alswl)
-- . (by @alswl)
+- Initial commit
+- Implement mf CLI framework
+- .
 - Fix spec compliance and code quality issues
 
 - Fix mf source (no subcommand) exiting 0 — now returns exit code 2 per spec
 - Simplify wants_json detection to use windows(2) for --format json pair
-- Remove redundant copy/link bool fields from AssetAddPayload (mode suffices) (by @alswl)
+- Remove redundant copy/link bool fields from AssetAddPayload (mode suffices)
 - Add GitHub Actions CI workflow
 
-Run build, test, clippy (deny warnings), and rustfmt check on push/PR to master. (by @alswl)
+Run build, test, clippy (deny warnings), and rustfmt check on push/PR to master.
 - Implement CLI command skeleton, model types, and CI setup
 
 - Add multi-level command tree: source, asset, project, article, term, build, config, publish
@@ -157,7 +145,7 @@ Run build, test, clippy (deny warnings), and rustfmt check on push/PR to master.
 - Add shell completion generation via `mf completion <shell>`
 - Add integration tests with assert_cmd and insta snapshots
 - Add GitHub Actions CI workflow with cargo build, test, clippy, fmt
-- Set up Cargo.lock for reproducible builds (by @alswl)
+- Set up Cargo.lock for reproducible builds
 - Implement Mind Repo detection and project index command
 
 Adds Mind Repo context detection (upward search for minds.yaml with
@@ -167,8 +155,8 @@ Commands needing repo context now fail fast with a not-in-mind-repo
 error envelope outside a Mind Repo, while config/completion/help still
 work anywhere.
 
-Refs: specs/003-mind-repo-infra (by @alswl)
-- Fix clippy warning: redundant closure in ok_or_else (by @alswl)
+Refs: specs/003-mind-repo-infra
+- Fix clippy warning: redundant closure in ok_or_else
 - CI build artifacts, cross-compilation, and code review fixes
 
 - Add GitHub Actions artifact builds for Linux x86_64, ARM64, and macOS ARM64
@@ -177,7 +165,7 @@ Refs: specs/003-mind-repo-infra (by @alswl)
 - Add CommandOutcome::Success variant for proper exit 0 on implemented commands
 - Replace hand-rolled iso_now date calculation with chrono crate
 - Scoped #[allow(dead_code)] on placeholder-only model modules
-- Misc test updates and cleanups (by @alswl)
+- Misc test updates and cleanups
 - Squashed commit of the following:
 
 commit 447c30d4bfcef60ea45b3093f304c1804daae203
@@ -196,7 +184,7 @@ Date:   Wed Apr 29 23:23:22 2026 +0800
     - Add schemars dependency for JSON Schema (Draft-07) derivation
     - Code review: extract shared util module (atomic_write, validate_schema_version),
       remove dead_code allowances, fix --format json double-encoding via
-      CommandOutcome::Raw, remove misleading merge _base parameters (by @alswl)
+      CommandOutcome::Raw, remove misleading merge _base parameters
 - Implement article core commands and fix code quality
 
 - Full article lifecycle: create (mf article new), list (mf article list),
@@ -205,7 +193,7 @@ Date:   Wed Apr 29 23:23:22 2026 +0800
 - Lint with --fix: kebab-case filename validation and auto-rename
 - Refactor compute_article_diff to single-pass iteration
 - Replace entries.flatten() with explicit error propagation
-- Replace String-typed severity/kind with Severity/LintKind enums (by @alswl)
+- Replace String-typed severity/kind with Severity/LintKind enums
 - Implement article core commands: new, list, lint, index, and build
 
 - Add ArticleStatus (Draft/Published) and LintIssue models
@@ -214,8 +202,8 @@ Date:   Wed Apr 29 23:23:22 2026 +0800
 - Implement build command reading markdown from docs/
 - Extract shared utilities: resolve_project, to_filename, dir_name
 - 11 integration tests covering all commands and edge cases
-- Replace placeholders for all 5 article/build commands (by @alswl)
-- Merge branch '006-article-core' into master (by @alswl)
+- Replace placeholders for all 5 article/build commands
+- Merge branch '006-article-core' into master
 - Implement project lifecycle commands: new, list, status, lint, and archive
 
 - mf project new <NAME> — scaffold project skeleton, upsert to minds.yaml
@@ -226,13 +214,13 @@ Date:   Wed Apr 29 23:23:22 2026 +0800
 - Add --root <PATH> global flag for repo root override
 - Add canonicalize_within path boundary security check
 - Add validate_project_name kebab-case validation
-- 24 e2e tests covering all commands + boundary cases (by @alswl)
+- 24 e2e tests covering all commands + boundary cases
 - Implement config-driven build command with index validation
 
 Upgrade `mf build` skeleton to read project config (BuildConfig),
 validate article existence in mind-index.yaml (exit 1 if not found),
 and write output to config-driven path `{output_dir}/{article}.{format}`.
-Add MfError::NotFound variant for article-not-in-index (exit 1). (by @alswl)
+Add MfError::NotFound variant for article-not-in-index (exit 1).
 - Implement publish MVP: local/yuque-prompt targets and update record
 
 - Add PublishTargetType::YuquePrompt variant for yuque-prompt target type
@@ -242,7 +230,7 @@ Add MfError::NotFound variant for article-not-in-index (exit 1). (by @alswl)
 - Add not-implemented guard for yuque/github_pages/custom target types
 - Add hint field to NotImplemented error variant for actionable messages
 - Add 36 integration tests across all user stories + quickstart E2E test
-- Remove publish placeholder assertions; wire real dispatch (by @alswl)
+- Remove publish placeholder assertions; wire real dispatch
 - Implement asset core commands: add, list, update, index
 
 Replace placeholders with four real asset management commands:
@@ -251,7 +239,7 @@ Replace placeholders with four real asset management commands:
 - mf asset update: refresh size and hash for single or all assets
 - mf asset index: reconcile assets directory with index
 
-Adds sha2 and walkdir dependencies. 39 integration tests + 6 help snapshots. (by @alswl)
+Adds sha2 and walkdir dependencies. 39 integration tests + 6 help snapshots.
 - Implement term core commands and cleanup dead code
 
 Features (012-term-core):
@@ -267,7 +255,7 @@ Bad-smell fixes:
 - Remove unread InternalFinding.term field
 - Remove entire Placeholder dead-code path (variant, fn, module)
 - Remove unused color module and is-terminal dependency
-- Update tests/cli_placeholders.rs assertion tighten (by @alswl)
+- Update tests/cli_placeholders.rs assertion tighten
 - Implement structural refactor: directory modules, error model, CLI hygiene
 
 Service layer split into directory modules (term/source/asset/project),
@@ -275,6 +263,6 @@ index I/O centralized to service::index, MfError tightened with proper
 kind/hint taxonomy, output render consolidated to single dispatch,
 repo-context declarative via RepoRequirement, dead code and duplicate
 flags removed, main.rs slimmed to 120 lines, success envelope aligned
-with charter V (command field), and clig.dev cosmetic fixes applied. (by @alswl)
-- Chore (by @alswl)
+with charter V (command field), and clig.dev cosmetic fixes applied.
+- Chore
 

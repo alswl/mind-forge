@@ -76,7 +76,7 @@ fn json_cli_parse_error_envelope() {
     assert_eq!(parsed["error"]["kind"], "usage");
 }
 
-/// E2E: 短选项 `-o json` 与 `--output=json` 同样应在 parse 错误时输出 JSON envelope
+/// E2E: short `-o json` and `--output=json` forms must also emit a JSON envelope on parse errors.
 #[test]
 fn json_cli_parse_error_envelope_short_and_equals_forms() {
     let variants: [&[&str]; 2] =

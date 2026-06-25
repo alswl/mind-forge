@@ -69,7 +69,7 @@ impl AppContext {
         &self.cwd
     }
 
-    /// 返回 project 名称，仅在 repo_root 存在时有效
+    /// Returns the project name; only valid when a repo_root is present.
     pub fn project(&self) -> Option<&str> {
         if self.repo_root.is_some() {
             self.project.as_deref()
@@ -86,7 +86,7 @@ impl AppContext {
         self.quiet
     }
 
-    /// 检查 repo_root，为 None 时返回 NotInMindRepo 错误
+    /// Checks repo_root; returns a NotInMindRepo error when it is None.
     pub fn require_repo(&self) -> Result<()> {
         if self.repo_root.is_none() {
             return Err(MfError::not_in_mind_repo());
@@ -94,7 +94,7 @@ impl AppContext {
         Ok(())
     }
 
-    /// require_repo 的成功版本，返回 &Path
+    /// Like require_repo but returns the &Path on success.
     pub fn require_repo_path(&self) -> Result<&PathBuf> {
         self.repo_root.as_ref().ok_or_else(MfError::not_in_mind_repo)
     }
