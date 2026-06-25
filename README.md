@@ -198,8 +198,8 @@ These flags are available on most commands:
 | `-p`, `--project <PROJECT>` | Project selector for project-scoped commands |
 | `-v`, `--verbose...` | Verbose output (repeatable) |
 | `-q`, `--quiet` | Silence non-error output |
-| `--format <text\|json>` | Output format (default: `text`) |
-| `--json` | Shorthand for `--format json` |
+| `-o`, `--output <text\|json>` | Output format (default: `text`) |
+| `--json` | Shorthand for `--output json` |
 | `--no-color` | Disable colored output |
 | `-h`, `--help` | Show help |
 | `-V`, `--version` | Show version |
