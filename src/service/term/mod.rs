@@ -171,13 +171,6 @@ pub fn find_correction_index(term: &crate::model::term::Term, original: &str) ->
     })
 }
 
-/// Check whether a correction with the given `original` and `correct` pair
-/// already exists on the term (idempotent-add guard).
-#[allow(dead_code)] // used by US3 implementation
-pub fn correction_exists(term: &crate::model::term::Term, original: &str, correct: &str) -> bool {
-    term.corrections.iter().any(|c| c.original == original && c.correct == correct)
-}
-
 // ── Scope resolution helpers ──────────────────────────────────────────────────
 
 /// Resolved target for a mutating term operation.
@@ -390,13 +383,5 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("missing"), "got: {msg}");
         assert!(msg.contains("not found"), "got: {msg}");
-    }
-
-    #[test]
-    fn correction_exists_matches_original_and_correct() {
-        let term = make_term("RAG", vec![make_correction("rag", "RAG")]);
-        assert!(correction_exists(&term, "rag", "RAG"));
-        assert!(!correction_exists(&term, "rag", "OTHER"));
-        assert!(!correction_exists(&term, "missing", "RAG"));
     }
 }

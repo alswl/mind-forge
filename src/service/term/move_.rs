@@ -33,11 +33,8 @@ pub fn move_project_to_global(
         .position(|t| t.term == term_name)
         .ok_or_else(|| MfError::not_found(format!("term '{term_name}' not found in project"), None))?;
 
-    let removed = terms.remove(pos);
-    sort_terms_by_name(terms);
-    index::save(project_root, &index)?;
-
-    // Add to global — with conflict check
+    // Check the destination conflict before mutating the source, otherwise a
+    // rejected move would still delete the source copy.
     let mut global_terms = term::global::load_terms(repo_root)?;
     if !force && global_terms.iter().any(|t| t.term == term_name) {
         return Err(MfError::usage(
@@ -45,6 +42,11 @@ pub fn move_project_to_global(
             None,
         ));
     }
+
+    let removed = terms.remove(pos);
+    sort_terms_by_name(terms);
+    index::save(project_root, &index)?;
+
     // Remove existing global copy if forcing
     if force {
         global_terms.retain(|t| t.term != term_name);
@@ -82,11 +84,8 @@ pub fn move_global_to_project(
         .position(|t| t.term == term_name)
         .ok_or_else(|| MfError::not_found(format!("term '{term_name}' not found in global scope"), None))?;
 
-    let removed = global_terms.remove(pos);
-    sort_terms_by_name(&mut global_terms);
-    term::global::save_terms(repo_root, &global_terms)?;
-
-    // Add to project — with conflict check
+    // Check the destination conflict before mutating the source, otherwise a
+    // rejected move would still delete the source copy.
     let mut index = index::load(project_root)?;
     let dst_terms = index.terms.get_or_insert_with(Vec::new);
     if !force && dst_terms.iter().any(|t| t.term == term_name) {
@@ -95,6 +94,11 @@ pub fn move_global_to_project(
             None,
         ));
     }
+
+    let removed = global_terms.remove(pos);
+    sort_terms_by_name(&mut global_terms);
+    term::global::save_terms(repo_root, &global_terms)?;
+
     if force {
         dst_terms.retain(|t| t.term != term_name);
     }
@@ -116,7 +120,7 @@ pub fn move_global_to_project(
 
 /// Move a term from one project to another.
 pub fn move_project_to_project(src_root: &Path, dst_root: &Path, term_name: &str, force: bool) -> Result<MoveOutcome> {
-    // Remove from source
+    // Locate the term in the source (don't remove yet)
     let mut src_index = index::load(src_root)?;
     let src_terms =
         src_index.terms.as_mut().ok_or_else(|| MfError::not_found(format!("term '{term_name}' not found"), None))?;
@@ -124,24 +128,22 @@ pub fn move_project_to_project(src_root: &Path, dst_root: &Path, term_name: &str
         .iter()
         .position(|t| t.term == term_name)
         .ok_or_else(|| MfError::not_found(format!("term '{term_name}' not found in source project"), None))?;
-    let removed = src_terms.remove(pos);
-    sort_terms_by_name(src_terms);
-    index::save(src_root, &src_index)?;
 
-    // Add to destination
+    // Check the destination conflict before mutating the source, otherwise a
+    // rejected move would still delete the source copy.
     let mut dst_index = index::load(dst_root)?;
     let dst_terms = dst_index.terms.get_or_insert_with(Vec::new);
     if !force && dst_terms.iter().any(|t| t.term == term_name) {
-        // Rollback: restore source term
-        let mut src_index2 = index::load(src_root)?;
-        src_index2.terms.get_or_insert_with(Vec::new).push(removed.clone());
-        sort_terms_by_name(src_index2.terms.as_mut().unwrap());
-        index::save(src_root, &src_index2)?;
         return Err(MfError::usage(
             format!("term '{term_name}' already exists in destination project; use --force to overwrite"),
             None,
         ));
     }
+
+    let removed = src_terms.remove(pos);
+    sort_terms_by_name(src_terms);
+    index::save(src_root, &src_index)?;
+
     if force {
         dst_terms.retain(|t| t.term != term_name);
     }

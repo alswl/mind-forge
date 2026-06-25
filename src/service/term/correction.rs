@@ -8,7 +8,7 @@ use std::path::Path;
 use crate::error::{MfError, Result};
 use crate::model::term::{Boundary, Correction, FixKind, MatchKind};
 use crate::service::index;
-use crate::service::term::{self, find_correction_index, sort_terms_by_name};
+use crate::service::term::{find_correction_index, sort_terms_by_name};
 
 // ── Project-scoped correction operations ──────────────────────────────────────
 
@@ -40,9 +40,9 @@ pub fn add_correction(
         )
     })?;
 
-    // Idempotent check
-    if term::correction_exists(t, original, correct) {
-        return Ok(t.corrections.iter().find(|c| c.original == original && c.correct == correct).unwrap().clone());
+    // Idempotent: return the existing entry when the identical pair is present.
+    if let Some(existing) = t.corrections.iter().find(|c| c.original == original && c.correct == correct) {
+        return Ok(existing.clone());
     }
 
     let corr = Correction {
@@ -175,8 +175,9 @@ pub fn add_correction_global(
         )
     })?;
 
-    if term::correction_exists(t, original, correct) {
-        return Ok(t.corrections.iter().find(|c| c.original == original && c.correct == correct).unwrap().clone());
+    // Idempotent: return the existing entry when the identical pair is present.
+    if let Some(existing) = t.corrections.iter().find(|c| c.original == original && c.correct == correct) {
+        return Ok(existing.clone());
     }
 
     let corr = Correction {
