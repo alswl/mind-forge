@@ -227,10 +227,9 @@ mf term fix --project blog
 
 `term update` changes metadata only. It never adds corrections — pass
 `--misrecognition` to `term new`, or use `term correction add` for an existing
-term. It can still adjust existing corrections by their `original` text
-(`--correction-match`, `--correction-fix`, `--correction-pinyin`,
-`--correction-boundary`, `--delete-correction`) and rejects targets that do not
-already exist. Use `--dry-run` to validate and preview without writing.
+term. To modify or remove existing corrections, use `term correction update` or
+`term correction remove` instead. Use `--dry-run` to validate and preview
+without writing.
 
 ### Corrections
 
@@ -244,8 +243,10 @@ mf term correction update API api --fix suggested
 mf term correction remove API api --dry-run
 ```
 
-`correction add` is idempotent on an exact `(original, correct)` pair. For
-boundary and pinyin matching details, see [term-lint.md](term-lint.md).
+`correction add` is idempotent on an exact `(original, correct)` pair. A first
+add reports `added` (JSON `created: true`); repeating the same pair reports
+`already exists, skipped` (JSON `created: false`) and leaves storage untouched.
+For boundary and pinyin matching details, see [term-lint.md](term-lint.md).
 
 ### Moving between scopes
 

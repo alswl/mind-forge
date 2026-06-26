@@ -187,6 +187,13 @@ fn term_remove_help_snapshot() {
     assert_snapshot!("term_remove_help", stdout);
 }
 
+#[test]
+fn term_update_help_snapshot() {
+    let (stdout, _, code) = run(&["term", "update", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("term_update_help", stdout);
+}
+
 // ── Publish target help snapshots ─────────────────
 
 #[test]

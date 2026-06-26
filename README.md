@@ -287,10 +287,10 @@ default `projects/` container). Defaults to the current directory.
 | Subcommand | Description |
 |-----------|-------------|
 | `new <TERM>` | Create a term (mf extension). `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--misrecognition <TEXT>` |
-| `list` (ls) | List terms. `--filter <PATTERN>`, `--tag <TAG>`, `--alias <ALIAS>`, `--has-correction`, `--scope project\|global\|all` (AND semantics; default merges project + global fallback) |
+| `list` (ls) | List terms. `--filter <PATTERN>` matches term name (substring); `--tag <TAG>` / `--alias <ALIAS>` match their respective fields. `--has-correction`, `--scope project\|global\|all` (AND semantics; default merges project + global fallback) |
 | `show <TERM>` | Show term details |
-| `update <TERM>` | Update term metadata only (mf extension; previously `fix`). Rejects `--misrecognition` (use `correction add`). `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--clear-description`, `--clear-confidence`, `--delete-alias <TEXT>`, `--delete-tag <TAG>`, `--delete-correction <ORIGINAL>`, `--correction-match <ORIGINAL:word\|substring\|pinyin>`, `--correction-fix <ORIGINAL:required\|suggested>`, `--correction-pinyin <ORIGINAL:PINYIN>`, `--correction-boundary <ORIGINAL:loose\|standalone>`, `--dry-run` |
-| `correction <SUBCOMMAND>` | Manage corrections as a first-class subresource: `add <TERM> <ORIGINAL> <CORRECT>` (idempotent; `--match`, `--fix`, `--boundary`, `--pinyin`), `list <TERM>`, `show <TERM> <ORIGINAL>`, `update <TERM> <ORIGINAL>`, `remove <TERM> <ORIGINAL>` (`--dry-run`) |
+| `update <TERM>` | Update term metadata only (mf extension; previously `fix`). Rejects `--misrecognition` (use `correction add`). Correction edits go through `term correction update`/`remove`. `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--clear-description`, `--clear-confidence`, `--delete-alias <TEXT>`, `--delete-tag <TAG>`, `--dry-run` |
+| `correction <SUBCOMMAND>` | Manage corrections as a first-class subresource: `add <TERM> <ORIGINAL> <CORRECT>` (idempotent; reports `created: true\|false`; `--match`, `--fix`, `--boundary`, `--pinyin`), `list <TERM>`, `show <TERM> <ORIGINAL>`, `update <TERM> <ORIGINAL>`, `remove <TERM> <ORIGINAL>` (`--dry-run`) |
 | `move <TERM>` (mv) | Move a term between scopes. `--to-global`, `--to-project <PROJECT>`, `--from-global`, `--force` (overwrite destination; source preserved on rejection), `--dry-run` |
 | `rename <OLD_TERM> <NEW_TERM>` | Rename a term. `--keep-alias` keeps the old name as an alias |
 | `remove <TERM>` (rm) | Remove a term (interactive confirmation in TTY) |

@@ -72,7 +72,7 @@ fn e2e_quickstart_workflow() {
     // Create a fresh file with a misrecognition to lint against.
     std::fs::write(sources_dir.join("fresh.md"), "we use rag in production.\n").unwrap();
     run_in(root, &["term", "new", "RAG", "--misrecognition", "rag:RAG"]);
-    run_in(root, &["term", "update", "RAG", "--correction-fix", "rag:suggested"]);
+    run_in(root, &["term", "correction", "update", "RAG", "rag", "--fix", "suggested"]);
 
     let (_stdout, _stderr, code) =
         run_in(root, &["term", "fix", "sources/fresh.md", "--include-suggested", "-y", "--dry-run"]);

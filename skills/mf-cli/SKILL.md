@@ -224,9 +224,9 @@ Create a term (mf extension).
 `--misrecognition <TEXT>` — Common misrecognition variant (repeatable, global and project-scoped)
 
 **`mf term list`** (alias `ls`)
-`--filter <PATTERN>` — Filter by name substring
-`--tag <TAG>` — Filter to terms that have this tag (repeatable; AND semantics)
-`--alias <ALIAS>` — Filter to terms that have this alias (repeatable; AND semantics)
+`--filter <PATTERN>` — Match the canonical term name (substring)
+`--tag <TAG>` — Match the term's tag field (repeatable; AND semantics)
+`--alias <ALIAS>` — Match the term's alias field; does not match the term name (repeatable; AND semantics)
 `--has-correction` — Filter to terms that have at least one correction
 `--scope project|global|all` — Restrict to a scope; default merges project + global fallback
 
@@ -234,6 +234,7 @@ Create a term (mf extension).
 
 **`mf term update <TERM>`**
 Update term metadata. Rejects `--misrecognition` (use `mf term correction add` instead).
+Correction edits go through `mf term correction update`/`remove`.
 `--definition <TEXT>` — Update definition
 `--description <TEXT>` — Update description (`--clear-description` to unset)
 `--confidence <N>` — Update confidence 0.0–1.0 (`--clear-confidence` to unset)
@@ -241,15 +242,10 @@ Update term metadata. Rejects `--misrecognition` (use `mf term correction add` i
 `--tag <TAG>` — Add tag (repeatable)
 `--delete-alias <TEXT>` — Remove an alias (repeatable)
 `--delete-tag <TAG>` — Remove a tag (repeatable)
-`--delete-correction <ORIGINAL>` — Remove a correction by its original variant text (repeatable)
-`--correction-match <ORIGINAL:word|substring|pinyin>` — Set correction match kind (repeatable)
-`--correction-fix <ORIGINAL:required|suggested>` — Set correction fix kind (repeatable)
-`--correction-pinyin <ORIGINAL:<PINYIN>>` — Set correction pinyin (repeatable)
-`--correction-boundary <ORIGINAL:loose|standalone>` — Set correction boundary (repeatable)
-`--dry-run` — Preview planned changes without writing; validates correction targets first
+`--dry-run` — Preview planned changes without writing
 
 **`mf term correction <SUBCOMMAND>`** — Manage corrections as a first-class subresource.
-`add <TERM> <ORIGINAL> <CORRECT>` — Add a correction (idempotent on exact pair match)
+`add <TERM> <ORIGINAL> <CORRECT>` — Add a correction (idempotent on exact pair match; JSON `data.created` is `true` when newly added, `false` when the pair already existed and storage was left untouched)
   `--match word|substring|pinyin` — Match kind (default: word)
   `--fix required|suggested` — Fix kind (default: required)
   `--boundary loose|standalone` — Boundary mode (default: standalone)

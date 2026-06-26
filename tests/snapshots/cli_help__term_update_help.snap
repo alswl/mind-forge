@@ -1,0 +1,33 @@
+---
+source: tests/cli_help.rs
+assertion_line: 194
+expression: stdout
+---
+Update term metadata
+
+Usage: mf term update [OPTIONS] <TERM>
+
+Arguments:
+  <TERM>  
+
+Options:
+      --definition <DEFINITION>      
+      --root <PATH>                  Mind Repo root directory
+      --config <PATH>                Config file path
+      --description <DESCRIPTION>    
+      --clear-description            
+  -v, --verbose...                   Verbose output
+      --confidence <CONFIDENCE>      
+  -q, --quiet                        Silence non-error output
+      --clear-confidence             
+  -o, --output <FORMAT>              Output format [default: text] [possible values: text, json]
+      --alias <ALIAS>                
+      --json                         Shorthand for --output json
+      --no-color                     Disable colored output
+      --tag <TAG>                    
+      --delete-alias <DELETE_ALIAS>  Remove an alias from the term
+  -p, --project <NAME>               Project name for project-scoped operations
+      --delete-tag <DELETE_TAG>      Remove a tag from the term
+      --dry-run                      Preview changes without writing
+  -h, --help                         Print help
+  -V, --version                      Print version

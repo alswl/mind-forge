@@ -147,14 +147,9 @@ pub fn fix_term(repo_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Re
         && !update.has_metadata_flags()
         && update.delete_aliases.is_empty()
         && update.delete_tags.is_empty()
-        && update.delete_corrections.is_empty()
-        && update.correction_match.is_empty()
-        && update.correction_fix.is_empty()
-        && update.correction_pinyin.is_empty()
-        && update.correction_boundary.is_empty()
     {
         return Err(MfError::usage(
-            "at least one of --definition, --description, --confidence, --alias, --tag, --delete-alias, --delete-tag, --delete-correction, --correction-match, --correction-fix, --correction-pinyin, --correction-boundary, --clear-description, --clear-confidence must be provided",
+            "at least one of --definition, --description, --confidence, --alias, --tag, --delete-alias, --delete-tag, --clear-description, --clear-confidence must be provided",
             None,
         ));
     }
@@ -175,8 +170,6 @@ pub fn fix_term(repo_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Re
         });
     }
 
-    // US1: validate all correction targets exist before mutating (atomic pre-check)
-    super::validate_correction_targets_exist(&terms[pos], &update)?;
     apply_update(&mut terms[pos], &update);
     let result = terms[pos].clone();
     sort_terms_by_name(&mut terms);

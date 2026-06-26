@@ -3,7 +3,13 @@
 All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
+### Changes
+- **Breaking**: Remove correction-mutation flags from `term update`; correction edits now go solely through `term correction update`/`remove` (spec 052)
+- `term correction add` now reports `created: true|false` in JSON and "added" vs "already exists, skipped" in text
+- Clarify `--filter`/`--alias`/`--tag` help text for `term list`
+
 ### Features
+- Complete term CLI lifecycle (spec 051)
 - Boundary-aware linting with standalone mode (spec 044)
 - Add model update commands
 - Safer defaults, single-step authoring, unified `new` verb (spec 046)

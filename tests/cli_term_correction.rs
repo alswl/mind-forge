@@ -46,7 +46,7 @@ fn mf(repo: &common::TempDir) -> Command {
     cmd
 }
 
-// ── T037: Correction add tests ───────────────────────────────────────────
+// ── Correction add defaults ──────────────────────────────────────────────
 
 #[test]
 fn correction_add_defaults() {
@@ -64,6 +64,8 @@ fn correction_add_defaults() {
     let index = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
     assert!(index.contains("ragg"), "index should contain new correction: {index}");
 }
+
+// ── Correction add explicit attributes ────────────────────────────────────
 
 #[test]
 fn correction_add_explicit_attributes() {
@@ -93,24 +95,92 @@ fn correction_add_explicit_attributes() {
     assert!(index.contains("fix: suggested"), "index: {index}");
 }
 
+// ── T018: Duplicate add is idempotent and reports "already exists, skipped" ─
+
 #[test]
 fn correction_add_duplicate_idempotent() {
     let (repo, _project) = setup_repo();
 
     // First add
-    mf(&repo).args(["term", "correction", "add", "RAG", "dup", "RAG", "--project", "alpha"]).assert().success();
-
-    // Second add should succeed (idempotent)
-    let output =
+    let output1 =
         mf(&repo).args(["term", "correction", "add", "RAG", "dup", "RAG", "--project", "alpha"]).output().unwrap();
+    assert!(output1.status.success());
+    let stdout1 = String::from_utf8(output1.stdout).unwrap();
+    assert!(stdout1.contains("added correction") || stdout1.contains("added"), "first add should say added: {stdout1}");
 
-    assert!(output.status.success());
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    // Should mention already exists or be idempotent
-    assert!(stdout.contains("RAG") || stdout.contains("dup"), "stdout: {stdout}");
+    // Snapshot storage after first add
+    let index_before = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
+
+    // Second add — idempotent, must report "already exists, skipped"
+    let output2 =
+        mf(&repo).args(["term", "correction", "add", "RAG", "dup", "RAG", "--project", "alpha"]).output().unwrap();
+    assert!(output2.status.success());
+    let stdout2 = String::from_utf8(output2.stdout).unwrap();
+    assert!(
+        stdout2.contains("already exists") && stdout2.contains("skipped"),
+        "second add should say already exists, skipped: {stdout2}"
+    );
+
+    // Storage must be byte-identical
+    let index_after = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
+    assert_eq!(index_before, index_after, "second add must not rewrite storage");
 }
 
-// ── T038: Correction list and show tests ─────────────────────────────────
+// ── T019: JSON output has created: true / created: false ──────────────────
+
+#[test]
+fn correction_add_json_created_flag() {
+    let (repo, _project) = setup_repo();
+
+    // First add — created: true
+    let output1 = mf(&repo)
+        .args(["--json", "term", "correction", "add", "RAG", "dup2", "RAG", "--project", "alpha"])
+        .output()
+        .unwrap();
+    assert!(output1.status.success());
+    let stdout1 = String::from_utf8(output1.stdout).unwrap();
+    let v1: serde_json::Value = serde_json::from_str(&stdout1).expect("valid JSON");
+    assert_eq!(v1["status"], "ok", "JSON: {stdout1}");
+    assert_eq!(v1["data"]["created"], true, "first add should have created: true: {stdout1}");
+
+    // Repeat add — created: false
+    let output2 = mf(&repo)
+        .args(["--json", "term", "correction", "add", "RAG", "dup2", "RAG", "--project", "alpha"])
+        .output()
+        .unwrap();
+    assert!(output2.status.success());
+    let stdout2 = String::from_utf8(output2.stdout).unwrap();
+    let v2: serde_json::Value = serde_json::from_str(&stdout2).expect("valid JSON");
+    assert_eq!(v2["status"], "ok", "JSON: {stdout2}");
+    assert_eq!(v2["data"]["created"], false, "repeat add should have created: false: {stdout2}");
+}
+
+// ── T020: Global scope parity for created/no-op ───────────────────────────
+
+#[test]
+fn correction_add_global_created_flag() {
+    let (repo, _project) = setup_repo();
+
+    // First add to global — created: true
+    let output1 =
+        mf(&repo).args(["--json", "term", "correction", "add", "GlobalX", "gx2", "GlobalX"]).output().unwrap();
+    assert!(output1.status.success());
+    let stdout1 = String::from_utf8(output1.stdout).unwrap();
+    let v1: serde_json::Value = serde_json::from_str(&stdout1).expect("valid JSON");
+    assert_eq!(v1["data"]["created"], true, "first global add: {stdout1}");
+    let text1 = v1["data"]["scope"].as_str().unwrap_or("");
+    assert_eq!(text1, "global");
+
+    // Repeat add — created: false
+    let output2 =
+        mf(&repo).args(["--json", "term", "correction", "add", "GlobalX", "gx2", "GlobalX"]).output().unwrap();
+    assert!(output2.status.success());
+    let stdout2 = String::from_utf8(output2.stdout).unwrap();
+    let v2: serde_json::Value = serde_json::from_str(&stdout2).expect("valid JSON");
+    assert_eq!(v2["data"]["created"], false, "repeat global add: {stdout2}");
+}
+
+// ── Correction list and show ──────────────────────────────────────────────
 
 #[test]
 fn correction_list_text() {
@@ -148,7 +218,7 @@ fn correction_show() {
     assert!(stdout.contains("rag"), "stdout: {stdout}");
 }
 
-// ── T039: Correction update tests ────────────────────────────────────────
+// ── Correction update ─────────────────────────────────────────────────────
 
 #[test]
 fn correction_update_change_match() {
@@ -167,7 +237,7 @@ fn correction_update_change_match() {
     assert!(index.contains("match: substring"), "index: {index}");
 }
 
-// ── T040: Correction remove tests ────────────────────────────────────────
+// ── Correction remove ─────────────────────────────────────────────────────
 
 #[test]
 fn correction_remove() {
@@ -198,7 +268,7 @@ fn correction_remove_dry_run() {
     assert_eq!(index_before, index_after, "dry-run must not write");
 }
 
-// ── T041: Error tests ────────────────────────────────────────────────────
+// ── Error tests ───────────────────────────────────────────────────────────
 
 #[test]
 fn correction_add_missing_parent_term() {
@@ -226,7 +296,7 @@ fn correction_update_missing_correction() {
     assert!(stderr.contains("not found") || stderr.contains("nonexistent"), "stderr: {stderr}");
 }
 
-// ── T042: Project/global scope parity tests ──────────────────────────────
+// ── Global scope parity ───────────────────────────────────────────────────
 
 #[test]
 fn correction_add_global() {

@@ -53,12 +53,13 @@ pub enum TermSubcommand {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct TermListArgs {
+    /// Match the canonical term name (substring).
     #[arg(long)]
     pub filter: Option<String>,
-    /// Filter by tag
+    /// Match the term's tag field.
     #[arg(long = "tag")]
     pub tag: Vec<String>,
-    /// Filter by alias
+    /// Match the term's alias field (does not match the term name).
     #[arg(long = "alias")]
     pub alias: Vec<String>,
     /// Only show terms that have at least one correction
@@ -127,16 +128,6 @@ pub struct TermUpdateArgs {
     pub delete_alias: Vec<String>,
     #[arg(long = "delete-tag", help = "Remove a tag from the term")]
     pub delete_tag: Vec<String>,
-    #[arg(long = "delete-correction", help = "Remove a correction by its original (variant) text")]
-    pub delete_correction: Vec<String>,
-    #[arg(long = "correction-match", help = "Set correction match kind: ORIGINAL:word|substring|pinyin")]
-    pub correction_match: Vec<String>,
-    #[arg(long = "correction-fix", help = "Set correction fix kind: ORIGINAL:required|suggested")]
-    pub correction_fix: Vec<String>,
-    #[arg(long = "correction-pinyin", help = "Set correction pinyin: ORIGINAL:<pinyin>")]
-    pub correction_pinyin: Vec<String>,
-    #[arg(long = "correction-boundary", help = "Set correction boundary: ORIGINAL:loose|standalone")]
-    pub correction_boundary: Vec<String>,
     /// Misrecognition corrections are not supported on `term update`.
     /// Use `mf term correction add` or `mf term new --misrecognition` instead.
     #[arg(long = "misrecognition", hide = true)]
@@ -327,13 +318,7 @@ fn new_input(args: &TermNewArgs) -> term_svc::TermInput<'_> {
     }
 }
 
-fn update_input<'a>(
-    args: &'a TermUpdateArgs,
-    correction_match: &'a [(String, crate::model::term::MatchKind)],
-    correction_fix: &'a [(String, crate::model::term::FixKind)],
-    correction_pinyin: &'a [(String, String)],
-    correction_boundary: &'a [(String, crate::model::term::Boundary)],
-) -> term_svc::TermUpdate<'a> {
+fn update_input<'a>(args: &'a TermUpdateArgs) -> term_svc::TermUpdate<'a> {
     term_svc::TermUpdate {
         definition: args.definition.as_deref(),
         description: args.description.as_deref(),
@@ -344,21 +329,7 @@ fn update_input<'a>(
         tags: &args.tag,
         delete_aliases: &args.delete_alias,
         delete_tags: &args.delete_tag,
-        delete_corrections: &args.delete_correction,
-        correction_match,
-        correction_fix,
-        correction_pinyin,
-        correction_boundary,
     }
-}
-
-fn parse_kv(raw: &str) -> Result<(&str, &str)> {
-    raw.find(':').map(|pos| (&raw[..pos], &raw[pos + 1..])).ok_or_else(|| {
-        MfError::usage(
-            format!("expected ORIGINAL:VALUE format, got '{raw}'"),
-            Some("use --correction-<field> ORIGINAL:VALUE".to_string()),
-        )
-    })
 }
 
 fn parse_match_kind(raw: &str) -> Result<crate::model::term::MatchKind> {
@@ -842,28 +813,7 @@ fn handle_update(args: TermUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutcom
 
     let root = ctx.require_repo_path()?;
 
-    let mut correction_match: Vec<(String, crate::model::term::MatchKind)> = Vec::new();
-    for raw in &args.correction_match {
-        let (original, value) = parse_kv(raw)?;
-        correction_match.push((original.to_string(), parse_match_kind(value)?));
-    }
-    let mut correction_fix: Vec<(String, crate::model::term::FixKind)> = Vec::new();
-    for raw in &args.correction_fix {
-        let (original, value) = parse_kv(raw)?;
-        correction_fix.push((original.to_string(), parse_fix_kind(value)?));
-    }
-    let mut correction_pinyin: Vec<(String, String)> = Vec::new();
-    for raw in &args.correction_pinyin {
-        let (original, value) = parse_kv(raw)?;
-        correction_pinyin.push((original.to_string(), value.to_string()));
-    }
-    let mut correction_boundary: Vec<(String, crate::model::term::Boundary)> = Vec::new();
-    for raw in &args.correction_boundary {
-        let (original, value) = parse_kv(raw)?;
-        correction_boundary.push((original.to_string(), parse_boundary(value)?));
-    }
-
-    let update = update_input(&args, &correction_match, &correction_fix, &correction_pinyin, &correction_boundary);
+    let update = update_input(&args);
     let mut warnings: Vec<String> = Vec::new();
 
     if args.dry_run.dry_run {
@@ -907,21 +857,6 @@ fn handle_update(args: TermUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutcom
     if !args.delete_tag.is_empty() {
         changes.insert("tags".to_string(), serde_json::json!({"deleted": args.delete_tag}));
     }
-    if !args.delete_correction.is_empty() {
-        changes.insert("corrections".to_string(), serde_json::json!({"deleted": args.delete_correction}));
-    }
-    if !correction_match.is_empty() {
-        changes.insert("correction_match".to_string(), serde_json::json!({"updated": args.correction_match}));
-    }
-    if !correction_fix.is_empty() {
-        changes.insert("correction_fix".to_string(), serde_json::json!({"updated": args.correction_fix}));
-    }
-    if !correction_pinyin.is_empty() {
-        changes.insert("correction_pinyin".to_string(), serde_json::json!({"updated": args.correction_pinyin}));
-    }
-    if !correction_boundary.is_empty() {
-        changes.insert("correction_boundary".to_string(), serde_json::json!({"updated": args.correction_boundary}));
-    }
 
     let mut result = VerbResult {
         verb: Verb::Update,
@@ -957,10 +892,7 @@ fn handle_update_dry_run(
     warnings: &mut Vec<String>,
 ) -> Result<CommandOutcome> {
     // Resolve which term would be targeted (project or global)
-    let (scope, term) = resolve_update_target(root, ctx, &args.term)?;
-
-    // Validate correction targets even in dry-run (same safety as real run)
-    term_svc::validate_correction_targets_exist(&term, update)?;
+    let scope = resolve_update_target(root, ctx, &args.term)?;
 
     // Build planned changes list
     let mut planned = Vec::new();
@@ -984,21 +916,6 @@ fn handle_update_dry_run(
     }
     if !update.delete_tags.is_empty() {
         planned.push(format!("remove {} tag(s)", update.delete_tags.len()));
-    }
-    if !update.delete_corrections.is_empty() {
-        planned.push(format!("remove {} correction(s)", update.delete_corrections.len()));
-    }
-    for (original, _mk) in update.correction_match {
-        planned.push(format!("update correction \"{original}\" match"));
-    }
-    for (original, _fk) in update.correction_fix {
-        planned.push(format!("update correction \"{original}\" fix"));
-    }
-    for (original, _) in update.correction_pinyin {
-        planned.push(format!("update correction \"{original}\" pinyin"));
-    }
-    for (original, _) in update.correction_boundary {
-        planned.push(format!("update correction \"{original}\" boundary"));
     }
 
     let scope_str = scope.as_str();
@@ -1031,28 +948,25 @@ fn handle_update_dry_run(
     }
 }
 
-/// Resolve what term would be targeted by an update (project or global).
-/// Returns (scope, term) without writing anything.
-fn resolve_update_target(
-    root: &std::path::Path,
-    ctx: &CommandCtx,
-    term_name: &str,
-) -> Result<(term_svc::WriteScope, crate::model::term::Term)> {
+/// Resolve which scope an update would target (project or global) without
+/// writing anything. The `show_term` lookups also validate that the term
+/// exists, propagating a not-found error when it does not.
+fn resolve_update_target(root: &std::path::Path, ctx: &CommandCtx, term_name: &str) -> Result<term_svc::WriteScope> {
     use term_svc::WriteScope;
 
     if let Some(project_name) = ctx.project() {
         let project_path = crate::service::util::resolve_project(root, Some(project_name), ctx.cwd())?;
         match term_svc::show_term(&project_path, term_name) {
-            Ok(term) => Ok((WriteScope::Project(project_path), term)),
+            Ok(_) => Ok(WriteScope::Project(project_path)),
             Err(MfError::NotFound { .. }) => {
-                let term = term_svc::global::show_term(root, term_name)?;
-                Ok((WriteScope::Global(root.to_path_buf()), term))
+                term_svc::global::show_term(root, term_name)?;
+                Ok(WriteScope::Global(root.to_path_buf()))
             }
             Err(e) => Err(e),
         }
     } else {
-        let term = term_svc::global::show_term(root, term_name)?;
-        Ok((WriteScope::Global(root.to_path_buf()), term))
+        term_svc::global::show_term(root, term_name)?;
+        Ok(WriteScope::Global(root.to_path_buf()))
     }
 }
 
@@ -1331,7 +1245,7 @@ fn handle_correction_add(args: TermCorrectionAddArgs, ctx: &CommandCtx) -> Resul
     let (scope, scope_path) = correction_scope(root, ctx)?;
     let warnings: Vec<String> = Vec::new();
 
-    let corr = if scope == "project" {
+    let (corr, created) = if scope == "project" {
         term_svc::correction::add_correction(
             &scope_path,
             &args.term,
@@ -1358,16 +1272,21 @@ fn handle_correction_add(args: TermCorrectionAddArgs, ctx: &CommandCtx) -> Resul
     let data = serde_json::json!({
         "term": args.term,
         "scope": scope,
+        "created": created,
         "correction": serde_json::to_value(&corr).unwrap_or_default(),
     });
 
     match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(data, warnings, None)),
         Format::Text => Ok(CommandOutcome::Success(
-            serde_json::Value::String(format!(
-                "added correction \"{}\" → \"{}\" to term \"{}\"",
-                corr.original, corr.correct, args.term
-            )),
+            serde_json::Value::String(if created {
+                format!("added correction \"{}\" → \"{}\" to term \"{}\"", corr.original, corr.correct, args.term)
+            } else {
+                format!(
+                    "correction \"{}\" → \"{}\" already exists on term \"{}\", skipped",
+                    corr.original, corr.correct, args.term
+                )
+            }),
             warnings,
             None,
         )),

@@ -214,13 +214,23 @@ fn fix_schema_version_unchanged() {
     assert!(content.contains("schema_version"), "must remain schema-version: {content}");
 }
 
-// --correction-boundary flag (spec 044) — end-to-end round-trip.
+// --boundary flag (spec 052) — end-to-end round-trip via `term correction update`.
 
 #[test]
 fn fix_term_correction_boundary_flag_round_trip() {
     let (repo, project) = setup_with_term();
     let output = mf(&repo)
-        .args(["term", "update", "Mind Repo", "--correction-boundary", "mindrepo:standalone", "--project", "alpha"])
+        .args([
+            "term",
+            "correction",
+            "update",
+            "Mind Repo",
+            "mindrepo",
+            "--boundary",
+            "standalone",
+            "--project",
+            "alpha",
+        ])
         .output()
         .unwrap();
     assert!(output.status.success(), "stderr: {:?}", String::from_utf8_lossy(&output.stderr));
@@ -230,7 +240,7 @@ fn fix_term_correction_boundary_flag_round_trip() {
 
     // Flipping to loose must write the field (loose is now explicit, not default).
     let output = mf(&repo)
-        .args(["term", "update", "Mind Repo", "--correction-boundary", "mindrepo:loose", "--project", "alpha"])
+        .args(["term", "correction", "update", "Mind Repo", "mindrepo", "--boundary", "loose", "--project", "alpha"])
         .output()
         .unwrap();
     assert!(output.status.success(), "stderr: {:?}", String::from_utf8_lossy(&output.stderr));
@@ -243,7 +253,7 @@ fn fix_term_correction_boundary_flag_round_trip() {
 fn fix_term_correction_boundary_invalid_value_rejected() {
     let (repo, _project) = setup_with_term();
     let output = mf(&repo)
-        .args(["term", "update", "Mind Repo", "--correction-boundary", "mindrepo:bogus", "--project", "alpha"])
+        .args(["term", "correction", "update", "Mind Repo", "mindrepo", "--boundary", "bogus", "--project", "alpha"])
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(2));

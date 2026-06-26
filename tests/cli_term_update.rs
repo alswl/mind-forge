@@ -50,141 +50,83 @@ fn mf(repo: &common::TempDir) -> Command {
     cmd
 }
 
-// ── T013: Reject missing correction-fix target ───────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// US1: Removed correction flags are rejected with hint to `mf term correction`
+// ════════════════════════════════════════════════════════════════════════════
+
+macro_rules! test_rejected_flag {
+    ($name:ident, $flag:literal, $value:literal) => {
+        #[test]
+        fn $name() {
+            let (repo, _project) = setup_with_term();
+            let index_before = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
+
+            let output =
+                mf(&repo).args(["term", "update", "RAG", $flag, $value, "--project", "alpha"]).output().unwrap();
+
+            assert!(!output.status.success());
+            let stderr = String::from_utf8(output.stderr).unwrap();
+            assert!(
+                stderr.contains("correction") || stderr.contains("term correction"),
+                "stderr should mention `mf term correction`: {stderr}"
+            );
+
+            // Storage must be unchanged
+            let index_after = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
+            assert_eq!(index_before, index_after, "storage must not change on rejection");
+        }
+    };
+}
+
+test_rejected_flag!(update_rejects_delete_correction_flag, "--delete-correction", "rag");
+test_rejected_flag!(update_rejects_correction_match_flag, "--correction-match", "rag:substring");
+test_rejected_flag!(update_rejects_correction_fix_flag, "--correction-fix", "rag:suggested");
+test_rejected_flag!(update_rejects_correction_pinyin_flag, "--correction-pinyin", "rag:ni hao");
+test_rejected_flag!(update_rejects_correction_boundary_flag, "--correction-boundary", "rag:loose");
+
+// Global scope also rejects removed flags
+#[test]
+fn update_global_rejects_delete_correction_flag() {
+    let (repo, _project) = setup_with_term();
+    let global_before = fs::read_to_string(repo.path().join("minds-terms.yaml")).unwrap();
+
+    let output = mf(&repo).args(["term", "update", "GlobalTerm", "--delete-correction", "gt"]).output().unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("correction") || stderr.contains("term correction"),
+        "stderr should mention `mf term correction`: {stderr}"
+    );
+
+    // Global storage must be unchanged
+    let global_after = fs::read_to_string(repo.path().join("minds-terms.yaml")).unwrap();
+    assert_eq!(global_before, global_after, "global storage must not change on rejection");
+}
+
+// ── JSON error envelope for removed flag ─────────────────────────────────
 
 #[test]
-fn update_rejects_missing_correction_fix() {
+fn update_rejects_correction_flag_json_error_envelope() {
     let (repo, _project) = setup_with_term();
-    let index_before = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
 
     let output = mf(&repo)
-        .args(["term", "update", "RAG", "--correction-fix", "missing:suggested", "--project", "alpha"])
+        .args(["--json", "term", "update", "RAG", "--correction-fix", "rag:suggested", "--project", "alpha"])
         .output()
         .unwrap();
 
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("missing"), "stderr: {stderr}");
-    assert!(stderr.contains("not found"), "stderr: {stderr}");
-
-    // Storage must be unchanged
-    let index_after = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
-    assert_eq!(index_before, index_after, "storage must not change on rejection");
-}
-
-// ── T014: Reject missing correction-match, pinyin, boundary targets ──────
-
-#[test]
-fn update_rejects_missing_correction_match() {
-    let (repo, _project) = setup_with_term();
-    let index_before = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
-
-    let output = mf(&repo)
-        .args(["term", "update", "RAG", "--correction-match", "missing:word", "--project", "alpha"])
-        .output()
-        .unwrap();
-
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("missing"), "stderr: {stderr}");
-
-    let index_after = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
-    assert_eq!(index_before, index_after);
-}
-
-#[test]
-fn update_rejects_missing_correction_pinyin() {
-    let (repo, _project) = setup_with_term();
-    let index_before = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
-
-    let output = mf(&repo)
-        .args(["term", "update", "RAG", "--correction-pinyin", "missing:x", "--project", "alpha"])
-        .output()
-        .unwrap();
-
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("missing"), "stderr: {stderr}");
-
-    let index_after = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
-    assert_eq!(index_before, index_after);
-}
-
-#[test]
-fn update_rejects_missing_correction_boundary() {
-    let (repo, _project) = setup_with_term();
-    let index_before = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
-
-    let output = mf(&repo)
-        .args(["term", "update", "RAG", "--correction-boundary", "missing:loose", "--project", "alpha"])
-        .output()
-        .unwrap();
-
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("missing"), "stderr: {stderr}");
-
-    let index_after = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
-    assert_eq!(index_before, index_after);
-}
-
-// ── T015: Preserve valid existing correction attribute updates ───────────
-
-#[test]
-fn update_preserves_valid_correction_attribute_update() {
-    let (repo, _project) = setup_with_term();
-
-    let output = mf(&repo)
-        .args(["term", "update", "RAG", "--correction-fix", "rag:suggested", "--project", "alpha"])
-        .output()
-        .unwrap();
-
-    assert!(output.status.success());
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("updated term"), "stdout: {stdout}");
-
-    // Verify the fix kind was changed
-    let index = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
-    assert!(index.contains("fix: suggested"), "index should reflect suggested fix: {index}");
-}
-
-#[test]
-fn update_preserves_valid_correction_match_update() {
-    let (repo, _project) = setup_with_term();
-
-    let output = mf(&repo)
-        .args(["term", "update", "RAG", "--correction-match", "rag:substring", "--project", "alpha"])
-        .output()
-        .unwrap();
-
-    assert!(output.status.success());
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("updated term"), "stdout: {stdout}");
-
-    let index = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
-    assert!(index.contains("match: substring"), "index should reflect substring match: {index}");
-}
-
-// ── T016: JSON error-envelope for rejected missing correction update ─────
-
-#[test]
-fn update_missing_correction_json_error_envelope() {
-    let (repo, _project) = setup_with_term();
-
-    let output = mf(&repo)
-        .args(["--json", "term", "update", "RAG", "--correction-fix", "missing:suggested", "--project", "alpha"])
-        .output()
-        .unwrap();
-
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    // JSON errors are rendered to stderr
     let v: serde_json::Value = serde_json::from_str(&stderr).expect("valid JSON on stderr");
     assert_eq!(v["status"], "error", "JSON error envelope: {stderr}");
-    assert!(v["error"]["message"].as_str().unwrap_or("").contains("missing"), "error message: {stderr}");
+    assert_eq!(v["error"]["kind"], "usage", "error kind should be usage: {stderr}");
+    assert!(
+        v["error"]["message"].as_str().unwrap_or("").contains("correction"),
+        "error message should mention correction: {stderr}"
+    );
 }
 
-// ── T017: Reject --misrecognition on term update ────────────────────────
+// ── Reject --misrecognition on term update (existing, unchanged) ─────────
 
 #[test]
 fn update_rejects_misrecognition_flag() {
@@ -208,46 +150,9 @@ fn update_rejects_misrecognition_flag() {
     assert_eq!(index_before, index_after);
 }
 
-// ── T018: Project/global parity for rejected missing correction updates ──
-
-#[test]
-fn update_global_rejects_missing_correction_fix() {
-    let (repo, _project) = setup_with_term();
-
-    // Read global terms before
-    let global_before = fs::read_to_string(repo.path().join("minds-terms.yaml")).unwrap();
-
-    let output =
-        mf(&repo).args(["term", "update", "GlobalTerm", "--correction-fix", "missing:suggested"]).output().unwrap();
-
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("missing"), "stderr: {stderr}");
-
-    // Global storage must be unchanged
-    let global_after = fs::read_to_string(repo.path().join("minds-terms.yaml")).unwrap();
-    assert_eq!(global_before, global_after, "global storage must not change on rejection");
-}
-
-#[test]
-fn update_global_preserves_valid_correction_update() {
-    let (repo, _project) = setup_with_term();
-
-    let output = mf(&repo).args(["term", "update", "GlobalTerm", "--correction-fix", "gt:suggested"]).output().unwrap();
-
-    assert!(output.status.success());
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("updated term"), "stdout: {stdout}");
-
-    let global_after = fs::read_to_string(repo.path().join("minds-terms.yaml")).unwrap();
-    assert!(global_after.contains("fix: suggested"), "global should reflect suggested fix: {global_after}");
-}
-
 // ════════════════════════════════════════════════════════════════════════════
-// US2: Dry-run preview for term update
+// Metadata-path tests (unchanged — kept green)
 // ════════════════════════════════════════════════════════════════════════════
-
-// ── T025: Text dry-run for --tag with unchanged storage ──────────────────
 
 #[test]
 fn update_dry_run_tag_text() {
@@ -266,8 +171,6 @@ fn update_dry_run_tag_text() {
     let index_after = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
     assert_eq!(index_before, index_after, "dry-run must not write storage");
 }
-
-// ── T026: JSON dry-run envelope for --description --dry-run ───────────────
 
 #[test]
 fn update_dry_run_json_envelope() {
@@ -300,30 +203,8 @@ fn update_dry_run_json_envelope() {
     assert_eq!(index_before, index_after);
 }
 
-// ── T027: Dry-run for --delete-alias, --delete-tag, --delete-correction ──
-
 #[test]
 fn update_dry_run_delete_flags() {
-    let (repo, _project) = setup_with_term();
-    let index_before = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
-
-    let output = mf(&repo)
-        .args(["term", "update", "RAG", "--delete-correction", "rag", "--dry-run", "--project", "alpha"])
-        .output()
-        .unwrap();
-
-    assert!(output.status.success());
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("dry-run") || stdout.contains("[dry-run]"), "stdout: {stdout}");
-
-    let index_after = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
-    assert_eq!(index_before, index_after, "dry-run must not modify storage");
-}
-
-// ── T028: Dry-run for correction attribute changes with unchanged storage ─
-
-#[test]
-fn update_dry_run_correction_attr_changes() {
     let (repo, _project) = setup_with_term();
     let index_before = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
 
@@ -332,10 +213,10 @@ fn update_dry_run_correction_attr_changes() {
             "term",
             "update",
             "RAG",
-            "--correction-match",
-            "rag:substring",
-            "--correction-fix",
-            "ragg:required",
+            "--delete-tag",
+            "old-tag",
+            "--delete-alias",
+            "old-alias",
             "--dry-run",
             "--project",
             "alpha",
@@ -351,8 +232,6 @@ fn update_dry_run_correction_attr_changes() {
     assert_eq!(index_before, index_after, "dry-run must not modify storage");
 }
 
-// ── T029: Dry-run global fallthrough warning ─────────────────────────────
-
 #[test]
 fn update_dry_run_global_fallback_warning() {
     let (repo, _project) = setup_with_term();
@@ -364,6 +243,5 @@ fn update_dry_run_global_fallback_warning() {
 
     assert!(output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
-    // Should warn about global fallback
     assert!(stderr.contains("WARN") || stderr.contains("global"), "stderr should warn: {stderr}");
 }

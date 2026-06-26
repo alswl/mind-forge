@@ -24,7 +24,7 @@ pub fn add_correction(
     fix_kind: Option<FixKind>,
     boundary: Option<Boundary>,
     pinyin: Option<Option<String>>,
-) -> Result<Correction> {
+) -> Result<(Correction, bool)> {
     let mut index = index::load(project_root)?;
     let terms = index.terms.as_mut().ok_or_else(|| {
         MfError::not_found(
@@ -42,7 +42,7 @@ pub fn add_correction(
 
     // Idempotent: return the existing entry when the identical pair is present.
     if let Some(existing) = t.corrections.iter().find(|c| c.original == original && c.correct == correct) {
-        return Ok(existing.clone());
+        return Ok((existing.clone(), false));
     }
 
     let corr = Correction {
@@ -57,7 +57,7 @@ pub fn add_correction(
     t.corrections.push(corr.clone());
     sort_terms_by_name(terms);
     index::save(project_root, &index)?;
-    Ok(corr)
+    Ok((corr, true))
 }
 
 /// List all corrections for a project-scoped term.
@@ -166,7 +166,7 @@ pub fn add_correction_global(
     fix_kind: Option<FixKind>,
     boundary: Option<Boundary>,
     pinyin: Option<Option<String>>,
-) -> Result<Correction> {
+) -> Result<(Correction, bool)> {
     let mut terms = crate::service::term::global::load_terms(repo_root)?;
     let t = terms.iter_mut().find(|t| t.term == term_name).ok_or_else(|| {
         MfError::not_found(
@@ -177,7 +177,7 @@ pub fn add_correction_global(
 
     // Idempotent: return the existing entry when the identical pair is present.
     if let Some(existing) = t.corrections.iter().find(|c| c.original == original && c.correct == correct) {
-        return Ok(existing.clone());
+        return Ok((existing.clone(), false));
     }
 
     let corr = Correction {
@@ -192,7 +192,7 @@ pub fn add_correction_global(
     t.corrections.push(corr.clone());
     sort_terms_by_name(&mut terms);
     crate::service::term::global::save_terms(repo_root, &terms)?;
-    Ok(corr)
+    Ok((corr, true))
 }
 
 /// List all corrections for a global-scoped term.

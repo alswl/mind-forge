@@ -11,14 +11,9 @@ pub fn fix_term(project_root: &Path, term_name: &str, update: TermUpdate<'_>) ->
         && !update.has_metadata_flags()
         && update.delete_aliases.is_empty()
         && update.delete_tags.is_empty()
-        && update.delete_corrections.is_empty()
-        && update.correction_match.is_empty()
-        && update.correction_fix.is_empty()
-        && update.correction_pinyin.is_empty()
-        && update.correction_boundary.is_empty()
     {
         return Err(MfError::usage(
-            "at least one of --definition, --description, --confidence, --alias, --tag, --delete-alias, --delete-tag, --delete-correction, --correction-match, --correction-fix, --correction-pinyin, --correction-boundary, --clear-description, --clear-confidence must be provided",
+            "at least one of --definition, --description, --confidence, --alias, --tag, --delete-alias, --delete-tag, --clear-description, --clear-confidence must be provided",
             None,
         ));
     }
@@ -51,8 +46,6 @@ pub fn fix_term(project_root: &Path, term_name: &str, update: TermUpdate<'_>) ->
         }
 
         let t = &mut terms[pos];
-        // US1: validate all correction targets exist before mutating (atomic pre-check)
-        super::validate_correction_targets_exist(t, &update)?;
         apply_update(t, &update);
         t.clone()
     };
@@ -95,28 +88,5 @@ pub(crate) fn apply_update(t: &mut Term, update: &TermUpdate<'_>) {
     }
     for tag in update.delete_tags {
         t.tags.retain(|t| t != tag);
-    }
-    for original in update.delete_corrections {
-        t.corrections.retain(|c| &c.original != original);
-    }
-    for (original, mk) in update.correction_match {
-        if let Some(c) = t.corrections.iter_mut().find(|c| c.original == *original) {
-            c.r#match = *mk;
-        }
-    }
-    for (original, fk) in update.correction_fix {
-        if let Some(c) = t.corrections.iter_mut().find(|c| c.original == *original) {
-            c.fix = *fk;
-        }
-    }
-    for (original, pinyin) in update.correction_pinyin {
-        if let Some(c) = t.corrections.iter_mut().find(|c| c.original == *original) {
-            c.pinyin = if pinyin.is_empty() { None } else { Some(pinyin.clone()) };
-        }
-    }
-    for (original, boundary) in update.correction_boundary {
-        if let Some(c) = t.corrections.iter_mut().find(|c| c.original == *original) {
-            c.boundary = *boundary;
-        }
     }
 }

@@ -56,11 +56,6 @@ pub struct TermUpdate<'a> {
     pub tags: &'a [String],
     pub delete_aliases: &'a [String],
     pub delete_tags: &'a [String],
-    pub delete_corrections: &'a [String],
-    pub correction_match: &'a [(String, MatchKind)],
-    pub correction_fix: &'a [(String, FixKind)],
-    pub correction_pinyin: &'a [(String, String)],
-    pub correction_boundary: &'a [(String, Boundary)],
 }
 
 impl<'a> TermUpdate<'a> {
@@ -112,56 +107,8 @@ pub fn validate_confidence(value: Option<f64>) -> crate::error::Result<()> {
     Ok(())
 }
 
-// ── Correction target validation ─────────────────────────────────────────────
-
-/// Verify that every correction original referenced by `TermUpdate` exists on
-/// the target term. Returns a usage error listing missing originals if any are
-/// not found.
-///
-/// This is the atomic pre-check for US1: reject updates that reference missing
-/// correction targets before writing storage.
-#[allow(dead_code)] // used by US1 implementation
-pub fn validate_correction_targets_exist(
-    term: &crate::model::term::Term,
-    update: &TermUpdate<'_>,
-) -> crate::error::Result<()> {
-    let mut missing: Vec<String> = Vec::new();
-
-    for (original, _) in update.correction_match {
-        if !term.corrections.iter().any(|c| c.original == *original) {
-            missing.push(format!("--correction-match {original}:<kind>"));
-        }
-    }
-    for (original, _) in update.correction_fix {
-        if !term.corrections.iter().any(|c| c.original == *original) {
-            missing.push(format!("--correction-fix {original}:<kind>"));
-        }
-    }
-    for (original, _) in update.correction_pinyin {
-        if !term.corrections.iter().any(|c| c.original == *original) {
-            missing.push(format!("--correction-pinyin {original}:<pinyin>"));
-        }
-    }
-    for (original, _) in update.correction_boundary {
-        if !term.corrections.iter().any(|c| c.original == *original) {
-            missing.push(format!("--correction-boundary {original}:<mode>"));
-        }
-    }
-
-    if missing.is_empty() {
-        Ok(())
-    } else {
-        let label = if missing.len() == 1 { "target" } else { "targets" };
-        Err(MfError::usage(
-            format!("correction {} {} not found on term \"{}\"", label, missing.join(", "), term.term),
-            Some("add the correction first with `mf term correction add`".to_string()),
-        ))
-    }
-}
-
 /// Find a correction by `original` on the given term. Returns the index for
 /// mutable access or a not-found error with guidance.
-#[allow(dead_code)] // used by US3 implementation
 pub fn find_correction_index(term: &crate::model::term::Term, original: &str) -> crate::error::Result<usize> {
     term.corrections.iter().position(|c| c.original == original).ok_or_else(|| {
         MfError::not_found(
@@ -321,52 +268,6 @@ mod tests {
             boundary: crate::model::term::Boundary::Standalone,
             pinyin: None,
         }
-    }
-
-    #[test]
-    fn validate_correction_targets_exist_all_present() {
-        let term = make_term("RAG", vec![make_correction("rag", "RAG"), make_correction("ragg", "RAG")]);
-        let update = TermUpdate {
-            correction_match: &[("rag".into(), crate::model::term::MatchKind::Substring)],
-            correction_fix: &[("ragg".into(), crate::model::term::FixKind::Suggested)],
-            ..Default::default()
-        };
-        assert!(validate_correction_targets_exist(&term, &update).is_ok());
-    }
-
-    #[test]
-    fn validate_correction_targets_exist_rejects_missing() {
-        let term = make_term("RAG", vec![make_correction("rag", "RAG")]);
-        let update = TermUpdate {
-            correction_match: &[("missing".into(), crate::model::term::MatchKind::Word)],
-            ..Default::default()
-        };
-        let err = validate_correction_targets_exist(&term, &update).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("missing"), "got: {msg}");
-        assert!(msg.contains("not found"), "got: {msg}");
-    }
-
-    #[test]
-    fn validate_correction_targets_exist_reports_all_missing() {
-        let term = make_term("RAG", vec![make_correction("rag", "RAG")]);
-        let update = TermUpdate {
-            correction_match: &[("a".into(), crate::model::term::MatchKind::Word)],
-            correction_fix: &[("b".into(), crate::model::term::FixKind::Required)],
-            ..Default::default()
-        };
-        let err = validate_correction_targets_exist(&term, &update).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("a"), "got: {msg}");
-        assert!(msg.contains("b"), "got: {msg}");
-        assert!(msg.contains("targets"), "expected plural; got: {msg}");
-    }
-
-    #[test]
-    fn validate_correction_targets_exist_empty_update_is_ok() {
-        let term = make_term("RAG", vec![]);
-        let update = TermUpdate::default();
-        assert!(validate_correction_targets_exist(&term, &update).is_ok());
     }
 
     #[test]
