@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <iostream>
 #include <string>
 #include <sstream>
 #include <vector>
@@ -29,7 +30,12 @@ MfKenlmModel *mf_kenlm_load(const char *path) {
             return nullptr;
         }
         return m;
+    } catch (const std::exception &e) {
+        std::cerr << "mf_kenlm_load error: " << e.what() << std::endl;
+        delete m;
+        return nullptr;
     } catch (...) {
+        std::cerr << "mf_kenlm_load: unknown error" << std::endl;
         delete m;
         return nullptr;
     }

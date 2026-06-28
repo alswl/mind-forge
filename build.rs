@@ -32,10 +32,7 @@ fn main() {
     println!("cargo:rustc-env=CARGO_RUSTC={}", rustc_ver.trim());
 
     // ── KenLM vendored C++ query-only library ──────────────────────────────
-    // LM engine WIP — split into spec 056 (asr-correction-lm-poc). Disabled on
-    // the 055 framework branch so builds skip the vendored KenLM C++ compile
-    // (needs a C++17 toolchain). Re-enable on the 056 branch.
-    // compile_kenlm();
+    compile_kenlm();
 }
 
 #[allow(dead_code)]
@@ -50,12 +47,15 @@ fn compile_kenlm() {
     // Trigger rebuild when vendored sources change
     println!("cargo:rerun-if-changed=vendor/kenlm/mf_kenlm_shim.cc");
     println!("cargo:rerun-if-changed=vendor/kenlm/mf_kenlm_shim.h");
+    println!("cargo:rerun-if-changed=vendor/kenlm/lm/bhiksha.cc");
+    println!("cargo:rerun-if-changed=vendor/kenlm/util/ersatz_progress.cc");
 
     // shim (at root level)
     build.file(format!("{}/mf_kenlm_shim.cc", kenlm_dir));
 
     // lm/ sources (query-only subset)
     let lm_sources = [
+        "bhiksha.cc",
         "binary_format.cc",
         "config.cc",
         "lm_exception.cc",
@@ -78,6 +78,7 @@ fn compile_kenlm() {
     // util/ sources
     let util_sources = [
         "bit_packing.cc",
+        "ersatz_progress.cc",
         "exception.cc",
         "file.cc",
         "file_piece.cc",
