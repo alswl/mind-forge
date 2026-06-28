@@ -40,9 +40,6 @@ struct GlossaryEntry {
 
 /// LM post-correction engine.
 pub struct LmCorrector {
-    /// Glossary terms (protected set + vocabulary hints).
-    #[allow(dead_code)]
-    terms: Vec<Term>,
     /// Minimum relative PPL improvement required to auto-fix (KenLM mode only).
     ppl_threshold: f64,
     /// Loaded KenLM model handle. Set during construction when a model path is
@@ -126,7 +123,7 @@ impl LmCorrector {
             _ => None,
         };
 
-        Ok(Self { terms: terms.to_vec(), ppl_threshold, model, jieba, pinyin_index })
+        Ok(Self { ppl_threshold, model, jieba, pinyin_index })
     }
 
     /// Split `content` into scoring windows at sentence terminators and newlines,
@@ -302,6 +299,30 @@ impl LmCorrector {
         }
         1.0 - after / before
     }
+
+    /// Shared candidate gates: reject if the span is protected, overlaps a
+    /// declared claim, or overlaps an already-accepted proposal in this batch.
+    fn passes_span_gates(
+        &self,
+        content: &str,
+        cand: &Candidate,
+        ctx: &CorrectCtx,
+        used_spans: &[(usize, usize)],
+    ) -> bool {
+        if ctx.protected_set.is_protected(content, cand.byte_offset, cand.original_len) {
+            return false;
+        }
+        let span_end = cand.byte_offset + cand.original_len;
+        let overlaps = |start: usize, len: usize| {
+            let end = start + len;
+            (start <= cand.byte_offset && cand.byte_offset < end) || (cand.byte_offset <= start && start < span_end)
+        };
+        let overlaps_declared = ctx.declared_claims.iter().any(|(_path, off)| overlaps(*off, cand.original_len));
+        if overlaps_declared {
+            return false;
+        }
+        !used_spans.iter().any(|(start, end)| overlaps(*start, end - start))
+    }
 }
 
 impl Corrector for LmCorrector {
@@ -330,25 +351,7 @@ impl LmCorrector {
 
         for window in Self::sentence_windows(content) {
             for cand in self.candidates(&window) {
-                // Respect protected spans.
-                if ctx.protected_set.is_protected(content, cand.byte_offset, cand.original_len) {
-                    continue;
-                }
-                // Respect declared claims (same overlap logic as RulesCorrector).
-                let overlaps_declared = ctx.declared_claims.iter().any(|(_path, off)| {
-                    let decl_end = off + cand.original_len;
-                    (*off <= cand.byte_offset && cand.byte_offset < decl_end)
-                        || (cand.byte_offset <= *off && *off < cand.byte_offset + cand.original_len)
-                });
-                if overlaps_declared {
-                    continue;
-                }
-                // Skip if overlaps an already-accepted proposal.
-                let overlaps_existing = used_spans.iter().any(|(start, end)| {
-                    (*start <= cand.byte_offset && cand.byte_offset < *end)
-                        || (cand.byte_offset <= *start && *start < cand.byte_offset + cand.original_len)
-                });
-                if overlaps_existing {
+                if !self.passes_span_gates(content, &cand, ctx, &used_spans) {
                     continue;
                 }
 
@@ -379,8 +382,8 @@ impl LmCorrector {
     /// applies the relative-PPL-improvement ≥ threshold gate and no-new-OOV gate
     /// (FR-L4).
     fn propose_kenlm(&self, content: &str, ctx: &CorrectCtx) -> Result<Vec<CorrectionProposal>> {
-        let model_version =
-            self.model.as_ref().map(|_| KenLmModel::version().to_string()).unwrap_or_else(|| "heuristic".to_string());
+        // This path only runs when a model is loaded, so the version is real.
+        let model_version = KenLmModel::version().to_string();
 
         let mut proposals = Vec::new();
         let mut used_spans: Vec<(usize, usize)> = Vec::new();
@@ -392,36 +395,31 @@ impl LmCorrector {
             };
 
             for cand in self.candidates(&window) {
-                // Respect protected spans and declared claims (shared policy).
-                if ctx.protected_set.is_protected(content, cand.byte_offset, cand.original_len) {
-                    continue;
-                }
-                let overlaps_declared = ctx.declared_claims.iter().any(|(_path, off)| {
-                    let decl_end = off + cand.original_len;
-                    (*off <= cand.byte_offset && cand.byte_offset < decl_end)
-                        || (cand.byte_offset <= *off && *off < cand.byte_offset + cand.original_len)
-                });
-                if overlaps_declared {
-                    continue;
-                }
-                // Skip if overlaps an already-accepted proposal in this batch.
-                let overlaps_existing = used_spans.iter().any(|(start, end)| {
-                    (*start <= cand.byte_offset && cand.byte_offset < *end)
-                        || (cand.byte_offset <= *start && *start < cand.byte_offset + cand.original_len)
-                });
-                if overlaps_existing {
+                if !self.passes_span_gates(content, &cand, ctx, &used_spans) {
                     continue;
                 }
 
-                // Build the candidate sentence by replacing the original span.
-                let scored = window.text.replacen(&cand.original, &cand.replacement, 1);
+                // Build the candidate sentence by splicing the replacement at the
+                // candidate's exact span. `cand.byte_offset` is document-relative,
+                // so convert it to a window-relative offset. (Using `replacen`
+                // here would match the first occurrence of the surface, which may
+                // not be this candidate's span when the surface repeats.)
+                let rel = cand.byte_offset - window.byte_offset;
+                let mut scored = String::with_capacity(window.text.len() - cand.original_len + cand.replacement.len());
+                scored.push_str(&window.text[..rel]);
+                scored.push_str(&cand.replacement);
+                scored.push_str(&window.text[rel + cand.original_len..]);
+
                 let after = match self.perplexity(&scored) {
                     Some(p) => p,
                     None => continue,
                 };
 
-                // Gate 1: no new OOV token (FR-L4).
-                if !self.all_in_vocab(&scored) {
+                // Gate 1: the replacement must introduce no *new* OOV token
+                // (FR-L4). Only the spliced span is new, so check that the
+                // replacement's own tokens are all in-vocabulary; a pre-existing
+                // OOV token elsewhere in the sentence must not suppress the find.
+                if !self.all_in_vocab(&cand.replacement) {
                     continue;
                 }
 
