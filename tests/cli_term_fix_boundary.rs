@@ -38,6 +38,35 @@ fn write_doc(repo: &common::TempDir, name: &str, content: &str) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Spec 054 — ASCII phrase word-boundary reproduction test (SC-001)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn ascii_phrase_glued_to_longer_word_rejected() {
+    // RED until T006: "foo dr" → "foodr" must NOT match inside "foo drill".
+    let (repo, _project) = setup();
+    let index = r#"schema_version: '1'
+terms:
+  - term: foodr
+    corrections:
+      - original: "foo dr"
+        correct: foodr
+        match: word
+"#;
+    write_index(&repo, index);
+    write_doc(&repo, "phrase", "foo drill 环境\n");
+
+    let output = mf(&repo)
+        .args(["term", "lint", "--project", "alpha", "--term", "foodr", "--fix", "--dry-run", "--json"])
+        .output()
+        .unwrap();
+
+    let v: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON envelope");
+    let findings = v["data"]["findings"].as_array().cloned().unwrap_or_default();
+    assert!(findings.is_empty(), "foo dr must NOT match inside foo drill, but found: {findings:#?}");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // T009 — --include-suggested flag rename
 // ═══════════════════════════════════════════════════════════════════════════════
 

@@ -2,10 +2,6 @@ use std::collections::BTreeSet;
 
 use crate::model::term::{Boundary, CandidateTerm, MatchKind, TermFinding};
 
-fn is_ascii_word_string(s: &str) -> bool {
-    !s.is_empty() && s.bytes().all(|b| matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'-'))
-}
-
 fn is_word_boundary_byte(b: u8) -> bool {
     !matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_')
 }
@@ -78,7 +74,7 @@ impl WordCheck {
         match match_kind {
             MatchKind::Substring => WordCheck::AlwaysAccept,
             MatchKind::Word => {
-                if is_ascii_word_string(original) {
+                if original.is_ascii() {
                     match boundary {
                         Boundary::Loose => WordCheck::AsciiLoose,
                         Boundary::Standalone => WordCheck::AsciiStandalone,
@@ -334,9 +330,46 @@ mod tests {
     }
 
     #[test]
+    fn word_check_for_ascii_phrase_with_space_is_ascii_boundary() {
+        // RED until T006: "foo dr" is all-ASCII but contains a space, so
+        // is_ascii_word_string returns false → wrongly classified as Cjk.
+        assert_eq!(
+            WordCheck::for_correction(MatchKind::Word, Boundary::Loose, "foo dr"),
+            WordCheck::AsciiLoose,
+            "all-ASCII phrase with space must use ASCII loose boundary"
+        );
+        assert_eq!(
+            WordCheck::for_correction(MatchKind::Word, Boundary::Standalone, "foo dr"),
+            WordCheck::AsciiStandalone,
+            "all-ASCII phrase with space must use ASCII standalone boundary"
+        );
+    }
+
+    #[test]
     fn word_check_for_cjk_original_is_cjk_regardless_of_boundary() {
         assert_eq!(WordCheck::for_correction(MatchKind::Word, Boundary::Loose, "机器人"), WordCheck::Cjk);
         assert_eq!(WordCheck::for_correction(MatchKind::Word, Boundary::Standalone, "机器人"), WordCheck::Cjk);
+    }
+
+    #[test]
+    fn word_check_for_cjk_and_mixed_source_still_cjk() {
+        // FR-006: pure CJK and mixed ASCII+CJK source text must keep CJK path.
+        assert_eq!(
+            WordCheck::for_correction(MatchKind::Word, Boundary::Loose, "机器"),
+            WordCheck::Cjk,
+            "pure CJK source must stay Cjk"
+        );
+        assert_eq!(
+            WordCheck::for_correction(MatchKind::Word, Boundary::Loose, "foo 机器"),
+            WordCheck::Cjk,
+            "mixed ASCII+CJK source must stay Cjk"
+        );
+        // standalone boundary also respects the same gate.
+        assert_eq!(
+            WordCheck::for_correction(MatchKind::Word, Boundary::Standalone, "foo 机器"),
+            WordCheck::Cjk,
+            "mixed source under standalone must stay Cjk"
+        );
     }
 
     #[test]

@@ -102,6 +102,51 @@ terms:
 }
 
 #[test]
+fn ascii_phrase_standalone_reports_non_cjk_boundary_mode() {
+    // RED until T006: "foo dr" → "foodr" standalone must report boundary_mode != "cjk".
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: foodr
+    corrections:
+      - original: "foo dr"
+        correct: foodr
+        match: word
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    fs::write(project.join("docs").join("note.md"), "the foo dr site\n").unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "term",
+            "lint",
+            "--project",
+            "alpha",
+            "--term",
+            "foodr",
+            "--dry-run",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+
+    let v: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON envelope");
+    let findings = v["data"]["findings"].as_array().cloned().unwrap_or_default();
+    assert_eq!(findings.len(), 1, "expected exactly one finding for standalone 'the foo dr site', got {findings:#?}");
+    let finding = &findings[0];
+    assert_eq!(finding["match_kind"].as_str().unwrap(), "word", "expected match_kind=word, got {finding:#?}");
+    assert_eq!(finding["correct"].as_str().unwrap(), "foodr", "expected correct=foodr, got {finding:#?}");
+    let boundary_mode = finding["boundary_mode"].as_str().expect("boundary_mode field missing");
+    assert_ne!(boundary_mode, "cjk", "all-ASCII phrase must NOT report boundary_mode=cjk, got {finding:#?}");
+}
+
+#[test]
 fn cjk_original_emits_cjk_mode() {
     let repo = common::setup_repo();
     seed(
