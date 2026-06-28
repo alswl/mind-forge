@@ -260,3 +260,286 @@ fn fix_term_correction_boundary_invalid_value_rejected() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("invalid boundary"), "stderr: {stderr}");
 }
+
+// ── Spec 053: --term filter ──────────────────────────────────────────────────
+
+/// Set up a project with two terms (RAG, LLM) each having corrections, and a
+/// document containing both variants.
+fn setup_two_term_fixture() -> (common::TempDir, std::path::PathBuf) {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: RAG
+    definition: Retrieval Augmented Generation
+    aliases: []
+    tags: []
+    corrections:
+      - original: rag
+        correct: RAG
+  - term: LLM
+    definition: Large Language Model
+    aliases: []
+    tags: []
+    corrections:
+      - original: llm
+        correct: LLM
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    // Create both project and global versions for tests that don't need project scope
+    let mut mf_cmd = Command::cargo_bin("mf").unwrap();
+    mf_cmd.args(["--root", repo.path().to_str().unwrap(), "term", "lint", "--project", "alpha", "--json"]);
+    // Trigger index load but don't care about output — just verify the setup worked
+    common::write_doc(&repo, "alpha", "intro", "rag is better than llm");
+    (repo, project)
+}
+
+/// T008: --term RAG applies only RAG corrections, LLM variant unchanged.
+#[test]
+fn term_filter_single_term_project_scope() {
+    let (repo, project) = setup_two_term_fixture();
+    let doc_path = project.join("docs").join("intro.md");
+
+    // Verify initial file content
+    let content = fs::read_to_string(&doc_path).unwrap();
+    assert!(content.contains("rag"), "precondition: doc contains 'rag'");
+    assert!(content.contains("llm"), "precondition: doc contains 'llm'");
+
+    // Fix only RAG
+    let output = mf(&repo).args(["term", "fix", "--project", "alpha", "--term", "RAG", "--yes"]).output().unwrap();
+
+    assert!(output.status.success(), "exit 0: stderr={}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("scoped to term(s): RAG"), "stdout: {stdout}");
+
+    // RAG should be fixed, LLM should remain unchanged
+    let fixed = fs::read_to_string(&doc_path).unwrap();
+    assert!(!fixed.contains("rag"), "rag should be fixed: {fixed}");
+    assert!(fixed.contains("llm"), "llm should remain unchanged: {fixed}");
+}
+
+/// T009: --term filter works in global scope.
+#[test]
+fn term_filter_single_term_global_scope() {
+    let repo = common::setup_repo();
+    // Write global terms
+    let global_terms = r#"schema_version: '1'
+terms:
+  - term: RAG
+    definition: null
+    aliases: []
+    tags: []
+    corrections:
+      - original: rag
+        correct: RAG
+  - term: LLM
+    definition: null
+    aliases: []
+    tags: []
+    corrections:
+      - original: llm
+        correct: LLM
+"#;
+    fs::write(repo.path().join("minds-terms.yaml"), global_terms).unwrap();
+    fs::write(repo.path().join("test.md"), "use rag over llm").unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "term", "fix", "test.md", "--term", "RAG", "--yes"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "exit code={:?} stderr={} stdout={}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr),
+        String::from_utf8_lossy(&output.stdout),
+    );
+
+    let fixed = fs::read_to_string(repo.path().join("test.md")).unwrap();
+    assert!(!fixed.contains("rag"), "rag should be fixed: {fixed}");
+    assert!(fixed.contains("llm"), "llm should remain unchanged: {fixed}");
+}
+
+/// T010: --term with --dry-run reports only targeted term's planned edits.
+#[test]
+fn term_filter_dry_run_reports_only_targeted() {
+    let (repo, _project) = setup_two_term_fixture();
+    let doc_path = _project.join("docs").join("intro.md");
+    let original = fs::read_to_string(&doc_path).unwrap();
+
+    let output =
+        mf(&repo).args(["term", "lint", "--fix", "--dry-run", "--term", "RAG", "--project", "alpha"]).output().unwrap();
+
+    // --fix --dry-run exits 1 when findings exist (lint semantics)
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "exit 1 with findings: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    // Should mention RAG replacement
+    assert!(stdout.contains("replacement"), "stdout: {stdout}");
+    assert!(stdout.contains("scoped to term(s): RAG"), "stdout: {stdout}");
+    // Should NOT touch the file
+    let after = fs::read_to_string(&doc_path).unwrap();
+    assert_eq!(original, after, "dry-run must not modify file");
+}
+
+/// T011: unknown term name exits 2 with diagnostic.
+#[test]
+fn term_filter_unknown_term_exits_2() {
+    let (repo, _project) = setup_two_term_fixture();
+
+    let output = mf(&repo).args(["term", "fix", "--project", "alpha", "--term", "NOPE", "--yes"]).output().unwrap();
+
+    assert_eq!(output.status.code(), Some(2), "exit 2 for unknown term");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("unknown term"), "stderr must name unknown term: {stderr}");
+    assert!(stderr.contains("NOPE"), "stderr must contain the unknown name: {stderr}");
+}
+
+/// T012: no --term produces same result as before (regression, SC-002).
+#[test]
+fn term_filter_absent_is_whole_glossary_regression() {
+    let (repo, project) = setup_two_term_fixture();
+    let doc_path = project.join("docs").join("intro.md");
+
+    let output = mf(&repo).args(["term", "fix", "--project", "alpha", "--yes"]).output().unwrap();
+
+    assert!(output.status.success(), "exit 0: stderr={}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(!stdout.contains("scoped to term(s):"), "no filter annotation when absent: {stdout}");
+
+    // Both should be fixed
+    let fixed = fs::read_to_string(&doc_path).unwrap();
+    assert!(!fixed.contains("rag"), "rag should be fixed: {fixed}");
+    assert!(!fixed.contains("llm"), "llm should be fixed: {fixed}");
+}
+
+/// T013: JSON output includes term_filter array; absent when no filter.
+#[test]
+fn term_filter_json_envelope() {
+    let (repo, _project) = setup_two_term_fixture();
+
+    // With filter — exit 1 because findings exist (lint semantics for --fix --dry-run)
+    let output = mf(&repo)
+        .args(["--json", "term", "lint", "--fix", "--dry-run", "--term", "RAG", "--project", "alpha"])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(1), "exit 1 with findings");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let term_filter = parsed["data"]["term_filter"].as_array().unwrap();
+    assert_eq!(term_filter.len(), 1);
+    assert_eq!(term_filter[0].as_str().unwrap(), "RAG");
+
+    // Without filter — also exit 1 (findings)
+    let output =
+        mf(&repo).args(["--json", "term", "lint", "--fix", "--dry-run", "--project", "alpha"]).output().unwrap();
+
+    assert_eq!(output.status.code(), Some(1), "exit 1 with findings");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let term_filter = parsed["data"]["term_filter"].as_array().unwrap();
+    assert!(term_filter.is_empty(), "term_filter must be [] when absent: {stdout}");
+}
+
+// ── US2: Multi-term filter ──────────────────────────────────────────────────
+
+/// T019: --term RAG --term LLM applies both, leaves TPU untouched.
+#[test]
+fn term_filter_multi_term_union() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: RAG
+    definition: null
+    aliases: []
+    tags: []
+    corrections:
+      - original: rag
+        correct: RAG
+  - term: LLM
+    definition: null
+    aliases: []
+    tags: []
+    corrections:
+      - original: llm
+        correct: LLM
+  - term: TPU
+    definition: null
+    aliases: []
+    tags: []
+    corrections:
+      - original: tpu
+        correct: TPU
+"#;
+    common::write_index(&repo, "alpha", index_yaml);
+    common::write_doc(&repo, "alpha", "intro", "use rag and llm not tpu");
+    let doc_path = project.join("docs").join("intro.md");
+
+    let output = mf(&repo)
+        .args(["term", "fix", "--project", "alpha", "--term", "RAG", "--term", "LLM", "--yes"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "exit 0: stderr={}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("scoped to term(s): RAG, LLM"), "stdout: {stdout}");
+
+    let fixed = fs::read_to_string(&doc_path).unwrap();
+    assert!(!fixed.contains("rag"), "rag should be fixed: {fixed}");
+    assert!(!fixed.contains("llm"), "llm should be fixed: {fixed}");
+    assert!(fixed.contains("tpu"), "tpu should remain unchanged: {fixed}");
+}
+
+/// T020: mixed valid+unknown exits 2 with no edits (FR-006 strictness).
+#[test]
+fn term_filter_mixed_valid_and_unknown_exits_2() {
+    let (repo, project) = setup_two_term_fixture();
+    let doc_path = project.join("docs").join("intro.md");
+    let original = fs::read_to_string(&doc_path).unwrap();
+
+    let output = mf(&repo)
+        .args(["term", "fix", "--project", "alpha", "--term", "RAG", "--term", "NOPE", "--yes"])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2), "exit 2 for mixed valid+unknown");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("NOPE"), "stderr must contain unknown name: {stderr}");
+    assert!(stderr.contains("unknown term"), "stderr: {stderr}");
+
+    // No edits
+    let after = fs::read_to_string(&doc_path).unwrap();
+    assert_eq!(original, after, "file must not be modified on error");
+}
+
+/// T021: JSON term_filter preserves all requested names for multi-term.
+#[test]
+fn term_filter_multi_term_json() {
+    let (repo, _project) = setup_two_term_fixture();
+
+    let output = mf(&repo)
+        .args(["--json", "term", "lint", "--fix", "--dry-run", "--term", "RAG", "--term", "LLM", "--project", "alpha"])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(1), "exit 1 with findings");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let term_filter = parsed["data"]["term_filter"].as_array().unwrap();
+    assert_eq!(term_filter.len(), 2);
+    let names: Vec<&str> = term_filter.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(names.contains(&"RAG"));
+    assert!(names.contains(&"LLM"));
+}

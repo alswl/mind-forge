@@ -101,6 +101,9 @@ pub struct TermLintArgs {
     /// Target a specific article by slug or title
     #[arg(long = "article")]
     pub article: Option<String>,
+    /// Only apply/scan corrections for the named term(s) (repeatable, exact name)
+    #[arg(long = "term", value_name = "NAME")]
+    pub term: Vec<String>,
     #[command(flatten)]
     pub lint: LintFlags,
     #[command(flatten)]
@@ -142,6 +145,9 @@ pub struct TermFixArgs {
     /// Target a specific article by slug or title
     #[arg(long = "article")]
     pub article: Option<String>,
+    /// Only apply/scan corrections for the named term(s) (repeatable, exact name)
+    #[arg(long = "term", value_name = "NAME")]
+    pub term: Vec<String>,
     #[command(flatten)]
     pub lint: LintFlags,
     #[command(flatten)]
@@ -295,8 +301,13 @@ pub fn dispatch(command: TermCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome
         Some(TermSubcommand::Lint(args)) => handle_lint(args, ctx),
         Some(TermSubcommand::Update(args)) => handle_update(args, ctx),
         Some(TermSubcommand::Fix(args)) => {
-            let mut lint_args =
-                TermLintArgs { path: args.path, article: args.article, lint: args.lint, yes: args.yes.clone() };
+            let mut lint_args = TermLintArgs {
+                path: args.path,
+                article: args.article,
+                term: args.term,
+                lint: args.lint,
+                yes: args.yes.clone(),
+            };
             lint_args.lint.fix = true; // term fix is always lint --fix
             handle_lint(lint_args, ctx)
         }
@@ -568,14 +579,14 @@ fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
             let preview = if let Some(pn) = ctx.project() {
                 let pp = svc_util::resolve_project(root, Some(pn), ctx.cwd())?;
                 if let Some(ref path) = args.path {
-                    term_svc::lint_path_with_global(&pp, root, path, true, true, include_suggested)?
+                    term_svc::lint_path_with_global(&pp, root, path, true, true, include_suggested, &args.term)?
                 } else {
-                    term_svc::lint_terms_with_global(&pp, root, true, true, include_suggested)?
+                    term_svc::lint_terms_with_global(&pp, root, true, true, include_suggested, &args.term)?
                 }
             } else if let Some(ref path) = args.path {
-                term_svc::global::lint_path(root, path, true, true, include_suggested)?
+                term_svc::global::lint_path(root, path, true, true, include_suggested, &args.term)?
             } else {
-                term_svc::global::lint_terms(root, true, true, include_suggested)?
+                term_svc::global::lint_terms(root, true, true, include_suggested, &args.term)?
             };
             if !preview.findings.is_empty() {
                 println!("{}", format_lint_text(&preview, true, true));
@@ -627,9 +638,17 @@ fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
                 effective_fix,
                 effective_dry_run,
                 include_suggested,
+                &args.term,
             )?
         } else {
-            term_svc::lint_terms_with_global(&project_path, root, effective_fix, effective_dry_run, include_suggested)?
+            term_svc::lint_terms_with_global(
+                &project_path,
+                root,
+                effective_fix,
+                effective_dry_run,
+                include_suggested,
+                &args.term,
+            )?
         }
     } else if let Some(ref path) = args.path {
         let resolved = svc_util::path::resolve_lint_path(path, None, cwd, root)?;
@@ -639,9 +658,10 @@ fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
             effective_fix,
             effective_dry_run,
             include_suggested,
+            &args.term,
         )?
     } else {
-        term_svc::global::lint_terms(root, effective_fix, effective_dry_run, include_suggested)?
+        term_svc::global::lint_terms(root, effective_fix, effective_dry_run, include_suggested, &args.term)?
     };
 
     // Determine exit code
@@ -657,6 +677,10 @@ fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
             data.insert("kind".to_string(), serde_json::Value::String("term".to_string()));
             data.insert("dry_run".to_string(), serde_json::Value::Bool(effective_dry_run));
             data.insert("target_type".to_string(), serde_json::Value::String(target_type.to_string()));
+            data.insert(
+                "term_filter".to_string(),
+                serde_json::Value::Array(args.term.iter().map(|n| serde_json::Value::String(n.clone())).collect()),
+            );
             // Flatten report fields into data
             if let serde_json::Value::Object(obj) = report_value {
                 for (k, v) in obj {
@@ -669,7 +693,12 @@ fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
         }
         Format::Text => {
             let output = format_lint_text_with_target(&report, effective_fix, effective_dry_run, Some(target_type));
-            Ok(CommandOutcome::Raw(output, exit_code))
+            if args.term.is_empty() {
+                Ok(CommandOutcome::Raw(output, exit_code))
+            } else {
+                let scoped = format!("scoped to term(s): {}\n{output}", args.term.join(", "));
+                Ok(CommandOutcome::Raw(scoped, exit_code))
+            }
         }
     }
 }

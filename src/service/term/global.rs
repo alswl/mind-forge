@@ -198,8 +198,10 @@ pub fn lint_file(
     fix: bool,
     dry_run: bool,
     include_suggested: bool,
+    term_filter: &[String],
 ) -> Result<TermLintReport> {
-    let terms = load_terms(repo_root)?;
+    let mut terms = load_terms(repo_root)?;
+    lint::filter_terms_by_name(&mut terms, term_filter)?;
     if terms.is_empty() {
         return Ok(lint::empty_report(fix, dry_run));
     }
@@ -213,11 +215,12 @@ pub fn lint_path(
     fix: bool,
     dry_run: bool,
     include_suggested: bool,
+    term_filter: &[String],
 ) -> Result<TermLintReport> {
     if repo_root.join(path).is_dir() {
-        lint_dir(repo_root, path, fix, dry_run, include_suggested)
+        lint_dir(repo_root, path, fix, dry_run, include_suggested, term_filter)
     } else {
-        lint_file(repo_root, path, fix, dry_run, include_suggested)
+        lint_file(repo_root, path, fix, dry_run, include_suggested, term_filter)
     }
 }
 
@@ -228,8 +231,10 @@ pub fn lint_dir(
     fix: bool,
     dry_run: bool,
     include_suggested: bool,
+    term_filter: &[String],
 ) -> Result<TermLintReport> {
-    let terms = load_terms(repo_root)?;
+    let mut terms = load_terms(repo_root)?;
+    lint::filter_terms_by_name(&mut terms, term_filter)?;
     if terms.is_empty() {
         return Ok(lint::empty_report(fix, dry_run));
     }
@@ -245,8 +250,15 @@ pub fn lint_dir(
 }
 
 /// Lint all markdown files in the repo against global terms.
-pub fn lint_terms(repo_root: &Path, fix: bool, dry_run: bool, include_suggested: bool) -> Result<TermLintReport> {
-    let terms = load_terms(repo_root)?;
+pub fn lint_terms(
+    repo_root: &Path,
+    fix: bool,
+    dry_run: bool,
+    include_suggested: bool,
+    term_filter: &[String],
+) -> Result<TermLintReport> {
+    let mut terms = load_terms(repo_root)?;
+    lint::filter_terms_by_name(&mut terms, term_filter)?;
     if terms.is_empty() {
         return Ok(lint::empty_report(fix, dry_run));
     }

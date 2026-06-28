@@ -223,6 +223,7 @@ mf term remove obsolete-term --yes
 mf term lint --project blog
 mf term lint --project blog --fix --dry-run
 mf term fix --project blog
+mf term fix --project blog --term API
 ```
 
 `term update` changes metadata only. It never adds corrections — pass
@@ -230,6 +231,13 @@ mf term fix --project blog
 term. To modify or remove existing corrections, use `term correction update` or
 `term correction remove` instead. Use `--dry-run` to validate and preview
 without writing.
+
+`term fix` and `term lint --fix` accept a repeatable `--term <NAME>` flag to
+scope corrections to one or more named terms (case-sensitive exact match on
+the canonical name). When omitted, all terms are applied (unchanged). Naming a
+term that does not exist in scope exits with code 2 and lists the unknown
+term(s) on stderr — no edits are made. Deleting a single correction is a
+separate existing command: `mf term correction remove <TERM> <ORIGINAL>`.
 
 ### Corrections
 

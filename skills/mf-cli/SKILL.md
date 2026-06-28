@@ -271,6 +271,7 @@ Rename a term.
 **`mf term lint [PATH]`**
 Lint term consistency in project docs. Detects misrecognized terms using configurable `Correction.match` modes: `word` (default — ASCII word boundaries; CJK requires a non-CJK neighbor), `substring` (exact match anywhere), or `pinyin` (tone-less pinyin scan with auto-conversion for CJK terms). Pinyin findings are always `fix: suggested` (trailing `?` marker).
 `--fix` — Auto-correct term usage in docs (pair with `--dry-run` to preview). Non-TTY exits 2 unless `-y`/`--force` is passed.
+`--term <NAME>` — Repeatable; scope to one or more named terms (case-sensitive exact canonical name match). When omitted, all terms are scanned. Unknown name exits 2 with no edits.
 `--article <SLUG>` — Set `target_type: "article"` in JSON output; scope hint for downstream tooling.
 `--include-suggested` — Apply suggested fixes (pinyin matches) in addition to required corrections.
 `--rule <RULE>` — Restrict to one rule kind.
@@ -279,6 +280,7 @@ Lint term consistency in project docs. Detects misrecognized terms using configu
 
 **`mf term fix [PATH]`**
 First-class alias for `term lint --fix`. Same flags as `term lint`, including `--include-suggested` to apply suggested corrections.
+Accepts a repeatable `--term <NAME>` (canonical name, case-sensitive exact match) to scope corrections to one or more named terms. When omitted, all terms are applied (unchanged). Naming a term that does not exist in scope exits with code 2 and lists the unknown term(s) on stderr — no edits are made. Deleting a single correction uses a separate existing command: `mf term correction remove <TERM> <ORIGINAL>`.
 
 ### `mf build <ARTICLE>` — Build/assemble an article
 
@@ -434,6 +436,8 @@ mf term lint docs/my-article.md --project my-project        # scan a specific fi
 mf term lint --article weekly-note --json --project my-project  # article target, JSON output
 mf term fix --project my-project                             # alias for term lint --fix
 mf term fix --project my-project --include-suggested         # apply suggested corrections
+mf term fix --project my-project --term RAG                  # scope to one term only
+mf term fix --project my-project --term RAG --term LLM       # scope to multiple terms
 
 # Config
 mf config show
@@ -460,6 +464,7 @@ mf version --json
 - `term lint` requires a project context — it scans project docs for term usage.
 - Destructive verbs (`remove`, `archive`) prompt on `/dev/tty` in interactive shells. In scripts/CI pass `--yes` to confirm; add `--force` separately only when bypassing overwrite or referential-integrity checks is intended.
 - `term lint --fix` and `term fix` treat `--force` as an alias for `--yes`; do not generalize that exception to entity removal.
+- `term fix` and `term lint --fix` accept `--term <NAME>` (repeatable) to scope corrections to named terms. Matching is case-sensitive exact on canonical name. Unknown term names exit 2 with no edits. Run `mf term correction remove <TERM> <ORIGINAL>` to delete a single correction.
 - `term update` manages term metadata and corrections. `term fix` is a first-class alias for `term lint --fix`.
 - `article convert` evaluates eligible articles project-wide; it does not take an article selector.
 - `mf init` is the preferred bootstrap command; `mf config init` remains deprecated compatibility.

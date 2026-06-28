@@ -5,7 +5,7 @@ use std::path::Path;
 use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::index::IndexFile;
-use crate::model::term::{Boundary, CandidateTerm, FixKind, TermFinding, TermLintFailure, TermLintReport};
+use crate::model::term::{Boundary, CandidateTerm, FixKind, Term, TermFinding, TermLintFailure, TermLintReport};
 use crate::service::config as config_svc;
 use crate::service::index;
 use crate::service::util::{atomic_write, canonicalize_within, rel_posix_path};
@@ -95,6 +95,30 @@ fn merge_global_into_index(project_index: &mut IndexFile, global_terms: Vec<crat
     }
 }
 
+/// Filter `terms` to only those whose canonical name is in `requested`.
+/// When `requested` is empty this is a no-op.
+/// When non-empty and any requested name is absent from `terms`, returns a usage
+/// error listing the unknown names so there is no silent "nothing to fix".
+pub fn filter_terms_by_name(terms: &mut Vec<Term>, requested: &[String]) -> Result<()> {
+    if requested.is_empty() {
+        return Ok(());
+    }
+
+    let available: std::collections::BTreeSet<&str> = terms.iter().map(|t| t.term.as_str()).collect();
+    let unknown: Vec<&String> = requested.iter().filter(|name| !available.contains(name.as_str())).collect();
+
+    if !unknown.is_empty() {
+        let names: Vec<&str> = unknown.iter().map(|s| s.as_str()).collect();
+        return Err(MfError::usage(
+            format!("unknown term(s): {}", names.join(", ")),
+            Some("use `mf term list` to see available terms".to_string()),
+        ));
+    }
+
+    terms.retain(|t| requested.iter().any(|name| name == &t.term));
+    Ok(())
+}
+
 pub fn lint_path_with_global(
     project_root: &Path,
     repo_root: &Path,
@@ -102,10 +126,14 @@ pub fn lint_path_with_global(
     fix: bool,
     dry_run: bool,
     include_suggested: bool,
+    term_filter: &[String],
 ) -> Result<TermLintReport> {
     let mut index = index::load(project_root)?;
     let global_terms = crate::service::term::global::load_terms(repo_root)?;
     merge_global_into_index(&mut index, global_terms);
+    if let Some(ref mut terms) = index.terms {
+        filter_terms_by_name(terms, term_filter)?;
+    }
     if project_root.join(path).is_dir() {
         lint_dir_with_index(
             &index,
@@ -127,10 +155,14 @@ pub fn lint_terms_with_global(
     fix: bool,
     dry_run: bool,
     include_suggested: bool,
+    term_filter: &[String],
 ) -> Result<TermLintReport> {
     let mut index = index::load(project_root)?;
     let global_terms = crate::service::term::global::load_terms(repo_root)?;
     merge_global_into_index(&mut index, global_terms);
+    if let Some(ref mut terms) = index.terms {
+        filter_terms_by_name(terms, term_filter)?;
+    }
     let layout = config_svc::effective_layout(project_root)?;
     let docs_dir = project_root.join(&layout.articles);
     if !docs_dir.exists() {
@@ -549,4 +581,80 @@ fn apply_term_fixes(
         would_fix_count: if dry_run { Some(would_fix_count) } else { None },
         would_apply_count,
     })
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::term::{Correction, Term};
+
+    fn make_term(name: &str) -> Term {
+        Term {
+            term: name.to_string(),
+            definition: None,
+            description: None,
+            confidence: None,
+            aliases: vec![],
+            tags: vec![],
+            corrections: vec![Correction {
+                original: format!("{name}-old"),
+                correct: name.to_string(),
+                r#match: crate::model::term::MatchKind::Word,
+                fix: crate::model::term::FixKind::Required,
+                boundary: crate::model::term::Boundary::Loose,
+                pinyin: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn filter_empty_is_noop() {
+        let mut terms = vec![make_term("RAG"), make_term("LLM")];
+        filter_terms_by_name(&mut terms, &[]).unwrap();
+        assert_eq!(terms.len(), 2);
+    }
+
+    #[test]
+    fn filter_exact_match_retains_subset() {
+        let mut terms = vec![make_term("RAG"), make_term("LLM")];
+        filter_terms_by_name(&mut terms, &["RAG".to_string()]).unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].term, "RAG");
+    }
+
+    #[test]
+    fn filter_unknown_name_is_error() {
+        let mut terms = vec![make_term("RAG")];
+        let err = filter_terms_by_name(&mut terms, &["NOPE".to_string()]).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("unknown term"), "expected 'unknown term' in error, got: {msg}");
+        assert!(msg.contains("NOPE"), "expected 'NOPE' in error, got: {msg}");
+    }
+
+    #[test]
+    fn filter_case_sensitive() {
+        let mut terms = vec![make_term("RAG")];
+        let err = filter_terms_by_name(&mut terms, &["rag".to_string()]).unwrap_err();
+        assert!(err.to_string().contains("unknown term"), "case mismatch should be unknown");
+    }
+
+    #[test]
+    fn filter_multi_term_union() {
+        let mut terms = vec![make_term("RAG"), make_term("LLM"), make_term("TPU")];
+        filter_terms_by_name(&mut terms, &["RAG".to_string(), "LLM".to_string()]).unwrap();
+        assert_eq!(terms.len(), 2);
+        let names: std::collections::BTreeSet<&str> = terms.iter().map(|t| t.term.as_str()).collect();
+        assert!(names.contains("RAG"));
+        assert!(names.contains("LLM"));
+    }
+
+    #[test]
+    fn filter_mixed_valid_and_unknown_errors() {
+        let mut terms = vec![make_term("RAG")];
+        let err = filter_terms_by_name(&mut terms, &["RAG".to_string(), "NOPE".to_string()]).unwrap_err();
+        assert!(err.to_string().contains("NOPE"));
+        assert!(!err.to_string().contains("RAG"), "valid name should not be listed as unknown");
+    }
 }

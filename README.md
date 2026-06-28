@@ -294,8 +294,8 @@ default `projects/` container). Defaults to the current directory.
 | `move <TERM>` (mv) | Move a term between scopes. `--to-global`, `--to-project <PROJECT>`, `--from-global`, `--force` (overwrite destination; source preserved on rejection), `--dry-run` |
 | `rename <OLD_TERM> <NEW_TERM>` | Rename a term. `--keep-alias` keeps the old name as an alias |
 | `remove <TERM>` (rm) | Remove a term (interactive confirmation in TTY) |
-| `lint [PATH]` | Lint term consistency in project docs. CJK/pinyin-aware matching, configurable `match` modes (`word`/`substring`/`pinyin`), `--fix`, `--include-suggested` to apply suggested corrections, `--article <SLUG>` or a Markdown `PATH` to target a single article/file. Non-TTY `--fix` exits 2 without `-y`/`--yes`. |
-| `fix [PATH]` | First-class alias for `term lint --fix`. Same flags as `lint` + `--include-suggested` for suggested corrections. |
+| `lint [PATH]` | Lint term consistency in project docs. CJK/pinyin-aware matching, configurable `match` modes (`word`/`substring`/`pinyin`), `--fix`, `--term <NAME>` (repeatable, scope to named terms), `--include-suggested` to apply suggested corrections, `--article <SLUG>` or a Markdown `PATH` to target a single article/file. Non-TTY `--fix` exits 2 without `-y`/`--yes`. |
+| `fix [PATH]` | First-class alias for `term lint --fix`. Same flags as `lint` + `--include-suggested` for suggested corrections. Accepts repeatable `--term <NAME>` to scope to one or more terms (case-sensitive exact canonical match; unknown → exit 2). |
 
 Global terms (created without `--project`) are stored in `minds-terms.yaml` at
 the repo root. Project-scoped terms live in each project's `mind-index.yaml`.
