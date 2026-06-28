@@ -146,16 +146,55 @@ pub struct TermConfig {
     pub enabled: bool,
     #[serde(default)]
     pub case_sensitive: bool,
+    /// ASR post-correction configuration (spec 055).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correction: Option<TermCorrectionConfig>,
 }
 
 impl Default for TermConfig {
     fn default() -> Self {
-        Self { enabled: true, case_sensitive: false }
+        Self { enabled: true, case_sensitive: false, correction: None }
     }
 }
 
 fn default_term_enabled() -> bool {
     true
+}
+
+/// ASR post-correction engine and model configuration (spec 055).
+#[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
+pub struct TermCorrectionConfig {
+    /// Engine to use: "rules" (default) or "lm".
+    #[serde(default = "default_engine")]
+    pub engine: crate::model::term::EngineKind,
+    /// Minimum relative PPL improvement for LM auto-fix (default 0.20).
+    #[serde(default = "default_ppl_threshold")]
+    pub ppl_improvement_threshold: f64,
+    /// Optional explicit path to a .klm LM model file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lm_model_path: Option<String>,
+    /// Maximum candidates per pinyin span (default 32).
+    #[serde(default = "default_max_candidates")]
+    pub max_candidates: usize,
+    /// Maximum Han characters in a candidate word (default 4).
+    #[serde(default = "default_max_word_chars")]
+    pub max_word_chars: usize,
+}
+
+fn default_engine() -> crate::model::term::EngineKind {
+    crate::model::term::EngineKind::Rules
+}
+
+fn default_ppl_threshold() -> f64 {
+    0.20
+}
+
+fn default_max_candidates() -> usize {
+    32
+}
+
+fn default_max_word_chars() -> usize {
+    4
 }
 
 /// Canonical layout configuration for project directories.

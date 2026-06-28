@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 173
 expression: stdout
 ---
 Lint term consistency in project docs
@@ -11,23 +10,26 @@ Arguments:
   [PATH]  
 
 Options:
-      --article <ARTICLE>  Target a specific article by slug or title
-      --root <PATH>        Mind Repo root directory
-      --config <PATH>      Config file path
-      --term <NAME>        Only apply/scan corrections for the named term(s) (repeatable, exact
-                           name)
-      --fix                Auto-fix issues that have a fixer
-  -v, --verbose...         Verbose output
-  -q, --quiet              Silence non-error output
-      --rule <RULE>        Restrict to a specific lint rule kind
-  -o, --output <FORMAT>    Output format [default: text] [possible values: text, json]
-      --severity <LEVEL>   Only emit issues at or above this severity (error|warning|info)
-      --json               Shorthand for --output json
-      --max-warnings <N>   Exit 1 when warnings exceed this count
-      --dry-run            Preview fixes without writing (only with --fix)
-      --no-color           Disable colored output
-      --include-suggested  Apply all corrections including suggested
-  -p, --project <NAME>     Project name for project-scoped operations
-  -y, --yes                Skip interactive confirmation prompt
-  -h, --help               Print help
-  -V, --version            Print version
+      --article <ARTICLE>          Target a specific article by slug or title
+      --root <PATH>                Mind Repo root directory
+      --config <PATH>              Config file path
+      --term <NAME>                Only apply/scan corrections for the named term(s) (repeatable,
+                                   exact name)
+      --engine <ENGINE>            ASR post-correction engine: rules (default) or lm
+  -v, --verbose...                 Verbose output
+      --ppl-threshold <THRESHOLD>  Minimum relative PPL improvement for LM auto-fix [0, 1) (default
+                                   0.20)
+  -q, --quiet                      Silence non-error output
+      --fix                        Auto-fix issues that have a fixer
+  -o, --output <FORMAT>            Output format [default: text] [possible values: text, json]
+      --json                       Shorthand for --output json
+      --rule <RULE>                Restrict to a specific lint rule kind
+      --no-color                   Disable colored output
+      --severity <LEVEL>           Only emit issues at or above this severity (error|warning|info)
+      --max-warnings <N>           Exit 1 when warnings exceed this count
+  -p, --project <NAME>             Project name for project-scoped operations
+      --dry-run                    Preview fixes without writing (only with --fix)
+      --include-suggested          Apply all corrections including suggested
+  -y, --yes                        Skip interactive confirmation prompt
+  -h, --help                       Print help
+  -V, --version                    Print version

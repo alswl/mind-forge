@@ -1,6 +1,7 @@
 // Term service — implemented in 012-term-core.
 // Directory module facade: re-exports sub-module public items.
 
+pub mod correct;
 pub mod correction;
 pub mod fix;
 pub mod global;

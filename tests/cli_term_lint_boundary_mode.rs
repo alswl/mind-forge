@@ -29,7 +29,15 @@ fn seed(repo: &common::TempDir, index_yaml: &str, doc: &str) {
 fn lint_findings(repo: &common::TempDir) -> Vec<serde_json::Value> {
     let output = mf(repo).args(["term", "lint", "--project", "alpha", "--json"]).output().unwrap();
     let v: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON envelope");
-    v["data"]["findings"].as_array().cloned().unwrap_or_default()
+    let findings = v["data"]["findings"].as_array().expect("data.findings array").clone();
+    let expected_exit = if findings.is_empty() { 0 } else { 1 };
+    assert_eq!(
+        output.status.code(),
+        Some(expected_exit),
+        "lint exit code must reflect whether findings exist; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    findings
 }
 
 #[test]
@@ -102,6 +110,31 @@ terms:
 }
 
 #[test]
+fn ascii_phrase_reports_standalone_boundary_mode() {
+    // Standalone "foo dr" → "foodr" must use the ASCII standalone path (spec 054).
+    let repo = common::setup_repo();
+    seed(
+        &repo,
+        r#"schema_version: '1'
+terms:
+  - term: foodr
+    corrections:
+      - original: "foo dr"
+        correct: foodr
+        match: word
+"#,
+        "the foo dr site\n",
+    );
+
+    let findings = lint_findings(&repo);
+    assert_eq!(findings.len(), 1, "expected exactly one finding for standalone 'the foo dr site', got {findings:#?}");
+    let finding = &findings[0];
+    assert_eq!(finding["match_kind"], "word", "expected match_kind=word, got {finding:#?}");
+    assert_eq!(finding["correct"], "foodr", "expected correct=foodr, got {finding:#?}");
+    assert_eq!(finding["boundary_mode"], "standalone", "unexpected boundary mode: {finding:#?}");
+}
+
+#[test]
 fn cjk_original_emits_cjk_mode() {
     let repo = common::setup_repo();
     seed(
@@ -119,4 +152,36 @@ terms:
     let findings = lint_findings(&repo);
     assert!(!findings.is_empty(), "expected finding for CJK original");
     assert_eq!(findings[0]["boundary_mode"], "cjk");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Known defect (spec 055 candidate) — mixed-script word boundary.
+//
+// Spec 054 fixed the all-ASCII phrase case by gating WordCheck on
+// `original.is_ascii()`. The mixed-script case is the same bug class: any
+// original containing a CJK char takes the whole-string CJK path, which only
+// checks whether the immediate neighbour is a Han ideograph. So a mixed
+// original ending in ASCII (e.g. "网关API") wrongly matches when glued to a
+// longer ASCII word ("网关APInterface"): the right neighbour 'n' is non-CJK and
+// counts as a boundary. Ignored until the per-edge boundary implementation lands.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn mixed_script_word_not_glued_to_longer_ascii_word() {
+    let repo = common::setup_repo();
+    seed(
+        &repo,
+        r#"schema_version: '1'
+terms:
+  - term: 网关API
+    corrections:
+      - original: 网关API
+        correct: 网关网关
+        match: word
+"#,
+        "网关APInterface\n",
+    );
+
+    let findings = lint_findings(&repo);
+    assert!(findings.is_empty(), "网关API must NOT match inside 网关APInterface, but found: {findings:#?}");
 }
