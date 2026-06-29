@@ -450,7 +450,7 @@ pub(crate) fn lint_walk_with_index(
                     &mut claimed,
                 );
                 if let Some(ref terms) = index.terms {
-                    let _ = run_correction_engine(
+                    run_correction_engine(
                         &content,
                         &rel_path,
                         terms,
@@ -459,7 +459,7 @@ pub(crate) fn lint_walk_with_index(
                         ppl_threshold,
                         &mut findings,
                         &mut internal_findings,
-                    );
+                    )?;
                 }
             }
             FrontMatterDecision::None => {
@@ -474,7 +474,7 @@ pub(crate) fn lint_walk_with_index(
                     &mut claimed,
                 );
                 if let Some(ref terms) = index.terms {
-                    let _ = run_correction_engine(
+                    run_correction_engine(
                         &content,
                         &rel_path,
                         terms,
@@ -483,7 +483,7 @@ pub(crate) fn lint_walk_with_index(
                         ppl_threshold,
                         &mut findings,
                         &mut internal_findings,
-                    );
+                    )?;
                 }
             }
         }
@@ -601,10 +601,12 @@ pub(crate) fn run_correction_engine(
             Ok(())
         }
         EngineKind::Lm => {
-            // Heuristic mode (spec 055): jieba candidates + confidence gating.
-            // Full KenLM scoring is deferred to spec 056.
-            // See src/service/term/correct/lm.rs.
-            let corrector = super::correct::lm::LmCorrector::new(terms, ppl_threshold);
+            // Construct the corrector with an optional model path. When `path` is
+            // `Some`, the KenLM model is loaded eagerly; missing/corrupt models
+            // fail here before scanning (FR-L6). When `None`, the engine falls
+            // back to heuristic mode (spec 055).
+            let model_path = std::env::var("MF_LM_MODEL_PATH").ok();
+            let corrector = super::correct::lm::LmCorrector::new(terms, ppl_threshold, model_path.as_deref())?;
             let protected: ProtectedSet = terms.iter().map(|t| t.term.clone()).collect();
             let declared_claims = claimed.clone();
             let ctx = super::correct::CorrectCtx { terms: terms.to_vec(), declared_claims, protected_set: protected };

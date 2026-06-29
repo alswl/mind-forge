@@ -1,30 +1,25 @@
-//! LM engine (spec 055): Jieba-segmented candidate generation with heuristic
-//! confidence gating. Full KenLM perplexity scoring is deferred to spec 056.
+//! LM engine: Jieba-segmented candidate generation with KenLM perplexity
+//! scoring (spec 056). When no KenLM model is loaded, falls back to a
+//! heuristic confidence gate (spec 055).
 //!
-//! ## Status — heuristic mode (spec 055)
+//! ## KenLM scoring path (spec 056)
 //!
-//! Candidate generation via jieba-rs segmentation + tone-stripped pinyin lookup
-//! against glossary terms is implemented and verified. When no KenLM model is
-//! loaded, proposals are gated by glossary term confidence (≥ 0.5; no confidence
-//! field = eligible). Proposals carry `model_version: "heuristic"` and null PPL
-//! fields to distinguish them from real KenLM-scored proposals.
-//!
-//! ## TODO(056) — KenLM scoring path
-//!
-//! 1. **Model resolution** (`ensure_model`) — configured path → OS cache; return
+//! 1. **Model resolution** (`ensure_model`) — configured path; return
 //!    `Err(ModelMissing/ModelLoadFailed)` so `--engine lm` exits 1 (FR-L6).
-//! 2. **Scoring** (`perplexity`) — call `super::kenlm_ffi`; lower is better.
+//! 2. **Scoring** (`perplexity`) — calls `super::kenlm_ffi::KenLmModel`.
 //! 3. **Gates** — relative PPL improvement ≥ threshold AND no new OOV (FR-L4).
-//! 4. Once `ensure_model` populates `self.model`, the heuristic path in
-//!    `propose()` is skipped and the KenLM scoring path takes over.
+//! 4. When `self.model` is populated, `propose()` uses KenLM scoring. Otherwise
+//!    it falls back to the heuristic confidence gate.
 
 use std::collections::HashMap;
+use std::path::Path;
 
 use jieba_rs::Jieba;
 
-use crate::error::Result;
+use crate::error::{MfError, Result};
 use crate::model::term::{EngineKind, FixKind, Term};
 
+use super::kenlm_ffi::KenLmModel;
 use super::{CorrectCtx, CorrectionProposal, Corrector};
 
 /// Default minimum relative PPL improvement required to auto-fix (FR-L4).
@@ -45,16 +40,11 @@ struct GlossaryEntry {
 
 /// LM post-correction engine.
 pub struct LmCorrector {
-    /// Glossary terms (protected set + vocabulary hints).
-    #[allow(dead_code)]
-    terms: Vec<Term>,
     /// Minimum relative PPL improvement required to auto-fix (KenLM mode only).
-    #[allow(dead_code)]
     ppl_threshold: f64,
-    /// Loaded model handle. `None` until model resolution is implemented (spec 056).
-    // TODO(056): replace `()` with `super::kenlm_ffi::Model` once the FFI module
-    //            is re-enabled (see correct/mod.rs and build.rs).
-    model: Option<()>,
+    /// Loaded KenLM model handle. Set during construction when a model path is
+    /// provided; `None` means the engine operates in heuristic mode.
+    model: Option<KenLmModel>,
     /// Jieba segmenter (loaded once at construction; the default dictionary is
     /// embedded in the binary so no runtime file I/O is needed).
     jieba: Jieba,
@@ -88,8 +78,12 @@ struct Candidate {
 impl LmCorrector {
     /// Construct the corrector. Builds the jieba segmenter and a
     /// `(tone_stripped_pinyin → glossary entries)` index from `terms`.
-    /// Model loading is deferred to [`Self::ensure_model`] (spec 056).
-    pub fn new(terms: &[Term], ppl_threshold: f64) -> Self {
+    ///
+    /// If `model_path` is `Some`, loads the KenLM model eagerly; returns
+    /// `Err(ModelMissing/ModelLoadFailed)` so `--engine lm` exits 1 before
+    /// scanning (FR-L6). If `model_path` is `None`, the engine starts in
+    /// heuristic mode (spec 055 fallback).
+    pub fn new(terms: &[Term], ppl_threshold: f64, model_path: Option<&str>) -> Result<Self> {
         let jieba = Jieba::new();
         let mut pinyin_index: HashMap<String, Vec<GlossaryEntry>> = HashMap::new();
 
@@ -109,18 +103,27 @@ impl LmCorrector {
                 .push(GlossaryEntry { surface: t.term.clone(), confidence: t.confidence });
         }
 
-        Self { terms: terms.to_vec(), ppl_threshold, model: None, jieba, pinyin_index }
-    }
+        let model = match model_path {
+            Some(path) if !path.is_empty() => {
+                let p = Path::new(path);
+                if !p.exists() {
+                    return Err(MfError::ModelMissing {
+                        message: format!("LM model not found: {path}"),
+                        hint: Some("run `mf term model fetch` to download the default model (057)".to_string()),
+                    });
+                }
+                let m = KenLmModel::load(p).ok_or_else(|| MfError::ModelLoadFailed {
+                    message: format!("failed to load LM model: {path}"),
+                    hint: Some(
+                        "the file may be corrupt; try re-downloading with `mf term model fetch` (057)".to_string(),
+                    ),
+                })?;
+                Some(m)
+            }
+            _ => None,
+        };
 
-    /// Resolve and load the KenLM model (configured path → OS cache).
-    ///
-    // TODO(056): implement resolution + KenLM load via `super::kenlm_ffi`. On a
-    //            missing/corrupt model, return `Err(Error::ModelMissing { .. })`
-    //            so `--engine lm` exits 1 before scanning (FR-L6, US2-AC3).
-    #[allow(dead_code)]
-    fn ensure_model(&mut self) -> Result<()> {
-        // Skeleton: no model yet.
-        Ok(())
+        Ok(Self { ppl_threshold, model, jieba, pinyin_index })
     }
 
     /// Split `content` into scoring windows at sentence terminators and newlines,
@@ -248,12 +251,44 @@ impl LmCorrector {
         candidates
     }
 
+    /// Tokenize `text` with jieba, join with spaces for KenLM scoring.
+    /// KenLM requires whitespace-separated tokens; raw unsegmented Chinese
+    /// would be treated as a single OOV token.
+    fn tokenize_for_kenlm(&self, text: &str) -> String {
+        let tokens = self.jieba.cut(text, false);
+        let words: Vec<&str> = tokens.iter().map(|t| t.word).collect();
+        words.join(" ")
+    }
+
     /// Perplexity of `sentence` under the loaded model (lower is better).
-    ///
-    // TODO(056): call `super::kenlm_ffi` to score. `None` means "cannot score"
-    //            (e.g. model absent) → caller skips the window.
-    fn perplexity(&self, _sentence: &str) -> Option<f64> {
-        None
+    /// Returns `None` when no model is loaded or scoring fails.
+    fn perplexity(&self, sentence: &str) -> Option<f64> {
+        let model = self.model.as_ref()?;
+        let tokenized = self.tokenize_for_kenlm(sentence);
+        if tokenized.is_empty() {
+            return None;
+        }
+        let ppl = model.perplexity(&tokenized);
+        if ppl.is_finite() && ppl > 0.0 {
+            Some(ppl)
+        } else {
+            None
+        }
+    }
+
+    /// Check that every token in `sentence` is in-vocabulary under the loaded
+    /// model (FR-L4 OOV gate). Returns `true` when no model is loaded (no gate).
+    fn all_in_vocab(&self, sentence: &str) -> bool {
+        match self.model.as_ref() {
+            Some(model) => {
+                let tokenized = self.tokenize_for_kenlm(sentence);
+                if tokenized.is_empty() {
+                    return true;
+                }
+                model.contains_all(&tokenized)
+            }
+            None => true,
+        }
     }
 
     /// Relative PPL improvement = `1 - ppl_after / ppl_before` (FR-L4).
@@ -264,6 +299,30 @@ impl LmCorrector {
         }
         1.0 - after / before
     }
+
+    /// Shared candidate gates: reject if the span is protected, overlaps a
+    /// declared claim, or overlaps an already-accepted proposal in this batch.
+    fn passes_span_gates(
+        &self,
+        content: &str,
+        cand: &Candidate,
+        ctx: &CorrectCtx,
+        used_spans: &[(usize, usize)],
+    ) -> bool {
+        if ctx.protected_set.is_protected(content, cand.byte_offset, cand.original_len) {
+            return false;
+        }
+        let span_end = cand.byte_offset + cand.original_len;
+        let overlaps = |start: usize, len: usize| {
+            let end = start + len;
+            (start <= cand.byte_offset && cand.byte_offset < end) || (cand.byte_offset <= start && start < span_end)
+        };
+        let overlaps_declared = ctx.declared_claims.iter().any(|(_path, off)| overlaps(*off, cand.original_len));
+        if overlaps_declared {
+            return false;
+        }
+        !used_spans.iter().any(|(start, end)| overlaps(*start, end - start))
+    }
 }
 
 impl Corrector for LmCorrector {
@@ -272,11 +331,9 @@ impl Corrector for LmCorrector {
     }
 
     fn propose(&self, content: &str, ctx: &CorrectCtx) -> Result<Vec<CorrectionProposal>> {
-        // TODO(056): when `self.model` is populated by `ensure_model`, take the
-        //            KenLM scoring path (sentence windows → perplexity before/after
-        //            → relative improvement gate). For now, always use heuristic.
         if self.model.is_some() {
-            // KenLM scoring path — unreachable until ensure_model is implemented.
+            // KenLM scoring path (spec 056): sentence windows → perplexity
+            // before/after → relative improvement + OOV gates.
             return self.propose_kenlm(content, ctx);
         }
 
@@ -294,25 +351,7 @@ impl LmCorrector {
 
         for window in Self::sentence_windows(content) {
             for cand in self.candidates(&window) {
-                // Respect protected spans.
-                if ctx.protected_set.is_protected(content, cand.byte_offset, cand.original_len) {
-                    continue;
-                }
-                // Respect declared claims (same overlap logic as RulesCorrector).
-                let overlaps_declared = ctx.declared_claims.iter().any(|(_path, off)| {
-                    let decl_end = off + cand.original_len;
-                    (*off <= cand.byte_offset && cand.byte_offset < decl_end)
-                        || (cand.byte_offset <= *off && *off < cand.byte_offset + cand.original_len)
-                });
-                if overlaps_declared {
-                    continue;
-                }
-                // Skip if overlaps an already-accepted proposal.
-                let overlaps_existing = used_spans.iter().any(|(start, end)| {
-                    (*start <= cand.byte_offset && cand.byte_offset < *end)
-                        || (cand.byte_offset <= *start && *start < cand.byte_offset + cand.original_len)
-                });
-                if overlaps_existing {
+                if !self.passes_span_gates(content, &cand, ctx, &used_spans) {
                     continue;
                 }
 
@@ -338,11 +377,17 @@ impl LmCorrector {
         Ok(proposals)
     }
 
-    /// KenLM-scored proposal generation (spec 056). Unreachable until
-    /// `ensure_model` loads a real model.
-    #[allow(dead_code)]
+    /// KenLM-scored proposal generation (spec 056). Called when a KenLM model is
+    /// loaded. Scores each sentence window, scores candidate replacements, and
+    /// applies the relative-PPL-improvement ≥ threshold gate and no-new-OOV gate
+    /// (FR-L4).
     fn propose_kenlm(&self, content: &str, ctx: &CorrectCtx) -> Result<Vec<CorrectionProposal>> {
+        // This path only runs when a model is loaded, so the version is real.
+        let model_version = KenLmModel::version().to_string();
+
         let mut proposals = Vec::new();
+        let mut used_spans: Vec<(usize, usize)> = Vec::new();
+
         for window in Self::sentence_windows(content) {
             let before = match self.perplexity(&window.text) {
                 Some(p) => p,
@@ -350,35 +395,48 @@ impl LmCorrector {
             };
 
             for cand in self.candidates(&window) {
-                // Respect protected spans and declared claims (shared policy).
-                if ctx.protected_set.is_protected(content, cand.byte_offset, cand.original_len) {
-                    continue;
-                }
-                if ctx.declared_claims.iter().any(|(_path, off)| *off == cand.byte_offset) {
+                if !self.passes_span_gates(content, &cand, ctx, &used_spans) {
                     continue;
                 }
 
-                // Score the candidate sentence.
-                let scored = window.text.replacen(&cand.original, &cand.replacement, 1);
+                // Build the candidate sentence by splicing the replacement at the
+                // candidate's exact span. `cand.byte_offset` is document-relative,
+                // so convert it to a window-relative offset. (Using `replacen`
+                // here would match the first occurrence of the surface, which may
+                // not be this candidate's span when the surface repeats.)
+                let rel = cand.byte_offset - window.byte_offset;
+                let mut scored = String::with_capacity(window.text.len() - cand.original_len + cand.replacement.len());
+                scored.push_str(&window.text[..rel]);
+                scored.push_str(&cand.replacement);
+                scored.push_str(&window.text[rel + cand.original_len..]);
+
                 let after = match self.perplexity(&scored) {
                     Some(p) => p,
                     None => continue,
                 };
 
+                // Gate 1: the replacement must introduce no *new* OOV token
+                // (FR-L4). Only the spliced span is new, so check that the
+                // replacement's own tokens are all in-vocabulary; a pre-existing
+                // OOV token elsewhere in the sentence must not suppress the find.
+                if !self.all_in_vocab(&cand.replacement) {
+                    continue;
+                }
+
+                // Gate 2: relative PPL improvement ≥ threshold (FR-L4).
                 let improvement = Self::relative_improvement(before, after);
-                // TODO(056): also require no new KenLM OOV token (FR-L4).
                 let eligible = improvement >= self.ppl_threshold;
                 if !eligible {
                     continue;
                 }
 
+                used_spans.push((cand.byte_offset, cand.byte_offset + cand.original_len));
                 proposals.push(CorrectionProposal::lm_proposal(
                     cand.byte_offset,
                     cand.original_len,
                     cand.original,
                     cand.replacement,
-                    // TODO(056): real model version from the manifest.
-                    "skeleton".to_string(),
+                    model_version.clone(),
                     before,
                     after,
                     improvement,
@@ -470,7 +528,7 @@ mod tests {
             tags: vec![],
             corrections: vec![],
         };
-        let corrector = LmCorrector::new(&[term], DEFAULT_PPL_THRESHOLD);
+        let corrector = LmCorrector::new(&[term], DEFAULT_PPL_THRESHOLD, None).unwrap();
 
         let window = Window { byte_offset: 0, text: "机器仁开始工作".into() };
         let cands = corrector.candidates(&window);
@@ -492,7 +550,7 @@ mod tests {
             tags: vec![],
             corrections: vec![],
         };
-        let corrector = LmCorrector::new(&[term], DEFAULT_PPL_THRESHOLD);
+        let corrector = LmCorrector::new(&[term], DEFAULT_PPL_THRESHOLD, None).unwrap();
 
         // "机器人" is already correct — no proposal should fire.
         let window = Window { byte_offset: 0, text: "机器人开始工作".into() };
@@ -512,7 +570,7 @@ mod tests {
             tags: vec![],
             corrections: vec![],
         };
-        let corrector = LmCorrector::new(&[term], DEFAULT_PPL_THRESHOLD);
+        let corrector = LmCorrector::new(&[term], DEFAULT_PPL_THRESHOLD, None).unwrap();
 
         // ASCII-only text should yield no candidates.
         let window = Window { byte_offset: 0, text: "hello world".into() };
@@ -532,7 +590,7 @@ mod tests {
             tags: vec![],
             corrections: vec![],
         };
-        let corrector = LmCorrector::new(&[term], DEFAULT_PPL_THRESHOLD);
+        let corrector = LmCorrector::new(&[term], DEFAULT_PPL_THRESHOLD, None).unwrap();
         let window = Window { byte_offset: 0, text: "网关配置".into() };
         let cands = corrector.candidates(&window);
         // "网关" is a substring of "网关API" so it should not be proposed as a correction.
@@ -553,7 +611,7 @@ mod tests {
             tags: vec![],
             corrections: vec![],
         };
-        let corrector = LmCorrector::new(std::slice::from_ref(&term), DEFAULT_PPL_THRESHOLD);
+        let corrector = LmCorrector::new(std::slice::from_ref(&term), DEFAULT_PPL_THRESHOLD, None).unwrap();
         let ctx =
             CorrectCtx { terms: vec![term], declared_claims: Default::default(), protected_set: Default::default() };
         let proposals = corrector.propose("机器仁开始工作", &ctx).unwrap();
@@ -579,7 +637,7 @@ mod tests {
             tags: vec![],
             corrections: vec![],
         };
-        let corrector = LmCorrector::new(std::slice::from_ref(&term), DEFAULT_PPL_THRESHOLD);
+        let corrector = LmCorrector::new(std::slice::from_ref(&term), DEFAULT_PPL_THRESHOLD, None).unwrap();
         let ctx =
             CorrectCtx { terms: vec![term], declared_claims: Default::default(), protected_set: Default::default() };
         let proposals = corrector.propose("机器仁开始工作", &ctx).unwrap();
@@ -597,7 +655,7 @@ mod tests {
             tags: vec![],
             corrections: vec![],
         };
-        let corrector = LmCorrector::new(std::slice::from_ref(&term), DEFAULT_PPL_THRESHOLD);
+        let corrector = LmCorrector::new(std::slice::from_ref(&term), DEFAULT_PPL_THRESHOLD, None).unwrap();
         let ctx =
             CorrectCtx { terms: vec![term], declared_claims: Default::default(), protected_set: Default::default() };
         let proposals = corrector.propose("机器仁开始工作", &ctx).unwrap();
@@ -615,7 +673,7 @@ mod tests {
             tags: vec![],
             corrections: vec![],
         };
-        let corrector = LmCorrector::new(std::slice::from_ref(&term), DEFAULT_PPL_THRESHOLD);
+        let corrector = LmCorrector::new(std::slice::from_ref(&term), DEFAULT_PPL_THRESHOLD, None).unwrap();
         // "机器仁" is a valid name in this doc → protect it.
         let ctx = CorrectCtx {
             terms: vec![term],
@@ -628,5 +686,85 @@ mod tests {
         };
         let proposals = corrector.propose("机器仁开始工作", &ctx).unwrap();
         assert!(proposals.is_empty(), "protected 机器仁 should not be proposed");
+    }
+
+    // ── KenLM scoring (spec 056) ─────────────────────────────────────────
+
+    fn fixture_model_path() -> String {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        manifest_dir.join("tests/fixtures/asr/tiny_model.arpa").to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn kenlm_finds_homophone_with_ppl_improvement() {
+        let term = Term {
+            term: "服务".into(),
+            definition: Some("service".into()),
+            description: None,
+            confidence: Some(0.9),
+            aliases: vec![],
+            tags: vec![],
+            corrections: vec![],
+        };
+        let corrector =
+            LmCorrector::new(std::slice::from_ref(&term), DEFAULT_PPL_THRESHOLD, Some(&fixture_model_path())).unwrap();
+        let ctx =
+            CorrectCtx { terms: vec![term], declared_claims: Default::default(), protected_set: Default::default() };
+        let proposals = corrector.propose("在线服物上线了", &ctx).unwrap();
+        assert!(!proposals.is_empty(), "KenLM should find 服物->服务; got {:?}", proposals);
+        let p = &proposals[0];
+        assert_eq!(p.original, "服物");
+        assert_eq!(p.correct, "服务");
+        assert_eq!(p.engine, EngineKind::Lm);
+        assert!(p.model_version.as_deref().unwrap().starts_with("kenlm-"), "model_version: {:?}", p.model_version);
+        assert!(p.ppl_before.unwrap() > 0.0, "ppl_before: {:?}", p.ppl_before);
+        assert!(p.ppl_after.unwrap() > 0.0, "ppl_after: {:?}", p.ppl_after);
+        assert!(p.ppl_improvement.unwrap() >= DEFAULT_PPL_THRESHOLD, "ppl_improvement: {:?}", p.ppl_improvement);
+    }
+
+    #[test]
+    fn kenlm_no_finding_for_correct_text() {
+        let term = Term {
+            term: "服务".into(),
+            definition: Some("service".into()),
+            description: None,
+            confidence: Some(0.9),
+            aliases: vec![],
+            tags: vec![],
+            corrections: vec![],
+        };
+        let corrector =
+            LmCorrector::new(std::slice::from_ref(&term), DEFAULT_PPL_THRESHOLD, Some(&fixture_model_path())).unwrap();
+        let ctx =
+            CorrectCtx { terms: vec![term], declared_claims: Default::default(), protected_set: Default::default() };
+        let proposals = corrector.propose("在线服务上线了", &ctx).unwrap();
+        assert!(proposals.is_empty(), "correct text should produce no findings: {:?}", proposals);
+    }
+
+    #[test]
+    fn kenlm_populates_ppl_fields_on_finding() {
+        let term = Term {
+            term: "服务".into(),
+            definition: Some("service".into()),
+            description: None,
+            confidence: Some(0.9),
+            aliases: vec![],
+            tags: vec![],
+            corrections: vec![],
+        };
+        // Use default threshold; fixture model yields very high PPL improvement
+        // (near 100%) because it is tiny — the finding should still be emitted.
+        let corrector =
+            LmCorrector::new(std::slice::from_ref(&term), DEFAULT_PPL_THRESHOLD, Some(&fixture_model_path())).unwrap();
+        let ctx =
+            CorrectCtx { terms: vec![term], declared_claims: Default::default(), protected_set: Default::default() };
+        let proposals = corrector.propose("在线服物上线了", &ctx).unwrap();
+        assert!(!proposals.is_empty(), "should find with default threshold");
+        // Verify PPL fields are populated (FR-L8).
+        let p = &proposals[0];
+        assert!(p.ppl_before.unwrap().is_finite() && p.ppl_before.unwrap() > 0.0);
+        assert!(p.ppl_after.unwrap().is_finite() && p.ppl_after.unwrap() > 0.0);
+        assert!(p.ppl_improvement.unwrap() >= DEFAULT_PPL_THRESHOLD);
+        assert!(!p.model_version.as_deref().unwrap().is_empty());
     }
 }

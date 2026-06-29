@@ -15,6 +15,21 @@ The C ABI shim (`mf_kenlm_shim.h` / `mf_kenlm_shim.cc`) exposes a
 narrow query surface used by the safe Rust wrapper in
 `src/service/term/correct/kenlm_ffi.rs`.
 
+## Project-owned stub files
+
+Two minimal `.cc` files provide linker stubs for build-time symbols
+that are referenced by the vendored query sources but not needed at
+query time:
+
+- `lm/bhiksha.cc` — `DontBhiksha` / `ArrayBhiksha` constructors and
+  static methods (no-op implementations).
+- `util/ersatz_progress.cc` — `ErsatzProgress` constructor, destructor,
+  and `Milestone()` (no-op; progress reporting is not used at query
+  time).
+
+These stubs avoid pulling in additional KenLM sources that are only
+relevant for model building.
+
 ## Building
 
 Compiled by `build.rs` via the `cc` crate with C++17. The shim only

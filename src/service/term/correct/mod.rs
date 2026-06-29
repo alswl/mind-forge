@@ -16,13 +16,7 @@
 // Types wired in Phase 3+; silence dead_code until then.
 #![allow(dead_code)]
 
-// LM engine WIP — spec 056 (asr-correction-lm-poc). `lm` is a bootstrap skeleton:
-// the control flow is wired so `--engine lm` reaches `LmCorrector`, but candidate
-// generation and KenLM scoring are TODO(056) and it produces no proposals yet.
-// `kenlm_ffi` stays disabled until the skeleton needs the FFI for scoring — its
-// wrapper + vendored C++ sources are in-tree, and `build.rs` skips the C++17
-// compile until `compile_kenlm()` is re-enabled.
-// pub mod kenlm_ffi;
+pub mod kenlm_ffi;
 pub mod lm;
 pub mod rules;
 

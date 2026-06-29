@@ -94,11 +94,7 @@ impl KenLmModel {
         if ptr.is_null() {
             return "";
         }
-        unsafe {
-            std::ffi::CStr::from_ptr(ptr)
-                .to_str()
-                .unwrap_or("")
-        }
+        unsafe { std::ffi::CStr::from_ptr(ptr).to_str().unwrap_or("") }
     }
 }
 
@@ -185,10 +181,7 @@ mod tests {
         let model = KenLmModel::load(&tiny_arpa_path()).unwrap();
         let a = model.perplexity("在线 服务 上线 了");
         let b = model.perplexity("在线 服务 上线 了");
-        assert!(
-            (a - b).abs() < 1e-12,
-            "repeated queries must be deterministic: a={a}, b={b}"
-        );
+        assert!((a - b).abs() < 1e-12, "repeated queries must be deterministic: a={a}, b={b}");
     }
 
     #[test]
@@ -197,10 +190,7 @@ mod tests {
         // 在线服务上线了 (correct "服务") vs 在线服物上线了 (error "服物")
         let ppl_correct = model.perplexity("在线 服务 上线 了");
         let ppl_error = model.perplexity("在线 服物 上线 了");
-        assert!(
-            ppl_correct < ppl_error,
-            "correct sentence should have lower PPL: {ppl_correct} vs {ppl_error}"
-        );
+        assert!(ppl_correct < ppl_error, "correct sentence should have lower PPL: {ppl_correct} vs {ppl_error}");
     }
 
     #[test]
