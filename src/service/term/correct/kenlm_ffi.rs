@@ -165,8 +165,8 @@ mod tests {
     #[test]
     fn contains_all_known_tokens() {
         let model = KenLmModel::load(&tiny_arpa_path()).unwrap();
-        assert!(model.contains_all("在 线 服务"));
-        assert!(model.contains_all("在线 服务 上线 了"));
+        assert!(model.contains_all("在 线 服 务"));
+        assert!(model.contains_all("在 线 服 物 上 线 了"));
     }
 
     #[test]
@@ -179,8 +179,8 @@ mod tests {
     #[test]
     fn deterministic_repeated_queries() {
         let model = KenLmModel::load(&tiny_arpa_path()).unwrap();
-        let a = model.perplexity("在线 服务 上线 了");
-        let b = model.perplexity("在线 服务 上线 了");
+        let a = model.perplexity("在 线 服 务 上 线 了");
+        let b = model.perplexity("在 线 服 务 上 线 了");
         assert!((a - b).abs() < 1e-12, "repeated queries must be deterministic: a={a}, b={b}");
     }
 
@@ -188,8 +188,8 @@ mod tests {
     fn correct_sentence_lower_perplexity_than_error() {
         let model = KenLmModel::load(&tiny_arpa_path()).unwrap();
         // 在线服务上线了 (correct "服务") vs 在线服物上线了 (error "服物")
-        let ppl_correct = model.perplexity("在线 服务 上线 了");
-        let ppl_error = model.perplexity("在线 服物 上线 了");
+        let ppl_correct = model.perplexity("在 线 服 务 上 线 了");
+        let ppl_error = model.perplexity("在 线 服 物 上 线 了");
         assert!(ppl_correct < ppl_error, "correct sentence should have lower PPL: {ppl_correct} vs {ppl_error}");
     }
 

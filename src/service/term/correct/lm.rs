@@ -13,15 +13,12 @@
 //!
 //! ## Tokenization strategy
 //!
-//! KenLM requires whitespace-separated tokens. The engine auto-detects whether
-//! the loaded model uses word-level or character-level tokens by probing common
-//! Chinese bigrams (`服务 在线`). Word-level models (e.g. the tiny ARPA fixture
-//! used in tests) keep Jieba segmentation; character-level models (e.g.
-//! people2014corpus_chars, zh-giga) split each CJK ideograph individually. This
-//! avoids the asymmetry where Jieba segments error text `服物` → `服 物` (2
-//! char tokens) but correct text `服务` → `服务` (1 word token), causing the
-//! word token `服务` to be OOV in character-level models and the OOV gate to
-//! reject valid corrections.
+//! Jieba is used for candidate *generation* (Han run detection, sliding window).
+//! KenLM *scoring* always uses character-level tokenization: each CJK ideograph
+//! becomes its own whitespace-separated token. This matches how all major publicly
+//! available Chinese KenLM models are trained (people2014corpus_chars, zh-giga)
+//! and avoids the asymmetry where Jieba would segment known "服务" as one word
+//! token (OOV in char models) but unknown "服物" as two char tokens (in-vocab).
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -62,10 +59,6 @@ pub struct LmCorrector {
     jieba: Jieba,
     /// Glossary index: tone-stripped pinyin → matching glossary terms.
     pinyin_index: HashMap<String, Vec<GlossaryEntry>>,
-    /// When true, `tokenize_for_kenlm` splits each CJK character individually
-    /// (character-level model detected at construction). When false, Jieba
-    /// word segmentation is used (word-level model).
-    use_char_tokenization: bool,
 }
 
 /// A scoring window: a sentence-sized slice plus its byte offset in the original
@@ -139,19 +132,7 @@ impl LmCorrector {
             _ => None,
         };
 
-        // Detect character-level vs word-level model. Probe two common Chinese
-        // bigrams: if neither word token is in the vocabulary the model was trained
-        // on character-level tokens (e.g. people2014corpus_chars, zh-giga). In
-        // that case `tokenize_for_kenlm` will split each CJK char individually to
-        // match how the model was trained, preventing the asymmetry where Jieba
-        // keeps "服务" as a single word token (OOV in char models) but splits
-        // "服物" into "服"+"物" (two char tokens that are in-vocab).
-        let use_char_tokenization = match &model {
-            Some(m) => !m.contains_all("服务 在线"),
-            None => false,
-        };
-
-        Ok(Self { ppl_threshold, model, jieba, pinyin_index, use_char_tokenization })
+        Ok(Self { ppl_threshold, model, jieba, pinyin_index })
     }
 
     /// Split `content` into scoring windows at sentence terminators and newlines,
@@ -279,16 +260,10 @@ impl LmCorrector {
         candidates
     }
 
-    /// Tokenize `text` for KenLM scoring. Uses character-level or word-level
-    /// segmentation depending on what was detected at construction time.
+    /// Tokenize `text` for KenLM scoring. Each CJK ideograph is its own token;
+    /// non-CJK runs (ASCII, punctuation) are kept as single tokens.
     fn tokenize_for_kenlm(&self, text: &str) -> String {
-        if self.use_char_tokenization {
-            Self::tokenize_char_level(text)
-        } else {
-            let tokens = self.jieba.cut(text, false);
-            let words: Vec<&str> = tokens.iter().map(|t| t.word).collect();
-            words.join(" ")
-        }
+        Self::tokenize_char_level(text)
     }
 
     /// Character-level tokenizer: each CJK ideograph becomes its own token;
@@ -585,25 +560,6 @@ mod tests {
     fn tokenize_char_level_handles_empty_and_whitespace() {
         assert_eq!(LmCorrector::tokenize_char_level(""), "");
         assert_eq!(LmCorrector::tokenize_char_level("   "), "");
-    }
-
-    #[test]
-    fn word_level_model_uses_jieba_tokenization() {
-        // The tiny ARPA fixture has "服务" and "在线" as word tokens, so
-        // auto-detection should select word-level (Jieba) tokenization.
-        let term = Term {
-            term: "服务".into(),
-            definition: Some("service".into()),
-            description: None,
-            confidence: Some(0.9),
-            aliases: vec![],
-            tags: vec![],
-            corrections: vec![],
-        };
-        let corrector =
-            LmCorrector::new(std::slice::from_ref(&term), DEFAULT_PPL_THRESHOLD, Some(&fixture_model_path())).unwrap();
-        assert!(!corrector.use_char_tokenization, "tiny ARPA has word tokens → should use Jieba");
-        assert_eq!(corrector.tokenize_for_kenlm("在线服务"), "在线 服务");
     }
 
     // ── jieba-rs bring-up smoke ────────────────────────────────────────
