@@ -221,7 +221,7 @@ pub(crate) fn scan_file_for_corrections(
     rel_path: &str,
     findings: &mut Vec<TermFinding>,
     internal_findings: &mut Vec<InternalFinding>,
-    claimed: &mut BTreeSet<(String, usize)>,
+    claimed: &mut BTreeSet<(String, usize, usize)>,
 ) {
     for c in corrections {
         // Pinyin matches are handled by the pinyin scanner; literal scan never emits pinyin.
@@ -240,8 +240,7 @@ pub(crate) fn scan_file_for_corrections(
                 break;
             };
             let abs_offset = search_start + rel_offset;
-            let key = (rel_path.to_string(), abs_offset);
-            if claimed.contains(&key) {
+            if claimed.iter().any(|(path, off, _)| path == rel_path && *off == abs_offset) {
                 search_start = abs_offset + 1;
                 continue;
             }
@@ -251,7 +250,7 @@ pub(crate) fn scan_file_for_corrections(
                 continue;
             }
 
-            claimed.insert(key);
+            claimed.insert((rel_path.to_string(), abs_offset, orig_bytes.len()));
 
             let (line, col) = byte_offset_to_line_col(content, abs_offset);
 

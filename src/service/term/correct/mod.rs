@@ -145,9 +145,9 @@ impl CorrectionProposal {
 pub struct CorrectCtx {
     /// All terms (project + global fallback).
     pub terms: Vec<Term>,
-    /// Set of byte offsets already claimed by declared corrections.
-    /// Key: (relative_path, byte_offset).
-    pub declared_claims: BTreeSet<(String, usize)>,
+    /// Set of byte spans already claimed by declared corrections.
+    /// Key: (relative_path, byte_offset, byte_len).
+    pub declared_claims: BTreeSet<(String, usize, usize)>,
     /// Protected set: canonical term strings ∪ declared correction target strings.
     pub protected_set: ProtectedSet,
 }

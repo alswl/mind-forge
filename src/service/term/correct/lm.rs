@@ -364,7 +364,11 @@ impl LmCorrector {
             let end = start + len;
             (start <= cand.byte_offset && cand.byte_offset < end) || (cand.byte_offset <= start && start < span_end)
         };
-        let overlaps_declared = ctx.declared_claims.iter().any(|(_path, off)| overlaps(*off, cand.original_len));
+        let overlaps_declared = ctx.declared_claims.iter().any(|(_path, decl_off, decl_len)| {
+            let decl_end = decl_off + decl_len;
+            (*decl_off <= cand.byte_offset && cand.byte_offset < decl_end)
+                || (cand.byte_offset <= *decl_off && *decl_off < span_end)
+        });
         if overlaps_declared {
             return false;
         }

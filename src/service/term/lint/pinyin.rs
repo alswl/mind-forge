@@ -29,7 +29,7 @@ pub(crate) fn scan_for_pinyin(
     corrections: &[CorrectionRef<'_>],
     findings: &mut Vec<TermFinding>,
     internal_findings: &mut Vec<InternalFinding>,
-    claimed: &mut BTreeSet<(String, usize)>,
+    claimed: &mut BTreeSet<(String, usize, usize)>,
 ) {
     let entries: Vec<PinyinEntry<'_>> = corrections
         .iter()
@@ -56,8 +56,7 @@ pub(crate) fn scan_for_pinyin(
             let max_start = run.len() - entry.char_len;
             for window_start in 0..=max_start {
                 let (window_byte_start, _) = run[window_start];
-                let key = (rel_path.to_string(), window_byte_start);
-                if claimed.contains(&key) {
+                if claimed.iter().any(|(path, off, _)| path == rel_path && *off == window_byte_start) {
                     continue;
                 }
 
@@ -73,10 +72,10 @@ pub(crate) fn scan_for_pinyin(
                     continue;
                 }
 
-                claimed.insert(key);
+                let window_byte_len = window_text.len();
+                claimed.insert((rel_path.to_string(), window_byte_start, window_byte_len));
 
                 let (line, col) = byte_offset_to_line_col(content, window_byte_start);
-                let window_byte_len = window_text.len();
 
                 findings.push(TermFinding {
                     path: rel_path.to_string(),

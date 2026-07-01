@@ -149,11 +149,10 @@ impl Corrector for RulesCorrector {
                 continue;
             }
             // Skip if overlaps declared claims
-            let overlaps_declared = ctx.declared_claims.iter().any(|(_path, off)| {
-                let decl_end = off + p.original_len;
-
-                (*off <= p.byte_offset && p.byte_offset < decl_end)
-                    || (p.byte_offset <= *off && *off < p.byte_offset + p.original_len)
+            let overlaps_declared = ctx.declared_claims.iter().any(|(_path, decl_off, decl_len)| {
+                let decl_end = decl_off + decl_len;
+                (*decl_off <= p.byte_offset && p.byte_offset < decl_end)
+                    || (p.byte_offset <= *decl_off && *decl_off < p.byte_offset + p.original_len)
             });
             if overlaps_declared {
                 continue;

@@ -265,7 +265,7 @@ pub(crate) fn lint_single_file_with_index(
     let correction_refs = build_correction_refs(&corrections, &ambiguous, &candidates);
     let mut findings: Vec<TermFinding> = Vec::new();
     let mut internal_findings: Vec<InternalFinding> = Vec::new();
-    let mut claimed: BTreeSet<(String, usize)> = BTreeSet::new();
+    let mut claimed: BTreeSet<(String, usize, usize)> = BTreeSet::new();
     let mut failures: Vec<TermLintFailure> = Vec::new();
 
     let rel_path = rel_posix_path(base_path, &target_path).unwrap_or_else(|_| file_path.to_string());
@@ -410,7 +410,7 @@ pub(crate) fn lint_walk_with_index(
     let mut scanned_files: u64 = 0;
     let mut skipped_files: Vec<String> = Vec::new();
     let mut failures: Vec<TermLintFailure> = Vec::new();
-    let mut claimed: BTreeSet<(String, usize)> = BTreeSet::new();
+    let mut claimed: BTreeSet<(String, usize, usize)> = BTreeSet::new();
 
     let walker = walkdir::WalkDir::new(walk_dir).into_iter().filter_entry(|e| {
         let name = e.file_name().to_string_lossy();
@@ -526,7 +526,7 @@ pub(crate) fn scan_content(
     rel_path: &str,
     findings: &mut Vec<TermFinding>,
     internal_findings: &mut Vec<InternalFinding>,
-    claimed: &mut BTreeSet<(String, usize)>,
+    claimed: &mut BTreeSet<(String, usize, usize)>,
 ) {
     let sanitized = strip_exempt_regions(content, fm_end);
     scan_file_for_corrections(content, &sanitized, correction_refs, rel_path, findings, internal_findings, claimed);
@@ -541,7 +541,7 @@ pub(crate) fn run_correction_engine(
     content: &str,
     rel_path: &str,
     terms: &[crate::model::term::Term],
-    claimed: &BTreeSet<(String, usize)>,
+    claimed: &BTreeSet<(String, usize, usize)>,
     engine: EngineKind,
     ppl_threshold: f64,
     findings: &mut Vec<TermFinding>,
@@ -558,8 +558,7 @@ pub(crate) fn run_correction_engine(
             let proposals = corrector.propose(content, &ctx)?;
 
             for p in proposals {
-                let key = (rel_path.to_string(), p.byte_offset);
-                if claimed.contains(&key) {
+                if claimed.iter().any(|(path, off, _)| path == rel_path && *off == p.byte_offset) {
                     continue;
                 }
                 let (line, col) = scan::byte_offset_to_line_col(content, p.byte_offset);
@@ -614,8 +613,7 @@ pub(crate) fn run_correction_engine(
             let proposals = corrector.propose(content, &ctx)?;
 
             for p in proposals {
-                let key = (rel_path.to_string(), p.byte_offset);
-                if claimed.contains(&key) {
+                if claimed.iter().any(|(path, off, _)| path == rel_path && *off == p.byte_offset) {
                     continue;
                 }
                 let (line, col) = scan::byte_offset_to_line_col(content, p.byte_offset);
