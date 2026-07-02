@@ -146,6 +146,33 @@ pub struct TermUpdateArgs {
     pub delete_alias: Vec<String>,
     #[arg(long = "delete-tag", help = "Remove a tag from the term")]
     pub delete_tag: Vec<String>,
+    /// Append a correction to the term (repeatable). Defaults to word/match, required/fix.
+    #[arg(long = "add-correction", help = "Append a correction (ORIGINAL); defaults to word/required")]
+    pub add_correction: Vec<String>,
+    /// Set match kind of an existing correction: ORIGINAL:word|substring|pinyin (repeatable).
+    #[arg(
+        long = "correction-match",
+        value_name = "ORIGINAL:KIND",
+        help = "Set match kind of a correction: ORIGINAL:word|substring|pinyin"
+    )]
+    pub correction_match: Vec<String>,
+    /// Set fix kind of an existing correction: ORIGINAL:required|suggested (repeatable).
+    #[arg(
+        long = "correction-fix",
+        value_name = "ORIGINAL:KIND",
+        help = "Set fix kind of a correction: ORIGINAL:required|suggested"
+    )]
+    pub correction_fix: Vec<String>,
+    /// Set pinyin of an existing correction: ORIGINAL:PINYIN (repeatable).
+    #[arg(
+        long = "correction-pinyin",
+        value_name = "ORIGINAL:PINYIN",
+        help = "Set pinyin of a correction: ORIGINAL:PINYIN"
+    )]
+    pub correction_pinyin: Vec<String>,
+    /// Delete a correction by original text (repeatable).
+    #[arg(long = "delete-correction", help = "Delete a correction by ORIGINAL")]
+    pub delete_correction: Vec<String>,
     /// Misrecognition corrections are not supported on `term update`.
     /// Use `mf term correction add` or `mf term new --misrecognition` instead.
     #[arg(long = "misrecognition", hide = true)]
@@ -340,6 +367,11 @@ fn update_input<'a>(args: &'a TermUpdateArgs) -> term_svc::TermUpdate<'a> {
         tags: &args.tag,
         delete_aliases: &args.delete_alias,
         delete_tags: &args.delete_tag,
+        add_corrections: &args.add_correction,
+        delete_corrections: &args.delete_correction,
+        correction_matches: &args.correction_match,
+        correction_fixes: &args.correction_fix,
+        correction_pinyins: &args.correction_pinyin,
     }
 }
 
@@ -886,6 +918,28 @@ fn handle_update(args: TermUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutcom
     if !args.delete_tag.is_empty() {
         changes.insert("tags".to_string(), serde_json::json!({"deleted": args.delete_tag}));
     }
+    // Group add + delete under one `corrections` object so a combined
+    // `--add-correction … --delete-correction …` call reports both (a second
+    // `insert` on the same key would otherwise overwrite the first).
+    if !args.add_correction.is_empty() || !args.delete_correction.is_empty() {
+        let mut corrections = serde_json::Map::new();
+        if !args.add_correction.is_empty() {
+            corrections.insert("added".to_string(), serde_json::json!(args.add_correction));
+        }
+        if !args.delete_correction.is_empty() {
+            corrections.insert("deleted".to_string(), serde_json::json!(args.delete_correction));
+        }
+        changes.insert("corrections".to_string(), serde_json::Value::Object(corrections));
+    }
+    if !args.correction_match.is_empty() {
+        changes.insert("correction_match".to_string(), serde_json::json!(args.correction_match));
+    }
+    if !args.correction_fix.is_empty() {
+        changes.insert("correction_fix".to_string(), serde_json::json!(args.correction_fix));
+    }
+    if !args.correction_pinyin.is_empty() {
+        changes.insert("correction_pinyin".to_string(), serde_json::json!(args.correction_pinyin));
+    }
 
     let mut result = VerbResult {
         verb: Verb::Update,
@@ -945,6 +999,22 @@ fn handle_update_dry_run(
     }
     if !update.delete_tags.is_empty() {
         planned.push(format!("remove {} tag(s)", update.delete_tags.len()));
+    }
+    // Correction operations must be previewed too (New A: dry-run parity).
+    if !update.add_corrections.is_empty() {
+        planned.push(format!("add {} correction(s)", update.add_corrections.len()));
+    }
+    if !update.delete_corrections.is_empty() {
+        planned.push(format!("remove {} correction(s)", update.delete_corrections.len()));
+    }
+    if !update.correction_matches.is_empty() {
+        planned.push(format!("set match kind on {} correction(s)", update.correction_matches.len()));
+    }
+    if !update.correction_fixes.is_empty() {
+        planned.push(format!("set fix kind on {} correction(s)", update.correction_fixes.len()));
+    }
+    if !update.correction_pinyins.is_empty() {
+        planned.push(format!("set pinyin on {} correction(s)", update.correction_pinyins.len()));
     }
 
     let scope_str = scope.as_str();

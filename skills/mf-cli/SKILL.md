@@ -123,6 +123,8 @@ Create an article. `<TITLE>` is the sole positional argument; the article type i
 `--tag <TAG>` — Tag (repeatable).
 `--draft` — Mark as draft.
 
+Template `## ` headings inside fenced code blocks are treated as body text, not block boundaries — templates can safely include prompt examples with code fences. `--dry-run` runs the same parse + block-slug validation as the real run, so both always agree on success or failure.
+
 JSON envelope `details`: `template`, `shape` (`directory`|`file`), `path`, `files`, `typora_front_matter_injected` (bool), `typora_copy_images_to` (string|null). When the Typora plugin is enabled, each generated file starts with a YAML front-matter block containing `typora-copy-images-to` pointing to the project assets directory.
 
 **`mf article list`** (alias `ls`) — List articles. When run outside a project dir without `--project`, auto-matches all projects and sorts by most recently modified.
@@ -235,8 +237,7 @@ Create a term (mf extension).
 **`mf term show <TERM>`** — Show term details (term + corrections sub-section).
 
 **`mf term update <TERM>`**
-Update term metadata. Rejects `--misrecognition` (use `mf term correction add` instead).
-Correction edits go through `mf term correction update`/`remove`.
+Update term metadata and corrections.
 `--definition <TEXT>` — Update definition
 `--description <TEXT>` — Update description (`--clear-description` to unset)
 `--confidence <N>` — Update confidence 0.0–1.0 (`--clear-confidence` to unset)
@@ -244,6 +245,11 @@ Correction edits go through `mf term correction update`/`remove`.
 `--tag <TAG>` — Add tag (repeatable)
 `--delete-alias <TEXT>` — Remove an alias (repeatable)
 `--delete-tag <TAG>` — Remove a tag (repeatable)
+`--add-correction <ORIGINAL>` — Append a correction (defaults to word/required; repeatable)
+`--correction-match <ORIGINAL:KIND>` — Set match kind of a correction (repeatable)
+`--correction-fix <ORIGINAL:KIND>` — Set fix kind of a correction (repeatable)
+`--correction-pinyin <ORIGINAL:PINYIN>` — Set pinyin of a correction (repeatable)
+`--delete-correction <ORIGINAL>` — Delete a correction by original (repeatable)
 `--dry-run` — Preview planned changes without writing
 
 **`mf term correction <SUBCOMMAND>`** — Manage corrections as a first-class subresource.
@@ -271,7 +277,7 @@ Rename a term.
 **`mf term remove <TERM>`** (alias `rm`) — Remove a term. Interactive TTY confirmation unless `--yes` or `--force` is set.
 
 **`mf term lint [PATH]`**
-Lint term consistency in project docs. Detects misrecognized terms using configurable `Correction.match` modes: `word` (default — ASCII word boundaries; CJK requires a non-CJK neighbor), `substring` (exact match anywhere), or `pinyin` (tone-less pinyin scan with auto-conversion for CJK terms). Pinyin findings are always `fix: suggested` (trailing `?` marker).
+Lint term consistency in project docs. Detects misrecognized terms using configurable `Correction.match` modes: `word` (default — ASCII word boundaries; CJK uses jieba word segmentation so both edges must align with token boundaries), `substring` (exact match anywhere, bypasses jieba), or `pinyin` (tone-less pinyin scan with auto-conversion for CJK terms). Pinyin findings are always `fix: suggested` (trailing `?` marker).
 `--fix` — Auto-correct term usage in docs (pair with `--dry-run` to preview). Non-TTY exits 2 unless `-y`/`--force` is passed.
 `--term <NAME>` — Repeatable; scope to one or more named terms (case-sensitive exact canonical name match). When omitted, all terms are scanned. Unknown name exits 2 with no edits.
 `--article <SLUG>` — Set `target_type: "article"` in JSON output; scope hint for downstream tooling.
@@ -289,7 +295,7 @@ Accepts a repeatable `--term <NAME>` (canonical name, case-sensitive exact match
 `-o`, `--output <PATH>` — Output file path
 `--dry-run` — Show build plan without rendering
 
-`ARTICLE` may be an indexed article name/slug or a repo-relative path prefixed with `@`, such as `@projects/blog/docs/2026-03-review/`. Directory articles are built by merging Markdown files in filename order.
+`ARTICLE` may be an indexed article name/slug or a repo-relative path prefixed with `@`, such as `@projects/blog/docs/2026-03-review/`. Directory articles are built by merging Markdown files in filename order. Relative image/link/reference paths are automatically rewritten to resolve from the output directory; paths inside fenced code blocks, absolute paths, and URLs are left unchanged.
 
 ### `mf publish` — Publish articles and manage targets
 
@@ -297,7 +303,9 @@ Subcommands: `run`, `update`, `target`.
 
 **`mf publish run <ARTICLE>`**
 Publish article to a target (supported: `local`, `yuque-prompt`).
-`--target <TARGET>` — Publish target
+`--target <TARGET>` — Publish target (optional when `publish.default_target` is configured)
+
+Without `--target`, `mf` resolves the configured `publish.default_target` from `mind.yaml`. File-based publishers (`.mind-forge/publisher/<name>.yaml`) are discovered for both explicit and default targets. Local publishers honor `config.prefix` for the destination filename.
 
 **`mf publish update <ARTICLE>`**
 Update a `publish_records` entry in `mind-index.yaml`.
@@ -404,6 +412,7 @@ mf build my-first-post --project my-project
 mf build @projects/my-project/docs/2026-03-review/ --output ./_build/review.md
 mf build my-first-post --dry-run --project my-project
 mf publish run "My First Post" --target local --project my-project
+mf publish run "My First Post"                         # uses publish.default_target
 mf publish run "My First Post" --target yuque-prompt --project my-project
 mf publish update "My First Post" --target local --set status=published --project my-project
 mf publish target list
@@ -423,10 +432,14 @@ mf term list --scope global                                  # global pool only
 mf term show Zettelkasten --project my-project
 mf term update "API" --definition "Updated definition" --project my-project
 mf term update "API" --tag tech --delete-alias "old-alias" --dry-run  # preview update
-mf term correction add "API" "api" "API"                     # add correction
+mf term update "API" --add-correction "api" --project my-project       # add correction inline
+mf term update "API" --correction-match "api:substring"                # set match kind
+mf term update "API" --correction-fix "api:suggested"                  # set fix kind
+mf term update "API" --delete-correction "api"                         # remove correction
+mf term correction add "API" "api" "API"                     # add correction (subcommand)
 mf term correction list "API"                                # list corrections
 mf term correction update "API" "api" --fix suggested        # update correction attribute
-mf term correction remove "API" "api"                        # remove correction
+mf term correction remove "API" "api"                        # remove correction (subcommand)
 mf term move "API" --to-global                               # project → global
 mf term mv "API" --from-global --to-project my-project       # global → project (alias)
 mf term rename "API" "Application API" --keep-alias --project my-project
@@ -467,6 +480,6 @@ mf version --json
 - Destructive verbs (`remove`, `archive`) prompt on `/dev/tty` in interactive shells. In scripts/CI pass `--yes` to confirm; add `--force` separately only when bypassing overwrite or referential-integrity checks is intended.
 - `term lint --fix` and `term fix` treat `--force` as an alias for `--yes`; do not generalize that exception to entity removal.
 - `term fix` and `term lint --fix` accept `--term <NAME>` (repeatable) to scope corrections to named terms. Matching is case-sensitive exact on canonical name. Unknown term names exit 2 with no edits. Run `mf term correction remove <TERM> <ORIGINAL>` to delete a single correction.
-- `term update` manages term metadata and corrections. `term fix` is a first-class alias for `term lint --fix`.
+- `term update` manages term metadata and corrections via `--add-correction`, `--correction-match`/`--correction-fix`/`--correction-pinyin`, and `--delete-correction`. Setting an attribute for a non-existent original exits 2 with a hint pointing to `--add-correction`. `term fix` is a first-class alias for `term lint --fix`.
 - `article convert` evaluates eligible articles project-wide; it does not take an article selector.
 - `mf init` is the preferred bootstrap command; `mf config init` remains deprecated compatibility.

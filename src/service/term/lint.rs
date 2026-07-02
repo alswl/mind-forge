@@ -15,6 +15,7 @@ mod fix;
 mod front_matter;
 mod pinyin;
 mod scan;
+mod segment;
 
 use self::exempt::strip_exempt_regions;
 pub(crate) use self::fix::{apply_fixes, FixSpan};
@@ -463,7 +464,19 @@ pub(crate) fn scan_content(
     claimed: &mut BTreeSet<(String, usize, usize)>,
 ) {
     let sanitized = strip_exempt_regions(content, fm_end);
-    scan_file_for_corrections(content, &sanitized, correction_refs, rel_path, findings, internal_findings, claimed);
+    // Compute jieba token boundaries once per document for CJK word-boundary
+    // checks (Bug #5/#8 fix). Deterministic, O(n) over document length.
+    let jieba = segment::JiebaBoundaries::segment(content);
+    scan_file_for_corrections(
+        content,
+        &sanitized,
+        correction_refs,
+        rel_path,
+        findings,
+        internal_findings,
+        claimed,
+        Some(&jieba),
+    );
     pinyin::scan_for_pinyin(content, &sanitized, rel_path, correction_refs, findings, internal_findings, claimed);
 }
 

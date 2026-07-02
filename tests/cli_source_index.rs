@@ -392,3 +392,74 @@ assets:
     assert!(index_content.contains("assets:"), "assets section should be preserved");
     assert!(index_content.contains("logo"), "asset entry should be preserved");
 }
+
+// ── US3 (Bug #7): source index rebuild + idempotent ──
+
+/// T019: idempotent re-run: +0 =N -0 when nothing changed.
+#[test]
+fn index_idempotent_rerun_no_changes() {
+    let (repo, _project) = setup();
+    // First run: index already matches disk
+    let output1 = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "source", "index", "--project", "alpha"])
+        .output()
+        .unwrap();
+    assert!(output1.status.success(), "first run; stderr: {}", String::from_utf8_lossy(&output1.stderr));
+
+    // Second run: nothing changed
+    let output2 = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "source", "index", "--project", "alpha"])
+        .output()
+        .unwrap();
+    assert!(output2.status.success(), "second run; stderr: {}", String::from_utf8_lossy(&output2.stderr));
+    let stdout2 = String::from_utf8(output2.stdout).unwrap();
+    assert!(stdout2.contains("+0"), "should show 0 added: {stdout2}");
+    assert!(stdout2.contains("=3"), "should show 3 kept: {stdout2}");
+    assert!(stdout2.contains("-0"), "nothing should be removed: {stdout2}");
+}
+
+/// T019: rebuild from emptied index recovers files from disk.
+#[test]
+fn index_rebuilds_from_emptied_index() {
+    let (repo, project) = setup();
+    // Remove the index entries but leave the disk files
+    let empty_index = "schema_version: '1'\n";
+    common::write_index(&repo, "alpha", empty_index);
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "source", "index", "--project", "alpha"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    // Should find the pdf file on disk
+    assert!(stdout.contains("+1"), "should add 1 source from disk, got: {stdout}");
+
+    // Verify the index was written with the recovered entry
+    let index_content = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert!(index_content.contains("paper.pdf"), "recovered index should mention paper.pdf");
+}
+
+/// T019: files directly under sources/ (not in a named subdir) are discovered.
+#[test]
+fn index_discovers_top_level_sources_files() {
+    let (repo, project) = setup();
+    // Write a file directly under sources/
+    std::fs::write(project.join("sources/notes.txt"), b"top level notes").unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "source", "index", "--project", "alpha"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("+1"), "should discover top-level sources/ file: {stdout}");
+
+    // Check that the file is in the updated index
+    let index_content = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert!(index_content.contains("notes"), "index must include top-level file");
+}

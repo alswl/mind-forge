@@ -191,6 +191,12 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
                 } else {
                     format!("{}/{}", layout.articles, filename)
                 };
+
+                // Bug #10 fix: dry-run must run the same parse + block-slug
+                // validation as the real run so outcomes always agree.
+                let resolved = article_svc::resolve_template(&project_path, &args.template, &args.title)?;
+                article_svc::validate_template_blocks(&resolved)?;
+
                 let result = VerbResult {
                     verb: Verb::Create,
                     kind: "article",

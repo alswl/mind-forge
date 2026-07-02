@@ -1,6 +1,5 @@
 ---
 source: tests/cli_help.rs
-assertion_line: 194
 expression: stdout
 ---
 Update term metadata
@@ -11,23 +10,53 @@ Arguments:
   <TERM>  
 
 Options:
-      --definition <DEFINITION>      
-      --root <PATH>                  Mind Repo root directory
-      --config <PATH>                Config file path
-      --description <DESCRIPTION>    
-      --clear-description            
-  -v, --verbose...                   Verbose output
-      --confidence <CONFIDENCE>      
-  -q, --quiet                        Silence non-error output
-      --clear-confidence             
-  -o, --output <FORMAT>              Output format [default: text] [possible values: text, json]
-      --alias <ALIAS>                
-      --json                         Shorthand for --output json
-      --no-color                     Disable colored output
-      --tag <TAG>                    
-      --delete-alias <DELETE_ALIAS>  Remove an alias from the term
-  -p, --project <NAME>               Project name for project-scoped operations
-      --delete-tag <DELETE_TAG>      Remove a tag from the term
-      --dry-run                      Preview changes without writing
-  -h, --help                         Print help
-  -V, --version                      Print version
+      --definition <DEFINITION>
+          
+      --root <PATH>
+          Mind Repo root directory
+      --config <PATH>
+          Config file path
+      --description <DESCRIPTION>
+          
+      --clear-description
+          
+  -v, --verbose...
+          Verbose output
+      --confidence <CONFIDENCE>
+          
+  -q, --quiet
+          Silence non-error output
+      --clear-confidence
+          
+  -o, --output <FORMAT>
+          Output format [default: text] [possible values: text, json]
+      --alias <ALIAS>
+          
+      --json
+          Shorthand for --output json
+      --no-color
+          Disable colored output
+      --tag <TAG>
+          
+      --delete-alias <DELETE_ALIAS>
+          Remove an alias from the term
+  -p, --project <NAME>
+          Project name for project-scoped operations
+      --delete-tag <DELETE_TAG>
+          Remove a tag from the term
+      --add-correction <ADD_CORRECTION>
+          Append a correction (ORIGINAL); defaults to word/required
+      --correction-match <ORIGINAL:KIND>
+          Set match kind of a correction: ORIGINAL:word|substring|pinyin
+      --correction-fix <ORIGINAL:KIND>
+          Set fix kind of a correction: ORIGINAL:required|suggested
+      --correction-pinyin <ORIGINAL:PINYIN>
+          Set pinyin of a correction: ORIGINAL:PINYIN
+      --delete-correction <DELETE_CORRECTION>
+          Delete a correction by ORIGINAL
+      --dry-run
+          Preview changes without writing
+  -h, --help
+          Print help
+  -V, --version
+          Print version

@@ -57,6 +57,38 @@ pub struct TermUpdate<'a> {
     pub tags: &'a [String],
     pub delete_aliases: &'a [String],
     pub delete_tags: &'a [String],
+    /// Correction additions: each string is the `original` text; `correct` defaults
+    /// to empty (placeholder entry). Match defaults to Word, Fix to Required.
+    pub add_corrections: &'a [String],
+    /// Corrections to delete by original text.
+    pub delete_corrections: &'a [String],
+    /// Correction attribute updates: each string is `original:value`, split on first ':'.
+    pub correction_matches: &'a [String],
+    pub correction_fixes: &'a [String],
+    pub correction_pinyins: &'a [String],
+}
+
+/// Parsed representation of a "KEY:VALUE" correction attribute argument.
+struct CorrectionAttr {
+    original: String,
+    value: String,
+}
+
+/// Split `raw` on the first `:`. Returns an error if no `:` is present.
+fn parse_correction_attr(raw: &str, flag_name: &str) -> crate::error::Result<CorrectionAttr> {
+    let (orig, val) = raw.split_once(':').ok_or_else(|| {
+        MfError::usage(
+            format!("invalid {flag_name} '{raw}'; expected ORIGINAL:VALUE"),
+            Some(format!("example: --{flag_name} 'wrong-char:correct-char'")),
+        )
+    })?;
+    if orig.is_empty() {
+        return Err(MfError::usage(
+            format!("{flag_name} ORIGINAL cannot be empty in '{raw}'"),
+            Some("provide a non-empty original text".to_string()),
+        ));
+    }
+    Ok(CorrectionAttr { original: orig.to_string(), value: val.to_string() })
 }
 
 impl<'a> TermUpdate<'a> {

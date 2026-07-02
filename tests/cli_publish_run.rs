@@ -1454,3 +1454,258 @@ articles:\n  - title: My Article\n    project: my-project\n    type: blog\n    a
     let expected = project_canonical.join("dist/out/my-article.md").to_string_lossy().to_string();
     assert_eq!(dest, expected, "destination should match project-relative declaration base");
 }
+
+// ---------------------------------------------------------------------------
+// US1 (Bug #2): default_target resolves from file-based publishers
+// ---------------------------------------------------------------------------
+
+/// T006: no --target, `publish.default_target` names a file-based publisher →
+/// the publisher is discovered and used.
+#[test]
+fn default_target_resolves_file_based_publisher() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = common::setup_repo();
+    let project_name = "my-project";
+    let project_path = repo.path().join(project_name);
+    fs::create_dir_all(&project_path).unwrap();
+
+    // mind.yaml with default_target pointing to a file-based publisher, no mind.yaml targets
+    let mind_yaml = format!(
+        "schema_version: '1'\n\
+project:\n  name: {project_name}\n\
+build:\n  output_dir: _build\n  format: md\n\
+publish:\n  default_target: default-pub\n"
+    );
+    fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
+
+    let index_yaml = "schema_version: '1'\n\
+articles:\n  - title: My Article\n    project: my-project\n    type: blog\n    article_path: docs/my-article.md\n    status: draft\n    created_at: '2026-07-01T00:00:00Z'\n    updated_at: '2026-07-01T00:00:00Z'\n";
+    fs::write(project_path.join("mind-index.yaml"), index_yaml).unwrap();
+
+    fs::create_dir_all(project_path.join("docs")).unwrap();
+    fs::write(project_path.join("docs/my-article.md"), ARTICLE_BODY).unwrap();
+
+    fs::create_dir_all(project_path.join("_build")).unwrap();
+    fs::write(project_path.join("_build/my-article.md"), ARTICLE_BODY).unwrap();
+
+    // File-based publisher at .mind-forge/publisher/default-pub.yaml
+    common::write_publisher_yaml(
+        &repo,
+        "default-pub",
+        &format!("type: local\nenabled: true\nconfig:\n  path: {}\n", dest_root.path().display()),
+    );
+
+    // Run without --target — should resolve via default_target
+    let out = run_publish(&repo, &["publish", "run", ARTICLE]);
+    assert_eq!(out.status.code(), Some(0), "exit 0 expected; stderr={}", String::from_utf8_lossy(&out.stderr));
+
+    let dest_file = dest_root.path().join("my-article.md");
+    assert!(dest_file.exists(), "destination file must exist for default_target file-based publisher");
+    assert_eq!(fs::read(&dest_file).unwrap(), ARTICLE_BODY, "destination file content mismatch");
+}
+
+/// T006 (JSON): default_target resolution produces correct JSON envelope.
+#[test]
+fn default_target_resolves_file_based_publisher_json() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = common::setup_repo();
+    let project_name = "my-project";
+    let project_path = repo.path().join(project_name);
+    fs::create_dir_all(&project_path).unwrap();
+
+    let mind_yaml = format!(
+        "schema_version: '1'\n\
+project:\n  name: {project_name}\n\
+build:\n  output_dir: _build\n  format: md\n\
+publish:\n  default_target: default-pub\n"
+    );
+    fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
+
+    let index_yaml = "schema_version: '1'\n\
+articles:\n  - title: My Article\n    project: my-project\n    type: blog\n    article_path: docs/my-article.md\n    status: draft\n    created_at: '2026-07-01T00:00:00Z'\n    updated_at: '2026-07-01T00:00:00Z'\n";
+    fs::write(project_path.join("mind-index.yaml"), index_yaml).unwrap();
+
+    fs::create_dir_all(project_path.join("docs")).unwrap();
+    fs::write(project_path.join("docs/my-article.md"), ARTICLE_BODY).unwrap();
+
+    fs::create_dir_all(project_path.join("_build")).unwrap();
+    fs::write(project_path.join("_build/my-article.md"), ARTICLE_BODY).unwrap();
+
+    common::write_publisher_yaml(
+        &repo,
+        "default-pub",
+        &format!("type: local\nenabled: true\nconfig:\n  path: {}\n", dest_root.path().display()),
+    );
+
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE]);
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["status"], "ok");
+    let data = &v["data"];
+    assert_eq!(data["target_name"], "default-pub");
+    assert_eq!(data["target_type"], "local");
+    assert_eq!(data["dry_run"], false);
+    assert!(data["destination"].is_string());
+}
+
+/// T006: default_target with --dry-run resolves but does not write.
+#[test]
+fn default_target_dry_run_resolves_file_based_publisher() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = common::setup_repo();
+    let project_name = "my-project";
+    let project_path = repo.path().join(project_name);
+    fs::create_dir_all(&project_path).unwrap();
+
+    let mind_yaml = format!(
+        "schema_version: '1'\n\
+project:\n  name: {project_name}\n\
+build:\n  output_dir: _build\n  format: md\n\
+publish:\n  default_target: default-pub\n"
+    );
+    fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
+
+    let index_yaml = "schema_version: '1'\n\
+articles:\n  - title: My Article\n    project: my-project\n    type: blog\n    article_path: docs/my-article.md\n    status: draft\n    created_at: '2026-07-01T00:00:00Z'\n    updated_at: '2026-07-01T00:00:00Z'\n";
+    fs::write(project_path.join("mind-index.yaml"), index_yaml).unwrap();
+
+    fs::create_dir_all(project_path.join("docs")).unwrap();
+    fs::write(project_path.join("docs/my-article.md"), ARTICLE_BODY).unwrap();
+
+    fs::create_dir_all(project_path.join("_build")).unwrap();
+    fs::write(project_path.join("_build/my-article.md"), ARTICLE_BODY).unwrap();
+
+    common::write_publisher_yaml(
+        &repo,
+        "default-pub",
+        &format!("type: local\nenabled: true\nconfig:\n  path: {}\n", dest_root.path().display()),
+    );
+
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--dry-run"]);
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["status"], "ok");
+    assert_eq!(v["data"]["target_name"], "default-pub");
+    assert_eq!(v["data"]["dry_run"], true);
+    assert!(!dest_root.path().join("my-article.md").exists(), "no file written on dry-run");
+}
+
+/// T007: no --target and no default_target → exit 2 usage error.
+#[test]
+fn no_target_and_no_default_target_is_usage_error() {
+    let _dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets(""); // no mind.yaml targets, no default_target
+
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE]);
+    assert_eq!(out.status.code(), Some(2));
+    let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
+    assert_eq!(v["error"]["kind"], "usage");
+    assert!(
+        v["error"]["message"].as_str().unwrap_or("").contains("no --target"),
+        "should mention no target: {}",
+        v["error"]["message"]
+    );
+}
+
+/// T007: explicit --target overrides configured default_target.
+#[test]
+fn explicit_target_overrides_default_target() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let other_dest = tempfile::tempdir().unwrap();
+    let repo = common::setup_repo();
+    let project_name = "my-project";
+    let project_path = repo.path().join(project_name);
+    fs::create_dir_all(&project_path).unwrap();
+
+    let mind_yaml = format!(
+        "schema_version: '1'\n\
+project:\n  name: {project_name}\n\
+build:\n  output_dir: _build\n  format: md\n\
+publish:\n  default_target: default-pub\n\
+  targets:\n    - name: explicit-pub\n      type: local\n      enabled: true\n      config:\n        path: {}\n",
+        other_dest.path().display()
+    );
+    fs::write(project_path.join("mind.yaml"), mind_yaml).unwrap();
+
+    let index_yaml = "schema_version: '1'\n\
+articles:\n  - title: My Article\n    project: my-project\n    type: blog\n    article_path: docs/my-article.md\n    status: draft\n    created_at: '2026-07-01T00:00:00Z'\n    updated_at: '2026-07-01T00:00:00Z'\n";
+    fs::write(project_path.join("mind-index.yaml"), index_yaml).unwrap();
+
+    fs::create_dir_all(project_path.join("docs")).unwrap();
+    fs::write(project_path.join("docs/my-article.md"), ARTICLE_BODY).unwrap();
+    fs::create_dir_all(project_path.join("_build")).unwrap();
+    fs::write(project_path.join("_build/my-article.md"), ARTICLE_BODY).unwrap();
+
+    // default-target would try "default-pub" (file-based, doesn't exist for this test)
+    common::write_publisher_yaml(
+        &repo,
+        "explicit-pub",
+        &format!("type: local\nenabled: true\nconfig:\n  path: {}\n", dest_root.path().display()),
+    );
+
+    // Use explicit --target, should override default_target
+    let out = run_publish(&repo, &["publish", "run", ARTICLE, "--target", "explicit-pub"]);
+    assert_eq!(out.status.code(), Some(0), "exit 0 expected; stderr={}", String::from_utf8_lossy(&out.stderr));
+
+    assert!(dest_root.path().join("my-article.md").exists(), "explicit target should be used");
+}
+
+// ---------------------------------------------------------------------------
+// US1 (Bug #6): local config.prefix
+// ---------------------------------------------------------------------------
+
+/// T008: file-based local publisher with config.prefix produces prefixed destination.
+#[test]
+fn file_based_publisher_applies_config_prefix() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets("");
+    common::write_publisher_yaml(
+        &repo,
+        "prefixed",
+        &format!("type: local\nenabled: true\nconfig:\n  path: {}\n  prefix: cie-\n", dest_root.path().display()),
+    );
+
+    let out = run_publish(&repo, &["publish", "run", ARTICLE, "--target", "prefixed"]);
+    assert_eq!(out.status.code(), Some(0), "exit 0 expected; stderr={}", String::from_utf8_lossy(&out.stderr));
+
+    let dest_file = dest_root.path().join("cie-my-article.md");
+    assert!(dest_file.exists(), "destination must include config.prefix: {dest_file:?}");
+    assert_eq!(fs::read(&dest_file).unwrap(), ARTICLE_BODY);
+}
+
+/// T008: config.prefix is reflected in JSON data.destination.
+#[test]
+fn config_prefix_reflected_in_json_destination() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets("");
+    common::write_publisher_yaml(
+        &repo,
+        "prefixed",
+        &format!("type: local\nenabled: true\nconfig:\n  path: {}\n  prefix: cie-\n", dest_root.path().display()),
+    );
+
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "prefixed", "--dry-run"]);
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let dest = v["data"]["destination"].as_str().unwrap();
+    assert!(dest.ends_with("/cie-my-article.md"), "JSON destination should include config.prefix: {dest}");
+}
+
+/// T008: absent config.prefix → no prefix in filename (unchanged behavior).
+#[test]
+fn absent_config_prefix_has_no_prefix() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets("");
+    common::write_publisher_yaml(
+        &repo,
+        "no-prefix",
+        &format!("type: local\nenabled: true\nconfig:\n  path: {}\n", dest_root.path().display()),
+    );
+
+    let out =
+        run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "no-prefix", "--dry-run"]);
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let dest = v["data"]["destination"].as_str().unwrap();
+    assert!(dest.ends_with("/my-article.md"), "JSON destination should NOT include any prefix: {dest}");
+}

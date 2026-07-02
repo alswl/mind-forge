@@ -67,6 +67,34 @@ fn resolve_custom_template_path(project_path: &Path, template_arg: &str) -> Resu
     Ok(tmpl_path)
 }
 
+/// Resolve a template argument into the body string.
+///
+/// Checks builtin templates first, then falls back to a project-root-relative
+/// file lookup. Used by both the real and dry-run article creation paths.
+pub fn resolve_template(project_path: &Path, template_arg: &str, title: &str) -> Result<String> {
+    if let Some((body, _at)) = builtin_template(template_arg) {
+        return Ok(body.replace("{title}", title));
+    }
+    let tmpl_path = resolve_custom_template_path(project_path, template_arg)?;
+    let body = fs::read_to_string(&tmpl_path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            MfError::UnknownTemplate { name: template_arg.to_string() }
+        } else {
+            MfError::Io(e)
+        }
+    })?;
+    Ok(body.replace("{title}", title))
+}
+
+/// Validate that a resolved template body parses without duplicate block slugs.
+///
+/// Runs `split_template_into_blocks` and discards the result on success.
+/// Returns [`MfError::DuplicateBlockSlug`] when validation fails.
+pub fn validate_template_blocks(resolved: &str) -> Result<()> {
+    split_template_into_blocks(resolved)?;
+    Ok(())
+}
+
 /// Split a resolved template body into block files for a directory article.
 ///
 /// LF-normalises input, scans for `^## ` headings, and returns a vector of
@@ -86,13 +114,21 @@ fn split_template_into_blocks(resolved: &str) -> Result<Vec<(String, String)>> {
     let mut head_lines: Vec<&str> = Vec::new();
     let mut current_h2: Option<&str> = None;
     let mut current_body: Vec<&str> = Vec::new();
+    let mut fence_tracker = crate::service::util::markdown::FenceTracker::new();
 
     for line in &lines {
-        if let Some(h2_text) = line.strip_prefix("## ") {
-            if let Some(h2_text) = current_h2.take() {
-                let slug = util::to_filename(h2_text.trim());
+        let inside_fence =
+            matches!(fence_tracker.process_line(line), crate::service::util::markdown::FenceStatus::Inside);
+        // `## ` headings inside fenced code blocks are body text, not block
+        // boundaries (Bug #10 fix) — an in-fence heading falls through to the
+        // ordinary line branches below.
+        if let Some(h2_text) = line.strip_prefix("## ").filter(|_| !inside_fence) {
+            // Real heading outside a fence — close current block (if any)
+            // and start a new one.
+            if let Some(prev_h2) = current_h2.take() {
+                let slug = util::to_filename(prev_h2.trim());
                 let body = current_body.join("\n");
-                raw.push(Block { h2_text: h2_text.to_string(), slug, body });
+                raw.push(Block { h2_text: prev_h2.to_string(), slug, body });
             } else {
                 let body = head_lines.join("\n");
                 raw.push(Block { h2_text: String::new(), slug: String::new(), body });
@@ -916,7 +952,10 @@ fn scan_md_dir(dir_path: &Path, rel_dir: &str, scanned: &mut Vec<ScannedArticle>
     let entries = fs::read_dir(dir_path).map_err(MfError::Io)?;
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some(defaults::MARKDOWN_EXTENSION) {
+        let ft = entry.file_type().map_err(MfError::Io)?;
+
+        // Single-file article: a .md file directly in the docs dir.
+        if ft.is_file() && path.extension().and_then(|e| e.to_str()) == Some(defaults::MARKDOWN_EXTENSION) {
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                 let title = stem.replace('-', " ");
                 scanned.push(ScannedArticle {
@@ -925,6 +964,34 @@ fn scan_md_dir(dir_path: &Path, rel_dir: &str, scanned: &mut Vec<ScannedArticle>
                     article_dir: Some(rel_dir.to_string()),
                     article_path: None,
                 });
+            }
+        }
+
+        // Directory-type article: a sub-directory containing at least one
+        // NN-*.md file (Bug #3 fix). Created by `article new --force`.
+        if ft.is_dir() {
+            let name = path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            if name.starts_with('.') {
+                continue;
+            }
+            if let Ok(dir_entries) = fs::read_dir(&path) {
+                let has_md_part = dir_entries.flatten().any(|e| {
+                    e.file_type().is_ok_and(|t| t.is_file())
+                        && e.path().extension().and_then(|s| s.to_str()) == Some(defaults::MARKDOWN_EXTENSION)
+                });
+                if has_md_part {
+                    let title = name.replace('-', " ");
+                    let dir_rel = format!("{}/{}", rel_dir, name);
+                    scanned.push(ScannedArticle {
+                        title,
+                        filename: name.clone(),
+                        article_dir: Some(dir_rel.clone()),
+                        // Directory-type article: article_path is the directory
+                        // itself (matching `article new`), NOT dir/<name>.md,
+                        // which does not exist (blocks Bug #3 build/publish).
+                        article_path: Some(dir_rel),
+                    });
+                }
             }
         }
     }
@@ -2531,6 +2598,28 @@ mod tests {
         assert_eq!(blocks[0].1, "# Title\n\nintro\n");
         assert_eq!(blocks[1].0, "02-summary.md");
         assert!(blocks[1].1.starts_with("## Summary"));
+    }
+
+    #[test]
+    fn split_ignores_h2_inside_fenced_code_block() {
+        // Bug #10: a `## ` heading inside a fence is body text, not a block
+        // boundary. Only the two real headings start blocks.
+        let input = "# T\n\n## Real One\n\n```md\n## Not A Heading\nmore fenced\n```\n\ntext\n\n## Real Two\n\nbody\n";
+        let blocks = split_template_into_blocks(input).unwrap();
+        assert_eq!(blocks.len(), 3, "head + two real headings only: {blocks:?}");
+        assert_eq!(blocks[1].0, "02-real-one.md");
+        assert!(blocks[1].1.contains("## Not A Heading"), "fenced heading stays in body: {:?}", blocks[1].1);
+        assert_eq!(blocks[2].0, "03-real-two.md");
+    }
+
+    #[test]
+    fn split_cjk_headings_produce_distinct_slugs() {
+        // Bug #10 residual: CJK headings must not all collapse to "untitled".
+        let input = "# 标题\n\n## 本周进展\n\na\n\n## 里程碑规划与进展\n\nb\n";
+        let blocks = split_template_into_blocks(input).unwrap();
+        assert_eq!(blocks.len(), 3);
+        assert_eq!(blocks[1].0, "02-本周进展.md");
+        assert_eq!(blocks[2].0, "03-里程碑规划与进展.md");
     }
 
     // ── article_file_mtime tests ──

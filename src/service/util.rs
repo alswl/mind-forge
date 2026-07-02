@@ -1,6 +1,7 @@
-//! Shared utilities: atomic write, schema version validation.
+//! Shared utilities: atomic write, schema version validation, markdown helpers.
 
 pub mod filename_date;
+pub mod markdown;
 pub mod path;
 pub mod path_template;
 
@@ -135,6 +136,10 @@ pub fn to_filename(raw: &str) -> String {
         .map(|c| match c {
             'a'..='z' | '0'..='9' => c,
             ' ' | '_' | '.' => '-',
+            // Preserve non-ASCII letters/ideographs (e.g. CJK) so headings like
+            // "本周进展" produce distinct, readable slugs instead of collapsing
+            // to "untitled" and colliding (Bug #10 residual).
+            _ if c.is_alphanumeric() => c,
             _ => '-',
         })
         .collect();
@@ -315,6 +320,31 @@ pub fn canonicalize_within(root: &Path, target: &Path) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- to_filename ---
+
+    #[test]
+    fn test_to_filename_ascii_unchanged() {
+        assert_eq!(to_filename("Hello World"), "hello-world");
+        assert_eq!(to_filename("Foo_Bar.Baz"), "foo-bar-baz");
+        assert_eq!(to_filename("  --a--  "), "a");
+    }
+
+    #[test]
+    fn test_to_filename_empty_is_untitled() {
+        assert_eq!(to_filename("!!!"), "untitled");
+        assert_eq!(to_filename(""), "untitled");
+    }
+
+    #[test]
+    fn test_to_filename_preserves_cjk() {
+        // CJK headings must produce distinct, readable slugs (Bug #10 residual).
+        assert_eq!(to_filename("本周进展"), "本周进展");
+        assert_eq!(to_filename("里程碑规划与进展"), "里程碑规划与进展");
+        assert_ne!(to_filename("本周进展"), to_filename("里程碑规划与进展"));
+        // Mixed CJK + ASCII keeps both, punctuation becomes a separator.
+        assert_eq!(to_filename("Agent 建站周报"), "agent-建站周报");
+    }
 
     // --- validate_schema_version & schema alias ---
 

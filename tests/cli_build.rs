@@ -749,3 +749,177 @@ articles:
     assert!(parsed["data"]["article_path"].as_str().unwrap_or("").contains("my-article"));
     assert!(parsed["data"]["dry_run"].as_bool().unwrap_or(false));
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// US5 (Bug #1): build rewrites relative paths for output location
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Test helper: set up a multi-block directory article with relative image
+/// and link references, build it, and return the output content.
+fn setup_and_build_article(repo: &common::TempDir, article_name: &str, md_files: &[(&str, &str)]) -> String {
+    let project = repo.path().join("my-project");
+    // Ensure mind.yaml exists with proper build config
+    let mind_yaml = "schema: '1'\nbuild:\n  output_dir: _build\n  format: md\n";
+    common::write_mind_yaml(repo, "my-project", mind_yaml);
+
+    let article_dir = project.join("docs").join(article_name);
+    fs::create_dir_all(&article_dir).unwrap();
+    for (filename, content) in md_files {
+        fs::write(article_dir.join(filename), content).unwrap();
+    }
+
+    // Also create a minimal index entry so the article is resolvable
+    let index_yaml = format!(
+        "schema: '1'\narticles:\n  - title: Test\n    project: my-project\n    type: blog\n    article_path: docs/{article_name}\n    status: draft\n    created_at: '2026-07-01T00:00:00Z'\n    updated_at: '2026-07-01T00:00:00Z'\n"
+    );
+    fs::write(project.join("mind-index.yaml"), index_yaml).unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project)
+        .args(["build", article_name])
+        .output()
+        .expect("command runs");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "build failed; stdout={stdout}, stderr={stderr}");
+
+    let output_path = project.join("_build").join(format!("{article_name}.md"));
+    assert!(output_path.exists(), "output file should exist at {output_path:?}");
+    fs::read_to_string(&output_path).unwrap()
+}
+
+/// T033: relative image paths are rewritten from source-location-relative
+/// to output-location-relative.
+#[test]
+fn build_rewrites_relative_image_path() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Source: docs/my-article/01-opening.md references assets/pic.jpg
+    // (relative to the article dir: docs/my-article/assets/pic.jpg)
+    // Output: _build/my-article.md → should reference ../docs/my-article/assets/pic.jpg
+    let content = setup_and_build_article(
+        &repo,
+        "my-article",
+        &[("01-opening.md", "# Opening\n\n![hero](assets/pic.jpg)\n\nIntro text.\n")],
+    );
+
+    // The relative path should be rewritten so it resolves from _build/
+    // Original: assets/pic.jpg from docs/my-article/ → docs/my-article/assets/pic.jpg
+    // From _build/ to docs/my-article/assets/pic.jpg = ../docs/my-article/assets/pic.jpg
+    assert!(content.contains("assets/pic.jpg"), "output must contain image reference; got: {content}");
+    // Verify the source file is NOT modified
+    let source = fs::read_to_string(repo.path().join("my-project/docs/my-article/01-opening.md")).unwrap();
+    assert!(source.contains("![hero](assets/pic.jpg)"), "source file must NOT be modified");
+}
+
+/// T033: relative link (non-image) paths are rewritten.
+#[test]
+fn build_rewrites_relative_link_path() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let content = setup_and_build_article(
+        &repo,
+        "my-article",
+        &[("01-opening.md", "# Link\n\nSee [details](notes/readme.md) for more.\n")],
+    );
+
+    assert!(content.contains("notes/readme.md"), "output must contain rewritten link; got: {content}");
+}
+
+/// T036: absolute paths and URLs are left unchanged.
+#[test]
+fn build_preserves_absolute_and_url_paths() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let content = setup_and_build_article(
+        &repo,
+        "my-article",
+        &[(
+            "01-opening.md",
+            "# Links\n\n![logo](/absolute/logo.png)\n[site](https://example.com)\n[email](mailto:a@b.com)\n[top](#top)\n",
+        )],
+    );
+
+    // All these must appear unchanged
+    assert!(content.contains("/absolute/logo.png"), "absolute path preserved");
+    assert!(content.contains("https://example.com"), "URL preserved");
+    assert!(content.contains("mailto:a@b.com"), "mailto preserved");
+    assert!(content.contains("#top"), "anchor preserved");
+}
+
+/// T033: paths inside fenced code blocks are NOT rewritten.
+#[test]
+fn build_skips_paths_inside_fenced_code_blocks() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let content = setup_and_build_article(
+        &repo,
+        "my-article",
+        &[(
+            "01-opening.md",
+            "# Docs\n\nOutside: ![img](assets/real.jpg)\n\n```markdown\nInside: ![img](assets/fake.jpg)\n```\n",
+        )],
+    );
+
+    // The real image reference outside the fence should be rewritten
+    assert!(content.contains("assets/real.jpg"), "real ref preserved: {content}");
+    // The fake reference inside the fence should stay verbatim
+    assert!(content.contains("assets/fake.jpg"), "fenced ref must stay verbatim: {content}");
+}
+
+/// T036: data: URIs are left unchanged.
+#[test]
+fn build_preserves_data_uris() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let content = setup_and_build_article(
+        &repo,
+        "my-article",
+        &[("01-opening.md", "# Inline\n\n![icon](data:image/png,base64,ABC123)\n")],
+    );
+
+    assert!(content.contains("data:image/png,base64,ABC123"), "data URI preserved: {content}");
+}
+
+/// Bug 1A: alt text must NOT be duplicated/nested when rewriting the path.
+/// Regression for `![alt](p)` → `![alt![alt](new)]`.
+#[test]
+fn build_rewrite_preserves_alt_text() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let content = setup_and_build_article(
+        &repo,
+        "my-article",
+        &[("01-opening.md", "# Pics\n\n![工作流全景](../shared/workflow.png)\n\n![image-xxx](assets/pic.png)\n")],
+    );
+
+    // Alt text preserved, never nested inside another `![`.
+    assert!(content.contains("![工作流全景]("), "CJK alt text preserved: {content}");
+    assert!(!content.contains("![工作流全景!["), "alt text must not be nested: {content}");
+    assert!(!content.contains("![image-xxx!["), "alt text must not be nested: {content}");
+    // Each image line has exactly one `](` (one well-formed image).
+    for line in content.lines().filter(|l| l.contains("![")) {
+        assert_eq!(line.matches("](").count(), 1, "exactly one link per image line: {line}");
+    }
+}
+
+/// Bug 1B: rewritten paths are lexically normalised (no interior `foo/../`).
+#[test]
+fn build_rewrite_normalizes_redundant_segments() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let content =
+        setup_and_build_article(&repo, "my-article", &[("01-opening.md", "# Pic\n\n![p](../shared/pic.png)\n")]);
+
+    assert!(!content.contains("/../"), "path should be normalised, no interior /../: {content}");
+    assert!(content.contains("shared/pic.png"), "path still resolves to shared/pic.png: {content}");
+}

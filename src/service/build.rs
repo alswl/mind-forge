@@ -335,7 +335,7 @@ fn build_article_content(
         }));
     }
 
-    // 8. Read and concatenate files, write output
+    // 8. Read and concatenate files
     let mut content = String::new();
     for file in &article_files {
         let file_content = fs::read_to_string(file).map_err(MfError::Io)?;
@@ -345,6 +345,15 @@ fn build_article_content(
             content.push('\n');
         }
     }
+
+    // 8b. Rewrite relative paths to resolve from the output directory (Bug #1 fix).
+    let source_dir = if article_path.is_dir() {
+        article_path.to_path_buf()
+    } else {
+        article_path.parent().unwrap_or(Path::new(".")).to_path_buf()
+    };
+    let output_dir = output_path.parent().unwrap_or(Path::new("."));
+    content = rewrite_relative_paths(&content, &source_dir, output_dir);
 
     // 9. Inject banner into content if configured
     if let Some(ref banner) = banner_text {
@@ -380,6 +389,169 @@ pub struct BuildResult {
 pub enum BuildOutput {
     Rendered(BuildResult),
     Plan(BuildPlan),
+}
+
+/// Rewrite relative image/link/reference paths in `content` so they resolve
+/// from `output_dir` to the same target they resolved to from `source_dir`.
+/// Skips paths inside fenced code blocks, absolute paths, URLs, data URIs,
+/// and anchors.
+fn rewrite_relative_paths(content: &str, source_dir: &Path, output_dir: &Path) -> String {
+    use crate::service::util::markdown::{FenceStatus, FenceTracker};
+
+    let mut result = String::with_capacity(content.len());
+    let mut fence = FenceTracker::new();
+    // `output_dir` is constant for the whole document — normalise it once rather
+    // than per rewritten target.
+    let base = normalize_lexical(output_dir);
+
+    for line in content.lines() {
+        let inside_fence = matches!(fence.process_line(line), FenceStatus::Inside);
+
+        if inside_fence {
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        }
+
+        let rewritten = rewrite_line_paths(line, source_dir, &base);
+        result.push_str(&rewritten);
+        result.push('\n');
+    }
+    result
+}
+
+/// Rewrite relative paths in a single Markdown line.
+/// Handles inline images `![alt](path)`, inline links `[text](path)`,
+/// and reference definitions `[id]: path`.
+fn rewrite_line_paths(line: &str, source_dir: &Path, base_dir: &Path) -> String {
+    // Reference definitions (`[id]: path`) are whole-line constructs and never
+    // contain an inline `](`, so dispatch on them first and return.
+    let trimmed = line.trim_start();
+    if trimmed.starts_with('[') && trimmed.contains("]: ") {
+        if let Some(bracket_end) = trimmed.find(']') {
+            let after = &trimmed[bracket_end + 1..];
+            if let Some(after_colon) = after.strip_prefix(": ") {
+                let target = after_colon.split_whitespace().next().unwrap_or("");
+                if let Some(new_target) = rewrite_target(target, source_dir, base_dir) {
+                    let indent = &line[..line.len() - trimmed.len()];
+                    let rest = &after[2 + target.len()..];
+                    return format!("{indent}[{}]: {new_target}{rest}", &trimmed[1..bracket_end]);
+                }
+            }
+        }
+        return line.to_string();
+    }
+
+    // Inline images/links: rewrite ONLY the `(path)` portion of `![alt](path)`
+    // / `[text](path)`, copying the surrounding text (incl. the `![alt]`/`[text]`
+    // bracket) verbatim.
+    let bytes = line.as_bytes();
+    let mut result = String::with_capacity(line.len());
+    // `last` marks how far of `line` has already been flushed into `result`.
+    let mut last = 0usize;
+    let mut seen_open = false;
+    let mut i = 0usize;
+    while i + 1 < bytes.len() {
+        match bytes[i] {
+            b'[' => seen_open = true,
+            // A real link/image `]` must be preceded by a `[` and followed by `(`.
+            b']' if seen_open && bytes[i + 1] == b'(' => {
+                let paren_open = i + 1;
+                if let Some(rel_end) = line[paren_open + 1..].find(')') {
+                    let target = &line[paren_open + 1..paren_open + 1 + rel_end];
+                    if let Some(new_target) = rewrite_target(target, source_dir, base_dir) {
+                        // Flush verbatim up to and including `(`, then the new
+                        // target, then `)`.
+                        result.push_str(&line[last..=paren_open]);
+                        result.push_str(&new_target);
+                        result.push(')');
+                        i = paren_open + 1 + rel_end + 1; // past the closing `)`
+                        last = i;
+                        continue;
+                    }
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    if last == 0 {
+        return line.to_string(); // nothing rewritten — avoid a redundant copy
+    }
+    result.push_str(&line[last..]);
+    result
+}
+
+/// Determine whether a link target should be rewritten.
+fn should_rewrite_target(target: &str) -> bool {
+    if target.is_empty() {
+        return false;
+    }
+    if target.starts_with('/') || target.starts_with("http://") || target.starts_with("https://") {
+        return false;
+    }
+    if target.starts_with("mailto:") || target.starts_with("data:") || target.starts_with('#') {
+        return false;
+    }
+    true
+}
+
+/// Compute the new relative path from `base_dir` (an already lexically
+/// normalised output directory) to the same physical target that `target`
+/// resolved to from `source_dir`.
+fn rewrite_target(target: &str, source_dir: &Path, base_dir: &Path) -> Option<String> {
+    if !should_rewrite_target(target) {
+        return None;
+    }
+    // Resolve target relative to source_dir, then lexically normalise so the
+    // result has no interior `foo/../` segments (Bug 1B: avoid emitting paths
+    // like `../docs/slug/../../assets/x.png`).
+    let resolved = normalize_lexical(&source_dir.join(target));
+    relative_path_from(base_dir, &resolved)
+}
+
+/// Lexically normalise a path: drop `.` components and collapse `foo/..` pairs
+/// without touching the filesystem. Leading `..` (escaping the base) are kept.
+fn normalize_lexical(path: &Path) -> std::path::PathBuf {
+    use std::path::Component;
+    let mut out: Vec<Component<'_>> = Vec::new();
+    for comp in path.components() {
+        match comp {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if matches!(out.last(), Some(Component::Normal(_))) {
+                    out.pop();
+                } else {
+                    out.push(comp);
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out.iter().collect()
+}
+
+/// Compute a relative path from `from` to `to`. Returns None if impossible.
+fn relative_path_from(from: &Path, to: &Path) -> Option<String> {
+    // Canonicalization is expensive and may fail; operate on normalized paths.
+    use std::path::Component;
+    let from_comps: Vec<Component<'_>> = from.components().collect();
+    let to_comps: Vec<Component<'_>> = to.components().collect();
+
+    // Find common prefix length
+    let common_len = from_comps.iter().zip(to_comps.iter()).take_while(|(a, b)| a == b).count();
+
+    let up_count = from_comps.len() - common_len;
+    let mut parts: Vec<&str> = vec![".."; up_count];
+    for comp in &to_comps[common_len..] {
+        if let Some(s) = comp.as_os_str().to_str() {
+            parts.push(s);
+        }
+    }
+    if parts.is_empty() {
+        return Some(".".to_string());
+    }
+    Some(parts.join("/"))
 }
 
 /// After a successful build, ensure the article is present in mind-index.yaml.
@@ -496,5 +668,88 @@ mod tests {
         // Lookup by display title should fail — title is not a search key
         let err = resolve_indexed_article_path(dir.path(), "Team Updates").unwrap_err();
         assert!(matches!(err, MfError::NotFound { .. }));
+    }
+
+    // ── Path-rewrite helpers (spec 059 Bug #1 / 1A / 1B) ──────────────────
+
+    #[test]
+    fn normalize_lexical_collapses_interior_dotdot() {
+        assert_eq!(normalize_lexical(Path::new("docs/slug/../../assets/x.png")), Path::new("assets/x.png"));
+        assert_eq!(normalize_lexical(Path::new("docs/art/./assets/y.png")), Path::new("docs/art/assets/y.png"));
+        // Leading `..` that escapes the base is preserved.
+        assert_eq!(normalize_lexical(Path::new("../shared/z.png")), Path::new("../shared/z.png"));
+    }
+
+    #[test]
+    fn relative_path_from_computes_up_and_down() {
+        assert_eq!(relative_path_from(Path::new("outputs"), Path::new("assets/x.png")).unwrap(), "../assets/x.png");
+        assert_eq!(relative_path_from(Path::new("a/b"), Path::new("a/b")).unwrap(), ".");
+        assert_eq!(relative_path_from(Path::new("a/b/out"), Path::new("a/b/c/d.png")).unwrap(), "../c/d.png");
+    }
+
+    #[test]
+    fn rewrite_target_skips_absolute_and_urls() {
+        let src = Path::new("docs/art");
+        let base = Path::new("outputs");
+        for t in
+            ["/abs/x.png", "http://x/y.png", "https://x/y.png", "mailto:a@b.com", "data:image/png,AA", "#anchor", ""]
+        {
+            assert_eq!(rewrite_target(t, src, base), None, "must not rewrite {t:?}");
+        }
+    }
+
+    #[test]
+    fn rewrite_target_rebases_and_normalizes() {
+        let src = Path::new("docs/art");
+        let base = normalize_lexical(Path::new("outputs"));
+        // Plain relative target.
+        assert_eq!(rewrite_target("assets/p.png", src, &base).unwrap(), "../docs/art/assets/p.png");
+        // Bug 1B: interior `../` is normalised away, not left interleaved.
+        let out = rewrite_target("../shared/p.png", src, &base).unwrap();
+        assert_eq!(out, "../docs/shared/p.png");
+        assert!(!out.contains("/../"), "no interior /../: {out}");
+    }
+
+    #[test]
+    fn rewrite_line_preserves_alt_text_and_rewrites_only_path() {
+        let src = Path::new("docs/art");
+        let base = Path::new("outputs");
+        // Bug 1A: CJK alt text is preserved, never nested inside another `![`.
+        let out = rewrite_line_paths("![工作流全景](assets/p.png)", src, base);
+        assert_eq!(out, "![工作流全景](../docs/art/assets/p.png)");
+        assert!(!out.contains("![工作流全景!["), "alt text must not be nested: {out}");
+        assert_eq!(out.matches("](").count(), 1, "exactly one link: {out}");
+    }
+
+    #[test]
+    fn rewrite_line_handles_multiple_links_on_one_line() {
+        let src = Path::new("docs/art");
+        let base = Path::new("outputs");
+        let out = rewrite_line_paths("see ![a](x.png) and [b](y.md) too", src, base);
+        assert_eq!(out, "see ![a](../docs/art/x.png) and [b](../docs/art/y.md) too");
+    }
+
+    #[test]
+    fn rewrite_line_rewrites_reference_definition() {
+        let src = Path::new("docs/art");
+        let base = Path::new("outputs");
+        assert_eq!(rewrite_line_paths("[img]: assets/p.png", src, base), "[img]: ../docs/art/assets/p.png");
+        // Indentation and trailing title are preserved.
+        assert_eq!(
+            rewrite_line_paths("  [img]: assets/p.png \"Title\"", src, base),
+            "  [img]: ../docs/art/assets/p.png \"Title\""
+        );
+    }
+
+    #[test]
+    fn rewrite_line_leaves_non_links_untouched() {
+        let src = Path::new("docs/art");
+        let base = Path::new("outputs");
+        // No link at all.
+        assert_eq!(rewrite_line_paths("plain text, no links here", src, base), "plain text, no links here");
+        // A `]` with no preceding `[` is not a link.
+        assert_eq!(rewrite_line_paths("stray ](x.png) bracket", src, base), "stray ](x.png) bracket");
+        // Absolute / URL targets are left verbatim.
+        assert_eq!(rewrite_line_paths("[a](https://x/y) ![b](/abs.png)", src, base), "[a](https://x/y) ![b](/abs.png)");
     }
 }

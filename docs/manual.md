@@ -237,11 +237,11 @@ mf term fix --project blog
 mf term fix --project blog --term API
 ```
 
-`term update` changes metadata only. It never adds corrections — pass
-`--misrecognition` to `term new`, or use `term correction add` for an existing
-term. To modify or remove existing corrections, use `term correction update` or
-`term correction remove` instead. Use `--dry-run` to validate and preview
-without writing.
+`term update` changes metadata and corrections. Use `--add-correction` to
+append a correction to an existing term, or `--correction-match`/`--correction-fix`/
+`--correction-pinyin` to set correction attributes. To remove a single correction,
+use `--delete-correction` or the subcommand `term correction remove`.
+Use `--dry-run` to validate and preview without writing.
 
 `term fix` and `term lint --fix` accept a repeatable `--term <NAME>` flag to
 scope corrections to one or more named terms (case-sensitive exact match on
@@ -294,10 +294,17 @@ target a whole project, a single `--article`, or one Markdown file path.
 `term fix` is a first-class alias for `term lint --fix`. For boundary and
 pinyin matching details, see [term-lint.md](term-lint.md).
 
+CJK corrections use jieba word segmentation (`word` default) — a correction fires
+only when both edges align with jieba token boundaries. Use `substring` match via
+`--correction-match original:substring` for garble-shaped ASR originals that jieba
+may merge with neighbors.
+
 ## 10. Build And Publish
 
 Build assembles an article into an output Markdown file. Directory articles are
-merged in filename order.
+merged in filename order, and relative image/link/reference paths are
+automatically rewritten to resolve from the output directory so links remain
+correct in the built artifact.
 
 ```bash
 mf build first-post --project blog
@@ -316,6 +323,12 @@ mf publish target show local
 ```
 
 Supported publish targets currently include `local` and `yuque-prompt`.
+
+`publish run` resolves the effective target from an explicit `--target` flag,
+or from the configured `publish.default_target` in `mind.yaml` when `--target`
+is omitted. File-based publishers (`.mind-forge/publisher/<name>.yaml`) are
+discovered for both paths. Local publishers respect `config.prefix` in the
+publisher definition for the destination filename.
 
 ## 11. Render Templates
 

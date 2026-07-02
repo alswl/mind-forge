@@ -253,7 +253,9 @@ fn resolve_target(
     };
 
     // Try file-based publisher first (repo-level, base = repo_root).
-    if args.target.is_some() {
+    // Discovery now runs regardless of whether the name came from --target or
+    // default_target (Bug #2 fix: remove the args.target.is_some() gate).
+    {
         let discovery = publisher_svc::discover(repo_root)?;
         if discovery.publishers.iter().any(|p| p.name == name) {
             let resolved = publisher_svc::resolve_target(repo_root, name, config)?;
@@ -272,11 +274,7 @@ fn resolve_target(
     // mind.yaml targets (project-scoped, base = project_root).
     let targets = config.publish.targets.as_deref().unwrap_or(&[]);
     let target = targets.iter().find(|t| t.name == name).ok_or_else(|| {
-        let msg = if args.target.is_some() {
-            format!("publish target '{name}' not found in mind.yaml or .mind-forge/publisher/")
-        } else {
-            format!("publish default target '{name}' not found in mind.yaml")
-        };
+        let msg = format!("publish target '{name}' not found in mind.yaml or .mind-forge/publisher/");
         MfError::not_found(msg, Some("check the publisher name or `publish.targets[].name` in mind.yaml".to_string()))
     })?;
 
