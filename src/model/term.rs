@@ -1,16 +1,4 @@
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-/// ASR post-correction engine selection (spec 055).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum EngineKind {
-    /// Declared corrections + glossary homophones (default).
-    #[default]
-    Rules,
-    /// Declared corrections + Jieba/pinyin/KenLM scoring.
-    Lm,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -164,22 +152,6 @@ pub struct TermFinding {
     pub fix_kind: FixKind,
     pub boundary: Boundary,
     pub boundary_mode: &'static str,
-    // ── ASR post-correction fields (spec 055) ──
-    /// Engine that produced this finding: "rules" or "lm".
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub engine: Option<EngineKind>,
-    /// LM model version string (e.g. "zh-giga-prune01244@767fdf3").
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model_version: Option<String>,
-    /// Baseline perplexity (LM only).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ppl_before: Option<f64>,
-    /// Perplexity after replacement (LM only).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ppl_after: Option<f64>,
-    /// Relative PPL improvement: 1 - ppl_after/ppl_before (LM only).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ppl_improvement: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]

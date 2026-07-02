@@ -5,9 +5,7 @@ use std::path::Path;
 use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::index::IndexFile;
-use crate::model::term::{
-    Boundary, CandidateTerm, EngineKind, FixKind, Term, TermFinding, TermLintFailure, TermLintReport,
-};
+use crate::model::term::{Boundary, CandidateTerm, FixKind, Term, TermFinding, TermLintFailure, TermLintReport};
 use crate::service::config as config_svc;
 use crate::service::index;
 use crate::service::util::{atomic_write, canonicalize_within, rel_posix_path};
@@ -124,7 +122,6 @@ pub fn filter_terms_by_name(terms: &mut Vec<Term>, requested: &[String]) -> Resu
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn lint_path_with_global(
     project_root: &Path,
     repo_root: &Path,
@@ -133,8 +130,6 @@ pub fn lint_path_with_global(
     dry_run: bool,
     include_suggested: bool,
     term_filter: &[String],
-    engine: EngineKind,
-    ppl_threshold: f64,
 ) -> Result<TermLintReport> {
     let mut index = index::load(project_root)?;
     let global_terms = crate::service::term::global::load_terms(repo_root)?;
@@ -151,15 +146,12 @@ pub fn lint_path_with_global(
             fix,
             dry_run,
             include_suggested,
-            engine,
-            ppl_threshold,
         )
     } else {
-        lint_single_file_with_index(&index, project_root, path, fix, dry_run, include_suggested, engine, ppl_threshold)
+        lint_single_file_with_index(&index, project_root, path, fix, dry_run, include_suggested)
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn lint_terms_with_global(
     project_root: &Path,
     repo_root: &Path,
@@ -167,8 +159,6 @@ pub fn lint_terms_with_global(
     dry_run: bool,
     include_suggested: bool,
     term_filter: &[String],
-    engine: EngineKind,
-    ppl_threshold: f64,
 ) -> Result<TermLintReport> {
     let mut index = index::load(project_root)?;
     let global_terms = crate::service::term::global::load_terms(repo_root)?;
@@ -181,17 +171,7 @@ pub fn lint_terms_with_global(
     if !docs_dir.exists() {
         return Ok(empty_report(fix, dry_run));
     }
-    lint_walk_with_index(
-        &index,
-        project_root,
-        &docs_dir,
-        Some(&docs_dir),
-        fix,
-        dry_run,
-        include_suggested,
-        engine,
-        ppl_threshold,
-    )
+    lint_walk_with_index(&index, project_root, &docs_dir, Some(&docs_dir), fix, dry_run, include_suggested)
 }
 
 pub(crate) fn empty_report(fix: bool, dry_run: bool) -> TermLintReport {
@@ -207,7 +187,6 @@ pub(crate) fn empty_report(fix: bool, dry_run: bool) -> TermLintReport {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn lint_dir_with_index(
     index: &IndexFile,
     base_path: &Path,
@@ -216,31 +195,18 @@ pub(crate) fn lint_dir_with_index(
     fix: bool,
     dry_run: bool,
     include_suggested: bool,
-    engine: EngineKind,
-    ppl_threshold: f64,
 ) -> Result<TermLintReport> {
     let target_dir = base_path.join(dir_path);
     if !target_dir.is_dir() {
         return Err(MfError::usage(format!("not a directory: {dir_path}"), Some(hint.to_string())));
     }
-    lint_walk_with_index(
-        index,
-        base_path,
-        &target_dir,
-        Some(&target_dir),
-        fix,
-        dry_run,
-        include_suggested,
-        engine,
-        ppl_threshold,
-    )
+    lint_walk_with_index(index, base_path, &target_dir, Some(&target_dir), fix, dry_run, include_suggested)
 }
 
 /// Lint a single markdown file against terms in `index`. Used by both project-
 /// scoped (`lint_file`) and global (`global::lint_file`) flows; the only
 /// difference is the index source and the `base_path` used for atomic writes
 /// and rel-path computation.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn lint_single_file_with_index(
     index: &IndexFile,
     base_path: &Path,
@@ -248,8 +214,6 @@ pub(crate) fn lint_single_file_with_index(
     fix: bool,
     dry_run: bool,
     include_suggested: bool,
-    engine: EngineKind,
-    ppl_threshold: f64,
 ) -> Result<TermLintReport> {
     let target_path = base_path.join(file_path);
     if !target_path.exists() {
@@ -265,7 +229,7 @@ pub(crate) fn lint_single_file_with_index(
     let correction_refs = build_correction_refs(&corrections, &ambiguous, &candidates);
     let mut findings: Vec<TermFinding> = Vec::new();
     let mut internal_findings: Vec<InternalFinding> = Vec::new();
-    let mut claimed: BTreeSet<(String, usize)> = BTreeSet::new();
+    let mut claimed: BTreeSet<(String, usize, usize)> = BTreeSet::new();
     let mut failures: Vec<TermLintFailure> = Vec::new();
 
     let rel_path = rel_posix_path(base_path, &target_path).unwrap_or_else(|_| file_path.to_string());
@@ -282,16 +246,7 @@ pub(crate) fn lint_single_file_with_index(
 
     // Run post-correction engine on unclaimed spans.
     if let Some(ref terms) = index.terms {
-        run_correction_engine(
-            &content,
-            &rel_path,
-            terms,
-            &claimed,
-            engine,
-            ppl_threshold,
-            &mut findings,
-            &mut internal_findings,
-        )?;
+        run_correction_engine(&content, &rel_path, terms, &claimed, &mut findings, &mut internal_findings)?;
     }
 
     if !fix {
@@ -389,7 +344,6 @@ fn single_file_report(
 /// `base_path` is the prefix used to derive POSIX-style rel-paths and to
 /// resolve atomic writes. `safety_dir`, when `Some`, enables a path-escape
 /// check on fix (used by project-scoped lint to confine writes to docs/).
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn lint_walk_with_index(
     index: &IndexFile,
     base_path: &Path,
@@ -398,8 +352,6 @@ pub(crate) fn lint_walk_with_index(
     fix: bool,
     dry_run: bool,
     include_suggested: bool,
-    engine: EngineKind,
-    ppl_threshold: f64,
 ) -> Result<TermLintReport> {
     let corrections = collect_corrections(index);
     let ambiguous = build_ambiguous_originals(&corrections);
@@ -410,7 +362,7 @@ pub(crate) fn lint_walk_with_index(
     let mut scanned_files: u64 = 0;
     let mut skipped_files: Vec<String> = Vec::new();
     let mut failures: Vec<TermLintFailure> = Vec::new();
-    let mut claimed: BTreeSet<(String, usize)> = BTreeSet::new();
+    let mut claimed: BTreeSet<(String, usize, usize)> = BTreeSet::new();
 
     let walker = walkdir::WalkDir::new(walk_dir).into_iter().filter_entry(|e| {
         let name = e.file_name().to_string_lossy();
@@ -450,16 +402,7 @@ pub(crate) fn lint_walk_with_index(
                     &mut claimed,
                 );
                 if let Some(ref terms) = index.terms {
-                    run_correction_engine(
-                        &content,
-                        &rel_path,
-                        terms,
-                        &claimed,
-                        engine,
-                        ppl_threshold,
-                        &mut findings,
-                        &mut internal_findings,
-                    )?;
+                    run_correction_engine(&content, &rel_path, terms, &claimed, &mut findings, &mut internal_findings)?;
                 }
             }
             FrontMatterDecision::None => {
@@ -474,16 +417,7 @@ pub(crate) fn lint_walk_with_index(
                     &mut claimed,
                 );
                 if let Some(ref terms) = index.terms {
-                    run_correction_engine(
-                        &content,
-                        &rel_path,
-                        terms,
-                        &claimed,
-                        engine,
-                        ppl_threshold,
-                        &mut findings,
-                        &mut internal_findings,
-                    )?;
+                    run_correction_engine(&content, &rel_path, terms, &claimed, &mut findings, &mut internal_findings)?;
                 }
             }
         }
@@ -526,137 +460,65 @@ pub(crate) fn scan_content(
     rel_path: &str,
     findings: &mut Vec<TermFinding>,
     internal_findings: &mut Vec<InternalFinding>,
-    claimed: &mut BTreeSet<(String, usize)>,
+    claimed: &mut BTreeSet<(String, usize, usize)>,
 ) {
     let sanitized = strip_exempt_regions(content, fm_end);
     scan_file_for_corrections(content, &sanitized, correction_refs, rel_path, findings, internal_findings, claimed);
     pinyin::scan_for_pinyin(content, &sanitized, rel_path, correction_refs, findings, internal_findings, claimed);
 }
 
-/// Run the post-correction engine (rules or lm) on `content` after declared
-/// corrections have been scanned. Proposals are converted into findings and
-/// internal findings, respecting already-claimed offsets.
-#[allow(clippy::too_many_arguments)]
+/// Run the rules post-correction engine on `content` after declared corrections
+/// have been scanned. Proposals are converted into findings and internal
+/// findings, respecting already-claimed offsets.
 pub(crate) fn run_correction_engine(
     content: &str,
     rel_path: &str,
     terms: &[crate::model::term::Term],
-    claimed: &BTreeSet<(String, usize)>,
-    engine: EngineKind,
-    ppl_threshold: f64,
+    claimed: &BTreeSet<(String, usize, usize)>,
     findings: &mut Vec<TermFinding>,
     internal_findings: &mut Vec<InternalFinding>,
 ) -> Result<()> {
-    match engine {
-        EngineKind::Rules => {
-            let corrector = super::correct::rules::RulesCorrector::new(terms);
-            // Build protected set: all canonical term strings
-            let protected: ProtectedSet = terms.iter().map(|t| t.term.clone()).collect();
-            let declared_claims = claimed.clone();
-            let ctx = super::correct::CorrectCtx { terms: terms.to_vec(), declared_claims, protected_set: protected };
+    let corrector = super::correct::rules::RulesCorrector::new(terms);
+    // Protected set: all canonical term strings.
+    let protected: ProtectedSet = terms.iter().map(|t| t.term.clone()).collect();
+    let ctx = super::correct::CorrectCtx { declared_claims: claimed.clone(), protected_set: protected };
 
-            let proposals = corrector.propose(content, &ctx)?;
-
-            for p in proposals {
-                let key = (rel_path.to_string(), p.byte_offset);
-                if claimed.contains(&key) {
-                    continue;
-                }
-                let (line, col) = scan::byte_offset_to_line_col(content, p.byte_offset);
-
-                findings.push(TermFinding {
-                    path: rel_path.to_string(),
-                    line,
-                    column: col,
-                    original: p.original.clone(),
-                    correct: p.correct.clone(),
-                    term: p.correct.clone(),
-                    description: None,
-                    confidence: p.confidence,
-                    replacement_eligible: p.replacement_eligible,
-                    safety_reason: None,
-                    candidates: vec![],
-                    match_kind: crate::model::term::MatchKind::Word,
-                    fix_kind: p.fix_kind,
-                    boundary: crate::model::term::Boundary::Loose,
-                    boundary_mode: "cjk",
-                    engine: Some(EngineKind::Rules),
-                    model_version: None,
-                    ppl_before: None,
-                    ppl_after: None,
-                    ppl_improvement: None,
-                });
-
-                internal_findings.push(InternalFinding {
-                    path: rel_path.to_string(),
-                    byte_offset: p.byte_offset,
-                    original_len: p.original_len,
-                    original: p.original,
-                    correct: p.correct,
-                    is_ambiguous: false,
-                    fix_kind: p.fix_kind,
-                    yaml_index: usize::MAX, // generated, not from YAML
-                });
-            }
-            Ok(())
+    for p in corrector.propose(content, &ctx)? {
+        if claimed.iter().any(|(path, off, _)| path == rel_path && *off == p.byte_offset) {
+            continue;
         }
-        EngineKind::Lm => {
-            // Construct the corrector with an optional model path. When `path` is
-            // `Some`, the KenLM model is loaded eagerly; missing/corrupt models
-            // fail here before scanning (FR-L6). When `None`, the engine falls
-            // back to heuristic mode (spec 055).
-            let model_path = std::env::var("MF_LM_MODEL_PATH").ok();
-            let corrector = super::correct::lm::LmCorrector::new(terms, ppl_threshold, model_path.as_deref())?;
-            let protected: ProtectedSet = terms.iter().map(|t| t.term.clone()).collect();
-            let declared_claims = claimed.clone();
-            let ctx = super::correct::CorrectCtx { terms: terms.to_vec(), declared_claims, protected_set: protected };
+        let (line, col) = scan::byte_offset_to_line_col(content, p.byte_offset);
 
-            let proposals = corrector.propose(content, &ctx)?;
+        findings.push(TermFinding {
+            path: rel_path.to_string(),
+            line,
+            column: col,
+            original: p.original.clone(),
+            correct: p.correct.clone(),
+            term: p.correct.clone(),
+            description: None,
+            confidence: p.confidence,
+            replacement_eligible: p.replacement_eligible,
+            safety_reason: None,
+            candidates: vec![],
+            match_kind: crate::model::term::MatchKind::Word,
+            fix_kind: p.fix_kind,
+            boundary: crate::model::term::Boundary::Loose,
+            boundary_mode: "cjk",
+        });
 
-            for p in proposals {
-                let key = (rel_path.to_string(), p.byte_offset);
-                if claimed.contains(&key) {
-                    continue;
-                }
-                let (line, col) = scan::byte_offset_to_line_col(content, p.byte_offset);
-
-                findings.push(TermFinding {
-                    path: rel_path.to_string(),
-                    line,
-                    column: col,
-                    original: p.original.clone(),
-                    correct: p.correct.clone(),
-                    term: p.correct.clone(),
-                    description: None,
-                    confidence: p.confidence,
-                    replacement_eligible: p.replacement_eligible,
-                    safety_reason: None,
-                    candidates: vec![],
-                    match_kind: crate::model::term::MatchKind::Word,
-                    fix_kind: p.fix_kind,
-                    boundary: crate::model::term::Boundary::Loose,
-                    boundary_mode: "cjk",
-                    engine: Some(EngineKind::Lm),
-                    model_version: p.model_version.clone(),
-                    ppl_before: p.ppl_before,
-                    ppl_after: p.ppl_after,
-                    ppl_improvement: p.ppl_improvement,
-                });
-
-                internal_findings.push(InternalFinding {
-                    path: rel_path.to_string(),
-                    byte_offset: p.byte_offset,
-                    original_len: p.original_len,
-                    original: p.original,
-                    correct: p.correct,
-                    is_ambiguous: false,
-                    fix_kind: p.fix_kind,
-                    yaml_index: usize::MAX, // generated, not from YAML
-                });
-            }
-            Ok(())
-        }
+        internal_findings.push(InternalFinding {
+            path: rel_path.to_string(),
+            byte_offset: p.byte_offset,
+            original_len: p.original_len,
+            original: p.original,
+            correct: p.correct,
+            is_ambiguous: false,
+            fix_kind: p.fix_kind,
+            yaml_index: usize::MAX, // generated, not from YAML
+        });
     }
+    Ok(())
 }
 
 pub(crate) fn build_correction_refs<'a>(

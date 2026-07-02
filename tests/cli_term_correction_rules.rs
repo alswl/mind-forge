@@ -1,9 +1,8 @@
-//! CLI coverage for the default `rules` ASR post-correction engine (spec 055).
+//! CLI coverage for the `rules` ASR post-correction engine (spec 055/058).
 //!
-//! Backfills tasks T005 (engine/threshold arg contract) and T016 (rules-engine
-//! CLI behavior). Asserts SC-001 (glossary homophone `机器仁`→`机器人`), the
-//! `engine` finding field, lint read-only / fix dry-run / atomic fix, ASCII
-//! pass-through, and the `--engine` / `--ppl-threshold` usage-error contract.
+//! Asserts SC-001 (glossary homophone `机器仁`→`机器人`), lint read-only /
+//! fix dry-run / atomic fix, ASCII pass-through, and that the removed
+//! `--engine` / `--ppl-threshold` flags are now rejected (spec 058).
 
 use assert_cmd::Command;
 use serde_json::Value;
@@ -64,26 +63,9 @@ fn default_lint_reports_rules_homophone_finding() {
     let fs_ = findings(&stdout);
     assert_eq!(fs_.len(), 1, "exactly one finding; stdout: {stdout}");
     let f = &fs_[0];
-    assert_eq!(f["engine"], "rules", "engine field: {f}");
     assert_eq!(f["original"], "机器仁", "original: {f}");
     assert_eq!(f["correct"], "机器人", "correct: {f}");
     assert_eq!(f["replacement_eligible"], true, "replacement_eligible: {f}");
-}
-
-// ── Explicit --engine rules behaves identically to the default ──────────────
-
-#[test]
-fn explicit_engine_rules_matches_default() {
-    let repo = setup_rules_repo();
-    write_doc(&repo, "demo", "机器仁开始工作\n");
-
-    let output =
-        mf(&repo).args(["term", "lint", "--project", "alpha", "--engine", "rules", "--json"]).output().unwrap();
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    let fs_ = findings(&stdout);
-    assert_eq!(fs_.len(), 1, "explicit rules yields the same finding; stdout: {stdout}");
-    assert_eq!(fs_[0]["engine"], "rules");
-    assert_eq!(fs_[0]["correct"], "机器人");
 }
 
 // ── lint never writes ───────────────────────────────────────────────────────
@@ -151,129 +133,22 @@ fn ascii_only_span_unchanged() {
     assert_eq!(findings(&stdout).len(), 0, "ASCII-only span must not generate a finding: {stdout}");
 }
 
-// ── FR-001: invalid engine is a usage error (exit 2) ────────────────────────
+// ── spec 058: the removed engine flags are rejected as unknown args ──────────
 
 #[test]
-fn invalid_engine_exits_2() {
+fn engine_flag_removed_exits_2() {
     let repo = setup_rules_repo();
     write_doc(&repo, "demo", "机器仁开始工作\n");
 
-    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--engine", "bogus"]).output().unwrap();
-    assert_eq!(output.status.code(), Some(2), "invalid engine exits 2");
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("invalid engine"), "stderr explains the error: {stderr}");
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--engine", "rules"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(2), "--engine is no longer a recognized flag");
 }
 
-// ── FR-009: --ppl-threshold without --engine lm is a usage error ────────────
-
 #[test]
-fn ppl_threshold_without_lm_exits_2() {
+fn ppl_threshold_flag_removed_exits_2() {
     let repo = setup_rules_repo();
     write_doc(&repo, "demo", "机器仁开始工作\n");
 
     let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--ppl-threshold", "0.3"]).output().unwrap();
-    assert_eq!(output.status.code(), Some(2), "threshold without lm exits 2");
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("--ppl-threshold"), "stderr names the offending flag: {stderr}");
-}
-
-// ── FR-009/FR-L5: out-of-range threshold is a usage error ───────────────────
-
-#[test]
-fn ppl_threshold_out_of_range_exits_2() {
-    let repo = setup_rules_repo();
-    write_doc(&repo, "demo", "机器仁开始工作\n");
-
-    let output = mf(&repo)
-        .args(["term", "lint", "--project", "alpha", "--engine", "lm", "--ppl-threshold", "1.5"])
-        .output()
-        .unwrap();
-    assert_eq!(output.status.code(), Some(2), "out-of-range threshold exits 2");
-}
-
-// ── LM engine (spec 055): heuristic mode with jieba candidates ────────────────
-
-#[test]
-fn lm_engine_finds_homophone_heuristic() {
-    let repo = setup_rules_repo();
-    write_doc(&repo, "demo", "机器仁开始工作\n");
-
-    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--engine", "lm", "--json"]).output().unwrap();
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert_eq!(output.status.code(), Some(1), "lm lint with finding exits 1; stdout: {stdout}");
-
-    let fs_ = findings(&stdout);
-    assert!(!fs_.is_empty(), "lm engine should find homophone; stdout: {stdout}");
-    let f = &fs_[0];
-    assert_eq!(f["engine"], "lm", "engine field: {f}");
-    assert_eq!(f["original"], "机器仁", "original: {f}");
-    assert_eq!(f["correct"], "机器人", "correct: {f}");
-    assert_eq!(f["model_version"], "heuristic", "model_version: {f}");
-    // PPL fields must be null in heuristic mode.
-    assert!(f["ppl_before"].is_null(), "ppl_before must be null: {f}");
-    assert!(f["ppl_after"].is_null(), "ppl_after must be null: {f}");
-    assert!(f["ppl_improvement"].is_null(), "ppl_improvement must be null: {f}");
-    assert_eq!(f["replacement_eligible"], true, "replacement_eligible: {f}");
-}
-
-#[test]
-fn lm_engine_clean_document_no_finding() {
-    let repo = setup_rules_repo();
-    write_doc(&repo, "demo", "机器人开始工作\n");
-
-    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--engine", "lm", "--json"]).output().unwrap();
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(output.status.success(), "clean lm lint exits 0: {stdout}");
-    assert_eq!(findings(&stdout).len(), 0, "lm engine: no findings for clean doc");
-}
-
-#[test]
-fn lm_engine_ascii_document_no_finding() {
-    let repo = setup_rules_repo();
-    write_doc(&repo, "demo", "robot starts working\n");
-
-    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--engine", "lm", "--json"]).output().unwrap();
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(output.status.success(), "ascii lm lint exits 0: {stdout}");
-    assert_eq!(findings(&stdout).len(), 0, "lm engine: no findings for ASCII doc");
-}
-
-#[test]
-fn lm_engine_with_valid_threshold_works() {
-    let repo = setup_rules_repo();
-    write_doc(&repo, "demo", "机器仁开始工作\n");
-
-    let output = mf(&repo)
-        .args(["term", "lint", "--project", "alpha", "--engine", "lm", "--ppl-threshold", "0.10", "--json"])
-        .output()
-        .unwrap();
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    // 0.10 is a valid threshold — exit code depends on whether findings exist.
-    let fs_ = findings(&stdout);
-    assert!(!fs_.is_empty(), "lm with valid threshold produces findings; stdout: {stdout}");
-    assert_eq!(fs_[0]["engine"], "lm");
-}
-
-#[test]
-fn lm_and_rules_engines_produce_different_engine_tags() {
-    let repo = setup_rules_repo();
-    write_doc(&repo, "demo", "机器仁开始工作\n");
-
-    let rules_out =
-        mf(&repo).args(["term", "lint", "--project", "alpha", "--engine", "rules", "--json"]).output().unwrap();
-    let lm_out = mf(&repo).args(["term", "lint", "--project", "alpha", "--engine", "lm", "--json"]).output().unwrap();
-
-    let rules_stdout = String::from_utf8(rules_out.stdout).unwrap();
-    let lm_stdout = String::from_utf8(lm_out.stdout).unwrap();
-
-    let rules_fs = findings(&rules_stdout);
-    let lm_fs = findings(&lm_stdout);
-
-    assert!(!rules_fs.is_empty(), "rules engine finds homophone");
-    assert!(!lm_fs.is_empty(), "lm engine finds homophone");
-    assert_eq!(rules_fs[0]["engine"], "rules");
-    assert_eq!(lm_fs[0]["engine"], "lm");
-    assert_eq!(lm_fs[0]["model_version"], "heuristic");
-    // Rules engine has no model_version.
-    assert!(rules_fs[0]["model_version"].is_null());
+    assert_eq!(output.status.code(), Some(2), "--ppl-threshold is no longer a recognized flag");
 }

@@ -10,7 +10,7 @@ use crate::cli::shared_flags::YesFlag;
 use crate::cli::CommandCtx;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
-use crate::model::term::{Boundary, EngineKind, FixKind, MatchKind};
+use crate::model::term::{Boundary, FixKind, MatchKind};
 use crate::model::Resource;
 use crate::output::confirm::{require_confirmation, ConfirmArgs};
 use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
@@ -49,8 +49,6 @@ pub enum TermSubcommand {
     Correction(TermCorrectionCmd),
     #[command(about = "Move a term between scopes", visible_alias = "mv")]
     Move(TermMoveArgs),
-    #[command(about = "Manage the LM model for ASR post-correction")]
-    Model(TermModelCmd),
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -106,12 +104,6 @@ pub struct TermLintArgs {
     /// Only apply/scan corrections for the named term(s) (repeatable, exact name)
     #[arg(long = "term", value_name = "NAME")]
     pub term: Vec<String>,
-    /// ASR post-correction engine: rules (default) or lm
-    #[arg(long = "engine", value_name = "ENGINE")]
-    pub engine: Option<String>,
-    /// Minimum relative PPL improvement for LM auto-fix [0, 1) (default 0.20)
-    #[arg(long = "ppl-threshold", value_name = "THRESHOLD", value_parser = parse_ppl_threshold)]
-    pub ppl_threshold: Option<f64>,
     #[command(flatten)]
     pub lint: LintFlags,
     #[command(flatten)]
@@ -127,12 +119,6 @@ pub struct TermFixArgs {
     /// Only apply/scan corrections for the named term(s) (repeatable, exact name)
     #[arg(long = "term", value_name = "NAME")]
     pub term: Vec<String>,
-    /// ASR post-correction engine: rules (default) or lm
-    #[arg(long = "engine", value_name = "ENGINE")]
-    pub engine: Option<String>,
-    /// Minimum relative PPL improvement for LM auto-fix [0, 1) (default 0.20)
-    #[arg(long = "ppl-threshold", value_name = "THRESHOLD", value_parser = parse_ppl_threshold)]
-    pub ppl_threshold: Option<f64>,
     #[command(flatten)]
     pub lint: LintFlags,
     #[command(flatten)]
@@ -319,8 +305,6 @@ pub fn dispatch(command: TermCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome
                 path: args.path,
                 article: args.article,
                 term: args.term,
-                engine: args.engine,
-                ppl_threshold: args.ppl_threshold,
                 lint: args.lint,
                 yes: args.yes.clone(),
             };
@@ -332,7 +316,6 @@ pub fn dispatch(command: TermCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome
         Some(TermSubcommand::Rename(args)) => handle_rename(args, ctx),
         Some(TermSubcommand::Correction(cmd)) => handle_correction(cmd, ctx),
         Some(TermSubcommand::Move(args)) => handle_move(args, ctx),
-        Some(TermSubcommand::Model(cmd)) => handle_model(cmd, ctx),
     }
 }
 
@@ -583,16 +566,6 @@ fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     let include_suggested = args.lint.include_suggested;
     let warnings: Vec<String> = Vec::new();
 
-    // Resolve engine and validate PPL threshold usage
-    let engine = resolve_engine(args.engine.as_deref())?;
-    let ppl_threshold = args.ppl_threshold.unwrap_or(0.20);
-    if args.ppl_threshold.is_some() && engine != EngineKind::Lm {
-        return Err(MfError::usage(
-            "--ppl-threshold is only valid with --engine lm",
-            Some("set --engine lm to use PPL threshold".to_string()),
-        ));
-    }
-
     // US1: confirmation gate for --fix (non-dry-run)
     if effective_fix && !effective_dry_run && !args.yes.yes {
         if !std::io::stdout().is_terminal() {
@@ -606,42 +579,14 @@ fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
             let preview = if let Some(pn) = ctx.project() {
                 let pp = svc_util::resolve_project(root, Some(pn), ctx.cwd())?;
                 if let Some(ref path) = args.path {
-                    term_svc::lint_path_with_global(
-                        &pp,
-                        root,
-                        path,
-                        true,
-                        true,
-                        include_suggested,
-                        &args.term,
-                        engine,
-                        ppl_threshold,
-                    )?
+                    term_svc::lint_path_with_global(&pp, root, path, true, true, include_suggested, &args.term)?
                 } else {
-                    term_svc::lint_terms_with_global(
-                        &pp,
-                        root,
-                        true,
-                        true,
-                        include_suggested,
-                        &args.term,
-                        engine,
-                        ppl_threshold,
-                    )?
+                    term_svc::lint_terms_with_global(&pp, root, true, true, include_suggested, &args.term)?
                 }
             } else if let Some(ref path) = args.path {
-                term_svc::global::lint_path(
-                    root,
-                    path,
-                    true,
-                    true,
-                    include_suggested,
-                    &args.term,
-                    engine,
-                    ppl_threshold,
-                )?
+                term_svc::global::lint_path(root, path, true, true, include_suggested, &args.term)?
             } else {
-                term_svc::global::lint_terms(root, true, true, include_suggested, &args.term, engine, ppl_threshold)?
+                term_svc::global::lint_terms(root, true, true, include_suggested, &args.term)?
             };
             if !preview.findings.is_empty() {
                 println!("{}", format_lint_text(&preview, true, true));
@@ -694,8 +639,6 @@ fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
                 effective_dry_run,
                 include_suggested,
                 &args.term,
-                engine,
-                ppl_threshold,
             )?
         } else {
             term_svc::lint_terms_with_global(
@@ -705,8 +648,6 @@ fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
                 effective_dry_run,
                 include_suggested,
                 &args.term,
-                engine,
-                ppl_threshold,
             )?
         }
     } else if let Some(ref path) = args.path {
@@ -718,19 +659,9 @@ fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
             effective_dry_run,
             include_suggested,
             &args.term,
-            engine,
-            ppl_threshold,
         )?
     } else {
-        term_svc::global::lint_terms(
-            root,
-            effective_fix,
-            effective_dry_run,
-            include_suggested,
-            &args.term,
-            engine,
-            ppl_threshold,
-        )?
+        term_svc::global::lint_terms(root, effective_fix, effective_dry_run, include_suggested, &args.term)?
     };
 
     // Determine exit code
@@ -1664,65 +1595,3 @@ fn handle_move(args: TermMoveArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
         )),
     }
 }
-
-// ── Model subcommand types (spec 055) ────────────────────────────────────────
-
-#[derive(Debug, Clone, Args)]
-pub struct TermModelCmd {
-    #[command(subcommand)]
-    pub command: TermModelSubcommand,
-}
-
-#[derive(Debug, Clone, Subcommand)]
-pub enum TermModelSubcommand {
-    #[command(about = "Show LM model status (configured/cache/absent)")]
-    Status(TermModelStatusArgs),
-    #[command(about = "Fetch the LM model and place it in the cache")]
-    Fetch(TermModelFetchArgs),
-}
-
-#[derive(Debug, Clone, Args, Serialize)]
-pub struct TermModelStatusArgs {}
-
-#[derive(Debug, Clone, Args, Serialize)]
-pub struct TermModelFetchArgs {
-    /// Force re-download even if cached model exists
-    #[arg(long = "force")]
-    pub force: bool,
-}
-
-// ── Handle: mf term model ───────────────────────────────────────────────────
-
-fn handle_model(_cmd: TermModelCmd, _ctx: &CommandCtx) -> Result<CommandOutcome> {
-    Err(MfError::not_implemented_with_hint("model status/fetch", "model lifecycle is tracked for spec 055 Phase 6"))
-}
-
-// ── Engine CLI parsing ──────────────────────────────────────────────────────
-
-fn parse_engine_kind(raw: &str) -> Result<EngineKind> {
-    match raw.to_lowercase().as_str() {
-        "rules" => Ok(EngineKind::Rules),
-        "lm" => Ok(EngineKind::Lm),
-        other => Err(MfError::usage(format!("invalid engine '{other}'; expected 'rules' or 'lm'"), None)),
-    }
-}
-
-fn parse_ppl_threshold(raw: &str) -> std::result::Result<f64, String> {
-    let v: f64 = raw.parse().map_err(|_| format!("invalid threshold '{raw}'; expected a number in [0,1)"))?;
-    if v.is_nan() || v.is_infinite() {
-        return Err(format!("threshold must be a finite number, got '{raw}'"));
-    }
-    if !(0.0..1.0).contains(&v) {
-        return Err(format!("threshold {v} out of range; expected [0, 1)"));
-    }
-    Ok(v)
-}
-
-fn resolve_engine(engine_arg: Option<&str>) -> Result<EngineKind> {
-    match engine_arg {
-        None => Ok(EngineKind::Rules), // default
-        Some(s) => parse_engine_kind(s),
-    }
-}
-
-// ── Parse helper wrappers ────────────────────────────────────────────────────
