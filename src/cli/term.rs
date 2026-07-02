@@ -918,11 +918,18 @@ fn handle_update(args: TermUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutcom
     if !args.delete_tag.is_empty() {
         changes.insert("tags".to_string(), serde_json::json!({"deleted": args.delete_tag}));
     }
-    if !args.add_correction.is_empty() {
-        changes.insert("corrections".to_string(), serde_json::json!({"added": args.add_correction}));
-    }
-    if !args.delete_correction.is_empty() {
-        changes.insert("corrections".to_string(), serde_json::json!({"deleted": args.delete_correction}));
+    // Group add + delete under one `corrections` object so a combined
+    // `--add-correction … --delete-correction …` call reports both (a second
+    // `insert` on the same key would otherwise overwrite the first).
+    if !args.add_correction.is_empty() || !args.delete_correction.is_empty() {
+        let mut corrections = serde_json::Map::new();
+        if !args.add_correction.is_empty() {
+            corrections.insert("added".to_string(), serde_json::json!(args.add_correction));
+        }
+        if !args.delete_correction.is_empty() {
+            corrections.insert("deleted".to_string(), serde_json::json!(args.delete_correction));
+        }
+        changes.insert("corrections".to_string(), serde_json::Value::Object(corrections));
     }
     if !args.correction_match.is_empty() {
         changes.insert("correction_match".to_string(), serde_json::json!(args.correction_match));

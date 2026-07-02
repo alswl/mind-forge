@@ -120,30 +120,22 @@ fn split_template_into_blocks(resolved: &str) -> Result<Vec<(String, String)>> {
         let inside_fence =
             matches!(fence_tracker.process_line(line), crate::service::util::markdown::FenceStatus::Inside);
         // `## ` headings inside fenced code blocks are body text, not block
-        // boundaries (Bug #10 fix).
-        if let Some(h2_text) = line.strip_prefix("## ") {
-            if inside_fence {
-                // Heading inside a fence — treat as body, do not start a new block.
-                if current_h2.is_some() {
-                    current_body.push(line);
-                } else {
-                    head_lines.push(line);
-                }
+        // boundaries (Bug #10 fix) — an in-fence heading falls through to the
+        // ordinary line branches below.
+        if let Some(h2_text) = line.strip_prefix("## ").filter(|_| !inside_fence) {
+            // Real heading outside a fence — close current block (if any)
+            // and start a new one.
+            if let Some(prev_h2) = current_h2.take() {
+                let slug = util::to_filename(prev_h2.trim());
+                let body = current_body.join("\n");
+                raw.push(Block { h2_text: prev_h2.to_string(), slug, body });
             } else {
-                // Real heading outside a fence — close current block (if any)
-                // and start a new one.
-                if let Some(prev_h2) = current_h2.take() {
-                    let slug = util::to_filename(prev_h2.trim());
-                    let body = current_body.join("\n");
-                    raw.push(Block { h2_text: prev_h2.to_string(), slug, body });
-                } else {
-                    let body = head_lines.join("\n");
-                    raw.push(Block { h2_text: String::new(), slug: String::new(), body });
-                    head_lines.clear();
-                }
-                current_h2 = Some(h2_text);
-                current_body = vec![*line];
+                let body = head_lines.join("\n");
+                raw.push(Block { h2_text: String::new(), slug: String::new(), body });
+                head_lines.clear();
             }
+            current_h2 = Some(h2_text);
+            current_body = vec![*line];
         } else if current_h2.is_some() {
             current_body.push(line);
         } else {

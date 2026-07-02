@@ -184,6 +184,37 @@ fn update_dry_run_previews_correction_changes() {
 }
 
 #[test]
+fn update_combined_add_and_delete_correction_reports_both() {
+    // Grouping fix: a combined --add-correction + --delete-correction must
+    // report both under one `corrections` object, not have one overwrite the
+    // other.
+    let (repo, _project) = setup_with_term();
+
+    let output = mf(&repo)
+        .args([
+            "--json",
+            "term",
+            "update",
+            "RAG",
+            "--add-correction",
+            "ragnew",
+            "--delete-correction",
+            "ragg",
+            "--project",
+            "alpha",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    let corrections = &v["data"]["details"]["changes"]["corrections"];
+    assert_eq!(corrections["added"][0], "ragnew", "added must be reported: {stdout}");
+    assert_eq!(corrections["deleted"][0], "ragg", "deleted must be reported: {stdout}");
+}
+
+#[test]
 fn update_dry_run_delete_flags() {
     let (repo, _project) = setup_with_term();
     let index_before = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();

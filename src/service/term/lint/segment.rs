@@ -8,8 +8,17 @@
 //! amortised over a document scan).
 
 use std::collections::BTreeSet;
+use std::sync::OnceLock;
 
 use jieba_rs::Jieba;
+
+/// The jieba dictionary is large (hundreds of thousands of entries) and its
+/// construction is the dominant cost of segmentation. Build it once per process
+/// and share it across all document scans rather than per `segment` call.
+fn shared_jieba() -> &'static Jieba {
+    static JIEBA: OnceLock<Jieba> = OnceLock::new();
+    JIEBA.get_or_init(Jieba::new)
+}
 
 /// A lazily-computed set of token-boundary byte-offsets for a document.
 ///
@@ -24,8 +33,7 @@ pub struct JiebaBoundaries {
 impl JiebaBoundaries {
     /// Run jieba segmentation over `content` and build the boundary set.
     pub fn segment(content: &str) -> Self {
-        let jieba = Jieba::new();
-        let tokens = jieba.cut(content, true); // true = HMM mode for finer CJK boundaries
+        let tokens = shared_jieba().cut(content, true); // true = HMM mode for finer CJK boundaries
         let mut offsets = BTreeSet::new();
         let mut pos: usize = 0;
         for token in &tokens {
