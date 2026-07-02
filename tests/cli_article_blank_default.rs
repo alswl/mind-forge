@@ -692,3 +692,171 @@ fn custom_template_path_must_stay_under_project_root() {
     );
     assert!(!repo.path().join("demo/docs/escapes").exists());
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// US6 (Bug #10): fenced-code-block headings + dry-run parity
+// ═══════════════════════════════════════════════════════════════════
+
+/// FR-018: `## ` headings inside fenced code blocks are NOT treated as
+/// block boundaries. Template with `## ` inside ``` should succeed.
+#[test]
+fn fenced_headings_ignored_in_template_blocks() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "demo");
+
+    // Template with a `## ` heading inside a fenced code block.
+    // Previously, the `## ` inside ``` would be treated as a block boundary,
+    // creating an "untitled" slug that conflicts with other headings.
+    let tmpl = "# {title}\n\n> Created: {created_at}\n\n## Summary\n\nHere is a prompt:\n\n```\n## Instructions\n\nDo the thing.\n```\n\n## Content\n\nMore text.\n";
+    std::fs::write(repo.path().join("demo").join("fenced.md"), tmpl).unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("demo"))
+        .args(["article", "new", "Fenced Template", "--template", "fenced.md"])
+        .output()
+        .expect("command runs");
+
+    assert!(
+        output.status.success(),
+        "fenced heading must not cause duplicate_block_slug; stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Directory article created with correct blocks — fenced `## ` ignored
+    let article_dir = repo.path().join("demo/docs/fenced-template");
+    assert!(article_dir.exists(), "directory article should be created");
+    let files_in_dir: Vec<String> = std::fs::read_dir(&article_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    let has_summary = files_in_dir.iter().any(|f| f.contains("summary"));
+    let has_content = files_in_dir.iter().any(|f| f.contains("content"));
+    assert!(has_summary, "a block file with 'summary' must exist; actual files: {files_in_dir:?}");
+    assert!(has_content, "a block file with 'content' must exist; actual files: {files_in_dir:?}");
+}
+
+/// FR-019: dry-run and real run agree — both succeed on a valid template.
+#[test]
+fn dry_run_and_real_run_agree_on_success() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "demo");
+
+    let tmpl = "# {title}\n\n> Created: {created_at}\n\n## Intro\n\nHello.\n\n## Body\n\nWorld.\n";
+    std::fs::write(repo.path().join("demo").join("ok.md"), tmpl).unwrap();
+
+    // Dry-run first
+    let dry = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("demo"))
+        .args(["--json", "article", "new", "Match Test", "--template", "ok.md", "--dry-run"])
+        .output()
+        .expect("command runs");
+
+    assert!(dry.status.success(), "dry-run should succeed; stderr={}", String::from_utf8_lossy(&dry.stderr));
+
+    // Real run — same outcome
+    let real = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("demo"))
+        .args(["--json", "article", "new", "Match Test", "--template", "ok.md"])
+        .output()
+        .expect("command runs");
+
+    assert!(real.status.success(), "real run should also succeed; stderr={}", String::from_utf8_lossy(&real.stderr));
+}
+
+/// FR-019: dry-run and real run agree — both fail on a template with
+/// duplicate block slugs.
+#[test]
+fn dry_run_and_real_run_agree_on_duplicate_slug_failure() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "demo");
+
+    // Two headings produce the same slug ("notes")
+    let tmpl = "# {title}\n\n## Notes\n\nbody1\n\n## NOTES\n\nbody2\n";
+    std::fs::write(repo.path().join("demo").join("bad.md"), tmpl).unwrap();
+
+    // Dry-run first — must fail
+    let dry = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("demo"))
+        .args(["article", "new", "Bad Match", "--template", "bad.md", "--dry-run"])
+        .output()
+        .expect("command runs");
+
+    // FR-019: both must fail (not just one)
+    assert_eq!(
+        dry.status.code(),
+        Some(1),
+        "dry-run should fail on duplicate slugs; stdout={}",
+        String::from_utf8_lossy(&dry.stdout)
+    );
+    let dry_stderr = String::from_utf8_lossy(&dry.stderr);
+    assert!(
+        dry_stderr.contains("duplicate_block_slug") || dry_stderr.contains("duplicate block slug"),
+        "dry-run stderr should mention duplicate block: {dry_stderr}"
+    );
+
+    // Real run — same failure
+    let real = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("demo"))
+        .args(["article", "new", "Bad Match", "--template", "bad.md"])
+        .output()
+        .expect("command runs");
+
+    assert_eq!(
+        real.status.code(),
+        Some(1),
+        "real run should also fail on duplicate slugs; stdout={}",
+        String::from_utf8_lossy(&real.stdout)
+    );
+    let real_stderr = String::from_utf8_lossy(&real.stderr);
+    assert!(
+        real_stderr.contains("duplicate_block_slug") || real_stderr.contains("duplicate block slug"),
+        "real run stderr should mention duplicate block: {real_stderr}"
+    );
+
+    // Directory NOT created on failure
+    assert!(!repo.path().join("demo/docs/bad-match").exists());
+}
+
+/// FR-018 + FR-019 combined: template with fenced `##` headings + dry-run
+/// parity — both must succeed.
+#[test]
+fn fenced_heading_dry_run_and_real_run_both_succeed() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "demo");
+
+    // Template with fenced `## ` headings — should not cause duplicate_block_slug
+    let tmpl = "# {title}\n\n## Prompt\n\n```markdown\n## Not a heading\n```\n\n## Output\n\nDone.\n";
+    std::fs::write(repo.path().join("demo").join("fenced2.md"), tmpl).unwrap();
+
+    // Dry-run
+    let dry = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("demo"))
+        .args(["--json", "article", "new", "Fenced2", "--template", "fenced2.md", "--dry-run"])
+        .output()
+        .expect("command runs");
+    assert!(
+        dry.status.success(),
+        "dry-run fenced template should succeed; stderr={}",
+        String::from_utf8_lossy(&dry.stderr)
+    );
+
+    // Real run
+    let real = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("demo"))
+        .args(["--json", "article", "new", "Fenced2", "--template", "fenced2.md"])
+        .output()
+        .expect("command runs");
+    assert!(
+        real.status.success(),
+        "real run fenced template should succeed; stderr={}",
+        String::from_utf8_lossy(&real.stderr)
+    );
+}

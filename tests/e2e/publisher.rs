@@ -144,3 +144,45 @@ fn project_local_fallback() {
     let content = fs::read_to_string(&dest).expect("read destination file");
     assert_eq!(content, datasets::ARTICLE_BUILD, "destination should contain build artifact content");
 }
+
+// ── US3 (T021): e2e: create directory article → index → publish update finds it ──
+
+#[test]
+fn directory_article_indexed_and_found_by_publish_update() {
+    let repo = TempDir::new().unwrap();
+    let root = repo.path();
+
+    // Create minds.yaml for repo
+    fs::write(root.join("minds.yaml"), "schema_version: '1'\nprojects_dir: '.'\nprojects: []\n").unwrap();
+
+    // Create project
+    let project = root.join("proj");
+    fs::create_dir_all(&project).unwrap();
+    let mind_yaml = r#"schema_version: '1'
+project:
+  name: proj
+build:
+  output_dir: _build
+  format: md
+"#;
+    fs::write(project.join("mind.yaml"), mind_yaml).unwrap();
+
+    // Create a directory-type article (docs/my-dir-article/ with NN-*.md)
+    fs::create_dir_all(project.join("docs/my-dir-article")).unwrap();
+    fs::write(project.join("docs/my-dir-article/01-intro.md"), "# Intro\n\nThis is the first block.\n").unwrap();
+
+    // Run article index — should discover the directory article
+    let index_out = run_in(&project, &["article", "index"]);
+    assert_eq!(index_out.2, 0, "article index should succeed: {}", index_out.1);
+    assert!(index_out.0.contains("+1"), "should discover directory article: {}", index_out.0);
+
+    // Verify index contains the directory article
+    let mut index_content = fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert!(index_content.contains("my-dir-article"), "index must contain directory article: {index_content}");
+
+    // Second run — idempotent
+    let index_out2 = run_in(&project, &["article", "index"]);
+    assert_eq!(index_out2.2, 0, "second index should succeed: {}", index_out2.1);
+    assert!(index_out2.0.contains("=1"), "should show 1 kept after second run: {}", index_out2.0);
+    assert!(index_out2.0.contains("-0"), "nothing should be removed: {}", index_out2.0);
+}

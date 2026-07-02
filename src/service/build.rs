@@ -335,7 +335,7 @@ fn build_article_content(
         }));
     }
 
-    // 8. Read and concatenate files, write output
+    // 8. Read and concatenate files
     let mut content = String::new();
     for file in &article_files {
         let file_content = fs::read_to_string(file).map_err(MfError::Io)?;
@@ -345,6 +345,15 @@ fn build_article_content(
             content.push('\n');
         }
     }
+
+    // 8b. Rewrite relative paths to resolve from the output directory (Bug #1 fix).
+    let source_dir = if article_path.is_dir() {
+        article_path.to_path_buf()
+    } else {
+        article_path.parent().unwrap_or(Path::new(".")).to_path_buf()
+    };
+    let output_dir = output_path.parent().unwrap_or(Path::new("."));
+    content = rewrite_relative_paths(&content, &source_dir, output_dir);
 
     // 9. Inject banner into content if configured
     if let Some(ref banner) = banner_text {
@@ -380,6 +389,154 @@ pub struct BuildResult {
 pub enum BuildOutput {
     Rendered(BuildResult),
     Plan(BuildPlan),
+}
+
+/// Rewrite relative image/link/reference paths in `content` so they resolve
+/// from `output_dir` to the same target they resolved to from `source_dir`.
+/// Skips paths inside fenced code blocks, absolute paths, URLs, data URIs,
+/// and anchors.
+fn rewrite_relative_paths(content: &str, source_dir: &Path, output_dir: &Path) -> String {
+    use crate::service::util::markdown::{FenceStatus, FenceTracker};
+
+    let mut result = String::with_capacity(content.len());
+    let mut fence = FenceTracker::new();
+
+    for line in content.lines() {
+        let inside_fence = matches!(fence.process_line(line), FenceStatus::Inside);
+
+        if inside_fence {
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        }
+
+        let rewritten = rewrite_line_paths(line, source_dir, output_dir);
+        result.push_str(&rewritten);
+        result.push('\n');
+    }
+    result
+}
+
+/// Rewrite relative paths in a single Markdown line.
+/// Handles inline images `![alt](path)`, inline links `[text](path)`,
+/// and reference definitions `[id]: path`.
+fn rewrite_line_paths(line: &str, source_dir: &Path, output_dir: &Path) -> String {
+    // Scan for `](`pattern — matches both `[...](path)` and `![...](path)`.
+    let mut result = String::with_capacity(line.len());
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b']' && i + 1 < bytes.len() && bytes[i + 1] == b'(' {
+            // Found ]( — now backtrack to find the opening [ or ![
+            let paren_start = i + 1;
+            // Find the last [ before ]
+            let bracket_start =
+                line[..i].rfind('[').map(|p| if p > 0 && line.as_bytes()[p - 1] == b'!' { p - 1 } else { p });
+            // Find closing )
+            let rest = &line[paren_start + 1..];
+            if let Some(paren_end_pos) = rest.find(')') {
+                let target = &line[paren_start + 1..paren_start + 1 + paren_end_pos];
+                if let Some(new_target) = rewrite_target(target, source_dir, output_dir) {
+                    let prefix_end = if let Some(bs) = bracket_start {
+                        // Keep from bracket_start to before paren_start
+                        bs
+                    } else {
+                        i // fallback, keep the ]
+                    };
+                    result.push_str(&line[..prefix_end]);
+                    // Reconstruct: [text](new) or ![alt](new)
+                    let bracket_text = &line[prefix_end..i + 1]; // `[text]` or `![alt]`
+                    result.push_str(bracket_text);
+                    result.push('(');
+                    result.push_str(&new_target);
+                    result.push(')');
+                    i = paren_start + 2 + paren_end_pos; // skip past the closing )
+                } else {
+                    // No rewrite needed but still copy what we have
+                    result.push_str(&line[..=i]); // up to ]
+                }
+            } else {
+                result.push(line.chars().nth(i).unwrap_or(']'));
+            }
+        } else {
+            result.push(line.chars().nth(i).unwrap_or(' '));
+        }
+        i += 1;
+    }
+
+    // Also handle reference definitions: [id]: path
+    let trimmed = result.trim_start();
+    if trimmed.starts_with('[') && trimmed.contains("]: ") {
+        if let Some(bracket_end) = trimmed.find(']') {
+            let after = &trimmed[bracket_end + 1..];
+            if let Some(after_colon) = after.strip_prefix(": ") {
+                let target = after_colon.split_whitespace().next().unwrap_or("");
+                if let Some(new_target) = rewrite_target(target, source_dir, output_dir) {
+                    let indent = result.len() - trimmed.len();
+                    let rest = after[2 + target.len()..].to_string();
+                    result = format!("{}[{}]: {}{}", &result[..indent], &trimmed[1..bracket_end], new_target, rest);
+                }
+            }
+        }
+    }
+
+    result
+}
+
+/// Determine whether a link target should be rewritten.
+fn should_rewrite_target(target: &str) -> bool {
+    if target.is_empty() {
+        return false;
+    }
+    if target.starts_with('/') || target.starts_with("http://") || target.starts_with("https://") {
+        return false;
+    }
+    if target.starts_with("mailto:") || target.starts_with("data:") || target.starts_with('#') {
+        return false;
+    }
+    true
+}
+
+/// Compute the new relative path from `output_dir` to the same physical target
+/// that `target` resolved to from `source_dir`.
+fn rewrite_target(target: &str, source_dir: &Path, output_dir: &Path) -> Option<String> {
+    if !should_rewrite_target(target) {
+        return None;
+    }
+    // Compute target relative to source_dir
+    let resolved = source_dir.join(target);
+    // Compute relative path from output_dir to resolved
+    let rel = relative_path_from(output_dir, &resolved)?;
+    Some(rel)
+}
+
+/// Compute a relative path from `from` to `to`. Returns None if impossible.
+fn relative_path_from(from: &Path, to: &Path) -> Option<String> {
+    // Canonicalization is expensive and may fail; operate on normalized paths.
+    use std::path::Component;
+    let from_comps: Vec<Component<'_>> = from.components().collect();
+    let to_comps: Vec<Component<'_>> = to.components().collect();
+
+    // Find common prefix length
+    let common_len = from_comps.iter().zip(to_comps.iter()).take_while(|(a, b)| a == b).count();
+
+    let up_count = from_comps.len() - common_len;
+    let mut result = String::new();
+    for _ in 0..up_count {
+        result.push_str("../");
+    }
+    for comp in &to_comps[common_len..] {
+        if let Some(s) = comp.as_os_str().to_str() {
+            if !result.is_empty() {
+                result.push('/');
+            }
+            result.push_str(s);
+        }
+    }
+    if result.is_empty() {
+        result.push('.');
+    }
+    Some(result)
 }
 
 /// After a successful build, ensure the article is present in mind-index.yaml.

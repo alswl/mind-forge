@@ -2676,3 +2676,58 @@ articles:
     assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
     assert!(article_dir.join("02-thoughts.md").exists());
 }
+
+// ── US3 (Bug #3): article index recognises directory-type articles ──
+
+/// T020: article index scans directory-type articles (docs/<name>/ with NN-*.md).
+#[test]
+fn article_index_scans_directory_type_articles() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    std::fs::create_dir_all(project.join("docs/my-article")).unwrap();
+    std::fs::write(project.join("docs/my-article/01-opening.md"), "# Opening\n").unwrap();
+    std::fs::write(project.join("docs/my-article/02-summary.md"), "# Summary\n").unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "article", "index", "--project", "alpha"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let index_content = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert!(index_content.contains("my-article"), "index must include directory article: {index_content}");
+}
+
+/// T020: article index is idempotent for directory articles.
+#[test]
+fn article_index_idempotent_for_directory_articles() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    std::fs::create_dir_all(project.join("docs/my-article")).unwrap();
+    std::fs::write(project.join("docs/my-article/01-opening.md"), "# Opening\n").unwrap();
+
+    // First index
+    let output1 = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "article", "index", "--project", "alpha"])
+        .output()
+        .unwrap();
+    assert!(output1.status.success(), "first run stderr: {}", String::from_utf8_lossy(&output1.stderr));
+    let stdout1 = String::from_utf8(output1.stdout).unwrap();
+    assert!(stdout1.contains("+1"), "first run should add 1: {stdout1}");
+
+    // Second index — idempotent
+    let output2 = Command::cargo_bin("mf")
+        .unwrap()
+        .args(["--root", repo.path().to_str().unwrap(), "article", "index", "--project", "alpha"])
+        .output()
+        .unwrap();
+    assert!(output2.status.success(), "second run stderr: {}", String::from_utf8_lossy(&output2.stderr));
+    let stdout2 = String::from_utf8(output2.stdout).unwrap();
+    assert!(stdout2.contains("+0"), "should show 0 added: {stdout2}");
+    assert!(stdout2.contains("=1"), "should show 1 kept: {stdout2}");
+    assert!(stdout2.contains("-0"), "nothing should be removed: {stdout2}");
+}

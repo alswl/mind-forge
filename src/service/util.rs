@@ -1,6 +1,7 @@
-//! Shared utilities: atomic write, schema version validation.
+//! Shared utilities: atomic write, schema version validation, markdown helpers.
 
 pub mod filename_date;
+pub mod markdown;
 pub mod path;
 pub mod path_template;
 

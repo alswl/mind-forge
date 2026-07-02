@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 
+use super::segment::JiebaBoundaries;
 use crate::model::term::{Boundary, CandidateTerm, MatchKind, TermFinding};
 
 fn is_word_boundary_byte(b: u8) -> bool {
@@ -25,6 +26,7 @@ pub(crate) fn is_cjk_ideograph(c: char) -> bool {
     )
 }
 
+#[allow(dead_code)]
 fn char_before(content: &str, byte_offset: usize) -> Option<char> {
     if byte_offset == 0 {
         return None;
@@ -41,6 +43,7 @@ fn char_before(content: &str, byte_offset: usize) -> Option<char> {
     None
 }
 
+#[allow(dead_code)]
 fn char_after(content: &str, byte_offset: usize) -> Option<char> {
     content[byte_offset..].chars().next()
 }
@@ -92,7 +95,14 @@ impl WordCheck {
 
 /// Check word boundaries for a match at `offset` with `original_len` bytes.
 /// Returns true if the match passes boundary requirements under `check`.
-fn apply_word_boundary(content: &str, sanitized: &[u8], check: WordCheck, offset: usize, original_len: usize) -> bool {
+fn apply_word_boundary(
+    _content: &str,
+    sanitized: &[u8],
+    check: WordCheck,
+    offset: usize,
+    original_len: usize,
+    jieba: Option<&JiebaBoundaries>,
+) -> bool {
     match check {
         WordCheck::AlwaysAccept => true,
         WordCheck::AsciiLoose => {
@@ -108,15 +118,18 @@ fn apply_word_boundary(content: &str, sanitized: &[u8], check: WordCheck, offset
             before_ok && after_ok
         }
         WordCheck::Cjk => {
-            // CJK word boundary: match only when at least one side is a non-CJK
-            // neighbour. Beginning/end of text is not a boundary — a match at
-            // position 0 followed by CJK (机器 in 机器人) is embedded.
-            let left_neighbor = char_before(content, offset);
-            let right_end = offset + original_len;
-            let right_neighbor = char_after(content, right_end);
-            let left_boundary = left_neighbor.is_some_and(|c| !is_cjk_ideograph(c));
-            let right_boundary = right_neighbor.is_some_and(|c| !is_cjk_ideograph(c));
-            left_boundary || right_boundary
+            // Use jieba word segmentation as the CJK word-boundary oracle.
+            // A correction fires only when both edges of the match align with
+            // jieba token boundaries. This fixes Bug #8 (fires in pure-CJK
+            // context) and rejects spans that cross a word boundary (Bug #5
+            // cross-boundary partial-matches).
+            if let Some(jb) = jieba {
+                jb.span_aligns(offset, original_len)
+            } else {
+                // Fallback: no jieba boundaries available — accept (should not
+                // happen in practice; scan_content always provides boundaries).
+                true
+            }
         }
     }
 }
@@ -170,6 +183,7 @@ pub(crate) struct CorrectionRef<'a> {
     pub pinyin: Option<&'a str>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn scan_file_for_corrections(
     content: &str,
     sanitized: &[u8],
@@ -178,6 +192,7 @@ pub(crate) fn scan_file_for_corrections(
     findings: &mut Vec<TermFinding>,
     internal_findings: &mut Vec<InternalFinding>,
     claimed: &mut BTreeSet<(String, usize, usize)>,
+    jieba: Option<&JiebaBoundaries>,
 ) {
     for c in corrections {
         // Pinyin matches are handled by the pinyin scanner; literal scan never emits pinyin.
@@ -201,7 +216,7 @@ pub(crate) fn scan_file_for_corrections(
                 continue;
             }
 
-            if !apply_word_boundary(content, sanitized, check, abs_offset, orig_bytes.len()) {
+            if !apply_word_boundary(content, sanitized, check, abs_offset, orig_bytes.len(), jieba) {
                 search_start = abs_offset + 1;
                 continue;
             }
@@ -424,7 +439,7 @@ mod tests {
         let (content, sanitized) = build_inputs("xxx-aidc-test");
         let offset = content.find("aidc").unwrap();
         assert!(
-            apply_word_boundary(&content, &sanitized, WordCheck::AsciiLoose, offset, 4),
+            apply_word_boundary(&content, &sanitized, WordCheck::AsciiLoose, offset, 4, None),
             "loose mode must keep matching inside kebab (today's behaviour)"
         );
     }
@@ -433,7 +448,7 @@ mod tests {
     fn loose_matches_standalone() {
         let (content, sanitized) = build_inputs("the aidc site");
         let offset = content.find("aidc").unwrap();
-        assert!(apply_word_boundary(&content, &sanitized, WordCheck::AsciiLoose, offset, 4));
+        assert!(apply_word_boundary(&content, &sanitized, WordCheck::AsciiLoose, offset, 4, None));
     }
 
     // ── Boundary::Standalone — these tests RED until US1 lands ───────────────
@@ -443,7 +458,7 @@ mod tests {
         let (content, sanitized) = build_inputs("xxx-aidc test");
         let offset = content.find("aidc").unwrap();
         assert!(
-            !apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4),
+            !apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4, None),
             "standalone must reject left neighbour '-'"
         );
     }
@@ -453,7 +468,7 @@ mod tests {
         let (content, sanitized) = build_inputs("test aidc-suffix");
         let offset = content.find("aidc").unwrap();
         assert!(
-            !apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4),
+            !apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4, None),
             "standalone must reject right neighbour '-'"
         );
     }
@@ -463,7 +478,7 @@ mod tests {
         let (content, sanitized) = build_inputs("xxx-aidc-test");
         let offset = content.find("aidc").unwrap();
         assert!(
-            !apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4),
+            !apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4, None),
             "standalone must reject kebab identifier xxx-aidc-test"
         );
     }
@@ -474,7 +489,7 @@ mod tests {
         let (content, sanitized) = build_inputs("my_aidc_db");
         let offset = content.find("aidc").unwrap();
         assert!(
-            !apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4),
+            !apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4, None),
             "standalone must reject snake_case neighbours"
         );
     }
@@ -484,7 +499,7 @@ mod tests {
         let (content, sanitized) = build_inputs("./docs/aidc/intro.md");
         let offset = content.find("aidc").unwrap();
         assert!(
-            !apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4),
+            !apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4, None),
             "standalone must reject path-internal occurrences"
         );
     }
@@ -494,7 +509,7 @@ mod tests {
         let (content, sanitized) = build_inputs("module.aidc.handler");
         let offset = content.find("aidc").unwrap();
         assert!(
-            !apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4),
+            !apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4, None),
             "standalone must reject dotted-module neighbours"
         );
     }
@@ -504,7 +519,7 @@ mod tests {
         let (content, sanitized) = build_inputs(r"win\aidc\file");
         let offset = content.find("aidc").unwrap();
         assert!(
-            !apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4),
+            !apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4, None),
             "standalone must reject backslash neighbours"
         );
     }
@@ -514,7 +529,7 @@ mod tests {
         let (content, sanitized) = build_inputs("the aidc site");
         let offset = content.find("aidc").unwrap();
         assert!(
-            apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4),
+            apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4, None),
             "standalone must keep matching standalone-in-prose occurrences"
         );
     }
@@ -525,7 +540,7 @@ mod tests {
         let (content, sanitized) = build_inputs("(aidc) and aidc, then aidc.");
         let offset = content.find("(aidc)").unwrap() + 1;
         assert!(
-            apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4),
+            apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4, None),
             "standalone must accept '(' / ')' neighbours"
         );
     }
@@ -534,7 +549,7 @@ mod tests {
     fn standalone_accepts_start_and_end_of_input() {
         let (content, sanitized) = build_inputs("aidc");
         assert!(
-            apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, 0, 4),
+            apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, 0, 4, None),
             "standalone must accept BOF + EOF as boundaries"
         );
     }
@@ -547,7 +562,7 @@ mod tests {
         let (content, sanitized) = build_inputs("the aidc 站点");
         let offset = content.find("aidc").unwrap();
         assert!(
-            apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4),
+            apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4, None),
             "standalone must keep matching when right neighbour is CJK"
         );
     }

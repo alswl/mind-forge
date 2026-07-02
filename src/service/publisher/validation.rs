@@ -167,13 +167,17 @@ pub fn process_definition(
     if !has_name_error && !is_duplicate && !has_secret_error {
         let status = if def.enabled { PublisherStatus::Available } else { PublisherStatus::Disabled };
 
+        // Extract config.prefix (string) from the publisher definition config map
+        // so run_local can use it for the destination filename (Bug #6 fix).
+        let prefix = def.config.as_ref().and_then(|c| c.get("prefix")).and_then(|v| v.as_str()).map(|s| s.to_string());
+
         let target = crate::model::config::PublishTarget {
             name: name.clone(),
             target_type,
             enabled: def.enabled,
             config: def.config.clone(),
             path: None,
-            prefix: None,
+            prefix,
             book_slug: None,
             namespace: None,
         };
