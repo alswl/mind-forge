@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use crate::error::Result;
-use crate::model::term::{EngineKind, FixKind, Term};
+use crate::model::term::{FixKind, Term};
 
 use super::{CorrectCtx, CorrectionProposal, Corrector, ProtectedSet};
 
@@ -14,8 +14,6 @@ use super::{CorrectCtx, CorrectionProposal, Corrector, ProtectedSet};
 pub struct RulesCorrector {
     /// Glossary index: key = (tone_stripped_pinyin_sequence, han_char_count).
     index: BTreeMap<(String, usize), Vec<GlossaryEntry>>,
-    /// Minimum confidence for rules-generated proposals.
-    min_confidence: Option<f64>,
 }
 
 /// One glossary entry keyed by pinyin + length.
@@ -42,13 +40,7 @@ impl RulesCorrector {
             let key = (tone_stripped(&pinyin), han_count);
             index.entry(key).or_default().push(GlossaryEntry { surface: t.term.clone(), confidence: t.confidence });
         }
-        Self { index, min_confidence: None }
-    }
-
-    /// Build index with a minimum confidence filter.
-    pub fn with_min_confidence(mut self, min_confidence: f64) -> Self {
-        self.min_confidence = Some(min_confidence);
-        self
+        Self { index }
     }
 
     /// Scan `content` for same-pinyin CJK spans of lengths found in the index.
@@ -103,12 +95,6 @@ impl RulesCorrector {
                         if entry.surface.contains(&run_chars) {
                             continue;
                         }
-                        // Skip if below confidence threshold
-                        if let (Some(min_c), Some(c)) = (self.min_confidence, entry.confidence) {
-                            if c < min_c {
-                                continue;
-                            }
-                        }
                         proposals.push(CorrectionProposal::rules_proposal(
                             offset,
                             orig_len,
@@ -129,49 +115,40 @@ impl RulesCorrector {
 }
 
 impl Corrector for RulesCorrector {
-    fn engine(&self) -> EngineKind {
-        EngineKind::Rules
-    }
-
     fn propose(&self, content: &str, ctx: &CorrectCtx) -> Result<Vec<CorrectionProposal>> {
         let props = self.scan_spans(content, &ctx.protected_set);
 
-        // Filter out proposals that:
-        // 1. Overlap with declared claims
-        // 2. Match a protected surface exactly
-        // 3. Overlap another proposal (keep first by offset, then by higher confidence)
+        // Keep proposals that are not protected, do not overlap a declared claim,
+        // and do not overlap an already-accepted proposal (first-by-offset wins).
         let mut filtered: Vec<CorrectionProposal> = Vec::new();
-        let mut used_offsets: Vec<(usize, usize)> = Vec::new();
+        let mut used_spans: Vec<(usize, usize)> = Vec::new();
 
         for p in props {
-            // Skip if protected
+            let span = (p.byte_offset, p.byte_offset + p.original_len);
+
             if ctx.protected_set.is_protected(content, p.byte_offset, p.original_len) {
                 continue;
             }
-            // Skip if overlaps declared claims
-            let overlaps_declared = ctx.declared_claims.iter().any(|(_path, decl_off, decl_len)| {
-                let decl_end = decl_off + decl_len;
-                (*decl_off <= p.byte_offset && p.byte_offset < decl_end)
-                    || (p.byte_offset <= *decl_off && *decl_off < p.byte_offset + p.original_len)
-            });
+            let overlaps_declared =
+                ctx.declared_claims.iter().any(|(_path, off, len)| spans_overlap(span, (*off, off + len)));
             if overlaps_declared {
                 continue;
             }
-            // Skip if overlaps any already-accepted proposal
-            let overlaps_existing = used_offsets.iter().any(|(start, end)| {
-                (*start <= p.byte_offset && p.byte_offset < *end)
-                    || (p.byte_offset <= *start && *start < p.byte_offset + p.original_len)
-            });
-            if overlaps_existing {
+            if used_spans.iter().any(|s| spans_overlap(span, *s)) {
                 continue;
             }
 
-            used_offsets.push((p.byte_offset, p.byte_offset + p.original_len));
+            used_spans.push(span);
             filtered.push(p);
         }
 
         Ok(filtered)
     }
+}
+
+/// True when two half-open byte spans `[start, end)` intersect.
+fn spans_overlap(a: (usize, usize), b: (usize, usize)) -> bool {
+    a.0 < b.1 && b.0 < a.1
 }
 
 /// Check if a character is a Han/CJK ideograph.
@@ -201,8 +178,8 @@ mod tests {
         }
     }
 
-    fn make_ctx(terms: Vec<Term>) -> CorrectCtx {
-        CorrectCtx { terms, declared_claims: Default::default(), protected_set: Default::default() }
+    fn make_ctx() -> CorrectCtx {
+        CorrectCtx { declared_claims: Default::default(), protected_set: Default::default() }
     }
 
     // ── tone_stripped ──────────────────────────────────────────────────
@@ -225,7 +202,7 @@ mod tests {
     #[test]
     fn rules_corrector_empty_terms() {
         let corrector = RulesCorrector::new(&[]);
-        assert_eq!(corrector.engine(), EngineKind::Rules);
+        assert!(corrector.index.is_empty());
     }
 
     #[test]
@@ -256,13 +233,12 @@ mod tests {
     #[test]
     fn finds_ji_qi_ren_homophone() {
         let corrector = RulesCorrector::new(&[make_term("机器人", Some(0.9))]);
-        let ctx = make_ctx(vec![]);
+        let ctx = make_ctx();
         let proposals = corrector.propose("机器仁开始工作", &ctx).unwrap();
         assert!(!proposals.is_empty(), "should find 机器仁→机器人");
         let p = &proposals[0];
         assert_eq!(p.original, "机器仁");
         assert_eq!(p.correct, "机器人");
-        assert_eq!(p.engine, EngineKind::Rules);
         assert_eq!(p.byte_offset, 0);
         assert_eq!(p.original_len, "机器仁".len());
     }
@@ -273,7 +249,7 @@ mod tests {
     fn homophone_offset_follows_ascii_prefix() {
         // "prefix 机器仁" → 机器仁 starts at byte 7 (prefix = 7 ASCII bytes + space)
         let corrector = RulesCorrector::new(&[make_term("机器人", Some(0.9))]);
-        let ctx = make_ctx(vec![]);
+        let ctx = make_ctx();
         let proposals = corrector.propose("prefix 机器仁 suffix", &ctx).unwrap();
         assert_eq!(proposals.len(), 1);
         let p = &proposals[0];
@@ -286,7 +262,7 @@ mod tests {
     fn homophone_offset_in_middle_of_text() {
         // "前机器仁后" → 机器仁 at byte 3 (前 = 3 bytes)
         let corrector = RulesCorrector::new(&[make_term("机器人", Some(0.9))]);
-        let ctx = make_ctx(vec![]);
+        let ctx = make_ctx();
         let proposals = corrector.propose("前机器仁后", &ctx).unwrap();
         assert_eq!(proposals.len(), 1);
         assert_eq!(proposals[0].byte_offset, 3);
@@ -300,7 +276,7 @@ mod tests {
         // Glossary has 机器人 (3 chars), document has 机器 (2 chars).
         // Different han_count → different index key → no match.
         let corrector = RulesCorrector::new(&[make_term("机器人", Some(0.9))]);
-        let ctx = make_ctx(vec![]);
+        let ctx = make_ctx();
         let proposals = corrector.propose("机器启动", &ctx).unwrap();
         // 机器 = 2 chars ≠ 3 chars (机器人) → no match.
         assert!(proposals.is_empty(), "different length should not match");
@@ -312,7 +288,7 @@ mod tests {
         // However 机器 (first 2 chars of 机器仁) DOES match — that IS a match.
         // Let's test the right thing: a term of 4 chars shouldn't match 3-char spans.
         let corrector = RulesCorrector::new(&[make_term("人工智能", Some(0.9))]);
-        let ctx = make_ctx(vec![]);
+        let ctx = make_ctx();
         // 人工 = 2 chars, different length from 人工智能 (4 chars).
         let proposals = corrector.propose("人工呼吸", &ctx).unwrap();
         assert!(proposals.is_empty(), "2-char '人工' should not match 4-char '人工智能'");
@@ -322,7 +298,7 @@ mod tests {
     fn substring_of_canonical_not_proposed() {
         // "网关" is a substring of "网关API" → should be skipped.
         let corrector = RulesCorrector::new(&[make_term("网关API", Some(0.9))]);
-        let ctx = make_ctx(vec![]);
+        let ctx = make_ctx();
         let proposals = corrector.propose("网关配置", &ctx).unwrap();
         let bad = proposals.iter().find(|p| p.original == "网关" && p.correct == "网关API");
         assert!(bad.is_none(), "substring of canonical term should not be proposed");
@@ -332,7 +308,7 @@ mod tests {
     fn self_match_skipped() {
         // Document already has the correct term → no proposal.
         let corrector = RulesCorrector::new(&[make_term("机器人", Some(0.9))]);
-        let ctx = make_ctx(vec![]);
+        let ctx = make_ctx();
         let proposals = corrector.propose("机器人开始工作", &ctx).unwrap();
         assert!(proposals.is_empty(), "self-match should produce no proposal");
     }
@@ -342,7 +318,7 @@ mod tests {
     #[test]
     fn ascii_only_content_no_proposals() {
         let corrector = RulesCorrector::new(&[make_term("机器人", Some(0.9))]);
-        let ctx = make_ctx(vec![]);
+        let ctx = make_ctx();
         let proposals = corrector.propose("hello world", &ctx).unwrap();
         assert!(proposals.is_empty(), "ASCII content should produce no proposals");
     }
@@ -351,7 +327,7 @@ mod tests {
     fn mixed_content_only_scans_cjk_spans() {
         // CJK homophone in mixed content should be found.
         let corrector = RulesCorrector::new(&[make_term("机器人", Some(0.9))]);
-        let ctx = make_ctx(vec![]);
+        let ctx = make_ctx();
         let proposals = corrector.propose("hello 机器仁 world", &ctx).unwrap();
         assert_eq!(proposals.len(), 1);
         assert_eq!(proposals[0].original, "机器仁");
@@ -368,7 +344,7 @@ mod tests {
         let t1 = make_term("精研", Some(0.9));
         let t2 = make_term("精盐", Some(0.8));
         let corrector = RulesCorrector::new(&[t1, t2]);
-        let ctx = make_ctx(vec![]);
+        let ctx = make_ctx();
         let proposals = corrector.propose("精研结果", &ctx).unwrap();
         // 精研 is a self-match → skipped. 精盐 should still be proposed.
         let surfaces: Vec<&str> = proposals.iter().map(|p| p.correct.as_str()).collect();
@@ -382,41 +358,11 @@ mod tests {
         // Document: 精研 (self-match for t1, candidate for t2).
         // 精盐 should be proposed as the only non-self-match.
         let corrector = RulesCorrector::new(&[make_term("精研", Some(0.9)), make_term("精盐", Some(0.8))]);
-        let ctx = make_ctx(vec![]);
+        let ctx = make_ctx();
         let proposals = corrector.propose("精研结果", &ctx).unwrap();
         assert!(!proposals.is_empty(), "should propose 精盐 for 精研");
         assert_eq!(proposals[0].original, "精研");
         assert_eq!(proposals[0].correct, "精盐");
-    }
-
-    // ── confidence filtering ───────────────────────────────────────────
-
-    #[test]
-    fn confidence_filter_excludes_low_confidence() {
-        let term = make_term("机器人", Some(0.3));
-        let corrector = RulesCorrector::new(&[term]).with_min_confidence(0.5);
-        let ctx = make_ctx(vec![]);
-        let proposals = corrector.propose("机器仁开始工作", &ctx).unwrap();
-        assert!(proposals.is_empty(), "confidence 0.3 < 0.5 should be filtered");
-    }
-
-    #[test]
-    fn confidence_filter_passes_high_confidence() {
-        let term = make_term("机器人", Some(0.9));
-        let corrector = RulesCorrector::new(&[term]).with_min_confidence(0.5);
-        let ctx = make_ctx(vec![]);
-        let proposals = corrector.propose("机器仁开始工作", &ctx).unwrap();
-        assert!(!proposals.is_empty(), "confidence 0.9 >= 0.5 should pass");
-    }
-
-    #[test]
-    fn confidence_filter_no_confidence_still_passes() {
-        let term = make_term("机器人", None);
-        let corrector = RulesCorrector::new(&[term]).with_min_confidence(0.5);
-        let ctx = make_ctx(vec![]);
-        let proposals = corrector.propose("机器仁开始工作", &ctx).unwrap();
-        // No confidence field → min_confidence filter is skipped (None doesn't trigger the check).
-        assert!(!proposals.is_empty(), "term without confidence should not be filtered");
     }
 
     // ── protected set and declared claims ──────────────────────────────
@@ -427,8 +373,7 @@ mod tests {
         let corrector = RulesCorrector::new(&[term]);
         let mut set = std::collections::BTreeSet::new();
         set.insert("机器仁".to_string());
-        let ctx =
-            CorrectCtx { terms: vec![], declared_claims: Default::default(), protected_set: ProtectedSet::new(set) };
+        let ctx = CorrectCtx { declared_claims: Default::default(), protected_set: set.into_iter().collect() };
         let proposals = corrector.propose("机器仁开始工作", &ctx).unwrap();
         assert!(proposals.is_empty(), "protected surface should block proposal");
     }

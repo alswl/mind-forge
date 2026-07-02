@@ -20,15 +20,9 @@ thiserror = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 terminal_size = "0.4"
-jieba-rs = "0.10.1"
 pinyin = "0.10"
-reqwest = { version = "0.11", default-features = false, features = ["blocking", "rustls-tls"] }
-sha2 = "0.10"
 unicode-width = "0.1"
 walkdir = "2"
-
-[build-dependencies]
-cc = "1"
 
 [dev-dependencies]
 assert_cmd = "2"

@@ -192,7 +192,6 @@ fn global_index(terms: Vec<Term>) -> IndexFile {
 }
 
 /// Lint a single file against global terms.
-#[allow(clippy::too_many_arguments)]
 pub fn lint_file(
     repo_root: &Path,
     file_path: &str,
@@ -200,28 +199,16 @@ pub fn lint_file(
     dry_run: bool,
     include_suggested: bool,
     term_filter: &[String],
-    engine: crate::model::term::EngineKind,
-    ppl_threshold: f64,
 ) -> Result<TermLintReport> {
     let mut terms = load_terms(repo_root)?;
     lint::filter_terms_by_name(&mut terms, term_filter)?;
     if terms.is_empty() {
         return Ok(lint::empty_report(fix, dry_run));
     }
-    lint::lint_single_file_with_index(
-        &global_index(terms),
-        repo_root,
-        file_path,
-        fix,
-        dry_run,
-        include_suggested,
-        engine,
-        ppl_threshold,
-    )
+    lint::lint_single_file_with_index(&global_index(terms), repo_root, file_path, fix, dry_run, include_suggested)
 }
 
 /// Lint a file or directory path relative to the repo root.
-#[allow(clippy::too_many_arguments)]
 pub fn lint_path(
     repo_root: &Path,
     path: &str,
@@ -229,18 +216,15 @@ pub fn lint_path(
     dry_run: bool,
     include_suggested: bool,
     term_filter: &[String],
-    engine: crate::model::term::EngineKind,
-    ppl_threshold: f64,
 ) -> Result<TermLintReport> {
     if repo_root.join(path).is_dir() {
-        lint_dir(repo_root, path, fix, dry_run, include_suggested, term_filter, engine, ppl_threshold)
+        lint_dir(repo_root, path, fix, dry_run, include_suggested, term_filter)
     } else {
-        lint_file(repo_root, path, fix, dry_run, include_suggested, term_filter, engine, ppl_threshold)
+        lint_file(repo_root, path, fix, dry_run, include_suggested, term_filter)
     }
 }
 
 /// Lint all markdown files under a specific directory (global).
-#[allow(clippy::too_many_arguments)]
 pub fn lint_dir(
     repo_root: &Path,
     dir_path: &str,
@@ -248,8 +232,6 @@ pub fn lint_dir(
     dry_run: bool,
     include_suggested: bool,
     term_filter: &[String],
-    engine: crate::model::term::EngineKind,
-    ppl_threshold: f64,
 ) -> Result<TermLintReport> {
     let mut terms = load_terms(repo_root)?;
     lint::filter_terms_by_name(&mut terms, term_filter)?;
@@ -264,38 +246,23 @@ pub fn lint_dir(
         fix,
         dry_run,
         include_suggested,
-        engine,
-        ppl_threshold,
     )
 }
 
 /// Lint all markdown files in the repo against global terms.
-#[allow(clippy::too_many_arguments)]
 pub fn lint_terms(
     repo_root: &Path,
     fix: bool,
     dry_run: bool,
     include_suggested: bool,
     term_filter: &[String],
-    engine: crate::model::term::EngineKind,
-    ppl_threshold: f64,
 ) -> Result<TermLintReport> {
     let mut terms = load_terms(repo_root)?;
     lint::filter_terms_by_name(&mut terms, term_filter)?;
     if terms.is_empty() {
         return Ok(lint::empty_report(fix, dry_run));
     }
-    lint::lint_walk_with_index(
-        &global_index(terms),
-        repo_root,
-        repo_root,
-        None,
-        fix,
-        dry_run,
-        include_suggested,
-        engine,
-        ppl_threshold,
-    )
+    lint::lint_walk_with_index(&global_index(terms), repo_root, repo_root, None, fix, dry_run, include_suggested)
 }
 
 // ── Global term rename ───────────────────────────────────────────────────────

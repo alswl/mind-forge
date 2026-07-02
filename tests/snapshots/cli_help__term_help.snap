@@ -17,7 +17,6 @@ Commands:
   fix         Apply term corrections to documents (alias of `term lint --fix`)
   correction  Manage term corrections
   move        Move a term between scopes [aliases: mv]
-  model       Manage the LM model for ASR post-correction
 
 Options:
       --root <PATH>      Mind Repo root directory

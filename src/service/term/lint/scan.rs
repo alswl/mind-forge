@@ -270,11 +270,6 @@ pub(crate) fn scan_file_for_corrections(
                 fix_kind: c.fix_kind,
                 boundary: c.boundary,
                 boundary_mode: check.boundary_mode(),
-                engine: None,
-                model_version: None,
-                ppl_before: None,
-                ppl_after: None,
-                ppl_improvement: None,
             });
 
             internal_findings.push(InternalFinding {
