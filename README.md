@@ -289,12 +289,12 @@ default `projects/` container). Defaults to the current directory.
 | `new <TERM>` | Create a term (mf extension). `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--misrecognition <TEXT>` |
 | `list` (ls) | List terms. `--filter <PATTERN>` matches term name (substring); `--tag <TAG>` / `--alias <ALIAS>` match their respective fields. `--has-correction`, `--scope project\|global\|all` (AND semantics; default merges project + global fallback) |
 | `show <TERM>` | Show term details |
-| `update <TERM>` | Update term metadata only (mf extension; previously `fix`). Rejects `--misrecognition` (use `correction add`). Correction edits go through `term correction update`/`remove`. `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--clear-description`, `--clear-confidence`, `--delete-alias <TEXT>`, `--delete-tag <TAG>`, `--dry-run` |
+| `update <TERM>` | Update term metadata and corrections. `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--clear-description`, `--clear-confidence`, `--delete-alias <TEXT>`, `--delete-tag <TAG>`, `--add-correction <ORIGINAL>` (repeatable), `--correction-match <ORIGINAL:KIND>`, `--correction-fix <ORIGINAL:KIND>`, `--correction-pinyin <ORIGINAL:PINYIN>`, `--delete-correction <ORIGINAL>` (repeatable), `--dry-run` |
 | `correction <SUBCOMMAND>` | Manage corrections as a first-class subresource: `add <TERM> <ORIGINAL> <CORRECT>` (idempotent; reports `created: true\|false`; `--match`, `--fix`, `--boundary`, `--pinyin`), `list <TERM>`, `show <TERM> <ORIGINAL>`, `update <TERM> <ORIGINAL>`, `remove <TERM> <ORIGINAL>` (`--dry-run`) |
 | `move <TERM>` (mv) | Move a term between scopes. `--to-global`, `--to-project <PROJECT>`, `--from-global`, `--force` (overwrite destination; source preserved on rejection), `--dry-run` |
 | `rename <OLD_TERM> <NEW_TERM>` | Rename a term. `--keep-alias` keeps the old name as an alias |
 | `remove <TERM>` (rm) | Remove a term (interactive confirmation in TTY) |
-| `lint [PATH]` | Lint term consistency in project docs. CJK/pinyin-aware matching, configurable `match` modes (`word`/`substring`/`pinyin`), `--fix`, `--term <NAME>` (repeatable, scope to named terms), `--include-suggested` to apply suggested corrections, `--article <SLUG>` or a Markdown `PATH` to target a single article/file. Non-TTY `--fix` exits 2 without `-y`/`--yes`. |
+| `lint [PATH]` | Lint term consistency in project docs. CJK matching uses jieba word segmentation (`word` default — both edges must align with token boundaries); `substring` bypasses jieba; `pinyin` for tone-less scan. `--fix`, `--term <NAME>` (repeatable), `--include-suggested`, `--article <SLUG>` or a Markdown `PATH` to target a single article/file. Non-TTY `--fix` exits 2 without `-y`/`--yes`. |
 | `fix [PATH]` | First-class alias for `term lint --fix`. Same flags as `lint` + `--include-suggested` for suggested corrections. Accepts repeatable `--term <NAME>` to scope to one or more terms (case-sensitive exact canonical match; unknown → exit 2). |
 
 Global terms (created without `--project`) are stored in `minds-terms.yaml` at
@@ -313,13 +313,15 @@ open-domain judgment.
 
 `-o, --output <PATH>`, `--dry-run`. `ARTICLE` may be an indexed name/slug or
 a repo-relative path prefixed with `@` (e.g. `@projects/blog/docs/2026-03-review/`).
-Directory articles are built by merging Markdown files in filename order.
+Directory articles are built by merging Markdown files in filename order. Relative
+image/link/reference paths are automatically rewritten to resolve from the output
+directory; paths inside fenced code blocks, absolute paths, and URLs are left unchanged.
 
 ### `mf publish` — Publish articles & manage targets
 
 | Subcommand | Description |
 |-----------|-------------|
-| `run <ARTICLE>` | Publish to a target (supported: `local`, `yuque-prompt`). `--target <TARGET>` |
+| `run <ARTICLE>` | Publish to a target (supported: `local`, `yuque-prompt`). `--target <TARGET>` (optional when `publish.default_target` is configured). File-based publishers discovered for both explicit and default targets. Local publishers honor `config.prefix`. |
 | `update <ARTICLE>` | Update a publish record. `--target <TARGET>` (required), `--status draft\|published\|archived`, `--target-url <URL>`, `--set <KEY=VALUE>` |
 | `target list` | List publish targets and diagnostics |
 | `target show <NAME>` | Show publish target details |
