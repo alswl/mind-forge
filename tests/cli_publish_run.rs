@@ -1593,7 +1593,7 @@ articles:\n  - title: My Article\n    project: my-project\n    type: blog\n    a
 /// T007: no --target and no default_target → exit 2 usage error.
 #[test]
 fn no_target_and_no_default_target_is_usage_error() {
-    let dest_root = tempfile::tempdir().unwrap();
+    let _dest_root = tempfile::tempdir().unwrap();
     let repo = setup_repo_with_targets(""); // no mind.yaml targets, no default_target
 
     let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE]);

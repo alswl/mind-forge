@@ -177,7 +177,7 @@ build:
     assert!(index_out.0.contains("+1"), "should discover directory article: {}", index_out.0);
 
     // Verify index contains the directory article
-    let mut index_content = fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    let index_content = fs::read_to_string(project.join("mind-index.yaml")).unwrap();
     assert!(index_content.contains("my-dir-article"), "index must contain directory article: {index_content}");
 
     // Second run — idempotent

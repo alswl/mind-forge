@@ -398,7 +398,7 @@ assets:
 /// T019: idempotent re-run: +0 =N -0 when nothing changed.
 #[test]
 fn index_idempotent_rerun_no_changes() {
-    let (repo, project) = setup();
+    let (repo, _project) = setup();
     // First run: index already matches disk
     let output1 = Command::cargo_bin("mf")
         .unwrap()
