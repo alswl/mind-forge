@@ -887,3 +887,39 @@ fn build_preserves_data_uris() {
 
     assert!(content.contains("data:image/png,base64,ABC123"), "data URI preserved: {content}");
 }
+
+/// Bug 1A: alt text must NOT be duplicated/nested when rewriting the path.
+/// Regression for `![alt](p)` → `![alt![alt](new)]`.
+#[test]
+fn build_rewrite_preserves_alt_text() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let content = setup_and_build_article(
+        &repo,
+        "my-article",
+        &[("01-opening.md", "# Pics\n\n![工作流全景](../shared/workflow.png)\n\n![image-xxx](assets/pic.png)\n")],
+    );
+
+    // Alt text preserved, never nested inside another `![`.
+    assert!(content.contains("![工作流全景]("), "CJK alt text preserved: {content}");
+    assert!(!content.contains("![工作流全景!["), "alt text must not be nested: {content}");
+    assert!(!content.contains("![image-xxx!["), "alt text must not be nested: {content}");
+    // Each image line has exactly one `](` (one well-formed image).
+    for line in content.lines().filter(|l| l.contains("![")) {
+        assert_eq!(line.matches("](").count(), 1, "exactly one link per image line: {line}");
+    }
+}
+
+/// Bug 1B: rewritten paths are lexically normalised (no interior `foo/../`).
+#[test]
+fn build_rewrite_normalizes_redundant_segments() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let content =
+        setup_and_build_article(&repo, "my-article", &[("01-opening.md", "# Pic\n\n![p](../shared/pic.png)\n")]);
+
+    assert!(!content.contains("/../"), "path should be normalised, no interior /../: {content}");
+    assert!(content.contains("shared/pic.png"), "path still resolves to shared/pic.png: {content}");
+}

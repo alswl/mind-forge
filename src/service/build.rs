@@ -421,48 +421,39 @@ fn rewrite_relative_paths(content: &str, source_dir: &Path, output_dir: &Path) -
 /// Handles inline images `![alt](path)`, inline links `[text](path)`,
 /// and reference definitions `[id]: path`.
 fn rewrite_line_paths(line: &str, source_dir: &Path, output_dir: &Path) -> String {
-    // Scan for `](`pattern — matches both `[...](path)` and `![...](path)`.
-    let mut result = String::with_capacity(line.len());
+    // Scan for the `](` pattern (matches both `[text](path)` and `![alt](path)`)
+    // and rewrite ONLY the `(path)` portion, copying the surrounding text (incl.
+    // the `![alt]`/`[text]` bracket) verbatim.
     let bytes = line.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b']' && i + 1 < bytes.len() && bytes[i + 1] == b'(' {
-            // Found ]( — now backtrack to find the opening [ or ![
-            let paren_start = i + 1;
-            // Find the last [ before ]
-            let bracket_start =
-                line[..i].rfind('[').map(|p| if p > 0 && line.as_bytes()[p - 1] == b'!' { p - 1 } else { p });
-            // Find closing )
-            let rest = &line[paren_start + 1..];
-            if let Some(paren_end_pos) = rest.find(')') {
-                let target = &line[paren_start + 1..paren_start + 1 + paren_end_pos];
-                if let Some(new_target) = rewrite_target(target, source_dir, output_dir) {
-                    let prefix_end = if let Some(bs) = bracket_start {
-                        // Keep from bracket_start to before paren_start
-                        bs
-                    } else {
-                        i // fallback, keep the ]
-                    };
-                    result.push_str(&line[..prefix_end]);
-                    // Reconstruct: [text](new) or ![alt](new)
-                    let bracket_text = &line[prefix_end..i + 1]; // `[text]` or `![alt]`
-                    result.push_str(bracket_text);
-                    result.push('(');
-                    result.push_str(&new_target);
-                    result.push(')');
-                    i = paren_start + 2 + paren_end_pos; // skip past the closing )
-                } else {
-                    // No rewrite needed but still copy what we have
-                    result.push_str(&line[..=i]); // up to ]
+    let mut result = String::with_capacity(line.len());
+    // `last` marks how far of `line` has already been flushed into `result`.
+    let mut last = 0usize;
+    let mut i = 0usize;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b']' && bytes[i + 1] == b'(' {
+            let paren_open = i + 1;
+            // Require an opening `[` before the `]` (a real link/image).
+            let has_open = line[..i].contains('[');
+            if has_open {
+                if let Some(rel_end) = line[paren_open + 1..].find(')') {
+                    let target = &line[paren_open + 1..paren_open + 1 + rel_end];
+                    if let Some(new_target) = rewrite_target(target, source_dir, output_dir) {
+                        // Flush verbatim up to and including `(`, then the new
+                        // target, then `)`. The `![alt]`/`[text]` part is inside
+                        // `line[last..=paren_open]` and left untouched.
+                        result.push_str(&line[last..=paren_open]);
+                        result.push_str(&new_target);
+                        result.push(')');
+                        i = paren_open + 1 + rel_end + 1; // past the closing `)`
+                        last = i;
+                        continue;
+                    }
                 }
-            } else {
-                result.push(line.chars().nth(i).unwrap_or(']'));
             }
-        } else {
-            result.push(line.chars().nth(i).unwrap_or(' '));
         }
         i += 1;
     }
+    result.push_str(&line[last..]);
 
     // Also handle reference definitions: [id]: path
     let trimmed = result.trim_start();
@@ -503,11 +494,35 @@ fn rewrite_target(target: &str, source_dir: &Path, output_dir: &Path) -> Option<
     if !should_rewrite_target(target) {
         return None;
     }
-    // Compute target relative to source_dir
-    let resolved = source_dir.join(target);
+    // Resolve target relative to source_dir, then lexically normalise so the
+    // result has no interior `foo/../` segments (Bug 1B: avoid emitting paths
+    // like `../docs/slug/../../assets/x.png`).
+    let resolved = normalize_lexical(&source_dir.join(target));
+    let base = normalize_lexical(output_dir);
     // Compute relative path from output_dir to resolved
-    let rel = relative_path_from(output_dir, &resolved)?;
+    let rel = relative_path_from(&base, &resolved)?;
     Some(rel)
+}
+
+/// Lexically normalise a path: drop `.` components and collapse `foo/..` pairs
+/// without touching the filesystem. Leading `..` (escaping the base) are kept.
+fn normalize_lexical(path: &Path) -> std::path::PathBuf {
+    use std::path::Component;
+    let mut out: Vec<Component<'_>> = Vec::new();
+    for comp in path.components() {
+        match comp {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if matches!(out.last(), Some(Component::Normal(_))) {
+                    out.pop();
+                } else {
+                    out.push(comp);
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out.iter().collect()
 }
 
 /// Compute a relative path from `from` to `to`. Returns None if impossible.
