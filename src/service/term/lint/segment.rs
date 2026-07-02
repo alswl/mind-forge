@@ -126,4 +126,18 @@ mod tests {
         assert!(jb.is_boundary(0));
         assert!(jb.offsets.len() == 1);
     }
+
+    #[test]
+    fn shared_instance_is_deterministic_across_calls() {
+        // The dictionary is now shared via OnceLock; repeated segmentation of
+        // the same and of different documents must stay independent and stable.
+        let a1 = JiebaBoundaries::segment("为国争光的精神");
+        let a2 = JiebaBoundaries::segment("为国争光的精神");
+        assert_eq!(a1.offsets, a2.offsets, "same input must yield identical boundaries");
+
+        // A different document in between must not perturb results.
+        let _ = JiebaBoundaries::segment("缩小文件");
+        let a3 = JiebaBoundaries::segment("为国争光的精神");
+        assert_eq!(a1.offsets, a3.offsets, "shared instance must be stateless across documents");
+    }
 }

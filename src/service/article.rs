@@ -2600,6 +2600,28 @@ mod tests {
         assert!(blocks[1].1.starts_with("## Summary"));
     }
 
+    #[test]
+    fn split_ignores_h2_inside_fenced_code_block() {
+        // Bug #10: a `## ` heading inside a fence is body text, not a block
+        // boundary. Only the two real headings start blocks.
+        let input = "# T\n\n## Real One\n\n```md\n## Not A Heading\nmore fenced\n```\n\ntext\n\n## Real Two\n\nbody\n";
+        let blocks = split_template_into_blocks(input).unwrap();
+        assert_eq!(blocks.len(), 3, "head + two real headings only: {blocks:?}");
+        assert_eq!(blocks[1].0, "02-real-one.md");
+        assert!(blocks[1].1.contains("## Not A Heading"), "fenced heading stays in body: {:?}", blocks[1].1);
+        assert_eq!(blocks[2].0, "03-real-two.md");
+    }
+
+    #[test]
+    fn split_cjk_headings_produce_distinct_slugs() {
+        // Bug #10 residual: CJK headings must not all collapse to "untitled".
+        let input = "# 标题\n\n## 本周进展\n\na\n\n## 里程碑规划与进展\n\nb\n";
+        let blocks = split_template_into_blocks(input).unwrap();
+        assert_eq!(blocks.len(), 3);
+        assert_eq!(blocks[1].0, "02-本周进展.md");
+        assert_eq!(blocks[2].0, "03-里程碑规划与进展.md");
+    }
+
     // ── article_file_mtime tests ──
 
     #[test]

@@ -669,4 +669,87 @@ mod tests {
         let err = resolve_indexed_article_path(dir.path(), "Team Updates").unwrap_err();
         assert!(matches!(err, MfError::NotFound { .. }));
     }
+
+    // ── Path-rewrite helpers (spec 059 Bug #1 / 1A / 1B) ──────────────────
+
+    #[test]
+    fn normalize_lexical_collapses_interior_dotdot() {
+        assert_eq!(normalize_lexical(Path::new("docs/slug/../../assets/x.png")), Path::new("assets/x.png"));
+        assert_eq!(normalize_lexical(Path::new("docs/art/./assets/y.png")), Path::new("docs/art/assets/y.png"));
+        // Leading `..` that escapes the base is preserved.
+        assert_eq!(normalize_lexical(Path::new("../shared/z.png")), Path::new("../shared/z.png"));
+    }
+
+    #[test]
+    fn relative_path_from_computes_up_and_down() {
+        assert_eq!(relative_path_from(Path::new("outputs"), Path::new("assets/x.png")).unwrap(), "../assets/x.png");
+        assert_eq!(relative_path_from(Path::new("a/b"), Path::new("a/b")).unwrap(), ".");
+        assert_eq!(relative_path_from(Path::new("a/b/out"), Path::new("a/b/c/d.png")).unwrap(), "../c/d.png");
+    }
+
+    #[test]
+    fn rewrite_target_skips_absolute_and_urls() {
+        let src = Path::new("docs/art");
+        let base = Path::new("outputs");
+        for t in
+            ["/abs/x.png", "http://x/y.png", "https://x/y.png", "mailto:a@b.com", "data:image/png,AA", "#anchor", ""]
+        {
+            assert_eq!(rewrite_target(t, src, base), None, "must not rewrite {t:?}");
+        }
+    }
+
+    #[test]
+    fn rewrite_target_rebases_and_normalizes() {
+        let src = Path::new("docs/art");
+        let base = normalize_lexical(Path::new("outputs"));
+        // Plain relative target.
+        assert_eq!(rewrite_target("assets/p.png", src, &base).unwrap(), "../docs/art/assets/p.png");
+        // Bug 1B: interior `../` is normalised away, not left interleaved.
+        let out = rewrite_target("../shared/p.png", src, &base).unwrap();
+        assert_eq!(out, "../docs/shared/p.png");
+        assert!(!out.contains("/../"), "no interior /../: {out}");
+    }
+
+    #[test]
+    fn rewrite_line_preserves_alt_text_and_rewrites_only_path() {
+        let src = Path::new("docs/art");
+        let base = Path::new("outputs");
+        // Bug 1A: CJK alt text is preserved, never nested inside another `![`.
+        let out = rewrite_line_paths("![工作流全景](assets/p.png)", src, base);
+        assert_eq!(out, "![工作流全景](../docs/art/assets/p.png)");
+        assert!(!out.contains("![工作流全景!["), "alt text must not be nested: {out}");
+        assert_eq!(out.matches("](").count(), 1, "exactly one link: {out}");
+    }
+
+    #[test]
+    fn rewrite_line_handles_multiple_links_on_one_line() {
+        let src = Path::new("docs/art");
+        let base = Path::new("outputs");
+        let out = rewrite_line_paths("see ![a](x.png) and [b](y.md) too", src, base);
+        assert_eq!(out, "see ![a](../docs/art/x.png) and [b](../docs/art/y.md) too");
+    }
+
+    #[test]
+    fn rewrite_line_rewrites_reference_definition() {
+        let src = Path::new("docs/art");
+        let base = Path::new("outputs");
+        assert_eq!(rewrite_line_paths("[img]: assets/p.png", src, base), "[img]: ../docs/art/assets/p.png");
+        // Indentation and trailing title are preserved.
+        assert_eq!(
+            rewrite_line_paths("  [img]: assets/p.png \"Title\"", src, base),
+            "  [img]: ../docs/art/assets/p.png \"Title\""
+        );
+    }
+
+    #[test]
+    fn rewrite_line_leaves_non_links_untouched() {
+        let src = Path::new("docs/art");
+        let base = Path::new("outputs");
+        // No link at all.
+        assert_eq!(rewrite_line_paths("plain text, no links here", src, base), "plain text, no links here");
+        // A `]` with no preceding `[` is not a link.
+        assert_eq!(rewrite_line_paths("stray ](x.png) bracket", src, base), "stray ](x.png) bracket");
+        // Absolute / URL targets are left verbatim.
+        assert_eq!(rewrite_line_paths("[a](https://x/y) ![b](/abs.png)", src, base), "[a](https://x/y) ![b](/abs.png)");
+    }
 }
