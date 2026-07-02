@@ -993,6 +993,22 @@ fn handle_update_dry_run(
     if !update.delete_tags.is_empty() {
         planned.push(format!("remove {} tag(s)", update.delete_tags.len()));
     }
+    // Correction operations must be previewed too (New A: dry-run parity).
+    if !update.add_corrections.is_empty() {
+        planned.push(format!("add {} correction(s)", update.add_corrections.len()));
+    }
+    if !update.delete_corrections.is_empty() {
+        planned.push(format!("remove {} correction(s)", update.delete_corrections.len()));
+    }
+    if !update.correction_matches.is_empty() {
+        planned.push(format!("set match kind on {} correction(s)", update.correction_matches.len()));
+    }
+    if !update.correction_fixes.is_empty() {
+        planned.push(format!("set fix kind on {} correction(s)", update.correction_fixes.len()));
+    }
+    if !update.correction_pinyins.is_empty() {
+        planned.push(format!("set pinyin on {} correction(s)", update.correction_pinyins.len()));
+    }
 
     let scope_str = scope.as_str();
     if scope_str == "global" {

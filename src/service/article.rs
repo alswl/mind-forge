@@ -989,11 +989,15 @@ fn scan_md_dir(dir_path: &Path, rel_dir: &str, scanned: &mut Vec<ScannedArticle>
                 });
                 if has_md_part {
                     let title = name.replace('-', " ");
+                    let dir_rel = format!("{}/{}", rel_dir, name);
                     scanned.push(ScannedArticle {
                         title,
                         filename: name.clone(),
-                        article_dir: Some(format!("{}/{}", rel_dir, name)),
-                        article_path: None,
+                        article_dir: Some(dir_rel.clone()),
+                        // Directory-type article: article_path is the directory
+                        // itself (matching `article new`), NOT dir/<name>.md,
+                        // which does not exist (blocks Bug #3 build/publish).
+                        article_path: Some(dir_rel),
                     });
                 }
             }

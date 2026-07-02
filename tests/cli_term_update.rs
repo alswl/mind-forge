@@ -158,6 +158,32 @@ fn update_dry_run_json_envelope() {
 }
 
 #[test]
+fn update_dry_run_previews_correction_changes() {
+    // New A: --dry-run must preview correction operations, not report an empty
+    // change set for correction-only updates.
+    let (repo, _project) = setup_with_term();
+    let index_before = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
+
+    let output = mf(&repo)
+        .args(["--json", "term", "update", "RAG", "--add-correction", "ragd", "--dry-run", "--project", "alpha"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(v["data"]["dry_run"], true, "JSON: {stdout}");
+    let changes = v["data"]["details"]["changes"].as_array().expect("changes array");
+    assert!(
+        changes.iter().any(|c| c.as_str().is_some_and(|s| s.contains("correction"))),
+        "dry-run should preview the correction change: {stdout}"
+    );
+
+    let index_after = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();
+    assert_eq!(index_before, index_after, "dry-run must not modify storage");
+}
+
+#[test]
 fn update_dry_run_delete_flags() {
     let (repo, _project) = setup_with_term();
     let index_before = fs::read_to_string(repo.path().join("alpha/mind-index.yaml")).unwrap();

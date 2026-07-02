@@ -521,22 +521,16 @@ fn relative_path_from(from: &Path, to: &Path) -> Option<String> {
     let common_len = from_comps.iter().zip(to_comps.iter()).take_while(|(a, b)| a == b).count();
 
     let up_count = from_comps.len() - common_len;
-    let mut result = String::new();
-    for _ in 0..up_count {
-        result.push_str("../");
-    }
+    let mut parts: Vec<&str> = vec![".."; up_count];
     for comp in &to_comps[common_len..] {
         if let Some(s) = comp.as_os_str().to_str() {
-            if !result.is_empty() {
-                result.push('/');
-            }
-            result.push_str(s);
+            parts.push(s);
         }
     }
-    if result.is_empty() {
-        result.push('.');
+    if parts.is_empty() {
+        return Some(".".to_string());
     }
-    Some(result)
+    Some(parts.join("/"))
 }
 
 /// After a successful build, ensure the article is present in mind-index.yaml.

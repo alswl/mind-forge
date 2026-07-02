@@ -452,6 +452,41 @@ fn article_index_with_project_flag() {
     assert!(parsed["data"]["kept_count"].as_u64().unwrap_or(0) >= 1);
 }
 
+#[test]
+fn article_index_directory_article_is_present_not_missing() {
+    // Bug #3 residual: a directory-type article (docs/<slug>/NN-*.md) must be
+    // indexed with article_path pointing at the DIRECTORY, so it resolves as
+    // present (not "missing") for list/build/publish.
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    // Create a directory article by hand (NN-*.md blocks, no <slug>.md).
+    let dir = repo.path().join("my-project/docs/2026-04-05-review");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("01-opening.md"), "# Review\n\nintro\n").unwrap();
+    std::fs::write(dir.join("02-body.md"), "## Body\n\ntext\n").unwrap();
+
+    let (parsed, output) = json_index(&[], &repo.path().join("my-project"));
+    assert_eq!(output.status.code(), Some(0));
+    assert!(parsed["data"]["scanned_count"].as_u64().unwrap_or(0) >= 1, "directory article should be scanned");
+
+    // list --json must report the directory path, present, and a non-missing kind.
+    let list_output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["--output", "json", "article", "list"])
+        .output()
+        .expect("command runs");
+    let stdout = String::from_utf8(list_output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("json");
+    let article = parsed["data"]["articles"]
+        .as_array()
+        .and_then(|a| a.iter().find(|x| x["article_path"] == "docs/2026-04-05-review"))
+        .expect("directory article indexed at its directory path");
+    assert_eq!(article["article_present"], true, "directory article must be present: {stdout}");
+    assert_ne!(article["content_kind"], "missing", "directory article must not be missing: {stdout}");
+}
+
 // ---------------------------------------------------------------------------
 // US2: Article article directory tests
 // ---------------------------------------------------------------------------
