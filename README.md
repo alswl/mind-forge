@@ -300,6 +300,15 @@ default `projects/` container). Defaults to the current directory.
 Global terms (created without `--project`) are stored in `minds-terms.yaml` at
 the repo root. Project-scoped terms live in each project's `mind-index.yaml`.
 
+Corrections follow two paths. `mf term lint`/`fix` deterministically applies the
+**declared glossary corrections** — the closed-set, recurring domain terms — to
+project docs under guardrails (no edit inside a protected term occurrence,
+declared-correction precedence, non-overlapping edits, atomic write after
+diff/confirm). **Open-domain** ASR errors that no fixed list can enumerate are
+corrected by the driving agent, then persisted via `mf term correction add` once
+they recur. `mf` owns the deterministic guardrails; the agent owns the
+open-domain judgment.
+
 ### `mf build <ARTICLE>` — Build articles
 
 `-o, --output <PATH>`, `--dry-run`. `ARTICLE` may be an indexed name/slug or

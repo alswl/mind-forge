@@ -214,6 +214,8 @@ Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (a
 
 Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (alias `rm`), `correction`, `move` (alias `mv`), `lint`, `fix`.
 
+**Correction model.** `mf term lint`/`fix` deterministically applies *declared* glossary corrections (closed-set, recurring domain terms) under guardrails: it never edits inside a protected term occurrence, honors declared-correction precedence, keeps edits non-overlapping, and writes atomically after diff/confirm. Open-domain ASR errors that no fixed list can enumerate (near-homophone, context-dependent) are yours to correct directly; when one recurs, persist it with `mf term correction add` so the rules path handles it next time. `mf` is the guardrail; you are the open-domain corrector.
+
 **`mf term new <TERM>`**
 Create a term (mf extension).
 `--definition <TEXT>` — Term definition

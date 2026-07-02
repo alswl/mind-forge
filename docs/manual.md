@@ -211,6 +211,17 @@ mf asset clean --project blog
 Terms can be global or project-scoped. Global terms live in `minds-terms.yaml`;
 project terms live in `mind-index.yaml`.
 
+Corrections follow two paths. **Rules** are the declared glossary corrections
+that `mf` applies deterministically: `mf term lint`/`fix` rewrites recurring,
+closed-set domain terms in project docs under guardrails — it never edits inside
+a protected term occurrence, honors declared-correction precedence, keeps edits
+non-overlapping, and writes atomically after diff/confirm. **Open-domain** errors
+that no fixed list can enumerate — near-homophone or context-dependent ASR
+mistakes — are corrected by the agent driving `mf`; once such an error recurs,
+persist it with `mf term correction add` so the rules path catches it next time.
+In short, `mf` owns the deterministic guardrails; the agent owns the open-domain
+judgment.
+
 ```bash
 mf term new "API" --definition "Application Programming Interface"
 mf term new "Zettelkasten" --definition "A note-taking method" --project blog
