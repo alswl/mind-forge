@@ -1,12 +1,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::sha256_file;
 use crate::error::{MfError, Result};
 use crate::model::asset::AssetUpdateResult;
 use crate::service::config as config_svc;
 use crate::service::index;
 use crate::service::util;
+use crate::service::util::hash::sha256_file;
 
 /// Outcome for setting the publish URL.
 pub struct PublishUrlOutcome {

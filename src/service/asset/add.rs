@@ -3,11 +3,13 @@ use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 
-use super::{create_symlink, infer_kind, sha256_file};
+use super::infer_kind;
 use crate::error::{MfError, Result};
 use crate::model::asset::Asset;
 use crate::service::config as config_svc;
 use crate::service::index;
+use crate::service::util::create_symlink;
+use crate::service::util::hash::sha256_file;
 
 /// Parameters for `add()`.
 pub struct AddArgs {

@@ -9,6 +9,7 @@ use crate::model::source::{FileKind, Source, SourceKind};
 use crate::service::config as config_svc;
 use crate::service::index;
 use crate::service::util;
+use crate::service::util::create_symlink;
 
 /// The mode used when adding a source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,16 +68,6 @@ fn replace_in_sources(sources: &mut Vec<Source>, idx: usize, source: Source) {
     sources.remove(idx);
     sources.push(source);
     sources.sort_by(|a, b| a.name.cmp(&b.name));
-}
-
-#[cfg(unix)]
-fn create_symlink(src: &Path, dst: &Path) -> Result<()> {
-    std::os::unix::fs::symlink(src, dst).map_err(MfError::Io)
-}
-
-#[cfg(not(unix))]
-fn create_symlink(_src: &Path, _dst: &Path) -> Result<()> {
-    Err(MfError::usage("symlink is not supported on this platform", Some("omit --link to copy the file".to_string())))
 }
 
 /// Add a source — dispatches to Path or URL branch based on input.
