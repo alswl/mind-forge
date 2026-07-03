@@ -245,11 +245,22 @@ mf term fix --project blog --term API:api --exclude-original apis
 mf term fix --project blog --include-suggested --min-confidence 0.8
 ```
 
-`term update` changes metadata and corrections. Use `--add-correction` to
-append a correction to an existing term, or `--correction-match`/`--correction-fix`/
-`--correction-pinyin` to set correction attributes. To remove a single correction,
-use `--delete-correction` or the subcommand `term correction remove`.
+`term update` changes metadata and corrections. Use `--add-correction
+<ORIGINAL[:CORRECT]>` to append a correction to an existing term; the optional
+`:CORRECT` sets the replacement text, and a bare `ORIGINAL` uses the term's own
+name as the replacement (never an empty correction). Use `--correction-match`/
+`--correction-fix`/`--correction-pinyin` to set correction attributes; switching
+`--correction-match` to `substring` or `pinyin` automatically clears the
+`standalone` boundary (which is only valid with `word`), so a correction can
+never be left in an invalid state. To remove a single correction, use
+`--delete-correction` or the subcommand `term correction remove`.
 Use `--dry-run` to validate and preview without writing.
+
+`term show`, `term update`, and `term remove` load a term leniently, so a
+correction that is already in an invalid state (for example a hand-edited
+`substring` + `standalone` combination) can still be inspected and repaired or
+deleted from the CLI. `term lint`/`term build` keep strict validation and still
+report such corrections.
 
 `term fix` and `term lint --fix` accept a repeatable `--term <NAME>` flag to
 scope corrections to one or more named terms (case-sensitive exact match on

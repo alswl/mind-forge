@@ -246,8 +246,8 @@ Update term metadata and corrections.
 `--tag <TAG>` — Add tag (repeatable)
 `--delete-alias <TEXT>` — Remove an alias (repeatable)
 `--delete-tag <TAG>` — Remove a tag (repeatable)
-`--add-correction <ORIGINAL>` — Append a correction (defaults to word/required; repeatable)
-`--correction-match <ORIGINAL:KIND>` — Set match kind of a correction (repeatable)
+`--add-correction <ORIGINAL[:CORRECT]>` — Append a correction (defaults to word/required; repeatable). Optional `:CORRECT` sets the replacement; a bare `ORIGINAL` uses the term name as the replacement (never an empty `correct`).
+`--correction-match <ORIGINAL:KIND>` — Set match kind of a correction (repeatable). Switching to `substring`/`pinyin` auto-clears the `standalone` boundary (valid only with `word`), so the correction is never left in an invalid state.
 `--correction-fix <ORIGINAL:KIND>` — Set fix kind of a correction (repeatable)
 `--correction-pinyin <ORIGINAL:PINYIN>` — Set pinyin of a correction (repeatable)
 `--delete-correction <ORIGINAL>` — Delete a correction by original (repeatable)
@@ -437,8 +437,8 @@ mf term list --scope global                                  # global pool only
 mf term show Zettelkasten --project my-project
 mf term update "API" --definition "Updated definition" --project my-project
 mf term update "API" --tag tech --delete-alias "old-alias" --dry-run  # preview update
-mf term update "API" --add-correction "api" --project my-project       # add correction inline
-mf term update "API" --correction-match "api:substring"                # set match kind
+mf term update "API" --add-correction "api:API" --project my-project   # add correction inline (ORIGINAL:CORRECT)
+mf term update "API" --correction-match "api:substring"                # set match kind (auto-clears standalone boundary)
 mf term update "API" --correction-fix "api:suggested"                  # set fix kind
 mf term update "API" --delete-correction "api"                         # remove correction
 mf term correction add "API" "api" "API"                     # add correction (subcommand)
@@ -490,6 +490,7 @@ mf version --json
 - `term lint --fix` and `term fix` treat `--force` as an alias for `--yes`; do not generalize that exception to entity removal.
 - `term fix` and `term lint --fix` accept `--term <NAME>` or `--term <NAME:ORIGINAL>` (repeatable) to scope corrections to named terms or a specific correction pair, plus `--exclude-term`/`--exclude-original` to narrow, and `--include-suggested`/`--min-confidence <0.0..1.0>` for suggested corrections (`--min-confidence` requires `--include-suggested`). Matching is case-sensitive exact on canonical name. Unknown term names exit 2 with no edits. Run `mf term correction remove <TERM> <ORIGINAL>` to delete a single correction.
 - `mf source new --register-only` indexes a file already inside the project's `sources/` directory without copying its bytes. It is idempotent and cannot combine with `--link` or `--force`; paths outside `sources/` or URL inputs exit 2.
-- `term update` manages term metadata and corrections via `--add-correction`, `--correction-match`/`--correction-fix`/`--correction-pinyin`, and `--delete-correction`. Setting an attribute for a non-existent original exits 2 with a hint pointing to `--add-correction`. `term fix` is a first-class alias for `term lint --fix`.
+- `term update` manages term metadata and corrections via `--add-correction <ORIGINAL[:CORRECT]>`, `--correction-match`/`--correction-fix`/`--correction-pinyin`, and `--delete-correction`. A bare `--add-correction <ORIGINAL>` uses the term name as the replacement (never an empty `correct`), and `--correction-match` to `substring`/`pinyin` auto-clears the `standalone` boundary so no invalid state is written. Setting an attribute for a non-existent original exits 2 with a hint pointing to `--add-correction`. `term fix` is a first-class alias for `term lint --fix`.
+- `term show`, `term update`, and `term remove` load the term leniently: a correction already in an invalid state (e.g. hand-edited `substring` + `standalone`) can still be inspected, repaired, or deleted from the CLI. `term lint`/`term build` keep strict validation and still surface such corrections.
 - `article convert` evaluates eligible articles project-wide; it does not take an article selector.
 - `mf init` is the preferred bootstrap command; `mf config init` remains deprecated compatibility.
