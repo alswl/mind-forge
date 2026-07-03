@@ -2,51 +2,32 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Add a source
+Create a source
 
-Usage: mf source add [OPTIONS] <INPUT>
+Usage: mf source new [OPTIONS] <INPUT>
 
 Arguments:
   <INPUT>  
 
 Options:
-  -n, --name <NAME>
-          
-      --root <PATH>
-          Mind Repo root directory
-      --config <PATH>
-          Config file path
-      --file-kind <FILE_KIND>
-          File kind (mf primary). Use --source-kind for mind channel type [possible values: auto,
-          pdf, file, rss, web]
-      --source-kind <SOURCE_KIND>
-          Source channel type (mind primary) [possible values: yuque, meeting, misc]
-  -v, --verbose...
-          Verbose output
-  -q, --quiet
-          Silence non-error output
-  -t, --type <KIND>
-          Deprecated: use --file-kind or --source-kind instead [possible values: auto, pdf, file,
-          rss, web]
-      --format <FORMAT>
-          Output format [default: text] [possible values: text, json]
-      --link
-          
-  -f, --force
-          
-      --json
-          Shorthand for --format json
-      --dry-run
-          
-      --no-color
-          Disable colored output
-  -p, --project <NAME>
-          Project name for project-scoped operations
-      --install-completion <INSTALL_COMPLETION>
-          Install shell completion script [possible values: bash, zsh, fish, powershell, elvish]
-      --show-completion <SHOW_COMPLETION>
-          Show shell completion script [possible values: bash, zsh, fish, powershell, elvish]
-  -h, --help
-          Print help
-  -V, --version
-          Print version
+  -n, --name <NAME>                Override the source name derived from the input
+      --root <PATH>                Mind Repo root directory
+      --config <PATH>              Config file path
+      --file-kind <FILE_KIND>      File kind (mf primary). Use --source-kind for mind channel type
+                                   [possible values: auto, pdf, file, rss, web]
+      --source-kind <SOURCE_KIND>  Source channel type (mind primary) [possible values: yuque,
+                                   meeting, misc]
+  -v, --verbose...                 Verbose output
+      --link                       Create a symlink instead of copying a local file
+  -q, --quiet                      Silence non-error output
+  -o, --output <FORMAT>            Output format [default: text] [possible values: text, json]
+      --register-only              Register a file already inside the project's sources directory
+                                   without copying it
+  -f, --force                      Proceed despite safety checks: overwrite an existing target, or
+                                   remove an entity referenced by others
+      --json                       Shorthand for --output json
+      --dry-run                    Preview changes without writing
+      --no-color                   Disable colored output
+  -p, --project <NAME>             Project name for project-scoped operations
+  -h, --help                       Print help
+  -V, --version                    Print version

@@ -11,7 +11,7 @@ use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::index::IndexFile;
 use crate::model::lifecycle::{PlannedChange, ScopeRef};
-use crate::model::term::{Correction, Term, TermLintReport};
+use crate::model::term::{Correction, FixSelection, Term, TermLintReport};
 use crate::service::lifecycle;
 use crate::service::term::lint;
 use crate::service::term::new::append_to_existing_term;
@@ -197,78 +197,80 @@ fn global_index(terms: Vec<Term>) -> IndexFile {
     }
 }
 
-/// Lint a single file against global terms.
-pub fn lint_file(
+pub fn lint_file_selection(
     repo_root: &Path,
     file_path: &str,
     fix: bool,
     dry_run: bool,
-    include_suggested: bool,
-    term_filter: &[String],
+    selection: &FixSelection,
 ) -> Result<TermLintReport> {
-    let mut terms = load_terms(repo_root)?;
-    lint::filter_terms_by_name(&mut terms, term_filter)?;
+    let terms = load_terms(repo_root)?;
+    lint::validate_fix_selection(&terms, selection)?;
     if terms.is_empty() {
         return Ok(lint::empty_report(fix, dry_run));
     }
-    lint::lint_single_file_with_index(&global_index(terms), repo_root, file_path, fix, dry_run, include_suggested)
+    lint::lint_single_file_with_selection(&global_index(terms), repo_root, file_path, fix, dry_run, selection)
 }
 
-/// Lint a file or directory path relative to the repo root.
-pub fn lint_path(
+pub fn lint_path_selection(
     repo_root: &Path,
     path: &str,
     fix: bool,
     dry_run: bool,
-    include_suggested: bool,
-    term_filter: &[String],
+    selection: &FixSelection,
 ) -> Result<TermLintReport> {
     if repo_root.join(path).is_dir() {
-        lint_dir(repo_root, path, fix, dry_run, include_suggested, term_filter)
+        lint_dir_selection(repo_root, path, fix, dry_run, selection)
     } else {
-        lint_file(repo_root, path, fix, dry_run, include_suggested, term_filter)
+        lint_file_selection(repo_root, path, fix, dry_run, selection)
     }
 }
 
-/// Lint all markdown files under a specific directory (global).
-pub fn lint_dir(
+pub fn lint_dir_selection(
     repo_root: &Path,
     dir_path: &str,
     fix: bool,
     dry_run: bool,
-    include_suggested: bool,
-    term_filter: &[String],
+    selection: &FixSelection,
 ) -> Result<TermLintReport> {
-    let mut terms = load_terms(repo_root)?;
-    lint::filter_terms_by_name(&mut terms, term_filter)?;
+    let terms = load_terms(repo_root)?;
+    lint::validate_fix_selection(&terms, selection)?;
     if terms.is_empty() {
         return Ok(lint::empty_report(fix, dry_run));
     }
-    lint::lint_dir_with_index(
-        &global_index(terms),
-        repo_root,
-        dir_path,
-        "provide a path relative to the repo root",
-        fix,
-        dry_run,
-        include_suggested,
-    )
+    let target = repo_root.join(dir_path).canonicalize().map_err(MfError::Io)?;
+    let canonical_repo = repo_root.canonicalize().map_err(MfError::Io)?;
+    let index = global_index(terms);
+    if target.starts_with(&canonical_repo) {
+        let relative = target
+            .strip_prefix(&canonical_repo)
+            .map_err(|_| MfError::usage(format!("directory is outside repo root: {dir_path}"), None))?;
+        lint::lint_dir_with_selection(
+            &index,
+            &canonical_repo,
+            &relative.to_string_lossy(),
+            "provide a path relative to the repo root",
+            fix,
+            dry_run,
+            selection,
+        )
+    } else {
+        lint::lint_walk_with_selection(&index, &target, &target, Some(&target), fix, dry_run, selection)
+    }
 }
 
-/// Lint all markdown files in the repo against global terms.
-pub fn lint_terms(
+pub fn lint_terms_selection(
     repo_root: &Path,
     fix: bool,
     dry_run: bool,
-    include_suggested: bool,
-    term_filter: &[String],
+    selection: &FixSelection,
 ) -> Result<TermLintReport> {
-    let mut terms = load_terms(repo_root)?;
-    lint::filter_terms_by_name(&mut terms, term_filter)?;
+    let terms = load_terms(repo_root)?;
+    lint::validate_fix_selection(&terms, selection)?;
     if terms.is_empty() {
         return Ok(lint::empty_report(fix, dry_run));
     }
-    lint::lint_walk_with_index(&global_index(terms), repo_root, repo_root, None, fix, dry_run, include_suggested)
+    lint::lint_walk_with_selection(&global_index(terms), repo_root, repo_root, None, fix, dry_run, selection)
 }
 
 // ── Global term rename ───────────────────────────────────────────────────────
@@ -465,5 +467,23 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let terms = load_terms(dir.path()).unwrap();
         assert!(terms.is_empty());
+    }
+
+    #[test]
+    fn external_directory_uses_target_as_display_and_write_base() {
+        let repo = tempfile::tempdir().unwrap();
+        seed(repo.path());
+        let corrections = vec!["synthetic".to_string()];
+        new_term(repo.path(), "Synthetic", TermInput::default(), &corrections).unwrap();
+        let external = tempfile::tempdir().unwrap();
+        let visible_dir = external.path().join("visible");
+        std::fs::create_dir_all(&visible_dir).unwrap();
+        std::fs::write(visible_dir.join("document.md"), "synthetic\n").unwrap();
+        let report =
+            lint_path_selection(repo.path(), &visible_dir.to_string_lossy(), false, false, &FixSelection::default())
+                .unwrap();
+        assert_eq!(report.scanned_files, 1);
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].path, "document.md");
     }
 }

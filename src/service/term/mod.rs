@@ -1,7 +1,6 @@
 // Term service — implemented in 012-term-core.
 // Directory module facade: re-exports sub-module public items.
 
-pub mod correct;
 pub mod correction;
 pub mod fix;
 pub mod global;
@@ -22,7 +21,7 @@ use std::collections::BTreeSet;
 use crate::error::MfError;
 
 pub use self::fix::fix_term;
-pub use self::lint::{lint_path_with_global, lint_terms_with_global};
+pub use self::lint::{lint_path_with_global_selection, lint_terms_with_global_selection};
 pub use self::list::list_terms;
 pub use self::new::new_term;
 pub use self::remove::{remove_term, remove_term_global};

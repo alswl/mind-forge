@@ -124,6 +124,12 @@ pub struct TermLintArgs {
     /// Only apply/scan corrections for the named term(s) (repeatable, exact name)
     #[arg(long = "term", value_name = "NAME")]
     pub term: Vec<String>,
+    /// Exclude corrections for the named term(s) (repeatable)
+    #[arg(long = "exclude-term", value_name = "NAME")]
+    pub exclude_term: Vec<String>,
+    /// Exclude this exact original text across terms (repeatable)
+    #[arg(long = "exclude-original", value_name = "ORIGINAL")]
+    pub exclude_original: Vec<String>,
     #[command(flatten)]
     pub lint: LintFlags,
     #[command(flatten)]
@@ -139,6 +145,12 @@ pub struct TermFixArgs {
     /// Only apply/scan corrections for the named term(s) (repeatable, exact name)
     #[arg(long = "term", value_name = "NAME")]
     pub term: Vec<String>,
+    /// Exclude corrections for the named term(s) (repeatable)
+    #[arg(long = "exclude-term", value_name = "NAME")]
+    pub exclude_term: Vec<String>,
+    /// Exclude this exact original text across terms (repeatable)
+    #[arg(long = "exclude-original", value_name = "ORIGINAL")]
+    pub exclude_original: Vec<String>,
     #[command(flatten)]
     pub lint: LintFlags,
     #[command(flatten)]
@@ -352,6 +364,8 @@ pub fn dispatch(command: TermCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome
                 path: args.path,
                 article: args.article,
                 term: args.term,
+                exclude_term: args.exclude_term,
+                exclude_original: args.exclude_original,
                 lint: args.lint,
                 yes: args.yes.clone(),
             };

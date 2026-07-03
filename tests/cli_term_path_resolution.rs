@@ -20,8 +20,8 @@ fn setup_with_global_term() -> (common::TempDir, std::path::PathBuf) {
     fs::create_dir_all(project.join("sources")).unwrap();
     fs::write(project.join("sources/foo.md"), "the mindrepo is here\n").unwrap();
     // Seed a global term so lint works without --project.
-    fs::write(
-        repo.path().join("minds-terms.yaml"),
+    common::write_global_terms(
+        &repo,
         r#"schema_version: '1'
 terms:
   - term: Mind Repo
@@ -29,8 +29,7 @@ terms:
       - original: mindrepo
         correct: Mind Repo
 "#,
-    )
-    .unwrap();
+    );
     (repo, project)
 }
 
@@ -38,6 +37,45 @@ fn mf(repo: &common::TempDir) -> Command {
     let mut cmd = Command::cargo_bin("mf").unwrap();
     cmd.args(["--root", repo.path().to_str().unwrap()]);
     cmd
+}
+
+#[test]
+fn external_directory_scans_same_files_as_individual_paths() {
+    let (repo, _project) = setup_with_global_term();
+    let (_holder, external) =
+        common::scaffold_external_docs(&[("one.md", "mindrepo one\n"), ("two.md", "mindrepo two\n")]);
+
+    let output = mf(&repo).args(["term", "lint", external.to_str().unwrap(), "--json"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["data"]["scanned_files"], 2);
+    let paths: Vec<&str> =
+        value["data"]["findings"].as_array().unwrap().iter().filter_map(|finding| finding["path"].as_str()).collect();
+    assert_eq!(paths, vec!["one.md", "two.md"]);
+}
+
+#[test]
+fn empty_external_directory_reports_no_eligible_files() {
+    let (repo, _) = setup_with_global_term();
+    let (_holder, external) = common::scaffold_external_docs(&[]);
+    let output = mf(&repo).args(["term", "lint", external.to_str().unwrap()]).output().unwrap();
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "No eligible files found.\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn external_directory_fix_does_not_follow_symlink_escape() {
+    use std::os::unix::fs::symlink;
+
+    let (repo, _) = setup_with_global_term();
+    let (_holder, external) = common::scaffold_external_docs(&[]);
+    let outside = tempfile::NamedTempFile::new().unwrap();
+    fs::write(outside.path(), "mindrepo outside\n").unwrap();
+    symlink(outside.path(), external.join("escape.md")).unwrap();
+    let output = mf(&repo).args(["term", "fix", external.to_str().unwrap(), "-y"]).output().unwrap();
+    assert!(output.status.success());
+    assert_eq!(fs::read_to_string(outside.path()).unwrap(), "mindrepo outside\n");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

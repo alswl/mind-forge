@@ -171,3 +171,63 @@ pub(crate) fn apply_update(t: &mut Term, update: &TermUpdate<'_>) -> Result<()> 
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::term::{Boundary, Correction, FixKind, MatchKind};
+
+    fn synthetic_term() -> Term {
+        Term {
+            term: "Synthetic".into(),
+            definition: Some("unchanged".into()),
+            description: None,
+            confidence: None,
+            aliases: vec![],
+            tags: vec![],
+            corrections: vec![
+                Correction {
+                    original: "first".into(),
+                    correct: "Synthetic".into(),
+                    r#match: MatchKind::Word,
+                    fix: FixKind::Required,
+                    boundary: Boundary::Standalone,
+                    pinyin: None,
+                },
+                Correction {
+                    original: "second".into(),
+                    correct: "Synthetic".into(),
+                    r#match: MatchKind::Word,
+                    fix: FixKind::Required,
+                    boundary: Boundary::Standalone,
+                    pinyin: None,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn update_sets_exact_correction_match_without_touching_siblings() {
+        let mut term = synthetic_term();
+        let values = vec!["first:substring".to_string()];
+        apply_update(&mut term, &TermUpdate { correction_matches: &values, ..Default::default() }).unwrap();
+        assert_eq!(term.corrections[0].r#match, MatchKind::Substring);
+        assert_eq!(term.corrections[1].r#match, MatchKind::Word);
+        assert_eq!(term.definition.as_deref(), Some("unchanged"));
+    }
+
+    #[test]
+    fn update_pinyin_and_delete_target_exact_original_only() {
+        let mut term = synthetic_term();
+        let pinyins = vec!["first:synthetic-reading".to_string()];
+        let deletes = vec!["second".to_string()];
+        apply_update(
+            &mut term,
+            &TermUpdate { correction_pinyins: &pinyins, delete_corrections: &deletes, ..Default::default() },
+        )
+        .unwrap();
+        assert_eq!(term.corrections.len(), 1);
+        assert_eq!(term.corrections[0].original, "first");
+        assert_eq!(term.corrections[0].pinyin.as_deref(), Some("synthetic-reading"));
+    }
+}

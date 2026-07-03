@@ -220,6 +220,25 @@ pub fn write_term_index(repo: &TempDir, project_name: &str, terms_yaml: &str) {
     write_index(repo, project_name, &yaml);
 }
 
+/// Write a complete synthetic global term file for CLI tests.
+#[allow(dead_code)]
+pub fn write_global_terms(repo: &TempDir, yaml: &str) {
+    fs::write(repo.path().join("minds-terms.yaml"), yaml).unwrap();
+}
+
+/// Create a visible external directory populated with synthetic Markdown files.
+/// The returned TempDir owns the directory for the lifetime of the test.
+#[allow(dead_code)]
+pub fn scaffold_external_docs(files: &[(&str, &str)]) -> (TempDir, PathBuf) {
+    let holder = TempDir::new().unwrap();
+    let external = holder.path().join("external-docs");
+    fs::create_dir_all(&external).unwrap();
+    for (name, content) in files {
+        fs::write(external.join(name), content).unwrap();
+    }
+    (holder, external)
+}
+
 /// Scaffold the minimal repro fixture matching quickstart.md:
 /// - `projects/team-reports/docs/2026-05-monthly/01-team-okr.md`
 /// - `projects/team-reports/outputs/2026-05/2026-05-15.md`

@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::error::{MfError, Result};
 
-pub use self::add::{add, AddArgs, AddMode};
+pub use self::add::{add, register_only, AddArgs, AddMode};
 pub(crate) use self::add::{classify_input, InputForm};
 pub use self::clean::clean;
 pub use self::index::reconcile;
