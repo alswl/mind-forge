@@ -44,8 +44,8 @@ Options:
           Project name for project-scoped operations
       --delete-tag <DELETE_TAG>
           Remove a tag from the term
-      --add-correction <ADD_CORRECTION>
-          Append a correction (ORIGINAL); defaults to word/required
+      --add-correction <ORIGINAL[:CORRECT]>
+          Append a correction (ORIGINAL[:CORRECT]); defaults to word/required, term name as CORRECT
       --correction-match <ORIGINAL:KIND>
           Set match kind of a correction: ORIGINAL:word|substring|pinyin
       --correction-fix <ORIGINAL:KIND>

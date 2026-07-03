@@ -12,7 +12,8 @@ use crate::service::lifecycle;
 pub fn remove_term(project_path: &Path, term_name: &str, force: bool, dry_run: bool) -> Result<TermRemoveReport> {
     crate::service::util::require_nonempty(term_name, "term name")?;
 
-    let mut index = index::load(project_path)?;
+    // Lenient load so a term with invalid corrections can still be removed.
+    let mut index = index::load_lenient(project_path)?;
 
     // Check term exists
     let terms = index.terms.as_ref().ok_or_else(|| {
@@ -85,7 +86,7 @@ pub fn remove_term(project_path: &Path, term_name: &str, force: bool, dry_run: b
 pub fn remove_term_global(repo_root: &Path, term_name: &str, force: bool, dry_run: bool) -> Result<TermRemoveReport> {
     crate::service::util::require_nonempty(term_name, "term name")?;
 
-    let mut terms = crate::service::term::repo_format::load(repo_root)?;
+    let mut terms = crate::service::term::repo_format::load_lenient(repo_root)?;
 
     if !terms.iter().any(|t| t.term == term_name) {
         return Err(MfError::usage(

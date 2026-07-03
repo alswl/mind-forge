@@ -179,7 +179,12 @@ pub struct TermUpdateArgs {
     #[arg(long = "delete-tag", help = "Remove a tag from the term")]
     pub delete_tag: Vec<String>,
     /// Append a correction to the term (repeatable). Defaults to word/match, required/fix.
-    #[arg(long = "add-correction", help = "Append a correction (ORIGINAL); defaults to word/required")]
+    /// `ORIGINAL:CORRECT` sets the replacement; a bare `ORIGINAL` uses the term name.
+    #[arg(
+        long = "add-correction",
+        value_name = "ORIGINAL[:CORRECT]",
+        help = "Append a correction (ORIGINAL[:CORRECT]); defaults to word/required, term name as CORRECT"
+    )]
     pub add_correction: Vec<String>,
     /// Set match kind of an existing correction: ORIGINAL:word|substring|pinyin (repeatable).
     #[arg(

@@ -134,8 +134,10 @@ pub fn list_terms(repo_root: &Path, filter: Option<&str>) -> Result<Vec<Term>> {
 }
 
 /// Look up a single global term by canonical name (exact match).
+///
+/// Lenient load so a term with invalid corrections can still be inspected.
 pub fn show_term(repo_root: &Path, name: &str) -> Result<Term> {
-    let terms = load_terms(repo_root)?;
+    let terms = repo_format::load_lenient(repo_root)?;
     terms.iter().find(|t| t.term == name).cloned().ok_or_else(|| {
         MfError::usage(format!("term '{name}' not found"), Some("use `mf term list` to see all terms".to_string()))
     })
@@ -148,7 +150,8 @@ pub fn fix_term(repo_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Re
 
     super::validate_confidence(update.confidence)?;
 
-    let mut terms = load_terms(repo_root)?;
+    // Lenient load so an invalid correction stays repairable via the CLI.
+    let mut terms = repo_format::load_lenient(repo_root)?;
 
     let pos = terms.iter().position(|t| t.term == term_name).ok_or_else(|| {
         MfError::usage(format!("term '{term_name}' not found"), Some("use `mf term list` or `mf term new`".to_string()))
