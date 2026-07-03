@@ -8,21 +8,7 @@ use crate::service::index;
 /// Modify an existing term's definition, aliases, tags, description, confidence,
 /// or corrections.
 pub fn fix_term(project_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Result<Term> {
-    if !update.has_legacy_flags()
-        && !update.has_metadata_flags()
-        && update.delete_aliases.is_empty()
-        && update.delete_tags.is_empty()
-        && update.add_corrections.is_empty()
-        && update.delete_corrections.is_empty()
-        && update.correction_matches.is_empty()
-        && update.correction_fixes.is_empty()
-        && update.correction_pinyins.is_empty()
-    {
-        return Err(MfError::usage(
-            "at least one of --definition, --description, --confidence, --alias, --tag, --delete-alias, --delete-tag, --clear-description, --clear-confidence, --add-correction, --delete-correction, --correction-match, --correction-fix, --correction-pinyin must be provided",
-            None,
-        ));
-    }
+    update.ensure_non_empty()?;
 
     super::validate_confidence(update.confidence)?;
 
@@ -101,21 +87,19 @@ fn delete_correction_by_original(t: &mut Term, original: &str) -> Result<()> {
     Ok(())
 }
 
-fn add_correction_to_term(t: &mut Term, original: &str) -> Result<(Correction, bool)> {
-    // Idempotent: if correction with this original already exists, return it.
-    if let Some(existing) = t.corrections.iter().find(|c| c.original == original) {
-        return Ok((existing.clone(), false));
+fn add_correction_to_term(t: &mut Term, original: &str) {
+    // Idempotent: skip when a correction with this original already exists.
+    if t.corrections.iter().any(|c| c.original == original) {
+        return;
     }
-    let corr = Correction {
+    t.corrections.push(Correction {
         original: original.to_string(),
         correct: String::new(), // placeholder; set later via correction update
         r#match: MatchKind::Word,
         fix: FixKind::Required,
         boundary: Default::default(),
         pinyin: None,
-    };
-    t.corrections.push(corr.clone());
-    Ok((corr, true))
+    });
 }
 
 /// Apply a `TermUpdate` to a term entry in place.
@@ -152,7 +136,7 @@ pub(crate) fn apply_update(t: &mut Term, update: &TermUpdate<'_>) -> Result<()> 
 
     // Correction mutations
     for original in update.add_corrections {
-        add_correction_to_term(t, original)?;
+        add_correction_to_term(t, original);
     }
     for original in update.delete_corrections {
         delete_correction_by_original(t, original)?;

@@ -313,12 +313,7 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
         UpsertSlot::New => {
             let rel_path = util::rel_posix_path(project_path, &dest)?;
 
-            match args.link {
-                true => create_symlink(&source_canonical, &dest)?,
-                false => {
-                    std::fs::copy(&source_canonical, &dest).map_err(MfError::Io)?;
-                }
-            }
+            write_file()?;
 
             let source = Source {
                 name: name.clone(),

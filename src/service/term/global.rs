@@ -144,21 +144,7 @@ pub fn show_term(repo_root: &Path, name: &str) -> Result<Term> {
 /// Modify an existing global term's definition, aliases, tags, description, confidence,
 /// or corrections.
 pub fn fix_term(repo_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Result<Term> {
-    if !update.has_legacy_flags()
-        && !update.has_metadata_flags()
-        && update.delete_aliases.is_empty()
-        && update.delete_tags.is_empty()
-        && update.add_corrections.is_empty()
-        && update.delete_corrections.is_empty()
-        && update.correction_matches.is_empty()
-        && update.correction_fixes.is_empty()
-        && update.correction_pinyins.is_empty()
-    {
-        return Err(MfError::usage(
-            "at least one of --definition, --description, --confidence, --alias, --tag, --delete-alias, --delete-tag, --clear-description, --clear-confidence, --add-correction, --delete-correction, --correction-match, --correction-fix, --correction-pinyin must be provided",
-            None,
-        ));
-    }
+    update.ensure_non_empty()?;
 
     super::validate_confidence(update.confidence)?;
 
