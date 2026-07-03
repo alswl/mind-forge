@@ -163,6 +163,7 @@ Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (a
 `--source-kind <yuque|meeting|misc>` — Source channel type (mind primary)
 `-t`, `--type <KIND>` — Deprecated: use `--file-kind` or `--source-kind` instead
 `--link` — Symlink instead of copy (local files)
+`--register-only` — Index a file that already lives inside the project's `sources/` directory without copying its bytes. Idempotent (re-registering the same path is a no-op). Rejects paths outside `sources/`, URLs, and combination with `--link` or `--force`.
 
 **`mf source list`** (alias `ls`)
 `--filter <PATTERN>` — Filter by name
@@ -278,17 +279,20 @@ Rename a term.
 
 **`mf term lint [PATH]`**
 Lint term consistency in project docs. Detects misrecognized terms using configurable `Correction.match` modes: `word` (default — ASCII word boundaries; CJK uses jieba word segmentation so both edges must align with token boundaries), `substring` (exact match anywhere, bypasses jieba), or `pinyin` (tone-less pinyin scan with auto-conversion for CJK terms). Pinyin findings are always `fix: suggested` (trailing `?` marker).
-`--fix` — Auto-correct term usage in docs (pair with `--dry-run` to preview). Non-TTY exits 2 unless `-y`/`--force` is passed.
-`--term <NAME>` — Repeatable; scope to one or more named terms (case-sensitive exact canonical name match). When omitted, all terms are scanned. Unknown name exits 2 with no edits.
+`--fix` — Auto-correct term usage in docs (pair with `--dry-run` to preview). Non-TTY exits 2 unless `-y`/`--force` is passed. A `--fix --dry-run` preview lists each finding with its context, confidence, and selection state (`selected`, `excluded_*`, `below_confidence`, `suggested_disabled`, `ambiguous`, …).
+`--term <NAME>` or `--term <NAME:ORIGINAL>` — Repeatable; scope to one or more named terms (case-sensitive exact canonical name match) or, with the `NAME:ORIGINAL` form, one specific correction pair. When omitted, all terms are scanned. Unknown name/pair exits 2 with no edits.
+`--exclude-term <NAME>` — Repeatable; skip corrections for the named term(s).
+`--exclude-original <ORIGINAL>` — Repeatable; drop one exact original text across every term.
 `--article <SLUG>` — Set `target_type: "article"` in JSON output; scope hint for downstream tooling.
 `--include-suggested` — Apply suggested fixes (pinyin matches) in addition to required corrections.
+`--min-confidence <0.0..1.0>` — Apply only suggested corrections at or above the threshold. Requires `--include-suggested`; out-of-range or standalone use exits 2.
 `--rule <RULE>` — Restrict to one rule kind.
 `--severity <LEVEL>` — Filter at-or-above severity (`error`/`warning`/`info`).
 `--max-warnings <N>` — Exit 1 when warnings exceed N.
 
 **`mf term fix [PATH]`**
-First-class alias for `term lint --fix`. Same flags as `term lint`, including `--include-suggested` to apply suggested corrections.
-Accepts a repeatable `--term <NAME>` (canonical name, case-sensitive exact match) to scope corrections to one or more named terms. When omitted, all terms are applied (unchanged). Naming a term that does not exist in scope exits with code 2 and lists the unknown term(s) on stderr — no edits are made. Deleting a single correction uses a separate existing command: `mf term correction remove <TERM> <ORIGINAL>`.
+First-class alias for `term lint --fix`. Same flags as `term lint`, including `--include-suggested`/`--min-confidence` for suggested corrections and `--exclude-term`/`--exclude-original` to narrow scope.
+Accepts a repeatable `--term <NAME>` (canonical name, case-sensitive exact match) or `--term <NAME:ORIGINAL>` (a specific correction pair) to scope corrections. When omitted, all terms are applied (unchanged). Naming a term or pair that does not exist in scope exits with code 2 and lists the unknown term(s) on stderr — no edits are made. Deleting a single correction uses a separate existing command: `mf term correction remove <TERM> <ORIGINAL>`.
 
 ### `mf build <ARTICLE>` — Build/assemble an article
 
@@ -373,6 +377,7 @@ mf project import /path/to/existing --force
 # Sources
 mf source new https://example.com/article --name ref-a --file-kind web --project my-project
 mf source new paper.pdf --file-kind pdf --project my-project
+mf source new sources/file/existing.md --register-only --project my-project  # index in place, no copy
 mf source list --project my-project
 mf source show ref-a --project my-project
 mf source rename ref-a ref-canonical --project my-project
@@ -453,6 +458,10 @@ mf term fix --project my-project                             # alias for term li
 mf term fix --project my-project --include-suggested         # apply suggested corrections
 mf term fix --project my-project --term RAG                  # scope to one term only
 mf term fix --project my-project --term RAG --term LLM       # scope to multiple terms
+mf term fix --project my-project --term RAG:rag              # scope to one correction pair
+mf term fix --project my-project --exclude-term RAG          # apply everything except RAG
+mf term fix --project my-project --exclude-original apis     # skip one original across terms
+mf term fix --project my-project --include-suggested --min-confidence 0.8  # suggested ≥ 0.8
 
 # Config
 mf config show
@@ -479,7 +488,8 @@ mf version --json
 - `term lint` requires a project context — it scans project docs for term usage.
 - Destructive verbs (`remove`, `archive`) prompt on `/dev/tty` in interactive shells. In scripts/CI pass `--yes` to confirm; add `--force` separately only when bypassing overwrite or referential-integrity checks is intended.
 - `term lint --fix` and `term fix` treat `--force` as an alias for `--yes`; do not generalize that exception to entity removal.
-- `term fix` and `term lint --fix` accept `--term <NAME>` (repeatable) to scope corrections to named terms. Matching is case-sensitive exact on canonical name. Unknown term names exit 2 with no edits. Run `mf term correction remove <TERM> <ORIGINAL>` to delete a single correction.
+- `term fix` and `term lint --fix` accept `--term <NAME>` or `--term <NAME:ORIGINAL>` (repeatable) to scope corrections to named terms or a specific correction pair, plus `--exclude-term`/`--exclude-original` to narrow, and `--include-suggested`/`--min-confidence <0.0..1.0>` for suggested corrections (`--min-confidence` requires `--include-suggested`). Matching is case-sensitive exact on canonical name. Unknown term names exit 2 with no edits. Run `mf term correction remove <TERM> <ORIGINAL>` to delete a single correction.
+- `mf source new --register-only` indexes a file already inside the project's `sources/` directory without copying its bytes. It is idempotent and cannot combine with `--link` or `--force`; paths outside `sources/` or URL inputs exit 2.
 - `term update` manages term metadata and corrections via `--add-correction`, `--correction-match`/`--correction-fix`/`--correction-pinyin`, and `--delete-correction`. Setting an attribute for a non-existent original exits 2 with a hint pointing to `--add-correction`. `term fix` is a first-class alias for `term lint --fix`.
 - `article convert` evaluates eligible articles project-wide; it does not take an article selector.
 - `mf init` is the preferred bootstrap command; `mf config init` remains deprecated compatibility.

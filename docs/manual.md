@@ -178,6 +178,7 @@ Sources track reference material used by a project.
 ```bash
 mf source new https://example.com/ref --name ref-a --file-kind web --project blog
 mf source new paper.pdf --file-kind pdf --project blog
+mf source new sources/file/existing.md --register-only --project blog
 mf source list --project blog
 mf source show ref-a --project blog
 mf source update ref-a --url https://example.com/v2 --project blog
@@ -189,6 +190,11 @@ mf source clean --dry-run --project blog
 
 Use `source rename` for identity changes. `source update --rename` remains
 available for compatibility.
+
+`--register-only` indexes a file that already lives inside the project's
+`sources/` directory without copying or moving its bytes. It is idempotent —
+re-registering the same path is a no-op — and cannot be combined with `--link`
+or `--force`.
 
 ## 8. Assets
 
@@ -235,6 +241,8 @@ mf term lint --project blog
 mf term lint --project blog --fix --dry-run
 mf term fix --project blog
 mf term fix --project blog --term API
+mf term fix --project blog --term API:api --exclude-original apis
+mf term fix --project blog --include-suggested --min-confidence 0.8
 ```
 
 `term update` changes metadata and corrections. Use `--add-correction` to
@@ -245,10 +253,20 @@ Use `--dry-run` to validate and preview without writing.
 
 `term fix` and `term lint --fix` accept a repeatable `--term <NAME>` flag to
 scope corrections to one or more named terms (case-sensitive exact match on
-the canonical name). When omitted, all terms are applied (unchanged). Naming a
-term that does not exist in scope exits with code 2 and lists the unknown
-term(s) on stderr — no edits are made. Deleting a single correction is a
+the canonical name). Pass `--term <NAME:ORIGINAL>` to target a single correction
+pair instead of the whole term. When omitted, all terms are applied (unchanged).
+Naming a term that does not exist in scope exits with code 2 and lists the
+unknown term(s) on stderr — no edits are made. Deleting a single correction is a
 separate existing command: `mf term correction remove <TERM> <ORIGINAL>`.
+
+To narrow rather than widen, use `--exclude-term <NAME>` (repeatable) to skip a
+named term or `--exclude-original <ORIGINAL>` (repeatable) to drop one exact
+original text across every term. Suggested corrections are off by default; add
+`--include-suggested` to apply them, and `--min-confidence <0.0..1.0>` to apply
+only suggested corrections at or above the threshold (`--min-confidence` requires
+`--include-suggested`). A `--fix --dry-run` preview reports each finding with its
+context, confidence, and selection state so you can see why a correction was or
+was not applied.
 
 ### Corrections
 
