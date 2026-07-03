@@ -6,19 +6,6 @@ use crate::model::source::{FileKind, SourceRemoveReport};
 use crate::service::index;
 use crate::service::lifecycle;
 
-/// Remove a source by name. If the source is a pdf/file type and `keep_file` is false,
-/// the archive file is also deleted.
-#[allow(dead_code)] // old API surface, remove_source with dry_run is canonical
-pub fn remove(project_path: &Path, name: &str, keep_file: bool) -> Result<SourceRemoveReport> {
-    lifecycle_remove(project_path, name, keep_file, false, false)
-}
-
-/// Remove a source by its stored path (e.g. `sources/yuque/foo.md`).
-#[allow(dead_code)] // old API surface, remove_source with dry_run is canonical
-pub fn remove_by_path(project_path: &Path, path: &str, keep_file: bool) -> Result<SourceRemoveReport> {
-    lifecycle_remove_by_path(project_path, path, keep_file, false, false)
-}
-
 /// Remove a source by name (lifecycle-aware with dry-run and force).
 pub fn remove_source(
     project_path: &Path,

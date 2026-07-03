@@ -6,11 +6,12 @@ use std::path::PathBuf;
 use chrono::Utc;
 use walkdir::WalkDir;
 
-use super::{infer_kind, sha256_file, update_all};
+use super::{infer_kind, update_all};
 use crate::error::{MfError, Result};
 use crate::model::asset::{Asset, AssetIndexEntry, AssetIndexReport};
 use crate::service::config as config_svc;
 use crate::service::index;
+use crate::service::util::hash::sha256_file;
 
 /// Recursively scan the project assets directory for regular files.
 fn scan_assets_dir(assets_dir: &Path) -> Result<Vec<PathBuf>> {

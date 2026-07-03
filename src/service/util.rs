@@ -1,6 +1,7 @@
 //! Shared utilities: atomic write, schema version validation, markdown helpers.
 
 pub mod filename_date;
+pub mod hash;
 pub mod markdown;
 pub mod path;
 pub mod path_template;
@@ -11,6 +12,21 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::defaults;
 use crate::error::{MfError, Result};
+
+// ── Symlink helper ──────────────────────────────────────────────────────────
+
+#[cfg(unix)]
+pub(crate) fn create_symlink(src: &Path, dst: &Path) -> Result<()> {
+    std::os::unix::fs::symlink(src, dst).map_err(MfError::Io)
+}
+
+#[cfg(not(unix))]
+pub(crate) fn create_symlink(_src: &Path, _dst: &Path) -> Result<()> {
+    Err(MfError::usage(
+        "symlink is not supported on this platform",
+        Some("use --copy or omit --link to copy the file".to_string()),
+    ))
+}
 
 /// Atomically write content to a file using write-then-rename.
 ///

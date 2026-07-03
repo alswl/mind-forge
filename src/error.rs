@@ -96,26 +96,6 @@ pub enum MfError {
     /// A file/directory shape conflict: --file vs directory or vice versa.
     #[error("cannot create {wanted_shape} '{path}': a {existing_shape} with the same name already exists; remove it manually or pick a different title")]
     ShapeConflict { wanted_shape: String, existing_shape: String, path: PathBuf },
-
-    // ── ASR post-correction model errors (spec 055) ──
-    // Used in Phase 4 (US2 LM) and Phase 6 (US4 model lifecycle).
-    /// LM engine selected but no model file is available.
-    #[allow(dead_code)]
-    #[error("LM model not found: {message}")]
-    #[allow(dead_code)]
-    ModelMissing { message: String, hint: Option<String> },
-    /// Model file exists but could not be loaded or is corrupt/incompatible.
-    #[allow(dead_code)]
-    #[error("failed to load LM model: {message}")]
-    ModelLoadFailed { message: String, hint: Option<String> },
-    /// Model fetch/download failed (network, size, hash mismatch).
-    #[allow(dead_code)]
-    #[error("model fetch failed: {message}")]
-    ModelFetchFailed { message: String, hint: Option<String> },
-    /// Configured model path or cache path is outside allowed directories.
-    #[allow(dead_code)]
-    #[error("unsafe model path: {path}")]
-    UnsafePath { path: PathBuf, hint: Option<String> },
 }
 
 impl MfError {
@@ -162,10 +142,6 @@ impl MfError {
             Self::NotImplemented { .. } => ExitCode::NotImplemented,
             Self::UnknownTemplate { .. } => ExitCode::UsageError,
             Self::DuplicateBlockSlug { .. } | Self::ShapeConflict { .. } => ExitCode::Failure,
-            Self::ModelMissing { .. }
-            | Self::ModelLoadFailed { .. }
-            | Self::ModelFetchFailed { .. }
-            | Self::UnsafePath { .. } => ExitCode::Failure,
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => ExitCode::Failure,
         }
     }
@@ -188,10 +164,6 @@ impl MfError {
             Self::UnknownTemplate { .. } => "unknown_template",
             Self::DuplicateBlockSlug { .. } => "duplicate_block_slug",
             Self::ShapeConflict { .. } => "shape_conflict",
-            Self::ModelMissing { .. } => "model_missing",
-            Self::ModelLoadFailed { .. } => "model_load_failed",
-            Self::ModelFetchFailed { .. } => "model_fetch_failed",
-            Self::UnsafePath { .. } => "unsafe_path",
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => "internal",
         }
     }
@@ -214,10 +186,6 @@ impl MfError {
             Self::UnknownTemplate { .. } | Self::DuplicateBlockSlug { .. } | Self::ShapeConflict { .. } => {
                 self.to_string()
             }
-            Self::ModelMissing { message, .. }
-            | Self::ModelLoadFailed { message, .. }
-            | Self::ModelFetchFailed { message, .. } => message.clone(),
-            Self::UnsafePath { path, .. } => format!("unsafe model path: {}", path.display()),
             Self::Internal(error) => error.to_string(),
             Self::Io(error) => error.to_string(),
             Self::Json(error) => error.to_string(),
@@ -252,10 +220,6 @@ impl MfError {
             Self::ShapeConflict { .. } => {
                 Some("remove the conflicting file or directory manually, or pick a different title")
             }
-            Self::ModelMissing { hint, .. }
-            | Self::ModelLoadFailed { hint, .. }
-            | Self::ModelFetchFailed { hint, .. } => hint.as_deref(),
-            Self::UnsafePath { hint, .. } => hint.as_deref(),
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => Some("this is an internal error; please report it"),
         }
     }
