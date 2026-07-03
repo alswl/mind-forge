@@ -1,6 +1,5 @@
 use super::*;
 
-/// ── Handle: mf article block rename ────────────────────────────────────
 pub(super) fn handle_block_rename(args: ArticleBlockRenameArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     let root = ctx.require_repo_path()?;
     let format = ctx.format();

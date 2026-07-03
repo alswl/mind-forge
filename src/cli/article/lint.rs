@@ -63,5 +63,3 @@ fn severity_rank(severity: Option<&str>) -> u8 {
         _ => 2,
     }
 }
-
-// ── Handle: mf article convert ────────────────────────────────────────────

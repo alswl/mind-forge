@@ -104,5 +104,3 @@ pub(super) fn handle_show(args: TermShowArgs, ctx: &CommandCtx) -> Result<Comman
         render_term_show(&term, Some(root), format)
     }
 }
-
-// ── Handle: mf term remove / rm ────────────────────────────────────────────

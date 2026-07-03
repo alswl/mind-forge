@@ -44,5 +44,3 @@ pub(super) fn handle_remove(args: TermRemoveArgs, ctx: &CommandCtx) -> Result<Co
         )),
     }
 }
-
-// ── Handle: mf term rename ──────────────────────────────────────────────────

@@ -100,5 +100,3 @@ pub(super) fn handle_list(args: TermListArgs, ctx: &mut CommandCtx) -> Result<Co
         }
     }
 }
-
-// ── Handle: mf term lint (US3 / T027 + US4 / T033) ──────────────────────────

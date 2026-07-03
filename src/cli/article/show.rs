@@ -67,5 +67,3 @@ pub(super) fn handle_article_show(
         }
     }
 }
-
-// ── Handle: mf article lint ────────────────────────────────────────────────

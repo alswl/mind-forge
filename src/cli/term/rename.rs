@@ -70,5 +70,3 @@ pub(super) fn handle_rename(args: TermRenameArgs, ctx: &CommandCtx) -> Result<Co
         )),
     }
 }
-
-// ── Correction subcommand dispatch ──────────────────────────────────────────

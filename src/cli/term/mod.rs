@@ -393,8 +393,6 @@ fn parse_boundary(raw: &str) -> Result<crate::model::term::Boundary> {
     }
 }
 
-// ── Handle: mf term new (US1 / T017) ─────────────────────────────────────────
-
 fn parse_opt_match(raw: Option<&str>) -> Result<Option<MatchKind>> {
     match raw {
         None => Ok(None),
@@ -437,5 +435,3 @@ fn boundary_to_str(b: &Boundary) -> &str {
         Boundary::Standalone => "standalone",
     }
 }
-
-// ── Handle: mf term move / mv ──────────────────────────────────────────────

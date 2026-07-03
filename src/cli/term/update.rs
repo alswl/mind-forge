@@ -230,5 +230,3 @@ fn resolve_update_target(root: &std::path::Path, ctx: &CommandCtx, term_name: &s
         Ok(WriteScope::Global(root.to_path_buf()))
     }
 }
-
-// ── Handle: mf term show (US3b / FR-019) ────────────────────────────────────

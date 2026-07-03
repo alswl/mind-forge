@@ -89,5 +89,3 @@ pub(super) fn handle_new(args: TermNewArgs, ctx: &CommandCtx) -> Result<CommandO
         Format::Text => Ok(CommandOutcome::Success(serde_json::Value::String(text_output), warnings, None)),
     }
 }
-
-// ── Handle: mf term list (US2 / T021) ────────────────────────────────────────

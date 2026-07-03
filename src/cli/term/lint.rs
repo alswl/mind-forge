@@ -265,5 +265,3 @@ fn format_lint_text_with_target(
 
     lines.join("\n")
 }
-
-// ── Handle: mf term update (metadata) ─────────────────────────────────────────
