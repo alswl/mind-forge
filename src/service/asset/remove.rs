@@ -6,11 +6,6 @@ use crate::model::lifecycle::PlannedChange;
 use crate::service::index;
 use crate::service::lifecycle;
 
-#[allow(dead_code)] // old API surface, remove_asset with dry_run is canonical
-pub fn remove(project_path: &Path, file: &str, force: bool) -> Result<AssetRemoveReport> {
-    remove_impl(project_path, file, force, false)
-}
-
 /// Remove an asset (with dry-run support).
 pub fn remove_asset(project_path: &Path, file: &str, force: bool, dry_run: bool) -> Result<AssetRemoveReport> {
     remove_impl(project_path, file, force, dry_run)
