@@ -73,3 +73,34 @@ terms:
     assert!(content.contains("凯飞迪"), "pinyin fix should apply with --include-suggested: {content}");
     assert!(content.contains("RAG"), "suggested fix should apply with --include-suggested: {content}");
 }
+
+#[test]
+fn e2e_precise_preview_matches_applied_changes() {
+    let ds = crate::datasets::Dataset::empty();
+    let root = ds.root();
+    fs::write(
+        root.join("minds-terms.yaml"),
+        r#"schema_version: '1'
+terms:
+  - term: Alpha
+    corrections:
+      - original: alpha-old
+        correct: Alpha
+      - original: alpha-skip
+        correct: Alpha
+"#,
+    )
+    .unwrap();
+    fs::write(root.join("synthetic.md"), "alpha-old alpha-skip\n").unwrap();
+
+    let (stdout, stderr, code) =
+        run_in(root, &["--output", "json", "term", "fix", "synthetic.md", "--term", "Alpha:alpha-old", "--dry-run"]);
+    assert_eq!(code, 1, "preview should report findings: {stderr}");
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(value["data"]["selected_count"], 1);
+    assert_eq!(value["data"]["ineligible_count"], 1);
+
+    let (_, stderr, code) = run_in(root, &["term", "fix", "synthetic.md", "--term", "Alpha:alpha-old", "-y"]);
+    assert_eq!(code, 0, "apply should succeed: {stderr}");
+    assert_eq!(fs::read_to_string(root.join("synthetic.md")).unwrap(), "Alpha alpha-skip\n");
+}

@@ -110,6 +110,7 @@ impl From<CliSourceKindType> for SourceKind {
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceAddArgs {
     pub input: String,
+    /// Override the source name derived from the input
     #[arg(short = 'n', long)]
     pub name: Option<String>,
     /// File kind (mf primary). Use --source-kind for mind channel type.
@@ -118,8 +119,12 @@ pub struct SourceAddArgs {
     /// Source channel type (mind primary).
     #[arg(long = "source-kind", value_enum)]
     pub source_kind: Option<CliSourceKindType>,
+    /// Create a symlink instead of copying a local file
     #[arg(long)]
     pub link: bool,
+    /// Register a file already inside the project's sources directory without copying it
+    #[arg(long = "register-only")]
+    pub register_only: bool,
     #[command(flatten)]
     pub force: ForceFlag,
     #[command(flatten)]
@@ -596,6 +601,20 @@ fn handle_add(args: SourceAddArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     // Resolve source_kind
     let source_kind = args.source_kind.map(SourceKind::from);
 
+    let add_args = svc_source::AddArgs {
+        input: &args.input,
+        name: args.name.as_deref(),
+        kind,
+        source_kind,
+        link: args.link,
+        force: args.force.force,
+    };
+
+    if args.register_only {
+        let outcome = svc_source::register_only(&project_path, ctx.cwd(), &add_args, args.dry_run.dry_run)?;
+        return source_add_outcome(outcome, args.dry_run.dry_run, &project_path, ctx);
+    }
+
     if args.dry_run.dry_run {
         let name = args.name.as_deref().unwrap_or_else(|| {
             let p = std::path::Path::new(&args.input);
@@ -620,24 +639,24 @@ fn handle_add(args: SourceAddArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
         };
     }
 
-    let add_args = svc_source::AddArgs {
-        input: &args.input,
-        name: args.name.as_deref(),
-        kind,
-        source_kind,
-        link: args.link,
-        force: args.force.force,
-    };
-
     let outcome = svc_source::add(&project_path, ctx.cwd(), &add_args)?;
 
+    source_add_outcome(outcome, false, &project_path, ctx)
+}
+
+fn source_add_outcome(
+    outcome: svc_source::add::AddOutcome,
+    dry_run: bool,
+    project_path: &std::path::Path,
+    ctx: &CommandCtx,
+) -> Result<CommandOutcome> {
     let result = VerbResult {
         verb: Verb::Add,
         kind: "source",
         identity: outcome.source.name.clone(),
         old_identity: None,
         path: outcome.source.path.clone(),
-        dry_run: false,
+        dry_run,
         details: serde_json::json!({
             "name": outcome.source.name,
             "type": outcome.source.kind.as_str(),
@@ -649,6 +668,7 @@ fn handle_add(args: SourceAddArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
                 svc_source::AddMode::Copy => "copy",
                 svc_source::AddMode::Link => "link",
                 svc_source::AddMode::Url => "url",
+                svc_source::AddMode::Register => "register",
             },
             "replaced": outcome.replaced,
         }),
@@ -656,7 +676,7 @@ fn handle_add(args: SourceAddArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Success(
-            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path)))),
             Vec::new(),
             None,
         )),

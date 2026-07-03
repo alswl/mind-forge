@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
-use crate::model::term::{Boundary, FixKind, MatchKind, TermFinding};
+use crate::model::term::{Boundary, FindingSelection, FixKind, MatchKind, TermFinding};
 
-use super::scan::{byte_offset_to_line_col, is_cjk_ideograph, CorrectionRef, InternalFinding};
+use super::scan::{byte_offset_to_line_col, context_excerpt, is_cjk_ideograph, CorrectionRef, InternalFinding};
 
 /// Convert CJK characters in `s` to pinyin (first reading, no tone), joined by hyphens.
 /// Non-CJK characters are skipped. Returns an empty string if no CJK chars found.
@@ -93,6 +93,12 @@ pub(crate) fn scan_for_pinyin(
                     fix_kind: FixKind::Suggested, // FR-404: pinyin is always suggested
                     boundary: Boundary::Loose,    // pinyin never opts into standalone
                     boundary_mode: "loose",
+                    selection: if entry.cref.is_ambiguous {
+                        FindingSelection::Ambiguous
+                    } else {
+                        FindingSelection::Selected
+                    },
+                    context: context_excerpt(content, window_byte_start, window_byte_len),
                 });
 
                 internal_findings.push(InternalFinding {
@@ -101,8 +107,10 @@ pub(crate) fn scan_for_pinyin(
                     original_len: window_byte_len,
                     original: window_text,
                     correct: entry.cref.correct.to_string(),
-                    is_ambiguous: entry.cref.is_ambiguous,
                     fix_kind: FixKind::Suggested,
+                    term_name: entry.cref.term_name.to_string(),
+                    confidence: entry.cref.confidence,
+                    replacement_eligible: !entry.cref.is_ambiguous,
                     yaml_index: entry.cref.yaml_index,
                 });
             }

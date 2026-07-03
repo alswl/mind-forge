@@ -35,6 +35,19 @@ pub(super) fn path_for(repo_root: &Path) -> std::path::PathBuf {
 ///
 /// Returns an empty vec when the file is missing.
 pub fn load(repo_root: &Path) -> Result<Vec<Term>> {
+    load_inner(repo_root, true)
+}
+
+/// Load global terms without enforcing correction cross-field invariants.
+///
+/// Mirrors [`crate::service::index::load_lenient`]: used only by term
+/// management/self-repair paths so an already-invalid `minds-terms.yaml` can
+/// still be read and repaired via the CLI.
+pub fn load_lenient(repo_root: &Path) -> Result<Vec<Term>> {
+    load_inner(repo_root, false)
+}
+
+fn load_inner(repo_root: &Path, validate: bool) -> Result<Vec<Term>> {
     let path = path_for(repo_root);
     let content = match std::fs::read_to_string(&path) {
         Ok(s) => s,
@@ -48,7 +61,9 @@ pub fn load(repo_root: &Path) -> Result<Vec<Term>> {
         detail: e.to_string(),
     })?;
     validate_schema_version(&file.schema_version, &path)?;
-    validate_corrections(&file.terms).map_err(|m| MfError::usage(m, None::<String>))?;
+    if validate {
+        validate_corrections(&file.terms).map_err(|m| MfError::usage(m, None::<String>))?;
+    }
     Ok(file.terms)
 }
 

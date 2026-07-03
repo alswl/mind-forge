@@ -33,6 +33,60 @@ fn mf(repo: &common::TempDir) -> Command {
     cmd.args(["--root", repo.path().to_str().unwrap()]);
     cmd
 }
+
+#[test]
+fn exact_pair_and_exclusions_control_applied_corrections() {
+    let (repo, project) = setup_with_term();
+    common::write_index(
+        &repo,
+        "alpha",
+        r#"schema_version: '1'
+terms:
+  - term: Alpha
+    corrections:
+      - original: alpha-one
+        correct: Alpha
+      - original: alpha-two
+        correct: Alpha
+  - term: Beta
+    corrections:
+      - original: beta-one
+        correct: Beta
+"#,
+    );
+    fs::write(project.join("docs/select.md"), "alpha-one alpha-two beta-one\n").unwrap();
+    let output = mf(&repo)
+        .args([
+            "term",
+            "fix",
+            "--project",
+            "alpha",
+            "docs/select.md",
+            "--term",
+            "Alpha:alpha-one",
+            "--exclude-original",
+            "alpha-two",
+            "--exclude-term",
+            "Beta",
+            "-y",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(fs::read_to_string(project.join("docs/select.md")).unwrap(), "Alpha alpha-two beta-one\n");
+}
+
+#[test]
+fn malformed_qualified_selector_returns_usage_error_json() {
+    let (repo, _) = setup_with_term();
+    let output = mf(&repo)
+        .args(["--output", "json", "term", "fix", "--project", "alpha", "--term", "Mind Repo:", "-y"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let value: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(value["error"]["kind"], "usage");
+}
 // ---------------------------------------------------------------------------
 // 1. replace definition
 // ---------------------------------------------------------------------------
@@ -364,7 +418,7 @@ terms:
     assert!(fixed.contains("llm"), "llm should remain unchanged: {fixed}");
 }
 
-/// T010: --term with --dry-run reports only targeted term's planned edits.
+/// T010: --term with --dry-run marks only targeted term as selected.
 #[test]
 fn term_filter_dry_run_reports_only_targeted() {
     let (repo, _project) = setup_two_term_fixture();
@@ -382,8 +436,9 @@ fn term_filter_dry_run_reports_only_targeted() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
-    // Should mention RAG replacement
-    assert!(stdout.contains("replacement"), "stdout: {stdout}");
+    // The full preview remains reviewable, but only RAG is selected.
+    assert!(stdout.contains("[RAG]") && stdout.contains("selection=selected"), "stdout: {stdout}");
+    assert!(stdout.contains("[LLM]") && stdout.contains("selection=not_selected"), "stdout: {stdout}");
     assert!(stdout.contains("scoped to term(s): RAG"), "stdout: {stdout}");
     // Should NOT touch the file
     let after = fs::read_to_string(&doc_path).unwrap();

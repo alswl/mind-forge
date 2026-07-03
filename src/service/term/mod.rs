@@ -1,7 +1,6 @@
 // Term service — implemented in 012-term-core.
 // Directory module facade: re-exports sub-module public items.
 
-pub mod correct;
 pub mod correction;
 pub mod fix;
 pub mod global;
@@ -22,7 +21,7 @@ use std::collections::BTreeSet;
 use crate::error::MfError;
 
 pub use self::fix::fix_term;
-pub use self::lint::{lint_path_with_global, lint_terms_with_global};
+pub use self::lint::{lint_path_with_global_selection, lint_terms_with_global_selection};
 pub use self::list::list_terms;
 pub use self::new::new_term;
 pub use self::remove::{remove_term, remove_term_global};
@@ -97,6 +96,31 @@ impl<'a> TermUpdate<'a> {
     }
     pub fn has_metadata_flags(&self) -> bool {
         self.description.is_some() || self.clear_description || self.confidence.is_some() || self.clear_confidence
+    }
+
+    /// True when at least one mutating flag is present.
+    fn has_any_change(&self) -> bool {
+        self.has_legacy_flags()
+            || self.has_metadata_flags()
+            || !self.delete_aliases.is_empty()
+            || !self.delete_tags.is_empty()
+            || !self.add_corrections.is_empty()
+            || !self.delete_corrections.is_empty()
+            || !self.correction_matches.is_empty()
+            || !self.correction_fixes.is_empty()
+            || !self.correction_pinyins.is_empty()
+    }
+
+    /// Reject an update that carries no mutating flag. Shared by the project- and
+    /// global-scoped `fix_term` entry points so both emit the same usage error.
+    pub fn ensure_non_empty(&self) -> crate::error::Result<()> {
+        if self.has_any_change() {
+            return Ok(());
+        }
+        Err(MfError::usage(
+            "at least one of --definition, --description, --confidence, --alias, --tag, --delete-alias, --delete-tag, --clear-description, --clear-confidence, --add-correction, --delete-correction, --correction-match, --correction-fix, --correction-pinyin must be provided",
+            None,
+        ))
     }
 }
 

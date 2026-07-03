@@ -1,12 +1,39 @@
 use super::*;
 
+fn build_fix_selection(args: &TermLintArgs) -> Result<crate::model::term::FixSelection> {
+    let mut selection = crate::model::term::FixSelection {
+        excluded_terms: args.exclude_term.iter().cloned().collect(),
+        excluded_originals: args.exclude_original.iter().cloned().collect(),
+        include_suggested: args.lint.include_suggested,
+        min_confidence: args.lint.min_confidence,
+        ..Default::default()
+    };
+    for raw in &args.term {
+        if let Some((term, original)) = raw.split_once(':') {
+            if term.is_empty() || original.is_empty() {
+                return Err(MfError::usage(
+                    format!("invalid qualified term selector '{raw}'"),
+                    Some("use --term NAME or --term NAME:ORIGINAL".to_string()),
+                ));
+            }
+            selection.selected_pairs.insert((term.to_string(), original.to_string()));
+        } else if raw.is_empty() {
+            return Err(MfError::usage("term selector cannot be empty", None));
+        } else {
+            selection.selected_terms.insert(raw.clone());
+        }
+    }
+    selection.validate().map_err(|message| MfError::usage(message, None))?;
+    Ok(selection)
+}
+
 pub(super) fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     use std::io::IsTerminal;
 
     let root = ctx.require_repo_path()?;
     let effective_fix = args.lint.fix;
     let effective_dry_run = args.lint.fix && args.lint.dry_run;
-    let include_suggested = args.lint.include_suggested;
+    let selection = build_fix_selection(&args)?;
     let warnings: Vec<String> = Vec::new();
 
     // US1: confirmation gate for --fix (non-dry-run)
@@ -22,14 +49,14 @@ pub(super) fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<Comman
             let preview = if let Some(pn) = ctx.project() {
                 let pp = svc_util::resolve_project(root, Some(pn), ctx.cwd())?;
                 if let Some(ref path) = args.path {
-                    term_svc::lint_path_with_global(&pp, root, path, true, true, include_suggested, &args.term)?
+                    term_svc::lint_path_with_global_selection(&pp, root, path, true, true, &selection)?
                 } else {
-                    term_svc::lint_terms_with_global(&pp, root, true, true, include_suggested, &args.term)?
+                    term_svc::lint_terms_with_global_selection(&pp, root, true, true, &selection)?
                 }
             } else if let Some(ref path) = args.path {
-                term_svc::global::lint_path(root, path, true, true, include_suggested, &args.term)?
+                term_svc::global::lint_path_selection(root, path, true, true, &selection)?
             } else {
-                term_svc::global::lint_terms(root, true, true, include_suggested, &args.term)?
+                term_svc::global::lint_terms_selection(root, true, true, &selection)?
             };
             if !preview.findings.is_empty() {
                 println!("{}", format_lint_text(&preview, true, true));
@@ -52,8 +79,13 @@ pub(super) fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<Comman
     // Determine effective target type for output
     let target_type: &str = if args.article.is_some() {
         "article"
-    } else if args.path.is_some() {
-        "file"
+    } else if let Some(path) = args.path.as_deref() {
+        let candidate = std::path::Path::new(path);
+        if candidate.is_dir() || ctx.cwd().join(candidate).is_dir() || root.join(candidate).is_dir() {
+            "directory"
+        } else {
+            "file"
+        }
     } else {
         "project"
     };
@@ -74,37 +106,34 @@ pub(super) fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<Comman
                     None,
                 )
             })?;
-            term_svc::lint_path_with_global(
+            term_svc::lint_path_with_global_selection(
                 &project_path,
                 root,
                 &rel.to_string_lossy(),
                 effective_fix,
                 effective_dry_run,
-                include_suggested,
-                &args.term,
+                &selection,
             )?
         } else {
-            term_svc::lint_terms_with_global(
+            term_svc::lint_terms_with_global_selection(
                 &project_path,
                 root,
                 effective_fix,
                 effective_dry_run,
-                include_suggested,
-                &args.term,
+                &selection,
             )?
         }
     } else if let Some(ref path) = args.path {
         let resolved = svc_util::path::resolve_lint_path(path, None, cwd, root)?;
-        term_svc::global::lint_path(
+        term_svc::global::lint_path_selection(
             root,
             &resolved.to_string_lossy(),
             effective_fix,
             effective_dry_run,
-            include_suggested,
-            &args.term,
+            &selection,
         )?
     } else {
-        term_svc::global::lint_terms(root, effective_fix, effective_dry_run, include_suggested, &args.term)?
+        term_svc::global::lint_terms_selection(root, effective_fix, effective_dry_run, &selection)?
     };
 
     // Determine exit code
@@ -166,7 +195,8 @@ fn format_lint_text_with_target(
     let mut lines = Vec::new();
 
     if let Some(tt) = target_type {
-        lines.push(format!("target: {tt}"));
+        let mode = if fix && dry_run { " (dry-run preview)" } else { "" };
+        lines.push(format!("target: {tt}{mode}"));
     }
 
     if fix {
@@ -174,19 +204,30 @@ fn format_lint_text_with_target(
             return "No term issues found.".to_string();
         }
         if dry_run {
-            // Group by path
-            let mut by_path: std::collections::BTreeMap<&str, u64> = std::collections::BTreeMap::new();
             for f in &report.findings {
-                *by_path.entry(f.path.as_str()).or_default() += 1;
-            }
-            for (path, count) in &by_path {
-                let s = if *count == 1 { "" } else { "s" };
-                lines.push(format!("[dry-run] would fix: {path} ({count} replacement{s})"));
+                let confidence = f.confidence.map_or_else(|| "none".to_string(), |value| format!("{value:.2}"));
+                let selection = serde_json::to_value(f.selection)
+                    .ok()
+                    .and_then(|value| value.as_str().map(str::to_string))
+                    .unwrap_or_else(|| "ineligible".to_string());
+                let match_kind = serde_json::to_value(f.match_kind)
+                    .ok()
+                    .and_then(|value| value.as_str().map(str::to_string))
+                    .unwrap_or_else(|| "word".to_string());
+                lines.push(format!(
+                    "{}:{}:{}: \"{}\" → \"{}\" [{}] match={} confidence={} selection={}",
+                    f.path, f.line, f.column, f.original, f.correct, f.term, match_kind, confidence, selection
+                ));
+                lines.push(format!("  {}", f.context));
             }
         } else {
             // Group by path for modified files
             for path in &report.modified_files {
-                let count = report.findings.iter().filter(|f| f.path.as_str() == path.as_str()).count();
+                let count = report
+                    .findings
+                    .iter()
+                    .filter(|f| f.path.as_str() == path.as_str() && f.selection.is_selected())
+                    .count();
                 let s = if count == 1 { "" } else { "s" };
                 lines.push(format!("✓ fixed: {path} ({count} replacement{s})"));
             }
@@ -197,7 +238,11 @@ fn format_lint_text_with_target(
     } else {
         if report.findings.is_empty() {
             if report.scanned_files == 0 && report.skipped_files.is_empty() && report.failures.is_empty() {
-                return "No terms registered.".to_string();
+                return if target_type == Some("directory") {
+                    "No eligible files found.".to_string()
+                } else {
+                    "No terms registered.".to_string()
+                };
             }
             if report.failures.is_empty() {
                 return "No term issues found.".to_string();
@@ -248,7 +293,10 @@ fn format_lint_text_with_target(
     if fix && dry_run {
         let wf = report.would_fix_count.unwrap_or(0);
         lines.push(format!(
-            "{total_findings} findings in {file_count} files (would fix {wf}, {} failure{})",
+            "{total_findings} findings in {file_count} files (selected {wf}, excluded {}, below confidence {}, ineligible {}, {} failure{})",
+            report.excluded_count,
+            report.below_confidence_count,
+            report.ineligible_count,
             report.failures.len(),
             if report.failures.len() == 1 { "" } else { "s" },
         ));
@@ -264,4 +312,53 @@ fn format_lint_text_with_target(
     }
 
     lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::term::{Boundary, FindingSelection, FixKind, MatchKind, TermFinding, TermLintReport};
+
+    #[test]
+    fn dry_run_formatter_lists_each_finding_and_selection_reason() {
+        let report = TermLintReport {
+            findings: vec![TermFinding {
+                path: "synthetic.md".into(),
+                line: 2,
+                column: 4,
+                original: "old".into(),
+                correct: "new".into(),
+                term: "Synthetic".into(),
+                description: None,
+                confidence: Some(0.9),
+                replacement_eligible: true,
+                safety_reason: None,
+                candidates: vec![],
+                match_kind: MatchKind::Word,
+                fix_kind: FixKind::Suggested,
+                boundary: Boundary::Standalone,
+                boundary_mode: "standalone",
+                selection: FindingSelection::Selected,
+                context: "context with old token".into(),
+            }],
+            scanned_files: 1,
+            skipped_files: vec![],
+            fixed_count: 0,
+            modified_files: vec![],
+            failures: vec![],
+            would_fix_count: Some(1),
+            would_apply_count: 0,
+            selected_count: 1,
+            excluded_count: 0,
+            below_confidence_count: 0,
+            ineligible_count: 0,
+        };
+        let output = format_lint_text(&report, true, true);
+        assert!(output.contains("synthetic.md:2:4"));
+        assert!(output.contains("\"old\" → \"new\""));
+        assert!(output.contains("match=word"));
+        assert!(output.contains("selection=selected"));
+        assert!(output.contains("context with old token"));
+        assert!(output.contains("selected 1"));
+    }
 }

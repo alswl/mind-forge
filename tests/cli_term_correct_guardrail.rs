@@ -1,11 +1,9 @@
-//! CLI guardrail tests for the rules correction engine (spec 058, US2).
+//! CLI guardrail tests for declared corrections and overlap safety.
 //!
-//! Covers canonical term protection, declared-correction precedence over
-//! generated candidates, generated/generated overlap resolution, deterministic
+//! Covers canonical term protection, declared-correction precedence, overlap resolution, deterministic
 //! ordering, text/JSON/exit code contracts, dry-run, and final filesystem content.
 //!
-//! The `rules` engine is the only in-`mf` correction engine; open-domain
-//! correction is handled by the driving agent (see spec 058).
+//! Undeclared glossary homophones are intentionally outside the correction path.
 
 use assert_cmd::Command;
 use serde_json::Value;
@@ -13,7 +11,7 @@ use std::fs;
 
 mod common;
 
-/// Repo with glossary term `服务` (engine generates `服物→服务`) and protected
+/// Repo with glossary term `服务` and an explicit correction plus protected
 /// canonical term `网关API` with a declared literal correction `网关api→网关API`.
 fn setup_guardrail_repo() -> common::TempDir {
     let repo = common::setup_repo();
@@ -25,7 +23,11 @@ terms:
     definition: service
     aliases: []
     tags: []
-    corrections: []
+    corrections:
+      - original: 服物
+        correct: 服务
+        match: word
+        fix: required
   - term: 网关API
     definition: Gateway API
     aliases: []
@@ -93,9 +95,9 @@ fn declared_correction_claims_span() {
     let declared = fs_.iter().find(|f| f["original"] == "网关api" && f["correct"] == "网关API");
     assert!(declared.is_some(), "declared correction should be a finding; stdout: {stdout}");
 
-    // The engine-generated 服物→服务 should also be present.
-    let generated = fs_.iter().find(|f| f["original"] == "服物" && f["correct"] == "服务");
-    assert!(generated.is_some(), "engine-generated homophone should be present; stdout: {stdout}");
+    // The separately declared 服物→服务 correction should also be present.
+    let separate = fs_.iter().find(|f| f["original"] == "服物" && f["correct"] == "服务");
+    assert!(separate.is_some(), "declared correction should be present; stdout: {stdout}");
 
     // Exactly one finding may cover the declared span (the declared correction).
     let at_declared = fs_.iter().filter(|f| f["original"] == "网关api").count();

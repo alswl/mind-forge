@@ -5,8 +5,11 @@ use crate::model::term::Term;
 use crate::service::index;
 
 /// Look up a single term by canonical name (exact match).
+///
+/// Uses the lenient loader so a term whose corrections are in an invalid state
+/// can still be inspected (the deadlock reported for `term show`).
 pub fn show_term(project_root: &Path, name: &str) -> Result<Term> {
-    let index = index::load(project_root)?;
+    let index = index::load_lenient(project_root)?;
     let terms = index.terms.as_deref().unwrap_or_default();
 
     let term = terms

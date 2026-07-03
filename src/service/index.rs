@@ -19,6 +19,20 @@ const INDEX_FILENAME: &str = "mind-index.yaml";
 /// rejects), this function falls back to deduplicating the content (keeping the
 /// last occurrence) and re-parsing.
 pub fn load(project_root: &Path) -> Result<IndexFile> {
+    load_inner(project_root, true)
+}
+
+/// Load `mind-index.yaml` without enforcing correction cross-field invariants.
+///
+/// Used only by term management/self-repair paths (`show`, `update`, `remove`)
+/// so a repository whose corrections are already in an invalid state can still
+/// be read and repaired via the CLI. Consumption paths (`lint`, `build`) keep
+/// using [`load`] so invalid corrections are still surfaced there.
+pub fn load_lenient(project_root: &Path) -> Result<IndexFile> {
+    load_inner(project_root, false)
+}
+
+fn load_inner(project_root: &Path, validate_corrections: bool) -> Result<IndexFile> {
     let path = project_root.join(INDEX_FILENAME);
     let content = match fs::read_to_string(&path) {
         Ok(s) => s,
@@ -28,19 +42,24 @@ pub fn load(project_root: &Path) -> Result<IndexFile> {
         Err(e) => return Err(MfError::from(e)),
     };
 
-    match load_from_str(&content, &path) {
+    match load_from_str(&content, &path, validate_corrections) {
         Ok(index) => {
             validate_schema_version(&index.schema_version, &path)?;
             Ok(index)
         }
-        Err(e) => try_recover_duplicate_key(&content, &path, e),
+        Err(e) => try_recover_duplicate_key(&content, &path, e, validate_corrections),
     }
 }
 
 /// Attempt to recover from a duplicate-key parse error by deduplicating
 /// top-level keys and re-parsing. If the error is not a duplicate-key error
 /// (or recovery fails), returns the original error.
-fn try_recover_duplicate_key(content: &str, path: &Path, err: MfError) -> Result<IndexFile> {
+fn try_recover_duplicate_key(
+    content: &str,
+    path: &Path,
+    err: MfError,
+    validate_corrections: bool,
+) -> Result<IndexFile> {
     let detail = match &err {
         MfError::ParseError { detail, .. } => detail.clone(),
         _ => return Err(err),
@@ -52,7 +71,7 @@ fn try_recover_duplicate_key(content: &str, path: &Path, err: MfError) -> Result
     };
 
     let cleaned = deduplicate_duplicate_keys_last_wins(content);
-    match load_from_str(&cleaned, path) {
+    match load_from_str(&cleaned, path, validate_corrections) {
         Ok(index) => {
             let line = extract_error_line(&detail).map(|l| l.to_string()).unwrap_or_default();
             let hint = if !line.is_empty() {
@@ -73,14 +92,16 @@ fn try_recover_duplicate_key(content: &str, path: &Path, err: MfError) -> Result
 }
 
 /// Internal helper: parse YAML content into an IndexFile.
-fn load_from_str(content: &str, path: &Path) -> Result<IndexFile> {
+fn load_from_str(content: &str, path: &Path, validate_corrections: bool) -> Result<IndexFile> {
     let index: IndexFile = serde_yaml::from_str(content).map_err(|e| MfError::ParseError {
         kind: "yaml".to_string(),
         path: path.to_path_buf(),
         detail: e.to_string(),
     })?;
-    if let Some(terms) = index.terms.as_deref() {
-        crate::model::term::validate_corrections(terms).map_err(|m| MfError::usage(m, None::<String>))?;
+    if validate_corrections {
+        if let Some(terms) = index.terms.as_deref() {
+            crate::model::term::validate_corrections(terms).map_err(|m| MfError::usage(m, None::<String>))?;
+        }
     }
     Ok(index)
 }

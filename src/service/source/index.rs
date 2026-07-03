@@ -223,3 +223,31 @@ pub fn reconcile(project_path: &Path, dry_run: bool) -> Result<SourceIndexReport
 
     Ok(SourceIndexReport { added, removed, kept_count, dry_run: dry_run_value })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reconcile_retains_existing_and_adds_disk_sources() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path();
+        std::fs::write(project.join("mind.yaml"), "schema_version: '1'\n").unwrap();
+        std::fs::create_dir_all(project.join("sources/file")).unwrap();
+        std::fs::write(project.join("sources/file/kept.md"), "kept\n").unwrap();
+        std::fs::write(project.join("sources/file/added.md"), "added\n").unwrap();
+        std::fs::write(
+            project.join("mind-index.yaml"),
+            "schema_version: '1'\nsources:\n  - name: kept\n    type: file\n    path: sources/file/kept.md\n    url: null\n    tags: []\n    added_at: old\n    updated_at: old\n",
+        )
+        .unwrap();
+
+        let report = reconcile(project, false).unwrap();
+        assert_eq!(report.kept_count, 1);
+        assert_eq!(report.added.len(), 1);
+        assert!(report.removed.is_empty());
+        let sources = index::load(project).unwrap().sources.unwrap();
+        assert_eq!(sources.len(), 2);
+        assert!(sources.iter().any(|source| source.name == "kept" && source.added_at == "old"));
+    }
+}

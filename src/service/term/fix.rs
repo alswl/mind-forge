@@ -2,31 +2,20 @@ use std::path::Path;
 
 use super::{parse_correction_attr, sort_terms_by_name, TermUpdate};
 use crate::error::{MfError, Result};
-use crate::model::term::{Correction, FixKind, MatchKind, Term};
+use crate::model::term::{Boundary, Correction, FixKind, MatchKind, Term};
 use crate::service::index;
 
 /// Modify an existing term's definition, aliases, tags, description, confidence,
 /// or corrections.
 pub fn fix_term(project_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Result<Term> {
-    if !update.has_legacy_flags()
-        && !update.has_metadata_flags()
-        && update.delete_aliases.is_empty()
-        && update.delete_tags.is_empty()
-        && update.add_corrections.is_empty()
-        && update.delete_corrections.is_empty()
-        && update.correction_matches.is_empty()
-        && update.correction_fixes.is_empty()
-        && update.correction_pinyins.is_empty()
-    {
-        return Err(MfError::usage(
-            "at least one of --definition, --description, --confidence, --alias, --tag, --delete-alias, --delete-tag, --clear-description, --clear-confidence, --add-correction, --delete-correction, --correction-match, --correction-fix, --correction-pinyin must be provided",
-            None,
-        ));
-    }
+    update.ensure_non_empty()?;
 
     super::validate_confidence(update.confidence)?;
 
-    let mut index = index::load(project_root)?;
+    // Lenient load: a term whose corrections are already invalid must remain
+    // repairable via `--delete-correction` / `--correction-match` (the reported
+    // CLI self-repair deadlock).
+    let mut index = index::load_lenient(project_root)?;
 
     let term_clone = {
         let terms = index.terms.as_mut().ok_or_else(|| {
@@ -75,6 +64,12 @@ fn update_correction_match(t: &mut Term, original: &str, value: &str) -> Result<
     };
     let pos = super::find_correction_index(t, original)?;
     t.corrections[pos].r#match = kind;
+    // `boundary: standalone` is only valid with `match: word`. When switching to
+    // another match kind, normalize the boundary to `loose` so the correction
+    // never lands in an invalid state that would deadlock later CLI operations.
+    if kind != MatchKind::Word && t.corrections[pos].boundary == Boundary::Standalone {
+        t.corrections[pos].boundary = Boundary::Loose;
+    }
     Ok(())
 }
 
@@ -101,21 +96,27 @@ fn delete_correction_by_original(t: &mut Term, original: &str) -> Result<()> {
     Ok(())
 }
 
-fn add_correction_to_term(t: &mut Term, original: &str) -> Result<(Correction, bool)> {
-    // Idempotent: if correction with this original already exists, return it.
-    if let Some(existing) = t.corrections.iter().find(|c| c.original == original) {
-        return Ok((existing.clone(), false));
+/// Add a correction from a raw `--add-correction` value of the form
+/// `ORIGINAL[:CORRECT]`. When `:CORRECT` is omitted the correct text falls back
+/// to the term's canonical name so the correction is never left with an empty,
+/// no-op `correct` field.
+fn add_correction_to_term(t: &mut Term, raw: &str) {
+    let (original, correct) = match raw.split_once(':') {
+        Some((o, c)) if !c.is_empty() => (o, c.to_string()),
+        _ => (raw, t.term.clone()),
+    };
+    // Idempotent: skip when a correction with this original already exists.
+    if t.corrections.iter().any(|c| c.original == original) {
+        return;
     }
-    let corr = Correction {
+    t.corrections.push(Correction {
         original: original.to_string(),
-        correct: String::new(), // placeholder; set later via correction update
+        correct,
         r#match: MatchKind::Word,
         fix: FixKind::Required,
         boundary: Default::default(),
         pinyin: None,
-    };
-    t.corrections.push(corr.clone());
-    Ok((corr, true))
+    });
 }
 
 /// Apply a `TermUpdate` to a term entry in place.
@@ -152,7 +153,7 @@ pub(crate) fn apply_update(t: &mut Term, update: &TermUpdate<'_>) -> Result<()> 
 
     // Correction mutations
     for original in update.add_corrections {
-        add_correction_to_term(t, original)?;
+        add_correction_to_term(t, original);
     }
     for original in update.delete_corrections {
         delete_correction_by_original(t, original)?;
@@ -170,4 +171,90 @@ pub(crate) fn apply_update(t: &mut Term, update: &TermUpdate<'_>) -> Result<()> 
         update_correction_pinyin(t, &attr.original, &attr.value)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::term::{Boundary, Correction, FixKind, MatchKind};
+
+    fn synthetic_term() -> Term {
+        Term {
+            term: "Synthetic".into(),
+            definition: Some("unchanged".into()),
+            description: None,
+            confidence: None,
+            aliases: vec![],
+            tags: vec![],
+            corrections: vec![
+                Correction {
+                    original: "first".into(),
+                    correct: "Synthetic".into(),
+                    r#match: MatchKind::Word,
+                    fix: FixKind::Required,
+                    boundary: Boundary::Standalone,
+                    pinyin: None,
+                },
+                Correction {
+                    original: "second".into(),
+                    correct: "Synthetic".into(),
+                    r#match: MatchKind::Word,
+                    fix: FixKind::Required,
+                    boundary: Boundary::Standalone,
+                    pinyin: None,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn update_sets_exact_correction_match_without_touching_siblings() {
+        let mut term = synthetic_term();
+        let values = vec!["first:substring".to_string()];
+        apply_update(&mut term, &TermUpdate { correction_matches: &values, ..Default::default() }).unwrap();
+        assert_eq!(term.corrections[0].r#match, MatchKind::Substring);
+        assert_eq!(term.corrections[1].r#match, MatchKind::Word);
+        assert_eq!(term.definition.as_deref(), Some("unchanged"));
+    }
+
+    #[test]
+    fn update_pinyin_and_delete_target_exact_original_only() {
+        let mut term = synthetic_term();
+        let pinyins = vec!["first:synthetic-reading".to_string()];
+        let deletes = vec!["second".to_string()];
+        apply_update(
+            &mut term,
+            &TermUpdate { correction_pinyins: &pinyins, delete_corrections: &deletes, ..Default::default() },
+        )
+        .unwrap();
+        assert_eq!(term.corrections.len(), 1);
+        assert_eq!(term.corrections[0].original, "first");
+        assert_eq!(term.corrections[0].pinyin.as_deref(), Some("synthetic-reading"));
+    }
+
+    #[test]
+    fn correction_match_to_substring_resets_standalone_boundary() {
+        // Switching an ASCII word correction to substring must not leave the
+        // invalid `substring` + `standalone` combination that would later
+        // deadlock every operation on the term.
+        let mut term = synthetic_term();
+        assert_eq!(term.corrections[0].boundary, Boundary::Standalone);
+        let values = vec!["first:substring".to_string()];
+        apply_update(&mut term, &TermUpdate { correction_matches: &values, ..Default::default() }).unwrap();
+        assert_eq!(term.corrections[0].r#match, MatchKind::Substring);
+        assert_eq!(term.corrections[0].boundary, Boundary::Loose);
+        // The resulting term must satisfy the cross-field invariants.
+        crate::model::term::validate_corrections(std::slice::from_ref(&term)).expect("normalized term must be valid");
+    }
+
+    #[test]
+    fn add_correction_sets_correct_text_and_defaults_to_term_name() {
+        let mut term = synthetic_term();
+        let adds = vec!["typo:Synthetic".to_string(), "bare".to_string()];
+        apply_update(&mut term, &TermUpdate { add_corrections: &adds, ..Default::default() }).unwrap();
+        let explicit = term.corrections.iter().find(|c| c.original == "typo").unwrap();
+        assert_eq!(explicit.correct, "Synthetic");
+        let bare = term.corrections.iter().find(|c| c.original == "bare").unwrap();
+        assert_eq!(bare.correct, "Synthetic", "bare add-correction falls back to the term name, never empty");
+    }
 }

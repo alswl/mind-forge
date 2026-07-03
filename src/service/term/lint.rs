@@ -5,7 +5,9 @@ use std::path::Path;
 use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::index::IndexFile;
-use crate::model::term::{Boundary, CandidateTerm, FixKind, Term, TermFinding, TermLintFailure, TermLintReport};
+use crate::model::term::{
+    Boundary, CandidateTerm, FindingSelection, FixSelection, Term, TermFinding, TermLintFailure, TermLintReport,
+};
 use crate::service::config as config_svc;
 use crate::service::index;
 use crate::service::util::{atomic_write, canonicalize_within, rel_posix_path};
@@ -20,10 +22,7 @@ mod segment;
 use self::exempt::strip_exempt_regions;
 pub(crate) use self::fix::{apply_fixes, FixSpan};
 pub(crate) use self::front_matter::{parse_front_matter_skip_flag, FrontMatterDecision};
-pub(crate) use self::pinyin::to_pinyin_no_tone;
-pub(crate) use self::scan::{is_cjk_ideograph, scan_file_for_corrections, InternalFinding};
-
-use super::correct::{Corrector, ProtectedSet};
+pub(crate) use self::scan::{scan_file_for_corrections, InternalFinding};
 
 pub(crate) struct CorrectionEntry {
     pub(crate) original: String,
@@ -103,6 +102,7 @@ fn merge_global_into_index(project_index: &mut IndexFile, global_terms: Vec<crat
 /// When `requested` is empty this is a no-op.
 /// When non-empty and any requested name is absent from `terms`, returns a usage
 /// error listing the unknown names so there is no silent "nothing to fix".
+#[cfg(test)]
 pub fn filter_terms_by_name(terms: &mut Vec<Term>, requested: &[String]) -> Result<()> {
     if requested.is_empty() {
         return Ok(());
@@ -123,56 +123,120 @@ pub fn filter_terms_by_name(terms: &mut Vec<Term>, requested: &[String]) -> Resu
     Ok(())
 }
 
-pub fn lint_path_with_global(
+pub fn validate_fix_selection(terms: &[Term], selection: &FixSelection) -> Result<()> {
+    selection.validate().map_err(|message| MfError::usage(message, None))?;
+    let available: BTreeSet<&str> = terms.iter().map(|term| term.term.as_str()).collect();
+    let mut unknown: BTreeSet<&str> = selection
+        .selected_terms
+        .iter()
+        .filter_map(|term| (!available.contains(term.as_str())).then_some(term.as_str()))
+        .collect();
+    unknown.extend(
+        selection
+            .selected_pairs
+            .iter()
+            .filter_map(|(term, _)| (!available.contains(term.as_str())).then_some(term.as_str())),
+    );
+    if !unknown.is_empty() {
+        return Err(MfError::usage(
+            format!("unknown term(s): {}", unknown.into_iter().collect::<Vec<_>>().join(", ")),
+            Some("use `mf term list` to see available terms".to_string()),
+        ));
+    }
+    for (term_name, original) in &selection.selected_pairs {
+        let found = terms
+            .iter()
+            .find(|term| term.term == *term_name)
+            .is_some_and(|term| term.corrections.iter().any(|correction| correction.original == *original));
+        if !found {
+            return Err(MfError::usage(
+                format!("correction '{original}' not found on term '{term_name}'"),
+                Some("use `mf term correction list <TERM>` to see available corrections".to_string()),
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[derive(Default)]
+struct SelectionCounts {
+    selected: u64,
+    excluded: u64,
+    below_confidence: u64,
+    ineligible: u64,
+}
+
+fn apply_selection(
+    findings: &mut [TermFinding],
+    internal_findings: &[InternalFinding],
+    selection: &FixSelection,
+) -> SelectionCounts {
+    let mut counts = SelectionCounts::default();
+    debug_assert_eq!(findings.len(), internal_findings.len());
+    for (finding, internal) in findings.iter_mut().zip(internal_findings) {
+        let state = selection.classify(
+            &internal.term_name,
+            &internal.original,
+            &internal.correct,
+            internal.confidence,
+            internal.fix_kind,
+            internal.replacement_eligible,
+        );
+        finding.selection = state;
+        match state {
+            FindingSelection::Selected => counts.selected += 1,
+            FindingSelection::ExcludedTerm | FindingSelection::ExcludedOriginal => counts.excluded += 1,
+            FindingSelection::BelowConfidence => counts.below_confidence += 1,
+            _ => counts.ineligible += 1,
+        }
+    }
+    counts
+}
+
+pub fn lint_path_with_global_selection(
     project_root: &Path,
     repo_root: &Path,
     path: &str,
     fix: bool,
     dry_run: bool,
-    include_suggested: bool,
-    term_filter: &[String],
+    selection: &FixSelection,
 ) -> Result<TermLintReport> {
     let mut index = index::load(project_root)?;
     let global_terms = crate::service::term::global::load_terms(repo_root)?;
     merge_global_into_index(&mut index, global_terms);
-    if let Some(ref mut terms) = index.terms {
-        filter_terms_by_name(terms, term_filter)?;
-    }
+    validate_fix_selection(index.terms.as_deref().unwrap_or(&[]), selection)?;
     if project_root.join(path).is_dir() {
-        lint_dir_with_index(
+        lint_dir_with_selection(
             &index,
             project_root,
             path,
             "provide a path relative to the project root",
             fix,
             dry_run,
-            include_suggested,
+            selection,
         )
     } else {
-        lint_single_file_with_index(&index, project_root, path, fix, dry_run, include_suggested)
+        lint_single_file_with_selection(&index, project_root, path, fix, dry_run, selection)
     }
 }
 
-pub fn lint_terms_with_global(
+pub fn lint_terms_with_global_selection(
     project_root: &Path,
     repo_root: &Path,
     fix: bool,
     dry_run: bool,
-    include_suggested: bool,
-    term_filter: &[String],
+    selection: &FixSelection,
 ) -> Result<TermLintReport> {
     let mut index = index::load(project_root)?;
     let global_terms = crate::service::term::global::load_terms(repo_root)?;
     merge_global_into_index(&mut index, global_terms);
-    if let Some(ref mut terms) = index.terms {
-        filter_terms_by_name(terms, term_filter)?;
-    }
+    validate_fix_selection(index.terms.as_deref().unwrap_or(&[]), selection)?;
     let layout = config_svc::effective_layout(project_root)?;
     let docs_dir = project_root.join(&layout.articles);
     if !docs_dir.exists() {
         return Ok(empty_report(fix, dry_run));
     }
-    lint_walk_with_index(&index, project_root, &docs_dir, Some(&docs_dir), fix, dry_run, include_suggested)
+    lint_walk_with_selection(&index, project_root, &docs_dir, Some(&docs_dir), fix, dry_run, selection)
 }
 
 pub(crate) fn empty_report(fix: bool, dry_run: bool) -> TermLintReport {
@@ -185,36 +249,40 @@ pub(crate) fn empty_report(fix: bool, dry_run: bool) -> TermLintReport {
         failures: vec![],
         would_fix_count: if fix && dry_run { Some(0) } else { None },
         would_apply_count: 0,
+        selected_count: 0,
+        excluded_count: 0,
+        below_confidence_count: 0,
+        ineligible_count: 0,
     }
 }
 
-pub(crate) fn lint_dir_with_index(
+pub(crate) fn lint_dir_with_selection(
     index: &IndexFile,
     base_path: &Path,
     dir_path: &str,
     hint: &str,
     fix: bool,
     dry_run: bool,
-    include_suggested: bool,
+    selection: &FixSelection,
 ) -> Result<TermLintReport> {
     let target_dir = base_path.join(dir_path);
     if !target_dir.is_dir() {
         return Err(MfError::usage(format!("not a directory: {dir_path}"), Some(hint.to_string())));
     }
-    lint_walk_with_index(index, base_path, &target_dir, Some(&target_dir), fix, dry_run, include_suggested)
+    lint_walk_with_selection(index, base_path, &target_dir, Some(&target_dir), fix, dry_run, selection)
 }
 
 /// Lint a single markdown file against terms in `index`. Used by both project-
 /// scoped (`lint_file`) and global (`global::lint_file`) flows; the only
 /// difference is the index source and the `base_path` used for atomic writes
 /// and rel-path computation.
-pub(crate) fn lint_single_file_with_index(
+pub(crate) fn lint_single_file_with_selection(
     index: &IndexFile,
     base_path: &Path,
     file_path: &str,
     fix: bool,
     dry_run: bool,
-    include_suggested: bool,
+    selection: &FixSelection,
 ) -> Result<TermLintReport> {
     let target_path = base_path.join(file_path);
     if !target_path.exists() {
@@ -239,29 +307,20 @@ pub(crate) fn lint_single_file_with_index(
         Ok(c) => c,
         Err(e) => {
             failures.push(TermLintFailure { path: rel_path.clone(), reason: format!("io error: {e}") });
-            return Ok(single_file_report(findings, failures, 0, vec![], false, false, 0));
+            return Ok(single_file_report(findings, failures, 0, vec![], false, false, SelectionCounts::default()));
         }
     };
 
     scan_content(&content, None, &correction_refs, &rel_path, &mut findings, &mut internal_findings, &mut claimed);
-
-    // Run post-correction engine on unclaimed spans.
-    if let Some(ref terms) = index.terms {
-        run_correction_engine(&content, &rel_path, terms, &claimed, &mut findings, &mut internal_findings)?;
-    }
+    let counts = apply_selection(&mut findings, &internal_findings, selection);
 
     if !fix {
-        return Ok(single_file_report(findings, failures, 0, vec![], false, false, 0));
+        return Ok(single_file_report(findings, failures, 0, vec![], false, false, counts));
     }
 
-    let mut would_apply_count: u64 = 0;
     let mut spans: Vec<FixSpan> = Vec::new();
-    for ifind in internal_findings.iter() {
-        if ifind.original == ifind.correct || ifind.is_ambiguous {
-            continue;
-        }
-        if ifind.fix_kind == FixKind::Suggested && !include_suggested {
-            would_apply_count += 1;
+    for (ifind, finding) in internal_findings.iter().zip(&findings) {
+        if !finding.selection.is_selected() {
             continue;
         }
         spans.push(FixSpan {
@@ -282,12 +341,16 @@ pub(crate) fn lint_single_file_with_index(
             modified_files: vec![],
             failures,
             would_fix_count: Some(wf),
-            would_apply_count,
+            would_apply_count: counts.ineligible,
+            selected_count: wf,
+            excluded_count: counts.excluded,
+            below_confidence_count: counts.below_confidence,
+            ineligible_count: counts.ineligible,
         });
     }
 
     if spans.is_empty() {
-        return Ok(single_file_report(findings, failures, 0, vec![], false, false, would_apply_count));
+        return Ok(single_file_report(findings, failures, 0, vec![], false, false, counts));
     }
 
     fix::deduplicate_spans(&mut spans);
@@ -299,23 +362,15 @@ pub(crate) fn lint_single_file_with_index(
                 path: rel_path.clone(),
                 reason: "non-utf8 content after replacement".to_string(),
             });
-            return Ok(single_file_report(findings, failures, 0, vec![], false, false, would_apply_count));
+            return Ok(single_file_report(findings, failures, 0, vec![], false, false, counts));
         }
     };
 
     match atomic_write(&target_path, &new_content) {
-        Ok(()) => Ok(single_file_report(
-            findings,
-            failures,
-            spans.len() as u64,
-            vec![rel_path],
-            false,
-            false,
-            would_apply_count,
-        )),
+        Ok(()) => Ok(single_file_report(findings, failures, spans.len() as u64, vec![rel_path], false, false, counts)),
         Err(e) => {
             failures.push(TermLintFailure { path: rel_path, reason: format!("io error: {e}") });
-            Ok(single_file_report(findings, failures, 0, vec![], false, false, would_apply_count))
+            Ok(single_file_report(findings, failures, 0, vec![], false, false, counts))
         }
     }
 }
@@ -327,7 +382,7 @@ fn single_file_report(
     modified_files: Vec<String>,
     fix: bool,
     dry_run: bool,
-    would_apply_count: u64,
+    counts: SelectionCounts,
 ) -> TermLintReport {
     TermLintReport {
         findings,
@@ -337,7 +392,11 @@ fn single_file_report(
         modified_files,
         failures,
         would_fix_count: if fix && dry_run { Some(0) } else { None },
-        would_apply_count,
+        would_apply_count: counts.ineligible,
+        selected_count: counts.selected,
+        excluded_count: counts.excluded,
+        below_confidence_count: counts.below_confidence,
+        ineligible_count: counts.ineligible,
     }
 }
 
@@ -345,14 +404,14 @@ fn single_file_report(
 /// `base_path` is the prefix used to derive POSIX-style rel-paths and to
 /// resolve atomic writes. `safety_dir`, when `Some`, enables a path-escape
 /// check on fix (used by project-scoped lint to confine writes to docs/).
-pub(crate) fn lint_walk_with_index(
+pub(crate) fn lint_walk_with_selection(
     index: &IndexFile,
     base_path: &Path,
     walk_dir: &Path,
     safety_dir: Option<&Path>,
     fix: bool,
     dry_run: bool,
-    include_suggested: bool,
+    selection: &FixSelection,
 ) -> Result<TermLintReport> {
     let corrections = collect_corrections(index);
     let ambiguous = build_ambiguous_originals(&corrections);
@@ -367,7 +426,7 @@ pub(crate) fn lint_walk_with_index(
 
     let walker = walkdir::WalkDir::new(walk_dir).into_iter().filter_entry(|e| {
         let name = e.file_name().to_string_lossy();
-        !name.starts_with('.') && name != "DS_Store" && name != ".gitkeep"
+        e.depth() == 0 || (!name.starts_with('.') && name != "DS_Store" && name != ".gitkeep")
     });
 
     for entry in walker {
@@ -402,9 +461,6 @@ pub(crate) fn lint_walk_with_index(
                     &mut internal_findings,
                     &mut claimed,
                 );
-                if let Some(ref terms) = index.terms {
-                    run_correction_engine(&content, &rel_path, terms, &claimed, &mut findings, &mut internal_findings)?;
-                }
             }
             FrontMatterDecision::None => {
                 scanned_files += 1;
@@ -417,13 +473,11 @@ pub(crate) fn lint_walk_with_index(
                     &mut internal_findings,
                     &mut claimed,
                 );
-                if let Some(ref terms) = index.terms {
-                    run_correction_engine(&content, &rel_path, terms, &claimed, &mut findings, &mut internal_findings)?;
-                }
             }
         }
     }
 
+    let counts = apply_selection(&mut findings, &internal_findings, selection);
     findings.sort_by(|a, b| (a.path.as_str(), a.line, a.column).cmp(&(b.path.as_str(), b.line, b.column)));
     skipped_files.sort();
     failures.sort_by(|a, b| a.path.cmp(&b.path));
@@ -438,6 +492,10 @@ pub(crate) fn lint_walk_with_index(
             failures,
             would_fix_count: None,
             would_apply_count: 0,
+            selected_count: counts.selected,
+            excluded_count: counts.excluded,
+            below_confidence_count: counts.below_confidence,
+            ineligible_count: counts.ineligible,
         });
     }
 
@@ -445,7 +503,8 @@ pub(crate) fn lint_walk_with_index(
         base_path,
         safety_dir,
         dry_run,
-        include_suggested,
+        selection,
+        counts,
         findings,
         &internal_findings,
         scanned_files,
@@ -478,60 +537,6 @@ pub(crate) fn scan_content(
         Some(&jieba),
     );
     pinyin::scan_for_pinyin(content, &sanitized, rel_path, correction_refs, findings, internal_findings, claimed);
-}
-
-/// Run the rules post-correction engine on `content` after declared corrections
-/// have been scanned. Proposals are converted into findings and internal
-/// findings, respecting already-claimed offsets.
-pub(crate) fn run_correction_engine(
-    content: &str,
-    rel_path: &str,
-    terms: &[crate::model::term::Term],
-    claimed: &BTreeSet<(String, usize, usize)>,
-    findings: &mut Vec<TermFinding>,
-    internal_findings: &mut Vec<InternalFinding>,
-) -> Result<()> {
-    let corrector = super::correct::rules::RulesCorrector::new(terms);
-    // Protected set: all canonical term strings.
-    let protected: ProtectedSet = terms.iter().map(|t| t.term.clone()).collect();
-    let ctx = super::correct::CorrectCtx { declared_claims: claimed.clone(), protected_set: protected };
-
-    for p in corrector.propose(content, &ctx)? {
-        if claimed.iter().any(|(path, off, _)| path == rel_path && *off == p.byte_offset) {
-            continue;
-        }
-        let (line, col) = scan::byte_offset_to_line_col(content, p.byte_offset);
-
-        findings.push(TermFinding {
-            path: rel_path.to_string(),
-            line,
-            column: col,
-            original: p.original.clone(),
-            correct: p.correct.clone(),
-            term: p.correct.clone(),
-            description: None,
-            confidence: p.confidence,
-            replacement_eligible: p.replacement_eligible,
-            safety_reason: None,
-            candidates: vec![],
-            match_kind: crate::model::term::MatchKind::Word,
-            fix_kind: p.fix_kind,
-            boundary: crate::model::term::Boundary::Loose,
-            boundary_mode: "cjk",
-        });
-
-        internal_findings.push(InternalFinding {
-            path: rel_path.to_string(),
-            byte_offset: p.byte_offset,
-            original_len: p.original_len,
-            original: p.original,
-            correct: p.correct,
-            is_ambiguous: false,
-            fix_kind: p.fix_kind,
-            yaml_index: usize::MAX, // generated, not from YAML
-        });
-    }
-    Ok(())
 }
 
 pub(crate) fn build_correction_refs<'a>(
@@ -571,7 +576,8 @@ fn apply_term_fixes(
     base_path: &Path,
     safety_dir: Option<&Path>,
     dry_run: bool,
-    include_suggested: bool,
+    selection: &FixSelection,
+    counts: SelectionCounts,
     findings: Vec<TermFinding>,
     internal_findings: &[InternalFinding],
     scanned_files: u64,
@@ -581,7 +587,6 @@ fn apply_term_fixes(
     let mut fixed_count: u64 = 0;
     let mut modified_files: Vec<String> = Vec::new();
     let mut would_fix_count: u64 = 0;
-    let mut would_apply_count: u64 = 0;
 
     let mut by_path: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     for (idx, ifind) in internal_findings.iter().enumerate() {
@@ -611,11 +616,15 @@ fn apply_term_fixes(
         let mut per_file_fixed: u64 = 0;
         for &idx in indices {
             let ifind = &internal_findings[idx];
-            if ifind.original == ifind.correct || ifind.is_ambiguous {
-                continue;
-            }
-            if ifind.fix_kind == FixKind::Suggested && !include_suggested {
-                would_apply_count += 1;
+            let state = selection.classify(
+                &ifind.term_name,
+                &ifind.original,
+                &ifind.correct,
+                ifind.confidence,
+                ifind.fix_kind,
+                ifind.replacement_eligible,
+            );
+            if !state.is_selected() {
                 continue;
             }
             spans.push(FixSpan {
@@ -660,7 +669,11 @@ fn apply_term_fixes(
         modified_files,
         failures,
         would_fix_count: if dry_run { Some(would_fix_count) } else { None },
-        would_apply_count,
+        would_apply_count: counts.ineligible,
+        selected_count: counts.selected,
+        excluded_count: counts.excluded,
+        below_confidence_count: counts.below_confidence,
+        ineligible_count: counts.ineligible,
     })
 }
 
@@ -737,5 +750,43 @@ mod tests {
         let err = filter_terms_by_name(&mut terms, &["RAG".to_string(), "NOPE".to_string()]).unwrap_err();
         assert!(err.to_string().contains("NOPE"));
         assert!(!err.to_string().contains("RAG"), "valid name should not be listed as unknown");
+    }
+
+    #[test]
+    fn pipeline_emits_no_implicit_homophone_for_term_without_corrections() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("synthetic.md"), "机器仁开始工作\n").unwrap();
+        let term = Term {
+            term: "机器人".into(),
+            definition: None,
+            description: None,
+            confidence: Some(1.0),
+            aliases: vec![],
+            tags: vec![],
+            corrections: vec![],
+        };
+        let index = IndexFile {
+            schema_version: defaults::SCHEMA_VERSION.into(),
+            terms: Some(vec![term]),
+            sources: None,
+            assets: None,
+            articles: None,
+            publish_records: None,
+            extra: None,
+        };
+        let report =
+            lint_single_file_with_selection(&index, dir.path(), "synthetic.md", false, false, &FixSelection::default())
+                .unwrap();
+        assert!(report.findings.is_empty(), "canonical terms alone must not synthesize homophone fixes");
+    }
+
+    #[test]
+    fn scope_filters_limit_findings_without_changing_unscoped_results() {
+        let mut terms = vec![make_term("Alpha"), make_term("Beta")];
+        let all = terms.clone();
+        filter_terms_by_name(&mut terms, &["Alpha".to_string()]).unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].term, "Alpha");
+        assert_eq!(all.len(), 2, "unscoped source data remains unchanged");
     }
 }

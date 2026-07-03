@@ -17,6 +17,7 @@ pub enum AddMode {
     Copy,
     Link,
     Url,
+    Register,
 }
 
 /// Outcome returned by the `add()` function.
@@ -34,6 +35,73 @@ pub struct AddArgs<'a> {
     pub source_kind: Option<SourceKind>,
     pub link: bool,
     pub force: bool,
+}
+
+pub fn register_only(project_path: &Path, cwd: &Path, args: &AddArgs, dry_run: bool) -> Result<AddOutcome> {
+    if args.link {
+        return Err(MfError::usage("--register-only cannot be combined with --link", None));
+    }
+    if args.force {
+        return Err(MfError::usage("--register-only cannot be combined with --force", None));
+    }
+    if matches!(classify_input(args.input), InputForm::Url) {
+        return Err(MfError::usage("--register-only requires a local file path", None));
+    }
+
+    let source_path = cwd.join(args.input);
+    let source_canonical = source_path.canonicalize().map_err(MfError::Io)?;
+    if !std::fs::metadata(&source_canonical).map_err(MfError::Io)?.is_file() {
+        return Err(MfError::usage(format!("source path '{}' must be an existing regular file", args.input), None));
+    }
+    let layout = config_svc::effective_layout(project_path)?;
+    let sources_dir = project_path.join(&layout.sources);
+    util::canonicalize_within(&sources_dir, &source_canonical).map_err(|_| {
+        MfError::usage(format!("--register-only path must be inside the project's {}/ directory", layout.sources), None)
+    })?;
+
+    let model_kind = match args.kind.clone() {
+        Some(FileKind::Auto) | None => infer_kind_from_path(&source_canonical),
+        Some(kind @ (FileKind::Pdf | FileKind::File)) => kind,
+        Some(FileKind::Rss | FileKind::Web) => {
+            return Err(MfError::usage("cannot use --file-kind rss or --file-kind web with a local file", None))
+        }
+    };
+    let name = args.name.map(str::to_string).unwrap_or(derive_name_from_path(&source_path)?);
+    let canonical_project = project_path.canonicalize().map_err(MfError::Io)?;
+    let rel_path = util::rel_posix_path(&canonical_project, &source_canonical)?;
+    let mut index = index::load(project_path)?;
+    let sources = index.sources.get_or_insert_with(Vec::new);
+
+    if let Some(existing) = sources.iter().find(|source| source.path.as_deref() == Some(rel_path.as_str())) {
+        if existing.name != name {
+            return Err(MfError::usage(
+                format!("source path '{rel_path}' is already registered as '{}'", existing.name),
+                Some("use the existing source name or update it explicitly".to_string()),
+            ));
+        }
+        return Ok(AddOutcome { source: existing.clone(), mode: AddMode::Register, replaced: false });
+    }
+    if sources.iter().any(|source| source.name == name) {
+        return Err(MfError::file_exists(project_path.join("mind-index.yaml")));
+    }
+
+    let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let source = Source {
+        name,
+        kind: model_kind,
+        source_kind: args.source_kind.clone(),
+        url: None,
+        path: Some(rel_path),
+        tags: vec![],
+        added_at: now.clone(),
+        updated_at: now,
+    };
+    if !dry_run {
+        sources.push(source.clone());
+        sources.sort_by(|left, right| left.name.cmp(&right.name));
+        index::save(project_path, &index)?;
+    }
+    Ok(AddOutcome { source, mode: AddMode::Register, replaced: false })
 }
 
 /// Internal enum for classifying `mf source add` input.
@@ -166,7 +234,7 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
     if util::canonicalize_within(&sources_dir, &source_canonical).is_ok() {
         return Err(MfError::usage(
             format!("source file is already inside the project's {}/ directory", layout.sources),
-            Some("use `mf source update <NAME>` to modify metadata".to_string()),
+            Some("pass --register-only to add the existing file to the source index".to_string()),
         ));
     }
 
@@ -245,12 +313,7 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
         UpsertSlot::New => {
             let rel_path = util::rel_posix_path(project_path, &dest)?;
 
-            match args.link {
-                true => create_symlink(&source_canonical, &dest)?,
-                false => {
-                    std::fs::copy(&source_canonical, &dest).map_err(MfError::Io)?;
-                }
-            }
+            write_file()?;
 
             let source = Source {
                 name: name.clone(),
@@ -272,4 +335,47 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
     index::save(project_path, &index)?;
 
     Ok(AddOutcome { source, mode, replaced })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn register_only_indexes_in_tree_file_without_touching_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("project");
+        let source_dir = project.join("sources/file");
+        std::fs::create_dir_all(&source_dir).unwrap();
+        std::fs::write(project.join("mind.yaml"), "schema_version: '1'\n").unwrap();
+        let file = source_dir.join("synthetic.md");
+        let original = b"synthetic source bytes\n";
+        std::fs::write(&file, original).unwrap();
+
+        let input = file.to_string_lossy().to_string();
+        let outcome = register_only(
+            &project,
+            dir.path(),
+            &AddArgs { input: &input, name: None, kind: None, source_kind: None, link: false, force: false },
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(outcome.mode, AddMode::Register);
+        assert_eq!(std::fs::read(&file).unwrap(), original);
+        let index = index::load(&project).unwrap();
+        let sources = index.sources.unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].path.as_deref(), Some("sources/file/synthetic.md"));
+
+        let repeated = register_only(
+            &project,
+            dir.path(),
+            &AddArgs { input: &input, name: None, kind: None, source_kind: None, link: false, force: false },
+            false,
+        )
+        .unwrap();
+        assert!(!repeated.replaced);
+        assert_eq!(index::load(&project).unwrap().sources.unwrap().len(), 1);
+    }
 }

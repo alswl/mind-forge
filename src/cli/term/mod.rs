@@ -124,6 +124,12 @@ pub struct TermLintArgs {
     /// Only apply/scan corrections for the named term(s) (repeatable, exact name)
     #[arg(long = "term", value_name = "NAME")]
     pub term: Vec<String>,
+    /// Exclude corrections for the named term(s) (repeatable)
+    #[arg(long = "exclude-term", value_name = "NAME")]
+    pub exclude_term: Vec<String>,
+    /// Exclude this exact original text across terms (repeatable)
+    #[arg(long = "exclude-original", value_name = "ORIGINAL")]
+    pub exclude_original: Vec<String>,
     #[command(flatten)]
     pub lint: LintFlags,
     #[command(flatten)]
@@ -139,6 +145,12 @@ pub struct TermFixArgs {
     /// Only apply/scan corrections for the named term(s) (repeatable, exact name)
     #[arg(long = "term", value_name = "NAME")]
     pub term: Vec<String>,
+    /// Exclude corrections for the named term(s) (repeatable)
+    #[arg(long = "exclude-term", value_name = "NAME")]
+    pub exclude_term: Vec<String>,
+    /// Exclude this exact original text across terms (repeatable)
+    #[arg(long = "exclude-original", value_name = "ORIGINAL")]
+    pub exclude_original: Vec<String>,
     #[command(flatten)]
     pub lint: LintFlags,
     #[command(flatten)]
@@ -167,7 +179,12 @@ pub struct TermUpdateArgs {
     #[arg(long = "delete-tag", help = "Remove a tag from the term")]
     pub delete_tag: Vec<String>,
     /// Append a correction to the term (repeatable). Defaults to word/match, required/fix.
-    #[arg(long = "add-correction", help = "Append a correction (ORIGINAL); defaults to word/required")]
+    /// `ORIGINAL:CORRECT` sets the replacement; a bare `ORIGINAL` uses the term name.
+    #[arg(
+        long = "add-correction",
+        value_name = "ORIGINAL[:CORRECT]",
+        help = "Append a correction (ORIGINAL[:CORRECT]); defaults to word/required, term name as CORRECT"
+    )]
     pub add_correction: Vec<String>,
     /// Set match kind of an existing correction: ORIGINAL:word|substring|pinyin (repeatable).
     #[arg(
@@ -352,6 +369,8 @@ pub fn dispatch(command: TermCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome
                 path: args.path,
                 article: args.article,
                 term: args.term,
+                exclude_term: args.exclude_term,
+                exclude_original: args.exclude_original,
                 lint: args.lint,
                 yes: args.yes.clone(),
             };

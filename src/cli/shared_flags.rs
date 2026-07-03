@@ -53,6 +53,13 @@ pub struct LintFlags {
     pub dry_run: bool,
     #[arg(long = "include-suggested", help = "Apply all corrections including suggested")]
     pub include_suggested: bool,
+    #[arg(
+        long = "min-confidence",
+        value_name = "0.0..1.0",
+        value_parser = clap::value_parser!(f64),
+        help = "Apply suggested corrections at or above this confidence"
+    )]
+    pub min_confidence: Option<f64>,
 }
 
 #[cfg(test)]

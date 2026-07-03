@@ -1,7 +1,29 @@
 use std::collections::BTreeSet;
 
 use super::segment::JiebaBoundaries;
-use crate::model::term::{Boundary, CandidateTerm, MatchKind, TermFinding};
+use crate::model::term::{Boundary, CandidateTerm, FindingSelection, MatchKind, TermFinding};
+
+pub(crate) fn context_excerpt(content: &str, byte_offset: usize, byte_len: usize) -> String {
+    let line_start = content[..byte_offset].rfind('\n').map_or(0, |index| index + 1);
+    let line_end =
+        content[byte_offset + byte_len..].find('\n').map_or(content.len(), |index| byte_offset + byte_len + index);
+    let line = content[line_start..line_end].trim().replace(['\r', '\t'], " ");
+    let chars: Vec<char> = line.chars().collect();
+    if chars.len() <= 120 {
+        line
+    } else {
+        let start_char = content[line_start..byte_offset].chars().count().saturating_sub(40);
+        let end_char = (start_char + 120).min(chars.len());
+        let mut excerpt: String = chars[start_char..end_char].iter().collect();
+        if start_char > 0 {
+            excerpt.insert(0, '…');
+        }
+        if end_char < chars.len() {
+            excerpt.push('…');
+        }
+        excerpt
+    }
+}
 
 fn is_word_boundary_byte(b: u8) -> bool {
     !matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_')
@@ -140,8 +162,10 @@ pub(crate) struct InternalFinding {
     pub(crate) original_len: usize,
     pub(crate) original: String,
     pub(crate) correct: String,
-    pub(crate) is_ambiguous: bool,
     pub(crate) fix_kind: crate::model::term::FixKind,
+    pub(crate) term_name: String,
+    pub(crate) confidence: Option<f64>,
+    pub(crate) replacement_eligible: bool,
     /// Position of the source Correction in the YAML `corrections:` list.
     /// Used by `deduplicate_spans` as the tie-breaker when two corrections
     /// share the same byte span: lower wins (i.e., the earlier-declared rule).
@@ -241,6 +265,8 @@ pub(crate) fn scan_file_for_corrections(
                 fix_kind: c.fix_kind,
                 boundary: c.boundary,
                 boundary_mode: check.boundary_mode(),
+                selection: if is_ambiguous { FindingSelection::Ambiguous } else { FindingSelection::Selected },
+                context: context_excerpt(content, abs_offset, orig_bytes.len()),
             });
 
             internal_findings.push(InternalFinding {
@@ -249,8 +275,10 @@ pub(crate) fn scan_file_for_corrections(
                 original_len: orig_bytes.len(),
                 original: c.original.to_string(),
                 correct: c.correct.to_string(),
-                is_ambiguous,
                 fix_kind: c.fix_kind,
+                term_name: c.term_name.to_string(),
+                confidence: c.confidence,
+                replacement_eligible: !is_ambiguous,
                 yaml_index: c.yaml_index,
             });
 
@@ -565,5 +593,52 @@ mod tests {
             apply_word_boundary(&content, &sanitized, WordCheck::AsciiStandalone, offset, 4, None),
             "standalone must keep matching when right neighbour is CJK"
         );
+    }
+
+    fn scan_original(content: &str, original: &str, match_kind: MatchKind) -> Vec<TermFinding> {
+        let correction = CorrectionRef {
+            yaml_index: 0,
+            original,
+            correct: "Synthetic",
+            term_name: "Synthetic",
+            description: None,
+            confidence: Some(1.0),
+            is_ambiguous: false,
+            candidates: &[],
+            match_kind,
+            fix_kind: crate::model::term::FixKind::Required,
+            boundary: Boundary::Standalone,
+            pinyin: None,
+        };
+        let mut findings = Vec::new();
+        let mut internal = Vec::new();
+        let mut claimed = BTreeSet::new();
+        let jieba = JiebaBoundaries::segment(content);
+        scan_file_for_corrections(
+            content,
+            content.as_bytes(),
+            &[correction],
+            "synthetic.md",
+            &mut findings,
+            &mut internal,
+            &mut claimed,
+            Some(&jieba),
+        );
+        findings
+    }
+
+    #[test]
+    fn cjk_word_matches_complete_token_but_not_embedded_fragment() {
+        let findings = scan_original("小文件需要备份。小文 负责。", "小文", MatchKind::Word);
+        assert_eq!(findings.len(), 1, "only the complete segmented token should match");
+        assert_eq!(findings[0].original, "小文");
+    }
+
+    #[test]
+    fn word_mode_rejects_embedded_occurrence_substring_mode_accepts() {
+        let word = scan_original("scatter cat", "cat", MatchKind::Word);
+        assert_eq!(word.len(), 1, "word mode must reject the embedded occurrence");
+        let substring = scan_original("scatter cat", "cat", MatchKind::Substring);
+        assert_eq!(substring.len(), 2, "substring mode explicitly accepts embedded occurrences");
     }
 }

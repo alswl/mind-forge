@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -152,6 +154,89 @@ pub struct TermFinding {
     pub fix_kind: FixKind,
     pub boundary: Boundary,
     pub boundary_mode: &'static str,
+    pub selection: FindingSelection,
+    pub context: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingSelection {
+    Selected,
+    ExcludedTerm,
+    ExcludedOriginal,
+    NotSelected,
+    SuggestedDisabled,
+    BelowConfidence,
+    Ambiguous,
+    NotReplacement,
+}
+
+impl FindingSelection {
+    pub fn is_selected(self) -> bool {
+        self == Self::Selected
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct FixSelection {
+    pub selected_terms: BTreeSet<String>,
+    pub selected_pairs: BTreeSet<(String, String)>,
+    pub excluded_terms: BTreeSet<String>,
+    pub excluded_originals: BTreeSet<String>,
+    pub include_suggested: bool,
+    pub min_confidence: Option<f64>,
+}
+
+impl FixSelection {
+    pub fn validate(&self) -> std::result::Result<(), String> {
+        if let Some(value) = self.min_confidence {
+            if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                return Err("--min-confidence must be between 0.0 and 1.0".to_string());
+            }
+            if !self.include_suggested {
+                return Err("--min-confidence requires --include-suggested".to_string());
+            }
+        }
+        Ok(())
+    }
+
+    pub fn classify(
+        &self,
+        term: &str,
+        original: &str,
+        correct: &str,
+        confidence: Option<f64>,
+        fix_kind: FixKind,
+        replacement_eligible: bool,
+    ) -> FindingSelection {
+        if !replacement_eligible {
+            return FindingSelection::Ambiguous;
+        }
+        if original == correct {
+            return FindingSelection::NotReplacement;
+        }
+        if self.excluded_terms.contains(term) {
+            return FindingSelection::ExcludedTerm;
+        }
+        if self.excluded_originals.contains(original) {
+            return FindingSelection::ExcludedOriginal;
+        }
+        if (!self.selected_pairs.is_empty() || !self.selected_terms.is_empty())
+            && !self.selected_terms.contains(term)
+            && !self.selected_pairs.contains(&(term.to_string(), original.to_string()))
+        {
+            return FindingSelection::NotSelected;
+        }
+        if fix_kind == FixKind::Suggested && !self.include_suggested {
+            return FindingSelection::SuggestedDisabled;
+        }
+        if fix_kind == FixKind::Suggested
+            && self.min_confidence.is_some_and(|minimum| confidence.unwrap_or(0.0) < minimum)
+        {
+            return FindingSelection::BelowConfidence;
+        }
+        FindingSelection::Selected
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -301,6 +386,10 @@ pub struct TermLintReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub would_fix_count: Option<u64>,
     pub would_apply_count: u64,
+    pub selected_count: u64,
+    pub excluded_count: u64,
+    pub below_confidence_count: u64,
+    pub ineligible_count: u64,
 }
 
 #[cfg(test)]
@@ -597,5 +686,52 @@ mod tests {
         let json = serde_json::to_value(&target).unwrap();
         assert_eq!(json["target_type"], "file");
         assert_eq!(json["path"], "docs/draft.md");
+    }
+
+    #[test]
+    fn selection_uses_inclusive_minimum_confidence() {
+        let selection = FixSelection { include_suggested: true, min_confidence: Some(0.8), ..Default::default() };
+        assert_eq!(
+            selection.classify("Synthetic", "old", "new", Some(0.8), FixKind::Suggested, true),
+            FindingSelection::Selected
+        );
+        assert_eq!(
+            selection.classify("Synthetic", "old", "new", Some(0.79), FixKind::Suggested, true),
+            FindingSelection::BelowConfidence
+        );
+        assert_eq!(
+            selection.classify("Synthetic", "old", "new", None, FixKind::Suggested, true),
+            FindingSelection::BelowConfidence
+        );
+    }
+
+    #[test]
+    fn selection_excluded_term_overrides_positive_scope() {
+        let mut selection = FixSelection::default();
+        selection.selected_terms.insert("Synthetic".into());
+        selection.excluded_terms.insert("Synthetic".into());
+        assert_eq!(
+            selection.classify("Synthetic", "old", "new", Some(1.0), FixKind::Required, true),
+            FindingSelection::ExcludedTerm
+        );
+    }
+
+    #[test]
+    fn selection_exact_pair_and_original_exclusion_are_independent() {
+        let mut selection = FixSelection::default();
+        selection.selected_pairs.insert(("Synthetic".into(), "wanted".into()));
+        selection.excluded_originals.insert("blocked".into());
+        assert_eq!(
+            selection.classify("Synthetic", "wanted", "new", Some(1.0), FixKind::Required, true),
+            FindingSelection::Selected
+        );
+        assert_eq!(
+            selection.classify("Synthetic", "other", "new", Some(1.0), FixKind::Required, true),
+            FindingSelection::NotSelected
+        );
+        assert_eq!(
+            selection.classify("Other", "blocked", "new", Some(1.0), FixKind::Required, true),
+            FindingSelection::ExcludedOriginal
+        );
     }
 }

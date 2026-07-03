@@ -16,6 +16,108 @@ fn setup() -> (TempDir, TempDir, std::path::PathBuf, std::path::PathBuf) {
     (repo, source_dir, project, source_file)
 }
 
+#[test]
+fn register_only_indexes_existing_in_tree_file_idempotently() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    let source_dir = project.join("sources/file");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    let file = source_dir.join("synthetic.md");
+    let bytes = b"synthetic source\n";
+    std::fs::write(&file, bytes).unwrap();
+
+    for _ in 0..2 {
+        Command::cargo_bin("mf")
+            .unwrap()
+            .args([
+                "--root",
+                repo.path().to_str().unwrap(),
+                "source",
+                "new",
+                file.to_str().unwrap(),
+                "--project",
+                "alpha",
+                "--register-only",
+            ])
+            .assert()
+            .success();
+    }
+    assert_eq!(std::fs::read(&file).unwrap(), bytes);
+    let index = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert_eq!(index.matches("name: synthetic").count(), 1);
+    assert!(index.contains("sources/file/synthetic.md"));
+}
+
+#[test]
+fn register_only_dry_run_validates_but_does_not_write_index() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    std::fs::create_dir_all(project.join("sources")).unwrap();
+    let file = project.join("sources/synthetic.md");
+    std::fs::write(&file, b"synthetic\n").unwrap();
+    Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "new",
+            file.to_str().unwrap(),
+            "--project",
+            "alpha",
+            "--register-only",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    assert!(!project.join("mind-index.yaml").exists());
+}
+
+#[test]
+fn register_only_rejects_outside_file_and_link_mode() {
+    let (repo, _source_dir, project, outside) = setup();
+    let before = std::fs::read(&outside).unwrap();
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "new",
+            outside.to_str().unwrap(),
+            "--project",
+            "alpha",
+            "--register-only",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(std::fs::read(&outside).unwrap(), before);
+    assert!(!project.join("mind-index.yaml").exists());
+
+    let inside = project.join("sources/synthetic.md");
+    std::fs::create_dir_all(inside.parent().unwrap()).unwrap();
+    std::fs::write(&inside, b"synthetic\n").unwrap();
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "new",
+            inside.to_str().unwrap(),
+            "--project",
+            "alpha",
+            "--register-only",
+            "--link",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+}
+
 // ---------------------------------------------------------------------------
 // 1. add_file_copies_pdf — happy path copy + index entry + exit 0
 // ---------------------------------------------------------------------------

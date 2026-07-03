@@ -143,6 +143,13 @@ fn source_clean_help_snapshot() {
     assert_snapshot!("source_clean_help", stdout);
 }
 
+#[test]
+fn source_add_help_snapshot() {
+    let (stdout, _, code) = run(&["source", "new", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("source_add_help", stdout);
+}
+
 // ── Term help snapshots (012-term-core) ─────────────────────────────────
 
 #[test]

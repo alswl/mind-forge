@@ -260,7 +260,7 @@ default `projects/` container). Defaults to the current directory.
 
 | Subcommand | Description |
 |-----------|-------------|
-| `new <INPUT>` | Add a source. `-n, --name <NAME>`, `--file-kind auto\|pdf\|file\|rss\|web`, `--source-kind yuque\|meeting\|misc`, `--link` |
+| `new <INPUT>` | Add a source. `-n, --name <NAME>`, `--file-kind auto\|pdf\|file\|rss\|web`, `--source-kind yuque\|meeting\|misc`, `--link`, `--register-only` (index a file already inside the project's sources directory without copying it; idempotent; not combinable with `--link`/`--force`) |
 | `list` (ls) | List sources. `--filter <PATTERN>`, `-t, --type <KIND>` |
 | `show <PATH>` | Show source details |
 | `update <PATH>` | Update a source (mf extension). `--url <URL>`, `--rename <NAME>` |
@@ -289,13 +289,13 @@ default `projects/` container). Defaults to the current directory.
 | `new <TERM>` | Create a term (mf extension). `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--misrecognition <TEXT>` |
 | `list` (ls) | List terms. `--filter <PATTERN>` matches term name (substring); `--tag <TAG>` / `--alias <ALIAS>` match their respective fields. `--has-correction`, `--scope project\|global\|all` (AND semantics; default merges project + global fallback) |
 | `show <TERM>` | Show term details |
-| `update <TERM>` | Update term metadata and corrections. `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--clear-description`, `--clear-confidence`, `--delete-alias <TEXT>`, `--delete-tag <TAG>`, `--add-correction <ORIGINAL>` (repeatable), `--correction-match <ORIGINAL:KIND>`, `--correction-fix <ORIGINAL:KIND>`, `--correction-pinyin <ORIGINAL:PINYIN>`, `--delete-correction <ORIGINAL>` (repeatable), `--dry-run` |
+| `update <TERM>` | Update term metadata and corrections. `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--clear-description`, `--clear-confidence`, `--delete-alias <TEXT>`, `--delete-tag <TAG>`, `--add-correction <ORIGINAL[:CORRECT]>` (repeatable; bare `ORIGINAL` uses the term name as the replacement), `--correction-match <ORIGINAL:KIND>` (switching to `substring`/`pinyin` auto-clears the `standalone` boundary), `--correction-fix <ORIGINAL:KIND>`, `--correction-pinyin <ORIGINAL:PINYIN>`, `--delete-correction <ORIGINAL>` (repeatable), `--dry-run`. `show`/`update`/`remove` load leniently so an already-invalid correction stays repairable from the CLI. |
 | `correction <SUBCOMMAND>` | Manage corrections as a first-class subresource: `add <TERM> <ORIGINAL> <CORRECT>` (idempotent; reports `created: true\|false`; `--match`, `--fix`, `--boundary`, `--pinyin`), `list <TERM>`, `show <TERM> <ORIGINAL>`, `update <TERM> <ORIGINAL>`, `remove <TERM> <ORIGINAL>` (`--dry-run`) |
 | `move <TERM>` (mv) | Move a term between scopes. `--to-global`, `--to-project <PROJECT>`, `--from-global`, `--force` (overwrite destination; source preserved on rejection), `--dry-run` |
 | `rename <OLD_TERM> <NEW_TERM>` | Rename a term. `--keep-alias` keeps the old name as an alias |
 | `remove <TERM>` (rm) | Remove a term (interactive confirmation in TTY) |
-| `lint [PATH]` | Lint term consistency in project docs. CJK matching uses jieba word segmentation (`word` default — both edges must align with token boundaries); `substring` bypasses jieba; `pinyin` for tone-less scan. `--fix`, `--term <NAME>` (repeatable), `--include-suggested`, `--article <SLUG>` or a Markdown `PATH` to target a single article/file. Non-TTY `--fix` exits 2 without `-y`/`--yes`. |
-| `fix [PATH]` | First-class alias for `term lint --fix`. Same flags as `lint` + `--include-suggested` for suggested corrections. Accepts repeatable `--term <NAME>` to scope to one or more terms (case-sensitive exact canonical match; unknown → exit 2). |
+| `lint [PATH]` | Lint term consistency in project docs. CJK matching uses jieba word segmentation (`word` default — both edges must align with token boundaries); `substring` bypasses jieba; `pinyin` for tone-less scan. `--fix`, `--term <NAME>` or `--term <NAME:ORIGINAL>` (repeatable — scope to named terms or a specific correction pair), `--exclude-term <NAME>` (repeatable), `--exclude-original <ORIGINAL>` (repeatable — drop one exact original text across all terms), `--include-suggested`, `--min-confidence <0.0..1.0>` (apply suggested corrections at or above the threshold; requires `--include-suggested`), `--article <SLUG>` or a Markdown `PATH` to target a single article/file. Non-TTY `--fix` exits 2 without `-y`/`--yes`. |
+| `fix [PATH]` | First-class alias for `term lint --fix`. Same selectors as `lint`: `--term`/`--exclude-term`/`--exclude-original`, `--include-suggested` + `--min-confidence`. `--term` takes exact canonical names (case-sensitive) or `NAME:ORIGINAL` pairs; unknown → exit 2. |
 
 Global terms (created without `--project`) are stored in `minds-terms.yaml` at
 the repo root. Project-scoped terms live in each project's `mind-index.yaml`.
@@ -358,7 +358,7 @@ Text output includes commit / build_date / rustc. JSON envelope adds
 - **Project lifecycle** — `mf project new | list | show | update | rename | remove | archive | lint | index | import`; path-based identity supports Unicode, emoji, dates, spaces
 - **Project auto-detection** — running inside a project directory auto-injects `--project`; `mf article list` without `--project` outside a project dir auto-matches all projects, sorted by most recently modified; cwd-relative paths normalized to repo-relative canonical identity
 - **Article management** — `mf article new | list | show | update | rename | remove | lint | index`; directory articles by default, `--file` for single-file shape; `--template blank|arch|prd|blog` or custom project-local template path
-- **Sources** — `mf source new | list | show | update | rename | remove | index | clean`; `--file-kind auto|pdf|file|rss|web`, `--source-kind yuque|meeting|misc`
+- **Sources** — `mf source new | list | show | update | rename | remove | index | clean`; `--file-kind auto|pdf|file|rss|web`, `--source-kind yuque|meeting|misc`, `--register-only` to index an in-tree file without copying
 - **Assets** — `mf asset new | list | show | update | rename | remove | index | clean`; `--copy`/`--link` for copy vs symlink
 - **Glossary** — `mf term new | list | show | update | correction | move | rename | remove | lint`; global terms in `minds-terms.yaml`, project-scoped in `mind-index.yaml`
 - **Build** — config-driven assembly, directory-article merging, `--dry-run`, `--output`, and `@path/`-style article addressing

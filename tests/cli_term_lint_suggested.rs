@@ -26,6 +26,56 @@ fn write_doc(repo: &common::TempDir, name: &str, content: &str) {
     fs::write(path, content).unwrap();
 }
 
+#[test]
+fn min_confidence_applies_only_suggestions_at_or_above_threshold() {
+    let repo = setup_repo_with_terms();
+    write_index(
+        &repo,
+        r#"schema_version: '1'
+terms:
+  - term: High
+    confidence: 0.8
+    corrections:
+      - original: high-old
+        correct: High
+        fix: suggested
+  - term: Low
+    confidence: 0.79
+    corrections:
+      - original: low-old
+        correct: Low
+        fix: suggested
+"#,
+    );
+    write_doc(&repo, "threshold", "high-old low-old\n");
+    let output = mf(&repo)
+        .args([
+            "term",
+            "fix",
+            "--project",
+            "alpha",
+            "docs/threshold.md",
+            "--include-suggested",
+            "--min-confidence",
+            "0.8",
+            "-y",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let doc = fs::read_to_string(repo.path().join("alpha/docs/threshold.md")).unwrap();
+    assert_eq!(doc, "High low-old\n");
+}
+
+#[test]
+fn min_confidence_requires_include_suggested() {
+    let repo = setup_repo_with_terms();
+    let output =
+        mf(&repo).args(["term", "fix", "--project", "alpha", "--min-confidence", "0.8", "-y"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("requires --include-suggested"));
+}
+
 // ── Scenario 1: fix: required (default) → term fix -y applies ──
 
 #[test]
