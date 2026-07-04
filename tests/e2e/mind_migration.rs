@@ -34,7 +34,7 @@ fn e2e_mind_user_migration_chain() {
     // ---- 5. mf --json source list -p alpha (A 类: --json) ----
     let (stdout, stderr, code) = run_in(ds.root(), &["--json", "source", "list", "--project", "alpha"]);
     assert_eq!(code, 0, "--json source list failed: {stderr}");
-    assert!(stdout.contains("\"status\": \"ok\""), "--json output should have envelope: {stdout}");
+    assert!(stdout.contains("\"status\":\"ok\""), "--json output should have envelope: {stdout}");
 
     // ---- 6. mf config compile (B2 thin alias, works at repo level) ----
     let (compile_stdout, stderr, code) = run_in(ds.root(), &["config", "show"]);
@@ -53,7 +53,7 @@ fn e2e_mind_user_migration_chain() {
     // ---- 8. mf --output json asset ls -p alpha (A 类: ls alias, -p short flag) ----
     let (stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "asset", "ls", "--project", "alpha"]);
     assert_eq!(code, 0, "asset ls failed: {stderr}");
-    assert!(stdout.contains("\"status\": \"ok\""), "json output should have envelope: {stdout}");
+    assert!(stdout.contains("\"status\":\"ok\""), "json output should have envelope: {stdout}");
 
     // ---- 9. mf source new with --source-kind (canonical form) ----
     // Place source file outside the project's sources/ directory

@@ -217,7 +217,7 @@ pub fn render_prompt_text(o: &YuquePromptRunOutcome) -> String {
     if let Some(map) = value.as_object_mut() {
         map.remove("prompt");
     }
-    let json = serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_string());
+    let json = serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string());
     format!("### Publish Prompt\n\n{prompt}\n\n### Envelope\n\n```json\n{json}\n```", prompt = o.prompt,)
 }
 

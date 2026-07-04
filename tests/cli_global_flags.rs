@@ -53,7 +53,7 @@ fn json_placeholder_uses_json_shape() {
         .args(["--output", "json", "term", "list"])
         .assert()
         .code(0)
-        .stdout(predicate::str::contains("\"status\": \"ok\""))
+        .stdout(predicate::str::contains("\"status\":\"ok\""))
         .stdout(predicate::str::contains("\"data\":"));
 }
 

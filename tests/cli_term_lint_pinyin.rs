@@ -116,8 +116,8 @@ terms:
 
     let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("\"fix_kind\": \"suggested\""), "pinyin must be suggested regardless of config: {stdout}");
-    assert!(!stdout.contains("\"fix_kind\": \"required\""), "pinyin finding must not be required: {stdout}");
+    assert!(stdout.contains("\"fix_kind\":\"suggested\""), "pinyin must be suggested regardless of config: {stdout}");
+    assert!(!stdout.contains("\"fix_kind\":\"required\""), "pinyin finding must not be required: {stdout}");
 }
 
 // ── Scenario 5: ASCII original + match: pinyin → ignored (no CJK) ──

@@ -459,9 +459,9 @@ pub fn to_yaml(value: &impl Serialize) -> Result<String> {
     serde_yaml::to_string(value).map_err(|e| MfError::Internal(e.into()))
 }
 
-/// Serialize a value to pretty-printed JSON string.
+/// Serialize a value to compact JSON string.
 pub fn to_json(value: &impl Serialize) -> Result<String> {
-    serde_json::to_string_pretty(value).map_err(MfError::Json)
+    serde_json::to_string(value).map_err(MfError::Json)
 }
 
 // ---------------------------------------------------------------------------

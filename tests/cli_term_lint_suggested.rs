@@ -197,7 +197,7 @@ terms:
 
     let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("\"fix_kind\": \"suggested\""), "JSON must have suggested fix_kind: {stdout}");
+    assert!(stdout.contains("\"fix_kind\":\"suggested\""), "JSON must have suggested fix_kind: {stdout}");
 }
 
 // ── Scenario 6: --include-suggested without -y in non-TTY → exit non-zero ──

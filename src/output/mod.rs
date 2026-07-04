@@ -70,7 +70,7 @@ pub(super) fn render_success_inner(
         },
         Format::Json => {
             let envelope = serde_json::json!({ "status": "ok", "command": "mf", "data": data });
-            serde_json::to_writer_pretty(&mut *writer, &envelope)?;
+            serde_json::to_writer(&mut *writer, &envelope)?;
             writeln!(writer)?;
         }
     }
@@ -91,7 +91,7 @@ pub(super) fn render_raw_inner(writer: &mut dyn Write, format: Format, _color: b
             let data: serde_json::Value =
                 serde_json::from_str(content).unwrap_or(serde_json::Value::String(content.to_string()));
             let envelope = serde_json::json!({ "status": "ok", "command": "mf", "data": data });
-            serde_json::to_writer_pretty(&mut *writer, &envelope)?;
+            serde_json::to_writer(&mut *writer, &envelope)?;
             writeln!(writer)?;
         }
     }
@@ -116,7 +116,7 @@ pub(super) fn render_error_inner(writer: &mut dyn Write, format: Format, _color:
                 command: "mf",
                 error: ErrorDetail { kind: error.kind(), message: &message, hint: error.hint() },
             };
-            serde_json::to_writer_pretty(&mut *writer, &envelope)?;
+            serde_json::to_writer(&mut *writer, &envelope)?;
             writeln!(writer)?;
         }
     }

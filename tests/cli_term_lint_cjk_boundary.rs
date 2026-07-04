@@ -178,7 +178,7 @@ terms:
 
     let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("\"match_kind\": \"substring\""), "JSON must have substring match_kind: {stdout}");
+    assert!(stdout.contains("\"match_kind\":\"substring\""), "JSON must have substring match_kind: {stdout}");
 }
 
 // ── US2 (Bug #8): CJK corrections fire in pure-CJK text (T014) ──

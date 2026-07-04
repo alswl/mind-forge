@@ -47,7 +47,7 @@ fn test_show_json_format() {
         .arg("json")
         .assert()
         .success()
-        .stdout(predicate::str::contains(r#""output_dir": "_custom""#));
+        .stdout(predicate::str::contains(r#""output_dir":"_custom""#));
 }
 
 #[test]
