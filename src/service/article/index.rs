@@ -538,6 +538,35 @@ pub fn reconcile_articles(project_path: &Path, mut index: IndexFile, diff: Artic
     Ok(index)
 }
 
+/// Reconcile a single project's doc-article index against the filesystem:
+/// prune stale entries and register newly-scanned docs. Returns the added and
+/// removed `article_path` lists. Persists `mind-index.yaml` only on a real run
+/// with changes; `dry_run` computes the lists without writing.
+///
+/// Reused by `mf project index` so it prunes stale per-project article entries
+/// consistently with `mf article index` (FR-009).
+///
+/// Removal is restricted to entries whose target file/dir is truly absent on
+/// disk. `compute_article_diff` marks anything missing from the docs scan as
+/// removed, which over-approximates here: declared and template-origin articles
+/// live outside the docs scan (they are merged back by `mf article index`
+/// phases 2–3, which this helper deliberately does not run) and must never be
+/// pruned while their files exist (FR-009 safety guard).
+pub fn reconcile_project_docs(project_path: &Path, dry_run: bool) -> Result<(Vec<String>, Vec<String>)> {
+    let scanned = scan_docs(project_path)?;
+    let index = crate::service::index::load(project_path)?;
+    let layout = config_svc::effective_layout(project_path)?;
+    let mut diff = compute_article_diff(&index, &scanned, &layout.articles);
+    diff.removed.retain(|a| !project_path.join(&a.article_path).exists());
+    let added: Vec<String> = diff.added.iter().map(|a| article_path_for_scanned(a, &layout.articles)).collect();
+    let removed: Vec<String> = diff.removed.iter().map(|a| a.article_path.clone()).collect();
+    if !dry_run && (!added.is_empty() || !removed.is_empty()) {
+        let updated = reconcile_articles(project_path, index, diff)?;
+        crate::service::index::save(project_path, &updated)?;
+    }
+    Ok((added, removed))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

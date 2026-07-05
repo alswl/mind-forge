@@ -444,10 +444,44 @@ fn handle_index(args: ProjectIndexArgs, ctx: &CommandCtx) -> Result<CommandOutco
     let kept_count = manifest.projects.len().saturating_sub(removed_count);
     let scanned_count = scanned.len();
 
+    // FR-009: also reconcile each on-disk project's doc-article index so a single
+    // `mf project index` prunes stale per-project article entries (references to
+    // files that no longer exist), consistent with `mf article index`.
+    let mut article_added: Vec<serde_json::Value> = Vec::new();
+    let mut article_removed: Vec<serde_json::Value> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+    for sp in &scanned {
+        let project_path = root.join(&sp.path);
+        match svc::article::reconcile_project_docs(&project_path, args.dry_run.dry_run) {
+            Ok((added, removed)) => {
+                for p in added {
+                    article_added.push(serde_json::json!({"identity": p.clone(), "path": p, "project": sp.name}));
+                }
+                for p in removed {
+                    article_removed.push(serde_json::json!({"identity": p.clone(), "path": p, "project": sp.name}));
+                }
+            }
+            Err(e) => {
+                // Surface per-project reconcile failures instead of skipping
+                // silently: a corrupt mind-index.yaml should be visible to the
+                // operator (stderr) and to agents (JSON data.warnings).
+                let message = format!("skipped article reconcile for project '{}': {e}", sp.name);
+                eprintln!("warning: {message}");
+                warnings.push(message);
+            }
+        }
+    }
+
     if args.dry_run.dry_run {
+        let mut added: Vec<serde_json::Value> =
+            diff.added.iter().map(|p| serde_json::to_value(p).unwrap_or_default()).collect();
+        added.extend(article_added.clone());
+        let mut removed: Vec<serde_json::Value> =
+            diff.removed.iter().map(|p| serde_json::to_value(p).unwrap_or_default()).collect();
+        removed.extend(article_removed.clone());
         let details = serde_json::json!({
-            "added": diff.added,
-            "removed": diff.removed,
+            "added": added,
+            "removed": removed,
             "kept_count": kept_count,
             "scanned_count": scanned_count,
             "minds_path": minds_path.to_string_lossy().to_string(),
@@ -462,10 +496,10 @@ fn handle_index(args: ProjectIndexArgs, ctx: &CommandCtx) -> Result<CommandOutco
             details,
         };
         return match format {
-            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
             Format::Text => Ok(CommandOutcome::Success(
                 serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
-                Vec::new(),
+                warnings,
                 None,
             )),
         };
@@ -474,9 +508,12 @@ fn handle_index(args: ProjectIndexArgs, ctx: &CommandCtx) -> Result<CommandOutco
     let updated = repo::reconcile(manifest, diff);
     repo::save_manifest(&updated, &minds_path)?;
 
+    let mut added: Vec<serde_json::Value> =
+        updated.projects.iter().map(|p| serde_json::json!({"identity": p.name, "path": p.path})).collect();
+    added.extend(article_added);
     let details = serde_json::json!({
-        "added": updated.projects.iter().map(|p| serde_json::json!({"identity": p.name, "path": p.path})).collect::<Vec<_>>(),
-        "removed": [],
+        "added": added,
+        "removed": article_removed,
         "kept_count": updated.projects.len(),
         "scanned_count": scanned_count,
         "minds_path": minds_path.to_string_lossy().to_string(),
@@ -491,10 +528,10 @@ fn handle_index(args: ProjectIndexArgs, ctx: &CommandCtx) -> Result<CommandOutco
         details,
     };
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root.as_path())))),
-            Vec::new(),
+            warnings,
             None,
         )),
     }

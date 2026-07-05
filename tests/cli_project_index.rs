@@ -60,6 +60,114 @@ fn test_index_works_in_non_repo() {
 }
 
 // ---------------------------------------------------------------------------
+// Spec 062 US1 (FR-009/011): `mf project index` prunes stale per-project
+// article entries (references whose file no longer exists).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_index_prunes_stale_article_entry() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "demo");
+    // Register the project and create an article (index key docs/gone).
+    Command::cargo_bin("mf").unwrap().current_dir(dir.path()).args(["project", "index"]).assert().code(0);
+    Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["article", "new", "-p", "demo", "gone"])
+        .assert()
+        .code(0);
+
+    // Delete the article file/dir on disk, leaving a stale index entry.
+    let article_dir = dir.path().join("demo").join("docs").join("gone");
+    if article_dir.exists() {
+        fs::remove_dir_all(&article_dir).unwrap();
+    } else {
+        let _ = fs::remove_file(dir.path().join("demo").join("docs").join("gone.md"));
+    }
+
+    let before = common::read_index_articles_map(&dir, "demo");
+    assert!(before.get("docs/gone").is_some(), "stale entry should exist before prune");
+
+    Command::cargo_bin("mf").unwrap().current_dir(dir.path()).args(["project", "index"]).assert().code(0);
+
+    let after = common::read_index_articles_map(&dir, "demo");
+    common::assert_no_article_key(&after, "docs/gone");
+}
+
+#[test]
+fn test_index_prune_preserves_live_article_entries() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "demo");
+    Command::cargo_bin("mf").unwrap().current_dir(dir.path()).args(["project", "index"]).assert().code(0);
+    Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["article", "new", "-p", "demo", "alive"])
+        .assert()
+        .code(0);
+
+    Command::cargo_bin("mf").unwrap().current_dir(dir.path()).args(["project", "index"]).assert().code(0);
+
+    let after = common::read_index_articles_map(&dir, "demo");
+    assert!(after.get("docs/alive").is_some(), "live article entry must be preserved by prune");
+}
+
+#[test]
+fn test_index_dry_run_does_not_prune_articles() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "demo");
+    Command::cargo_bin("mf").unwrap().current_dir(dir.path()).args(["project", "index"]).assert().code(0);
+    Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["article", "new", "-p", "demo", "ghost"])
+        .assert()
+        .code(0);
+    let article_dir = dir.path().join("demo").join("docs").join("ghost");
+    if article_dir.exists() {
+        fs::remove_dir_all(&article_dir).unwrap();
+    } else {
+        let _ = fs::remove_file(dir.path().join("demo").join("docs").join("ghost.md"));
+    }
+
+    Command::cargo_bin("mf").unwrap().current_dir(dir.path()).args(["project", "index", "--dry-run"]).assert().code(0);
+
+    let after = common::read_index_articles_map(&dir, "demo");
+    assert!(after.get("docs/ghost").is_some(), "dry-run must not prune the stale entry");
+}
+
+#[test]
+fn test_index_prune_preserves_template_origin_articles_outside_docs() {
+    // Regression guard: template-origin articles live outside the docs scan
+    // (registered by `mf article index` phase 3). `mf project index` prune must
+    // never remove them while their files exist on disk (FR-009 safety guard).
+    let repo = common::scaffold_project_with_template(
+        "proj",
+        "daily",
+        "outputs/{date:YYYY-MM}/{date:YYYY-MM-DD}.md",
+        "generated",
+        &["outputs/2026-05/2026-05-15.md"],
+    );
+    // Register the template article into the per-project index.
+    Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(repo.path())
+        .args(["article", "index", "-p", "proj"])
+        .assert()
+        .code(0);
+    let before = common::read_index_articles_map(&repo, "proj");
+    assert!(
+        before.get("outputs/2026-05/2026-05-15").is_some(),
+        "template article should be registered before the check: {before:#?}"
+    );
+
+    Command::cargo_bin("mf").unwrap().current_dir(repo.path()).args(["project", "index"]).assert().code(0);
+
+    let after = common::read_index_articles_map(&repo, "proj");
+    assert_eq!(before, after, "project index must not prune live template-origin articles");
+}
+
+// ---------------------------------------------------------------------------
 // Duplicate key lint tests (US1)
 // ---------------------------------------------------------------------------
 

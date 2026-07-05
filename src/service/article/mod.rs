@@ -14,7 +14,8 @@ pub use self::convert::{
     update_index_for_conversion,
 };
 pub use self::index::{
-    build_index, compute_article_diff, reconcile_articles, refresh_index, scan_declared, scan_docs, scan_templates,
+    build_index, compute_article_diff, reconcile_articles, reconcile_project_docs, refresh_index, scan_declared,
+    scan_docs, scan_templates,
 };
 pub use self::lint::lint_articles;
 pub use self::list::{article_file_mtime, effective_article_dir, list_articles, list_articles_all_projects};
