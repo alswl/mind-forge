@@ -239,7 +239,7 @@ default `projects/` container). Defaults to the current directory.
 | `remove <PATH>` (rm) | Remove a project (interactive confirmation in TTY) |
 | `archive <NAME_OR_PATH>` | Archive a project to `_archived/` (interactive confirmation in TTY) |
 | `lint` | Lint project(s). Rules: `missing_directory`, `stale_index_entry`, `name_convention`, `missing_manifest`, `duplicate_key`. Requires `-p, --project <PROJECT>` |
-| `index` | Index projects (mf extension) |
+| `index` | Index projects (mf extension). Also reconciles each project's article index: prunes stale entries whose target file no longer exists on disk (entries with existing files — including declared/template articles — are never removed); per-project reconcile failures surface as warnings instead of being skipped silently |
 | `import <DIRECTORY>` | Import a directory as a project. `--type <TYPE>`, `--source <DIR>`, `--assets <DIR>`, `-y, --yes` |
 
 ### `mf article` — Manage articles
@@ -251,7 +251,7 @@ default `projects/` container). Defaults to the current directory.
 | `show <PATH>` | Show article details |
 | `update <PATH>` | Update article metadata. `--status draft\|published` |
 | `rename <OLD_PATH> <NEW_PATH>` | Rename an article |
-| `remove <PATH>` (rm) | Remove an article (interactive confirmation in TTY) |
+| `remove <PATH>` (rm) | Remove an article (interactive confirmation in TTY). Accepts the title, the `article_path`, or the index key — with or without a trailing `.md`; all forms resolve to the same entry |
 | `lint` | Lint articles |
 | `convert` | Convert article shape between directory and single-file. `--to-single-file`, `--to-directory`, `--dry-run` |
 | `index` | Index articles (mf extension). `--dry-run` previews without writing |

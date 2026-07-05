@@ -103,7 +103,7 @@ Update project metadata in `mind.yaml`.
 Lint project(s). Requires `-p, --project <PROJECT>`.
 Rule kinds: `missing_directory`, `stale_index_entry`, `name_convention`, `missing_manifest`, `duplicate_key`.
 
-**`mf project index`** — Index projects (mf extension).
+**`mf project index`** — Index projects (mf extension). Also reconciles each project's article index: prunes stale entries whose target file no longer exists on disk. Entries whose files exist — including declared and template-origin articles outside `docs/` — are never removed. A project whose `mind-index.yaml` fails to load is skipped with a warning (stderr; `data.warnings` in JSON) rather than silently. Use this to clear `stale_index_entry` lint warnings without hand-editing `mind-index.yaml`.
 
 **`mf project import <DIRECTORY>`**
 Import a directory as a project.
@@ -138,7 +138,7 @@ Update article metadata in `mind-index.yaml`.
 
 **`mf article rename <OLD_PATH> <NEW_SLUG>`** — Rename an article (slug only). Changes the file/directory path on disk; the title is left unchanged. Use `_title` on `article update` to change the title. Handles both single-file and directory articles. Automatically renames the associated prompt file and updates its `article:` frontmatter binding.
 
-**`mf article remove <PATH>`** (alias `rm`) — Remove an article. Interactive TTY confirmation unless `--yes` or `--force` is set.
+**`mf article remove <PATH>`** (alias `rm`) — Remove an article. Interactive TTY confirmation unless `--yes` or `--force` is set. `<PATH>` accepts the title, the `article_path`, or the index key — with or without a trailing `.md`; all forms resolve to (and remove) the same index entry. No match exits non-zero with `article not found`; never reports success for a no-op.
 
 **`mf article lint`** — Lint articles.
 

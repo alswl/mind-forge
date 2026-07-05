@@ -21,6 +21,8 @@ All notable changes to this project will be documented in this file.
 - Align CLI internals with rust-cli.md guide (spec 049)
 
 ### Bug Fixes
+- `article rm` resolves the target by title, `article_path`, or index key (with or without `.md`) and persists the index removal for every form; no more false success leaving a dangling entry (spec 062)
+- `project index` also reconciles each project's article index, pruning stale entries whose target file is absent on disk; declared/template-origin articles with existing files are never removed; per-project reconcile failures surface as warnings instead of silent skips (spec 062)
 - Strip ./ prefix from project paths for consistency
 - Fall back to filesystem mtime when created_at is empty
 - Persist created_at fallback to minds.yaml

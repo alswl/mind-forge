@@ -135,6 +135,12 @@ Notes:
 - `project update` currently updates only `project.description` in `mind.yaml`.
 - `project rename` renames the directory and updates repo/project indexes.
 - `project archive` moves the project to `_archived/`.
+- `project index` reconciles the repo project list and each project's article
+  index: stale article entries whose target file no longer exists on disk are
+  pruned; entries whose files exist (including declared and template-origin
+  articles outside `docs/`) are never removed. A project whose
+  `mind-index.yaml` fails to load is skipped with a warning (stderr, and
+  `data.warnings` in JSON) rather than silently.
 
 ## 6. Articles
 
@@ -163,6 +169,9 @@ Notes:
 
 - Article selectors accept a project-relative article path or an unambiguous
   title.
+- `article remove` accepts the title, the `article_path`, or the index key —
+  with or without a trailing `.md`; all forms resolve to (and remove) the same
+  index entry.
 - `article update` updates article metadata in the index:
   `--status draft|published` toggles publication status,
   `--title "New Title"` changes the display title without renaming files.
