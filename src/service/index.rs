@@ -859,7 +859,7 @@ articles:
     // ── Boundary validation (T007/T008) ────────────────────────────────────
 
     #[test]
-    fn boundary_standalone_with_substring_match_rejected() {
+    fn strict_load_accepts_supported_substring_correction() {
         let dir = tempfile::tempdir().unwrap();
         let content = r#"schema: '1'
 terms:
@@ -868,17 +868,33 @@ terms:
     - original: aidc
       correct: AIDC
       match: substring
-      boundary: standalone
 "#;
         std::fs::write(dir.path().join("mind-index.yaml"), content).unwrap();
-        let err = load(dir.path()).unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("standalone is only valid with match: word"),
-            "expected substring+standalone rejection, got: {msg}"
-        );
-        assert!(msg.contains("aidc"), "message should name the correction: {msg}");
-        assert_eq!(err.exit_code(), crate::exit::ExitCode::UsageError);
+        let index = load(dir.path()).expect("substring must be valid in strict project loads");
+        let correction = &index.terms.unwrap()[0].corrections[0];
+        assert_eq!(correction.r#match, crate::model::term::MatchKind::Substring);
+        assert_eq!(correction.boundary, crate::model::term::Boundary::Standalone);
+    }
+
+    #[test]
+    fn lenient_load_allows_supported_substring_without_rewriting_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = r#"schema: '1'
+terms:
+- term: TEST
+  corrections:
+    - original: aidc
+      correct: AIDC
+      match: substring
+"#;
+        let path = dir.path().join("mind-index.yaml");
+        std::fs::write(&path, content).unwrap();
+        let before = std::fs::read_to_string(&path).unwrap();
+        let index = load_lenient(dir.path()).expect("lenient load should keep legacy repair path available");
+        let term = index.terms.unwrap().pop().unwrap();
+        assert_eq!(term.corrections[0].r#match, crate::model::term::MatchKind::Substring);
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(before, after, "lenient load must not rewrite storage");
     }
 
     #[test]

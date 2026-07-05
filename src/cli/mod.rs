@@ -85,7 +85,7 @@ pub struct InitArgs {
 #[derive(Debug, Parser)]
 #[command(
     name = "mf",
-    version,
+    version = version::FULL_VERSION,
     about = "mind-forge: a local-first knowledge management CLI",
     disable_help_subcommand = true,
     propagate_version = true

@@ -12,19 +12,22 @@ Each correction in `mind-index.yaml` supports these fields:
 | `correct` | string | _(required)_ | The canonical replacement |
 | `match` | `word`, `substring`, `pinyin` | `word` | Match strategy |
 | `fix` | `required`, `suggested` | `required` | Whether `--fix` rewrites automatically |
-| `boundary` | `loose`, `standalone` | `loose` | Neighbour-byte policy (see below) |
+| `boundary` | `loose`, `standalone` | `standalone` | Match-boundary policy (see below) |
 
 ## Boundary Field
 
 The `boundary` field controls what characters may appear next to a match.
 
-### `loose` (default)
+### `loose`
 
-Matches as today: any non-identifier byte (not `[A-Za-z0-9_]`) on either side authorises the match. Hyphens (`-`), slashes (`/`), backslashes (`\`), and dots (`.`) count as boundaries, so `xxx-aidc-test` and `./docs/aidc/intro.md` match.
+For `substring`, performs literal matching at any position. For `word`, preserves
+the existing word-boundary behavior.
 
 ### `standalone`
 
-A stricter policy for short ASCII acronyms. The match is **rejected** when either neighbour belongs to the set `{ letter, digit, _ - / \ . }`. This means:
+The safe default. For ASCII, the match is **rejected** when either neighbour
+belongs to `{ letter, digit, _ - / \ . }`. For CJK substring corrections, both
+edges must align with jieba token boundaries. This means:
 
 ```text
 xxx-aidc-test          → skipped (hyphen neighbours, identifier-internal)
@@ -54,15 +57,14 @@ terms:
         boundary: standalone
 ```
 
-The field is omitted on serialization when `loose` (the default).
+The field is omitted on serialization when `standalone` (the default).
 
 ## Validation Errors
 
-Setting `boundary: standalone` with incompatible fields produces an error (exit code 2):
+Invalid identifier-edge combinations produce an error (exit code 2):
 
 | Condition | Message |
 |-----------|---------|
-| `standalone` + `match: substring` | `boundary: standalone is only valid with match: word` |
 | `standalone` with `original` starting/ending in `-` or `_` | `boundary: standalone cannot apply to identifier-character edges` |
 
 ## Migration Playbook

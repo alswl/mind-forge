@@ -258,18 +258,19 @@ mf term fix --project blog --include-suggested --min-confidence 0.8
 <ORIGINAL[:CORRECT]>` to append a correction to an existing term; the optional
 `:CORRECT` sets the replacement text, and a bare `ORIGINAL` uses the term's own
 name as the replacement (never an empty correction). Use `--correction-match`/
-`--correction-fix`/`--correction-pinyin` to set correction attributes; switching
-`--correction-match` to `substring` or `pinyin` automatically clears the
-`standalone` boundary (which is only valid with `word`), so a correction can
-never be left in an invalid state. To remove a single correction, use
+`--correction-fix`/`--correction-pinyin` to set correction attributes.
+`--correction-match` accepts `word`, `substring`, or `pinyin`. Substring uses
+the safe `standalone` boundary by default; set `--correction-boundary
+<ORIGINAL:loose>` when embedded literal matching is intentional. Switching
+`--correction-match` to `pinyin` automatically clears the boundary because the
+pinyin scanner does not use it. To remove a single
+correction, use
 `--delete-correction` or the subcommand `term correction remove`.
 Use `--dry-run` to validate and preview without writing.
 
-`term show`, `term update`, and `term remove` load a term leniently, so a
-correction that is already in an invalid state (for example a hand-edited
-`substring` + `standalone` combination) can still be inspected and repaired or
-deleted from the CLI. `term lint`/`term build` keep strict validation and still
-report such corrections.
+`term show`, `term update`, and `term remove` can inspect and mutate any
+supported correction independently. Other substring corrections do not block a
+targeted update or removal, so migration never requires hand-editing YAML.
 
 `term fix` and `term lint --fix` accept a repeatable `--term <NAME>` flag to
 scope corrections to one or more named terms (case-sensitive exact match on
@@ -332,10 +333,10 @@ target a whole project, a single `--article`, or one Markdown file path.
 `term fix` is a first-class alias for `term lint --fix`. For boundary and
 pinyin matching details, see [term-lint.md](term-lint.md).
 
-CJK corrections use jieba word segmentation (`word` default) — a correction fires
-only when both edges align with jieba token boundaries. Use `substring` match via
-`--correction-match original:substring` for garble-shaped ASR originals that jieba
-may merge with neighbors.
+CJK `word` corrections use jieba word segmentation. Substring corrections support
+two explicit profiles: `standalone` (default) also requires CJK token alignment,
+while `loose` preserves literal matching inside longer text. For ASCII,
+`standalone` suppresses identifier/path-internal matches and `loose` allows them.
 
 ## 10. Build And Publish
 

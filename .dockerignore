@@ -1,6 +1,8 @@
 target/
 !target/aarch64-unknown-linux-gnu/release/mf
 .git/
+Dockerfile*
+.dockerignore
 .idea/
 .vscode/
 .DS_Store
@@ -9,3 +11,5 @@ target/
 specs/
 *.tmp
 *.log
+.env*
+coverage/

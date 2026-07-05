@@ -388,8 +388,8 @@ pub fn dispatch(command: TermCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome
 fn parse_match_kind(raw: &str) -> Result<crate::model::term::MatchKind> {
     match raw.to_lowercase().as_str() {
         "word" => Ok(crate::model::term::MatchKind::Word),
-        "substring" => Ok(crate::model::term::MatchKind::Substring),
         "pinyin" => Ok(crate::model::term::MatchKind::Pinyin),
+        "substring" => Ok(crate::model::term::MatchKind::Substring),
         other => {
             Err(MfError::usage(format!("invalid match kind '{other}'; expected word, substring, or pinyin"), None))
         }

@@ -308,9 +308,9 @@ fn add_correction_json_output() {
     assert!(v["data"]["details"]["changes"].as_object().unwrap().contains_key("corrections"));
 }
 
-/// T028: --correction-match sets match kind of existing correction.
+/// --correction-match supports substring mode.
 #[test]
-fn correction_match_sets_attribute() {
+fn correction_match_sets_substring() {
     let (repo, project) = setup_with_term();
 
     let output = mf(&repo)
@@ -320,7 +320,7 @@ fn correction_match_sets_attribute() {
     assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
 
     let index_after = fs::read_to_string(project.join("mind-index.yaml")).unwrap();
-    assert!(index_after.contains("match: substring"), "match kind should be substring: {index_after}");
+    assert!(index_after.contains("match: substring"), "index: {index_after}");
 }
 
 /// T028: --correction-fix sets fix kind of existing correction.
@@ -342,34 +342,33 @@ fn correction_fix_sets_attribute() {
 // Correction self-repair: an invalid correction must never deadlock the CLI
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Fix A: switching an ASCII correction to substring must not leave the invalid
-/// `substring` + `standalone` combination, so the term stays fully usable.
+/// Switching an ASCII correction to pinyin must normalize boundary and keep the
+/// term usable.
 #[test]
-fn correction_match_to_substring_does_not_deadlock_term() {
+fn correction_match_to_pinyin_keeps_term_usable() {
     let (repo, project) = setup_with_term();
 
     let switch = mf(&repo)
-        .args(["term", "update", "RAG", "--correction-match", "rag:substring", "--project", "alpha"])
+        .args(["term", "update", "RAG", "--correction-match", "rag:pinyin", "--project", "alpha"])
         .output()
         .unwrap();
     assert!(switch.status.success(), "stderr: {}", String::from_utf8_lossy(&switch.stderr));
 
     let index_after = fs::read_to_string(project.join("mind-index.yaml")).unwrap();
-    assert!(!index_after.contains("boundary: standalone"), "standalone must be cleared for substring: {index_after}");
+    assert!(!index_after.contains("boundary: standalone"), "standalone must be cleared for pinyin: {index_after}");
+    assert!(index_after.contains("match: pinyin"), "match kind should be pinyin: {index_after}");
 
     // The term must remain inspectable — proving no invalid state was written.
     let show = mf(&repo).args(["term", "show", "RAG", "--project", "alpha"]).output().unwrap();
     assert!(show.status.success(), "term show must still succeed, stderr: {}", String::from_utf8_lossy(&show.stderr));
 }
 
-/// Fix C: a repository that already contains an invalid correction must still be
-/// repairable via the CLI (`show`, `--delete-correction`, `--correction-match`).
-fn repo_with_invalid_correction() -> (common::TempDir, std::path::PathBuf) {
+/// A mixed substring table must remain mutable one correction at a time.
+fn repo_with_multiple_substrings() -> (common::TempDir, std::path::PathBuf) {
     let repo = common::setup_repo();
     common::create_project(&repo, "alpha");
     let project = repo.path().join("alpha");
     fs::create_dir_all(project.join("docs")).unwrap();
-    // substring + standalone on an ASCII original is the invalid combination.
     let index_yaml = r#"schema_version: '1'
 terms:
   - term: AIDC
@@ -378,50 +377,55 @@ terms:
         correct: AIDC
         match: substring
         boundary: standalone
+      - original: aidc-old
+        correct: AIDC
+        match: substring
+        boundary: loose
 "#;
     common::write_index(&repo, "alpha", index_yaml);
     (repo, project)
 }
 
 #[test]
-fn show_tolerates_invalid_correction() {
-    let (repo, _project) = repo_with_invalid_correction();
+fn show_tolerates_multiple_substring_corrections() {
+    let (repo, _project) = repo_with_multiple_substrings();
     let show = mf(&repo).args(["term", "show", "AIDC", "--project", "alpha"]).output().unwrap();
     assert!(
         show.status.success(),
-        "term show must tolerate an invalid correction, stderr: {}",
+        "term show must tolerate mixed substring corrections, stderr: {}",
         String::from_utf8_lossy(&show.stderr)
     );
 }
 
 #[test]
-fn delete_correction_repairs_invalid_state() {
-    let (repo, project) = repo_with_invalid_correction();
+fn delete_correction_preserves_substring_sibling() {
+    let (repo, project) = repo_with_multiple_substrings();
     let del = mf(&repo)
         .args(["term", "update", "AIDC", "--delete-correction", "aidc", "--project", "alpha"])
         .output()
         .unwrap();
-    assert!(del.status.success(), "delete must repair, stderr: {}", String::from_utf8_lossy(&del.stderr));
+    assert!(del.status.success(), "targeted delete must succeed, stderr: {}", String::from_utf8_lossy(&del.stderr));
 
-    // After removal the strict loader (lint) must accept the repository again.
     let lint = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
-    assert_ne!(lint.status.code(), Some(2), "repaired repo must load under strict validation");
+    assert_ne!(lint.status.code(), Some(2), "remaining substring sibling must stay operational");
     let index_after = fs::read_to_string(project.join("mind-index.yaml")).unwrap();
-    assert!(!index_after.contains("aidc"), "invalid correction should be gone: {index_after}");
+    assert!(!index_after.contains("original: aidc\n"), "selected correction should be gone: {index_after}");
+    assert!(index_after.contains("original: aidc-old"), "sibling must remain: {index_after}");
 }
 
 #[test]
-fn correction_match_repairs_invalid_state() {
-    let (repo, _project) = repo_with_invalid_correction();
-    // Switching back to `word` makes `standalone` valid again.
+fn correction_match_updates_one_substring_without_sibling_deadlock() {
+    let (repo, project) = repo_with_multiple_substrings();
     let fixup = mf(&repo)
         .args(["term", "update", "AIDC", "--correction-match", "aidc:word", "--project", "alpha"])
         .output()
         .unwrap();
-    assert!(fixup.status.success(), "correction-match must repair, stderr: {}", String::from_utf8_lossy(&fixup.stderr));
+    assert!(fixup.status.success(), "targeted update must succeed, stderr: {}", String::from_utf8_lossy(&fixup.stderr));
 
     let lint = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
-    assert_ne!(lint.status.code(), Some(2), "repaired repo must load under strict validation");
+    assert_ne!(lint.status.code(), Some(2), "substring sibling must not block loading");
+    let index_after = fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert!(index_after.contains("original: aidc-old"), "substring sibling must remain: {index_after}");
 }
 
 /// T028: --delete-correction removes a correction by original.

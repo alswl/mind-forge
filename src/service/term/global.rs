@@ -11,7 +11,7 @@ use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::index::IndexFile;
 use crate::model::lifecycle::{PlannedChange, ScopeRef};
-use crate::model::term::{Correction, FixSelection, Term, TermLintReport};
+use crate::model::term::{validate_corrections, Correction, FixSelection, Term, TermLintReport};
 use crate::service::lifecycle;
 use crate::service::term::lint;
 use crate::service::term::new::append_to_existing_term;
@@ -168,6 +168,7 @@ pub fn fix_term(repo_root: &Path, term_name: &str, update: TermUpdate<'_>) -> Re
     apply_update(&mut terms[pos], &update)?;
     let result = terms[pos].clone();
     sort_terms_by_name(&mut terms);
+    validate_corrections(&terms).map_err(|msg| MfError::usage(msg, None::<String>))?;
     save_terms(repo_root, &terms)?;
     Ok(result)
 }

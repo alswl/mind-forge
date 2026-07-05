@@ -90,10 +90,10 @@ terms:
     assert!(stdout.contains("→ \"装置\""), "right-neighbor '。' is non-CJK ideograph, must match: {stdout}");
 }
 
-// ── Scenario 4: match: substring → 机器人在工厂 returns 1 finding ──
+// ── Scenario 4: standalone substring uses CJK token boundaries ──
 
 #[test]
-fn cjk_substring_match_robot_matches() {
+fn cjk_substring_standalone_suppresses_embedded_token() {
     let repo = setup_cjk_repo();
     let project = repo.path().join("alpha");
     let index_yaml = r#"schema_version: '1'
@@ -108,9 +108,12 @@ terms:
     write_cjk_doc(&project, "cjk", "机器人在工厂里很常见。\n");
 
     let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(!output.status.success(), "should exit 1 with a finding");
-    assert!(stdout.contains("→ \"装置\""), "substring match must find '机器' inside '机器人': {stdout}");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "embedded token should be suppressed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 // ── Scenario 5: invalid match value → YAML load error ──
@@ -162,7 +165,7 @@ terms:
 }
 
 #[test]
-fn json_finding_has_match_kind_substring() {
+fn json_finding_reports_loose_substring() {
     let repo = setup_cjk_repo();
     let project = repo.path().join("alpha");
     let index_yaml = r#"schema_version: '1'
@@ -172,13 +175,18 @@ terms:
       - original: 机器
         correct: 装置
         match: substring
+        boundary: loose
 "#;
     write_cjk_index(&repo, "alpha", index_yaml);
     write_cjk_doc(&project, "cjk", "机器人在工厂\n");
 
     let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("\"match_kind\":\"substring\""), "JSON must have substring match_kind: {stdout}");
+    assert!(
+        stdout.contains("\"match_kind\": \"substring\"") || stdout.contains("\"match_kind\":\"substring\""),
+        "JSON stdout: {stdout}"
+    );
 }
 
 // ── US2 (Bug #8): CJK corrections fire in pure-CJK text (T014) ──
@@ -277,9 +285,9 @@ terms:
     assert!(fixed.contains("月亮"), "suggested 月亮 must NOT be replaced without --include-suggested");
 }
 
-/// T015(c): `--correction-match substring` bypasses jieba and always fires.
+/// Loose substring remains available for intentional embedded CJK replacement.
 #[test]
-fn cjk_substring_bypasses_jieba_boundary() {
+fn cjk_loose_substring_matches_in_sentence() {
     let repo = setup_cjk_repo();
     let project = repo.path().join("alpha");
     let index_yaml = r#"schema_version: '1'
@@ -289,12 +297,12 @@ terms:
       - original: 卡机
         correct: 开机
         match: substring
+        boundary: loose
 "#;
     write_cjk_index(&repo, "alpha", index_yaml);
     write_cjk_doc(&project, "cjk", "系统卡机失败。\n");
 
     let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(!output.status.success(), "should exit 1 with a finding");
-    assert!(stdout.contains("开机"), "substring match must fire even inside other tokens: {stdout}");
+    assert_eq!(output.status.code(), Some(1), "loose substring should emit a finding");
+    assert!(String::from_utf8(output.stdout).unwrap().contains("开机"));
 }

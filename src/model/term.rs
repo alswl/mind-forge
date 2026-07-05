@@ -104,17 +104,6 @@ pub fn validate_corrections(terms: &[Term]) -> std::result::Result<(), String> {
             let is_ascii_word =
                 c.original.bytes().all(|b| matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'-'));
             if c.boundary == Boundary::Standalone && is_ascii_word && c.r#match != MatchKind::Pinyin {
-                if c.r#match != MatchKind::Word {
-                    let kind = match c.r#match {
-                        MatchKind::Substring => "substring",
-                        MatchKind::Pinyin => "pinyin",
-                        MatchKind::Word => unreachable!(),
-                    };
-                    return Err(format!(
-                        "boundary: standalone is only valid with match: word (correction '{}' uses match: {})",
-                        c.original, kind
-                    ));
-                }
                 let bytes = c.original.as_bytes();
                 if bytes.first().is_some_and(|b| *b == b'-' || *b == b'_')
                     || bytes.last().is_some_and(|b| *b == b'-' || *b == b'_')
@@ -527,21 +516,21 @@ mod tests {
     }
 
     #[test]
-    fn validate_corrections_accepts_loose_with_any_match_kind() {
+    fn validate_corrections_accepts_supported_matches_with_loose_boundary() {
         let terms = vec![term_with(vec![
             correction("a", MatchKind::Word, Boundary::Loose),
-            correction("b", MatchKind::Substring, Boundary::Loose),
             correction("c", MatchKind::Pinyin, Boundary::Loose),
         ])];
         assert!(validate_corrections(&terms).is_ok());
     }
 
     #[test]
-    fn validate_corrections_rejects_standalone_with_substring() {
-        let terms = vec![term_with(vec![correction("aidc", MatchKind::Substring, Boundary::Standalone)])];
-        let err = validate_corrections(&terms).unwrap_err();
-        assert!(err.contains("standalone is only valid with match: word"), "got: {err}");
-        assert!(err.contains("aidc"), "got: {err}");
+    fn validate_corrections_accepts_substring_with_both_boundaries() {
+        let terms = vec![term_with(vec![
+            correction("aidc", MatchKind::Substring, Boundary::Loose),
+            correction("sample", MatchKind::Substring, Boundary::Standalone),
+        ])];
+        validate_corrections(&terms).expect("substring is a supported match kind");
     }
 
     #[test]

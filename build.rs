@@ -3,6 +3,7 @@ use std::process::Command;
 fn main() {
     // Refresh the embedded git SHA when HEAD moves.
     println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/refs/heads");
 
     let git_sha = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])

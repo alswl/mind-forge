@@ -165,14 +165,13 @@ fn lint_exempts_html_comment() {
 }
 
 // ---------------------------------------------------------------------------
-// 5d. immunity proof — substring match_kind cannot penetrate link URL exemption
-//     Regression guard: `tps` (substring) is present inside `https` of a link
-//     target. Exemption happens before matching, so even the most aggressive
-//     match_kind must not fire there — only the standalone prose `tps` counts.
+// 5d. immunity proof — word match_kind cannot penetrate link URL exemption.
+//     Exemption happens before matching, so only the standalone prose `tps`
+//     counts.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn lint_substring_does_not_penetrate_link_url() {
+fn lint_word_does_not_penetrate_link_url() {
     let repo = common::setup_repo();
     common::create_project(&repo, "alpha");
     let project = repo.path().join("alpha");
@@ -180,14 +179,13 @@ fn lint_substring_does_not_penetrate_link_url() {
     common::write_index(
         &repo,
         "alpha",
-        "schema_version: '1'\nterms:\n  - term: TPS\n    definition: transactions per second\n    corrections:\n      - original: tps\n        correct: TPS\n        match_kind: substring\n",
+        "schema_version: '1'\nterms:\n  - term: TPS\n    definition: transactions per second\n    corrections:\n      - original: tps\n        correct: TPS\n        match_kind: word\n",
     );
     write_doc(&project, "link_tps", "see [url](https://test.com) and raw tps word\n");
 
     let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
-    // `tps` inside `https://test.com` is exempt; only the prose `tps` is caught.
-    assert_eq!(stdout.matches("→ \"TPS\"").count(), 1, "substring must not fire inside link URL: {stdout}");
+    assert_eq!(stdout.matches("→ \"TPS\"").count(), 1, "word match must not fire inside link URL: {stdout}");
 }
 
 // ---------------------------------------------------------------------------
@@ -991,12 +989,11 @@ terms:
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn lint_rejects_invalid_boundary_at_project_load() {
+fn lint_accepts_substring_at_project_load() {
     let repo = common::setup_repo();
     common::create_project(&repo, "alpha");
     let project = repo.path().join("alpha");
     fs::create_dir_all(project.join("docs")).unwrap();
-    // boundary: standalone + match: substring is forbidden
     let index_yaml = r#"schema_version: '1'
 terms:
   - term: AIDC
@@ -1004,25 +1001,17 @@ terms:
       - original: aidc
         correct: AIDC
         match: substring
-        boundary: standalone
 "#;
     common::write_index(&repo, "alpha", index_yaml);
     write_doc(&project, "intro", "aidc here\n");
 
     let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
-    assert_eq!(output.status.code(), Some(2), "must exit 2 on invalid boundary config");
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(
-        stderr.contains("standalone is only valid with match: word"),
-        "stderr must explain the rule, got: {stderr}"
-    );
-    assert!(stderr.contains("aidc"), "stderr must name the offending correction, got: {stderr}");
+    assert_eq!(output.status.code(), Some(1), "supported substring should reach scanning");
+    assert!(String::from_utf8(output.stdout).unwrap().contains("AIDC"));
 }
 
 #[test]
-fn lint_rejects_invalid_boundary_at_global_load() {
-    // Regression for post-044 review: invalid corrections in minds-terms.yaml
-    // (global scope) previously bypassed validation completely.
+fn lint_accepts_substring_at_global_load() {
     let repo = common::setup_repo();
     fs::create_dir_all(repo.path().join("docs")).unwrap();
     fs::write(repo.path().join("docs").join("note.md"), "aidc here\n").unwrap();
@@ -1033,17 +1022,11 @@ terms:
       - original: aidc
         correct: AIDC
         match: substring
-        boundary: standalone
 "#;
     fs::write(repo.path().join("minds-terms.yaml"), terms_yaml).unwrap();
 
     let output = mf(&repo).args(["term", "lint"]).output().unwrap();
-    assert_eq!(output.status.code(), Some(2), "global path must also exit 2");
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(
-        stderr.contains("standalone is only valid with match: word"),
-        "stderr must explain the rule on global path, got: {stderr}"
-    );
+    assert_ne!(output.status.code(), Some(2), "supported global substring must pass loading");
 }
 
 #[test]

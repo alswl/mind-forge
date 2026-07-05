@@ -6,9 +6,17 @@
 use std::path::Path;
 
 use crate::error::{MfError, Result};
-use crate::model::term::{Boundary, Correction, FixKind, MatchKind};
+use crate::model::term::{validate_corrections, Boundary, Correction, FixKind, MatchKind};
 use crate::service::index;
 use crate::service::term::{find_correction_index, sort_terms_by_name};
+
+fn validate_terms_before_project_save(terms: &[crate::model::term::Term]) -> Result<()> {
+    validate_corrections(terms).map_err(|msg| MfError::usage(msg, None::<String>))
+}
+
+fn validate_terms_before_global_save(terms: &[crate::model::term::Term]) -> Result<()> {
+    validate_corrections(terms).map_err(|msg| MfError::usage(msg, None::<String>))
+}
 
 // ── Project-scoped correction operations ──────────────────────────────────────
 
@@ -56,13 +64,14 @@ pub fn add_correction(
 
     t.corrections.push(corr.clone());
     sort_terms_by_name(terms);
+    validate_terms_before_project_save(terms)?;
     index::save(project_root, &index)?;
     Ok((corr, true))
 }
 
 /// List all corrections for a project-scoped term.
 pub fn list_corrections(project_root: &Path, term_name: &str) -> Result<Vec<Correction>> {
-    let index = index::load(project_root)?;
+    let index = index::load_lenient(project_root)?;
     let terms = index.terms.as_ref().ok_or_else(|| {
         MfError::not_found(
             format!("term '{term_name}' not found"),
@@ -101,7 +110,7 @@ pub fn update_correction(
     boundary: Option<Boundary>,
     pinyin: Option<Option<String>>,
 ) -> Result<Correction> {
-    let mut index = index::load(project_root)?;
+    let mut index = index::load_lenient(project_root)?;
     let terms =
         index.terms.as_mut().ok_or_else(|| MfError::not_found(format!("term '{term_name}' not found"), None))?;
 
@@ -131,13 +140,14 @@ pub fn update_correction(
 
     let result = c.clone();
     sort_terms_by_name(terms);
+    validate_terms_before_project_save(terms)?;
     index::save(project_root, &index)?;
     Ok(result)
 }
 
 /// Remove a correction from a project-scoped term.
 pub fn remove_correction(project_root: &Path, term_name: &str, original: &str) -> Result<Correction> {
-    let mut index = index::load(project_root)?;
+    let mut index = index::load_lenient(project_root)?;
     let terms =
         index.terms.as_mut().ok_or_else(|| MfError::not_found(format!("term '{term_name}' not found"), None))?;
 
@@ -149,6 +159,7 @@ pub fn remove_correction(project_root: &Path, term_name: &str, original: &str) -
     let idx = find_correction_index(t, original)?;
     let removed = t.corrections.remove(idx);
     sort_terms_by_name(terms);
+    validate_terms_before_project_save(terms)?;
     index::save(project_root, &index)?;
     Ok(removed)
 }
@@ -191,13 +202,14 @@ pub fn add_correction_global(
 
     t.corrections.push(corr.clone());
     sort_terms_by_name(&mut terms);
+    validate_terms_before_global_save(&terms)?;
     crate::service::term::global::save_terms(repo_root, &terms)?;
     Ok((corr, true))
 }
 
 /// List all corrections for a global-scoped term.
 pub fn list_corrections_global(repo_root: &Path, term_name: &str) -> Result<Vec<Correction>> {
-    let terms = crate::service::term::global::load_terms(repo_root)?;
+    let terms = crate::service::term::repo_format::load_lenient(repo_root)?;
     let t = terms
         .iter()
         .find(|t| t.term == term_name)
@@ -226,7 +238,7 @@ pub fn update_correction_global(
     boundary: Option<Boundary>,
     pinyin: Option<Option<String>>,
 ) -> Result<Correction> {
-    let mut terms = crate::service::term::global::load_terms(repo_root)?;
+    let mut terms = crate::service::term::repo_format::load_lenient(repo_root)?;
     let t = terms
         .iter_mut()
         .find(|t| t.term == term_name)
@@ -253,13 +265,14 @@ pub fn update_correction_global(
 
     let result = c.clone();
     sort_terms_by_name(&mut terms);
+    validate_terms_before_global_save(&terms)?;
     crate::service::term::global::save_terms(repo_root, &terms)?;
     Ok(result)
 }
 
 /// Remove a correction from a global-scoped term.
 pub fn remove_correction_global(repo_root: &Path, term_name: &str, original: &str) -> Result<Correction> {
-    let mut terms = crate::service::term::global::load_terms(repo_root)?;
+    let mut terms = crate::service::term::repo_format::load_lenient(repo_root)?;
     let t = terms
         .iter_mut()
         .find(|t| t.term == term_name)
@@ -268,6 +281,7 @@ pub fn remove_correction_global(repo_root: &Path, term_name: &str, original: &st
     let idx = find_correction_index(t, original)?;
     let removed = t.corrections.remove(idx);
     sort_terms_by_name(&mut terms);
+    validate_terms_before_global_save(&terms)?;
     crate::service::term::global::save_terms(repo_root, &terms)?;
     Ok(removed)
 }

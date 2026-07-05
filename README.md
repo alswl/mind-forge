@@ -289,12 +289,12 @@ default `projects/` container). Defaults to the current directory.
 | `new <TERM>` | Create a term (mf extension). `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--misrecognition <TEXT>` |
 | `list` (ls) | List terms. `--filter <PATTERN>` matches term name (substring); `--tag <TAG>` / `--alias <ALIAS>` match their respective fields. `--has-correction`, `--scope project\|global\|all` (AND semantics; default merges project + global fallback) |
 | `show <TERM>` | Show term details |
-| `update <TERM>` | Update term metadata and corrections. `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--clear-description`, `--clear-confidence`, `--delete-alias <TEXT>`, `--delete-tag <TAG>`, `--add-correction <ORIGINAL[:CORRECT]>` (repeatable; bare `ORIGINAL` uses the term name as the replacement), `--correction-match <ORIGINAL:KIND>` (switching to `substring`/`pinyin` auto-clears the `standalone` boundary), `--correction-fix <ORIGINAL:KIND>`, `--correction-pinyin <ORIGINAL:PINYIN>`, `--delete-correction <ORIGINAL>` (repeatable), `--dry-run`. `show`/`update`/`remove` load leniently so an already-invalid correction stays repairable from the CLI. |
-| `correction <SUBCOMMAND>` | Manage corrections as a first-class subresource: `add <TERM> <ORIGINAL> <CORRECT>` (idempotent; reports `created: true\|false`; `--match`, `--fix`, `--boundary`, `--pinyin`), `list <TERM>`, `show <TERM> <ORIGINAL>`, `update <TERM> <ORIGINAL>`, `remove <TERM> <ORIGINAL>` (`--dry-run`) |
+| `update <TERM>` | Update term metadata and corrections. `--correction-match <ORIGINAL:KIND>` accepts `word`, `substring`, or `pinyin`; substring defaults to the safe `standalone` boundary. Targeted updates/removals are not blocked by sibling substring corrections. |
+| `correction <SUBCOMMAND>` | Manage corrections as a first-class subresource: `add <TERM> <ORIGINAL> <CORRECT>` (idempotent; `--match word\|substring\|pinyin`, `--fix`, `--boundary loose\|standalone`, `--pinyin`), `list`, `show`, `update`, and `remove` (`--dry-run`) |
 | `move <TERM>` (mv) | Move a term between scopes. `--to-global`, `--to-project <PROJECT>`, `--from-global`, `--force` (overwrite destination; source preserved on rejection), `--dry-run` |
 | `rename <OLD_TERM> <NEW_TERM>` | Rename a term. `--keep-alias` keeps the old name as an alias |
 | `remove <TERM>` (rm) | Remove a term (interactive confirmation in TTY) |
-| `lint [PATH]` | Lint term consistency in project docs. CJK matching uses jieba word segmentation (`word` default — both edges must align with token boundaries); `substring` bypasses jieba; `pinyin` for tone-less scan. `--fix`, `--term <NAME>` or `--term <NAME:ORIGINAL>` (repeatable — scope to named terms or a specific correction pair), `--exclude-term <NAME>` (repeatable), `--exclude-original <ORIGINAL>` (repeatable — drop one exact original text across all terms), `--include-suggested`, `--min-confidence <0.0..1.0>` (apply suggested corrections at or above the threshold; requires `--include-suggested`), `--article <SLUG>` or a Markdown `PATH` to target a single article/file. Non-TTY `--fix` exits 2 without `-y`/`--yes`. |
+| `lint [PATH]` | Lint term consistency in project docs. `substring + loose` performs embedded literal matching; `substring + standalone` (default boundary) suppresses ASCII identifier/path internals and requires CJK token alignment. `word` and `pinyin` retain their existing behavior. Supports `--fix`, term/pair selectors, exclusions, suggested/confidence filters, and article/path targeting. |
 | `fix [PATH]` | First-class alias for `term lint --fix`. Same selectors as `lint`: `--term`/`--exclude-term`/`--exclude-original`, `--include-suggested` + `--min-confidence`. `--term` takes exact canonical names (case-sensitive) or `NAME:ORIGINAL` pairs; unknown → exit 2. |
 
 Global terms (created without `--project`) are stored in `minds-terms.yaml` at
@@ -349,8 +349,9 @@ Supported shells: `bash`, `zsh`, `fish`, `powershell`, `elvish`
 
 ### `mf version` — Show version information
 
-Text output includes commit / build_date / rustc. JSON envelope adds
-`target_triple`. Pass `--json` for the machine-readable form.
+`mf --version` and text output use `<base>-dev+<short-commit>`, so builds with
+the same Cargo version remain distinguishable. JSON includes `version`,
+`base_version`, `channel`, `commit`, `build_date`, `rustc`, and `target_triple`.
 
 ## Features
 

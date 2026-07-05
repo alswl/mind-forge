@@ -2,7 +2,7 @@ use std::path::Path;
 
 use super::{parse_correction_attr, sort_terms_by_name, TermUpdate};
 use crate::error::{MfError, Result};
-use crate::model::term::{Boundary, Correction, FixKind, MatchKind, Term};
+use crate::model::term::{validate_corrections, Boundary, Correction, FixKind, MatchKind, Term};
 use crate::service::index;
 
 /// Modify an existing term's definition, aliases, tags, description, confidence,
@@ -47,6 +47,7 @@ pub fn fix_term(project_root: &Path, term_name: &str, update: TermUpdate<'_>) ->
 
     if let Some(ref mut terms) = index.terms {
         sort_terms_by_name(terms);
+        validate_corrections(terms).map_err(|msg| MfError::usage(msg, None::<String>))?;
     }
     index::save(project_root, &index)?;
 
@@ -58,16 +59,13 @@ pub fn fix_term(project_root: &Path, term_name: &str, update: TermUpdate<'_>) ->
 fn update_correction_match(t: &mut Term, original: &str, value: &str) -> Result<()> {
     let kind: MatchKind = match value.to_lowercase().as_str() {
         "word" => MatchKind::Word,
-        "substring" => MatchKind::Substring,
         "pinyin" => MatchKind::Pinyin,
+        "substring" => MatchKind::Substring,
         other => return Err(MfError::usage(format!("invalid match kind '{other}'"), None)),
     };
     let pos = super::find_correction_index(t, original)?;
     t.corrections[pos].r#match = kind;
-    // `boundary: standalone` is only valid with `match: word`. When switching to
-    // another match kind, normalize the boundary to `loose` so the correction
-    // never lands in an invalid state that would deadlock later CLI operations.
-    if kind != MatchKind::Word && t.corrections[pos].boundary == Boundary::Standalone {
+    if kind == MatchKind::Pinyin && t.corrections[pos].boundary == Boundary::Standalone {
         t.corrections[pos].boundary = Boundary::Loose;
     }
     Ok(())
@@ -210,9 +208,9 @@ mod tests {
     #[test]
     fn update_sets_exact_correction_match_without_touching_siblings() {
         let mut term = synthetic_term();
-        let values = vec!["first:substring".to_string()];
+        let values = vec!["first:pinyin".to_string()];
         apply_update(&mut term, &TermUpdate { correction_matches: &values, ..Default::default() }).unwrap();
-        assert_eq!(term.corrections[0].r#match, MatchKind::Substring);
+        assert_eq!(term.corrections[0].r#match, MatchKind::Pinyin);
         assert_eq!(term.corrections[1].r#match, MatchKind::Word);
         assert_eq!(term.definition.as_deref(), Some("unchanged"));
     }
@@ -233,17 +231,13 @@ mod tests {
     }
 
     #[test]
-    fn correction_match_to_substring_resets_standalone_boundary() {
-        // Switching an ASCII word correction to substring must not leave the
-        // invalid `substring` + `standalone` combination that would later
-        // deadlock every operation on the term.
+    fn correction_match_to_pinyin_resets_standalone_boundary() {
         let mut term = synthetic_term();
         assert_eq!(term.corrections[0].boundary, Boundary::Standalone);
-        let values = vec!["first:substring".to_string()];
+        let values = vec!["first:pinyin".to_string()];
         apply_update(&mut term, &TermUpdate { correction_matches: &values, ..Default::default() }).unwrap();
-        assert_eq!(term.corrections[0].r#match, MatchKind::Substring);
+        assert_eq!(term.corrections[0].r#match, MatchKind::Pinyin);
         assert_eq!(term.corrections[0].boundary, Boundary::Loose);
-        // The resulting term must satisfy the cross-field invariants.
         crate::model::term::validate_corrections(std::slice::from_ref(&term)).expect("normalized term must be valid");
     }
 

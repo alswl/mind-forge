@@ -33,6 +33,7 @@ fn version_text_output() {
     assert_eq!(code, 0, "stderr: {stderr:?}");
     // Format: mf X.Y.Z (commit, built YYYY-MM-DD, rustc VERSION)
     assert!(stdout.starts_with("mf "), "expected 'mf <version>', got: {stdout:?}");
+    assert!(stdout.contains("-dev+"), "development marker and commit must be visible: {stdout:?}");
     assert!(stdout.contains('('), "should contain opening paren with metadata: {stdout:?}");
     assert!(stdout.contains(')'), "should contain closing paren: {stdout:?}");
     assert!(stdout.contains("built"), "should contain 'built': {stdout:?}");
@@ -52,7 +53,11 @@ fn version_json_output_via_json_flag() {
     assert_eq!(v["status"], "ok");
     assert_eq!(v["command"], "mf");
     let version = v["data"]["version"].as_str().expect("data.version should be a string");
-    assert!(!version.is_empty(), "data.version should be non-empty");
+    assert!(version.contains("-dev+"), "version must distinguish development builds: {version}");
+    assert_eq!(v["data"]["channel"], "dev");
+    assert_eq!(v["data"]["base_version"], env!("CARGO_PKG_VERSION"));
+    let commit = v["data"]["commit"].as_str().expect("data.commit should be a string");
+    assert!(!commit.is_empty() && version.ends_with(commit), "version and commit must agree: {version}");
 }
 
 #[test]
@@ -121,4 +126,5 @@ fn dash_dash_version_still_works() {
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
     assert!(stdout.contains("mf"), "'mf --version' should contain name: {stdout:?}");
+    assert!(stdout.contains("-dev+"), "'mf --version' must expose dev build identity: {stdout:?}");
 }

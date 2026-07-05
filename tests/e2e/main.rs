@@ -17,6 +17,7 @@ mod source_index;
 mod term_global;
 mod term_lifecycle;
 mod term_lint_workflow;
+mod term_repair_substring;
 mod term_ux_followup;
 mod terminal_capabilities;
 mod unified_output_contracts;

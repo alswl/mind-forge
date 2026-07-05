@@ -75,8 +75,10 @@ fn char_after(content: &str, byte_offset: usize) -> Option<char> {
 /// candidate offset in the scan loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WordCheck {
-    /// Substring match — every position passes.
-    AlwaysAccept,
+    /// Literal substring matching with no boundary gate.
+    SubstringLoose,
+    /// Literal substring matching with identifier/Jieba boundary protection.
+    SubstringStandalone,
     /// ASCII original, loose boundary (today's behaviour).
     AsciiLoose,
     /// ASCII original, standalone boundary (FR-002).
@@ -88,7 +90,8 @@ pub(crate) enum WordCheck {
 impl WordCheck {
     pub(crate) fn boundary_mode(&self) -> &'static str {
         match self {
-            WordCheck::AlwaysAccept => "loose",
+            WordCheck::SubstringLoose => "loose",
+            WordCheck::SubstringStandalone => "standalone",
             WordCheck::AsciiLoose => "loose",
             WordCheck::AsciiStandalone => "standalone",
             WordCheck::Cjk => "cjk",
@@ -97,7 +100,10 @@ impl WordCheck {
 
     pub(crate) fn for_correction(match_kind: MatchKind, boundary: Boundary, original: &str) -> Self {
         match match_kind {
-            MatchKind::Substring => WordCheck::AlwaysAccept,
+            MatchKind::Substring => match boundary {
+                Boundary::Loose => WordCheck::SubstringLoose,
+                Boundary::Standalone => WordCheck::SubstringStandalone,
+            },
             MatchKind::Word => {
                 if original.is_ascii() {
                     match boundary {
@@ -118,7 +124,7 @@ impl WordCheck {
 /// Check word boundaries for a match at `offset` with `original_len` bytes.
 /// Returns true if the match passes boundary requirements under `check`.
 fn apply_word_boundary(
-    _content: &str,
+    content: &str,
     sanitized: &[u8],
     check: WordCheck,
     offset: usize,
@@ -126,7 +132,19 @@ fn apply_word_boundary(
     jieba: Option<&JiebaBoundaries>,
 ) -> bool {
     match check {
-        WordCheck::AlwaysAccept => true,
+        WordCheck::SubstringLoose => true,
+        WordCheck::SubstringStandalone => {
+            if content[offset..offset + original_len].is_ascii() {
+                let before_ok = offset == 0 || !is_identifier_neighbour(sanitized[offset - 1]);
+                let end = offset + original_len;
+                let after_ok = end >= sanitized.len() || !is_identifier_neighbour(sanitized[end]);
+                before_ok && after_ok
+            } else if let Some(jb) = jieba {
+                jb.span_aligns(offset, original_len)
+            } else {
+                true
+            }
+        }
         WordCheck::AsciiLoose => {
             let before_ok = offset == 0 || is_word_boundary_byte(sanitized[offset - 1]);
             let end = offset + original_len;
@@ -351,14 +369,14 @@ mod tests {
     // ── WordCheck factory ────────────────────────────────────────────────────
 
     #[test]
-    fn word_check_for_substring_is_always_accept() {
+    fn word_check_for_substring_uses_requested_boundary() {
         assert_eq!(
             WordCheck::for_correction(MatchKind::Substring, Boundary::Loose, "anything"),
-            WordCheck::AlwaysAccept
+            WordCheck::SubstringLoose
         );
         assert_eq!(
             WordCheck::for_correction(MatchKind::Substring, Boundary::Standalone, "anything"),
-            WordCheck::AlwaysAccept
+            WordCheck::SubstringStandalone
         );
     }
 
@@ -635,10 +653,14 @@ mod tests {
     }
 
     #[test]
-    fn word_mode_rejects_embedded_occurrence_substring_mode_accepts() {
+    fn word_mode_rejects_embedded_occurrence() {
         let word = scan_original("scatter cat", "cat", MatchKind::Word);
         assert_eq!(word.len(), 1, "word mode must reject the embedded occurrence");
+    }
+
+    #[test]
+    fn substring_standalone_rejects_embedded_occurrence() {
         let substring = scan_original("scatter cat", "cat", MatchKind::Substring);
-        assert_eq!(substring.len(), 2, "substring mode explicitly accepts embedded occurrences");
+        assert_eq!(substring.len(), 1, "standalone substring must reject the embedded occurrence");
     }
 }
