@@ -17,6 +17,9 @@ Maintain a living prompt that can change before, during, and after drafting. Pla
 
 If the prompt is absent, use [prompt.md](assets/prompt.md). If the article is absent but a prompt exists, report the orphan and ask before creating or rebinding anything.
 
+- `prompts/` holds only the living design prompt (Intent, Key Messages, Outline, Research, Decisions, Open Loops). Collected facts and source material go to `sources/` (registered via `mf source`) or `docs/` for draft content — never into `prompts/`.
+- The canonical prompt location is `prompts/<article-key>.md`; never copy or duplicate the prompt into `docs/` blocks.
+
 ## Bind and synchronize safely
 
 - Treat frontmatter `article` as authoritative; the filename is only for discovery.
