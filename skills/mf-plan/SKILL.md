@@ -1,48 +1,81 @@
 ---
 name: mf-plan
-description: Plan or replan a mind-forge article from an idea, existing prompt, research, or draft. Use when starting an article, clarifying audience or thesis, researching claims, changing structure, resolving writing feedback, inspecting progress, or deciding what to write next.
+description: Research, plan, or replan a mind-forge article from an idea, prompt, evidence, draft, or inline human feedback. Use when defining goals or constraints, collecting and comparing evidence, maintaining a research or decision article, changing structure, resolving feedback, inspecting progress, or deciding what to investigate next.
 ---
 
-# Plan a mind-forge article
+# Research and plan a mind-forge article
 
-Maintain a living prompt that can change before, during, and after drafting. Planning and writing are cooperating modes, not a linear stage machine.
+Own problem framing, evidence gathering, comparison, and judgment. Planning and writing cooperate continuously: for research work, keep the article itself current after every material turn rather than waiting for a later writing stage.
 
-## Resolve the article and prompt
+## Resolve the workspace
 
-1. Locate the Mind Repo from `minds.yaml`; use `mf project list --json` and canonical identities from JSON responses.
-2. Resolve the requested project and article. If starting from an idea, create the article first with `mf article new ... --json` and read `data.details.path`; never guess the slug.
-3. Derive the article key from the canonical article path's final component with one terminal `.md` removed. Store the full canonical project-relative path in prompt frontmatter.
-4. Use `<project>/prompts/<article-key>.md`. `prompts/` is an existing Mind convention; create that directory only when the user has asked to create a prompt and it is missing. Do not add another workflow directory.
-5. Read `prompts/constitution.md` when present. Use [constitution.md](assets/constitution.md) only when the user asks to establish project writing rules.
+1. Locate the Mind Repo from `minds.yaml`; resolve projects and articles with `mf ... --json` and preserve returned canonical identities.
+2. Resolve the requested project and article. If the user has requested an article deliverable, create a missing article with `mf article new ... --json` and read `data.details.path`; never guess the slug. For preliminary research with no requested deliverable, do not create an article or workflow files prematurely.
+3. Derive the article key from the canonical article path's final component with one terminal `.md` removed. The canonical prompt is `<project>/prompts/<article-key>.md`, bound by its frontmatter `article` value.
+4. Read `prompts/constitution.md` when present. Use [constitution.md](assets/constitution.md) only when the user asks to establish project writing rules.
+5. If the prompt is absent for an existing article, use [prompt.md](assets/prompt.md). Create it only when the user has asked to plan, research, or maintain that article. If an article is absent but a bound prompt exists, report the orphan and ask before rebinding.
 
-If the prompt is absent, use [prompt.md](assets/prompt.md). If the article is absent but a prompt exists, report the orphan and ask before creating or rebinding anything.
+Treat these four stores as one workspace:
 
-- `prompts/` holds only the living design prompt (Intent, Key Messages, Outline, Research, Decisions, Open Loops). Collected facts and source material go to `sources/` (registered via `mf source`) or `docs/` for draft content — never into `prompts/`.
-- The canonical prompt location is `prompts/<article-key>.md`; never copy or duplicate the prompt into `docs/` blocks.
+- `prompts/`: control plane for objective, mode, constraints, evaluation criteria, deliverable contract, outline, open loops, and durable decisions.
+- `sources/`: evidence and provenance. Register material through `mf source new ... --json`; keep access dates and volatile-data context in the source material.
+- `thinking/`: working ledger for comparisons, contradictions, assumptions, feedback, decisions, blockers, and next investigations. Use `<project>/thinking/<article-key>.md`; create it when work begins and it is absent.
+- `docs/`: the current user-readable deliverable, never a deferred final dump. `outputs/` remains generated and must not be edited.
 
-## Bind and synchronize safely
+Do not copy source bodies into prompts or duplicate prompts under `docs/`.
 
-- Treat frontmatter `article` as authoritative; the filename is only for discovery.
-- Reserve `constitution` as a project prompt name. If an article key collides, ask for an explicit non-conflicting prompt filename and keep the canonical `article` binding.
-- `mf article rename` now preserves the article's file/directory shape and automatically renames the bound prompt file while updating its `article:` frontmatter. After rename, verify the new identity resolves and its content is not blocked. If the prompt association needs manual adjustment, report it.
-- For a rename performed outside this workflow, never infer the old identity from title similarity alone. Report orphan prompts and candidate articles; mutate only after the user confirms one mapping.
-- When zero prompts match, offer to create one. When multiple prompts claim an identity, stop without mutation and list them.
+## Read and reconcile in order
 
-## Plan iteratively
+At the start of every turn, read and reconcile:
 
-Read the current prompt, article source, registered sources, constitution, and relevant terms. Then update only the concerns affected by the user's request:
+1. the bound prompt and constitution;
+2. registered sources and relevant terms;
+3. the thinking ledger;
+4. current article source;
+5. every `<!-- mf-feedback ... -->` annotation in the article.
 
-- **Intent**: audience, thesis, outcome, scope, and mode (`exploratory` or `committed`).
-- **Key messages**: observable claims or ideas the article should land.
-- **Research**: findings linked to canonical identities from `mf source ... --json`; put unsupported claims in evidence gaps.
-- **Outline**: ordered units that work with the existing article shape. Preserve substantive `docs/` content unless the user explicitly requests restructuring.
-- **Open loops**: use stable IDs, severity (`critical`, `major`, `minor`), status (`open`, `resolved`, `accepted`, `superseded`), issue, and resolution.
-- **Decisions**: append dated choices and rationale; do not erase contradictory history silently.
+Treat prompt frontmatter `article` as authoritative. After rename, verify the new identity, prompt filename, frontmatter binding, and thinking filename. For external renames, never infer mappings from title similarity. Stop on duplicate prompt bindings.
 
-Register new evidence with `mf source new ... --json` and reconcile it with `mf source index --json`. Register canonical terminology only when useful. Reference source identities in the prompt instead of copying source bodies.
+## Maintain the prompt deliberately
 
-## Report tensions, not stages
+Select a mode and record it in prompt frontmatter:
 
-Report current planning, evidence, structure, and coverage tensions. Recommend `$mf-write` when useful, while also stating what planning can continue now. Do not label the article Briefed, Researched, Outlined, or Drafted.
+- `editorial`: thesis, argument, narrative, and audience are primary.
+- `research`: a current synthesis of gathered facts is primary.
+- `decision-research`: constraints, comparable candidates, tradeoffs, and an actionable recommendation are primary.
 
-Before writing, preview any broad mutation and preserve user content. Use `--json`, parse `{ status, command, data }`, and rely on exit codes. Consult `$mf-cli` when exact command behavior is needed.
+Update the prompt when the objective, audience, scope, hard constraints, evaluation criteria, research protocol, deliverable contract, or intended structure changes. Append dated decisions and mark superseded choices; do not silently rewrite decision history. Keep detailed findings, candidate rows, and transient reasoning out of the prompt.
+
+Use stable open-loop IDs with severity (`critical`, `major`, `minor`) and status (`open`, `resolved`, `accepted`, `superseded`). Unsupported claims remain evidence gaps.
+
+## Research and materialize
+
+- Ask first only for missing hard constraints that would invalidate the work. Continue with explicit assumptions when uncertainty is non-blocking.
+- For comparisons, normalize the basis before ranking: applicable dates, people or units, variant, currency, taxes or fees, cancellation terms, access time, and other domain-specific conditions.
+- Distinguish sourced facts, user-provided constraints, and agent inference. Record conflicts and volatility in thinking and expose material uncertainty in the article.
+- Register durable evidence in `sources/`; record how it affects judgment in `thinking`.
+- For `research` and `decision-research`, after every turn that adds a fact, constraint, exclusion, comparison, or changed judgment, update `docs/` to the best current answer. Preserve uncertainty and pending verification instead of waiting for completeness.
+- For `editorial`, update `docs/` only when requested or when the planning request explicitly includes prose changes.
+- Preserve substantive user content and preview broad structural mutations.
+
+A research turn is complete only when all affected stores agree: prompt for changed control information, sources for new evidence, thinking for changed reasoning or feedback state, and docs for the current conclusion.
+
+## Process human feedback
+
+Recognize Markdown HTML comments beginning with `mf-feedback`, including a short form such as `<!-- mf-feedback: verify this price -->` and a multiline form. Associate the annotation with its surrounding paragraph or section.
+
+For each annotation:
+
+1. add or update a stable entry in the thinking file's Feedback ledger;
+2. resolve it immediately when evidence and intent are sufficient;
+3. otherwise retain the annotation and record the investigation or question;
+4. after resolution, update the article, remove the inline annotation, and keep the resolution in thinking;
+5. promote feedback to the prompt only when it changes a durable goal, constraint, criterion, protocol, or writing rule.
+
+Never silently delete feedback. Unresolved feedback blocks publication because current build behavior does not guarantee removal from generated Markdown.
+
+## Hand off by concern
+
+Use `$mf-write` for prose craft, substantial rewriting, assembly, build, and publication. Do not hand off merely because research changed the article: maintaining a research deliverable is part of this skill.
+
+Report changes to the current conclusion, evidence, judgment, open loops, and feedback state. Use JSON envelopes and exit codes; consult `$mf-cli` for exact command behavior.

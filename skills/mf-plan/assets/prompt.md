@@ -1,7 +1,7 @@
 ---
 article: docs/example
 title: Example article
-mode: exploratory
+mode: editorial
 ---
 
 # Prompt: Example article
@@ -13,6 +13,34 @@ mode: exploratory
 - **Expected outcome:**
 - **Out of scope:**
 
+## Constraints
+
+### Hard constraints
+
+- [ ]
+
+### Preferences and tradeoffs
+
+- [ ]
+
+## Evaluation criteria
+
+| Criterion | Priority | How to evaluate |
+|---|---|---|
+| | | |
+
+## Deliverable contract
+
+- **Format:**
+- **Update policy:**
+- **Completion condition:**
+
+## Research protocol
+
+- **Comparison basis:**
+- **Volatile facts to timestamp:**
+- **Required verification:**
+
 ## Key messages
 
 - [ ]
@@ -22,6 +50,8 @@ mode: exploratory
 | Finding | Source identity | Limits |
 |---|---|---|
 | | | |
+
+Detailed evidence and candidate records belong in `sources/`; comparisons and reasoning belong in the bound `thinking/` file.
 
 ## Evidence gaps
 

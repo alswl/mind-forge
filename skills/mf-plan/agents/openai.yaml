@@ -1,4 +1,4 @@
 interface:
   display_name: "Mind Forge Plan"
-  short_description: "Plan and reshape articles through iterative prompts"
-  default_prompt: "Use $mf-plan to plan or replan this article from its current repository state."
+  short_description: "Research, compare, and maintain evolving articles"
+  default_prompt: "Use $mf-plan to research or replan this article and keep its prompt, sources, thinking, and current draft synchronized."
