@@ -31,7 +31,10 @@ Never move planning material into `docs/`, copy source bodies into the prompt, o
 - Apply intent, evidence, terminology, and constitution rules without forcing prose through an obsolete outline.
 - Cite registered sources for factual claims. Never invent citations.
 - Honor limited-scope requests strictly. Track remaining work as open loops rather than expanding the requested deliverable.
-- Match article perspective and voice. Do not add opening pleasantries, word counts, or meta commentary to the document.
+- Write in the author's established voice, not a generic one. Prefer phrasing from the author's drafts, prior writing, and feedback over paraphrase; use external sources as evidence, paraphrase them appropriately, and cite them. Keep bridging prose in the same register as the surrounding authored text.
+- Divide labor: supply structure, connective prose, and evidence placement, but leave the thesis, judgment calls, and signature lines to the author. Never manufacture the author's stance or conclusions; infer them only from the prompt, the author's prose, or explicit feedback. Where these do not establish a needed judgment, leave a marked placeholder for the author instead of adopting a source's position.
+- Do not simulate conviction with unearned rhetoric. Avoid mechanical or repeated use of formulaic antithesis, rule-of-three parallelism, grand abstractions, and paragraph-closing summary uplift. Vary sentence shape and length while preserving deliberate devices already present in the author's prose.
+- Match article perspective. Do not add opening pleasantries, word counts, or meta commentary to the document.
 
 When writing uncovers new evidence, register it in sources. Record new reasoning, conflicts, deviations, and follow-ups in thinking. Update prompt open loops or decisions when needed; hand off to `$mf-plan` when the objective, hard constraints, evaluation criteria, research protocol, or overall structure must change.
 
@@ -41,6 +44,7 @@ For `research` and `decision-research` modes, never leave `docs/` behind the kno
 
 Recognize short and multiline Markdown comments beginning with `mf-feedback`. Associate each with its surrounding paragraph or section and maintain stable entries in the thinking file's Feedback ledger.
 
+- Classify each annotation before acting. Material — content or phrasing the author supplies — folds into the prose with the author's own wording taking precedence over any rewrite. An instruction — a directive such as cut, move, merge, or emphasize — is executed and never pasted into the prose as content. A single annotation may carry both; separate them.
 - Resolve local prose, structure, and style feedback directly.
 - Send evidence gaps and changed comparison logic to `$mf-plan`, unless the research is small and necessary to complete the requested revision.
 - After resolution, edit the article, remove the annotation, and preserve the request and resolution in thinking.
@@ -61,7 +65,7 @@ For revision or publication readiness:
 5. run `mf build "<article>" --dry-run --project <project> --json` and verify ordered inputs;
 6. run the real build only when requested or needed for publication.
 
-A clean lint exit is necessary but not sufficient. Reject empty stubs, unintended files, stale research conclusions, and unresolved feedback. After user edits, fold systematic improvements into the prompt when they are durable and record the signal in thinking.
+A clean lint exit is necessary but not sufficient. Reject empty stubs, unintended files, stale research conclusions, and unresolved feedback. When the author revises a delivered article and both versions are identifiable, record the observed delta and its cause in thinking, keep concrete wording in docs, and promote only a durable rule or decision inferred from recurring changes into the prompt so the next draft starts closer. If no reliable baseline exists, use only changes the author explicitly identifies; do not reconstruct or guess the delta. Report what changed in the prompt so the author can revert.
 
 ## Publish through a hard gate
 

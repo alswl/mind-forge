@@ -46,6 +46,8 @@ Select a mode and record it in prompt frontmatter:
 
 Update the prompt when the objective, audience, scope, hard constraints, evaluation criteria, research protocol, deliverable contract, or intended structure changes. Append dated decisions and mark superseded choices; do not silently rewrite decision history. Keep detailed findings, candidate rows, and transient reasoning out of the prompt.
 
+When the author revises a delivered article and both versions are identifiable, treat the delta as prompt signal: record the observed change and its cause in thinking, keep concrete wording in docs, and promote only a durable rule or decision inferred from recurring changes into the prompt as a dated decision, marking any superseded one. If no reliable baseline exists, use only changes the author explicitly identifies; do not reconstruct or guess the delta. Report prompt changes so the author can revert.
+
 Use stable open-loop IDs with severity (`critical`, `major`, `minor`) and status (`open`, `resolved`, `accepted`, `superseded`). Unsupported claims remain evidence gaps.
 
 ## Research and materialize
@@ -62,7 +64,7 @@ A research turn is complete only when all affected stores agree: prompt for chan
 
 ## Process human feedback
 
-Recognize Markdown HTML comments beginning with `mf-feedback`, including a short form such as `<!-- mf-feedback: verify this price -->` and a multiline form. Associate the annotation with its surrounding paragraph or section.
+Recognize Markdown HTML comments beginning with `mf-feedback`, including a short form such as `<!-- mf-feedback: verify this price -->` and a multiline form. Associate the annotation with its surrounding paragraph or section. Distinguish material — content or phrasing the author supplies, folded in with the author's wording taking precedence — from an instruction — a directive to execute, never inserted as prose; a single annotation may carry both.
 
 For each annotation:
 
