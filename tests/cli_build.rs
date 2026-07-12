@@ -243,6 +243,39 @@ fn build_banner_with_level_wraps_in_admonition() {
     assert!(content.contains("Article content"), "article content should remain");
 }
 
+/// Bug #21 (spec 064) regression: a configured `build.banner` must survive
+/// repeated rebuilds — each rebuild's output must contain exactly one
+/// rendered banner, never zero (lost) and never duplicated.
+#[test]
+fn build_banner_survives_repeated_rebuilds() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  banner:\n    text: Do not edit\n    level: warning\n",
+    );
+    common::write_article_index(&repo, "my-project", "test-article");
+    common::write_doc(&repo, "my-project", "test-article", "Article content\n");
+
+    let output_path = repo.path().join("my-project/outputs/test-article.md");
+
+    for i in 0..2 {
+        Command::cargo_bin("mf")
+            .expect("binary exists")
+            .current_dir(repo.path().join("my-project"))
+            .args(["build", "test-article"])
+            .assert()
+            .success();
+
+        let content = fs::read_to_string(&output_path).unwrap();
+        assert!(content.contains(":::warning"), "rebuild {i}: banner must be present: {content}");
+        assert!(content.contains("Do not edit"), "rebuild {i}: banner text must be present: {content}");
+        assert_eq!(content.matches(":::warning").count(), 1, "rebuild {i}: banner must not duplicate: {content}");
+        assert!(content.contains("Article content"), "rebuild {i}: article content must remain: {content}");
+    }
+}
+
 #[test]
 fn build_banner_without_level_inserts_raw_text() {
     let repo = common::setup_repo();
@@ -922,4 +955,150 @@ fn build_rewrite_normalizes_redundant_segments() {
 
     assert!(!content.contains("/../"), "path should be normalised, no interior /../: {content}");
     assert!(content.contains("shared/pic.png"), "path still resolves to shared/pic.png: {content}");
+}
+
+// ---------------------------------------------------------------------------
+// Bug #22: build image path correctness with `@`-path + relative `--out`
+// ---------------------------------------------------------------------------
+
+/// Bug #22 repro: `@`-path (canonicalized, absolute) combined with a
+/// relative `--out` must not produce a malformed mixed absolute/relative
+/// path. Covers Markdown image, reference definition, and HTML `<img src>`
+/// forms.
+#[test]
+fn build_at_path_with_relative_out_produces_valid_relative_paths() {
+    let repo = tempfile::TempDir::new().unwrap();
+    fs::write(repo.path().join("minds.yaml"), "schema: '1'\nprojects:\n  - projects/2026-blogs\n").unwrap();
+    let project = repo.path().join("projects/2026-blogs");
+    fs::create_dir_all(project.join("docs/my-article")).unwrap();
+    fs::create_dir_all(project.join("assets")).unwrap();
+    fs::write(project.join("mind.yaml"), "schema: '1'\n").unwrap();
+    fs::write(
+        project.join("docs/my-article/01-opening.md"),
+        "# Opening\n\n![hero](../../assets/pic.png)\n\n[ref]: ../../assets/pic.png\n\n<img src=\"../../assets/pic.png\" alt=\"hero\">\n",
+    )
+    .unwrap();
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project)
+        .args(["build", "@projects/2026-blogs/docs/my-article/", "--out", "outputs/my-article.md"])
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(project.join("outputs/my-article.md")).unwrap();
+    assert!(content.contains("![hero](../assets/pic.png)"), "markdown image must be a valid relative path: {content}");
+    assert!(
+        content.contains("[ref]: ../assets/pic.png"),
+        "reference definition must be a valid relative path: {content}"
+    );
+    assert!(
+        content.contains(r#"<img src="../assets/pic.png" alt="hero">"#),
+        "HTML img src must be a valid relative path: {content}"
+    );
+    assert!(!content.contains("////"), "must never contain a malformed path fragment: {content}");
+    assert!(!content.contains("..//"), "must never contain a malformed path fragment: {content}");
+}
+
+/// Bug #22: building the same article via `@`-path + relative `--out` and via
+/// the plain indexed-article form must produce byte-identical image
+/// references.
+#[test]
+fn build_at_path_matches_plain_indexed_build() {
+    let repo = tempfile::TempDir::new().unwrap();
+    fs::write(repo.path().join("minds.yaml"), "schema: '1'\nprojects:\n  - projects/2026-blogs\n").unwrap();
+    let project = repo.path().join("projects/2026-blogs");
+    fs::create_dir_all(project.join("docs/my-article")).unwrap();
+    fs::write(project.join("mind.yaml"), "schema: '1'\n").unwrap();
+    fs::write(project.join("docs/my-article/01-opening.md"), "# Opening\n\n![hero](../../assets/pic.png)\n").unwrap();
+    fs::write(
+        project.join("mind-index.yaml"),
+        "schema: '1'\narticles:\n  - title: My Article\n    project: 2026-blogs\n    type: blog\n    article_path: docs/my-article\n    status: draft\n    created_at: '2026-07-01T00:00:00Z'\n    updated_at: '2026-07-01T00:00:00Z'\n",
+    )
+    .unwrap();
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project)
+        .args(["build", "my-article"])
+        .assert()
+        .success();
+    let plain_content = fs::read_to_string(project.join("outputs/my-article.md")).unwrap();
+    fs::remove_file(project.join("outputs/my-article.md")).unwrap();
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project)
+        .args(["build", "@projects/2026-blogs/docs/my-article/", "--out", "outputs/my-article.md"])
+        .assert()
+        .success();
+    let at_path_content = fs::read_to_string(project.join("outputs/my-article.md")).unwrap();
+
+    assert_eq!(plain_content, at_path_content, "image references must be identical across both invocation forms");
+}
+
+/// Bug #22: building from a project reached through a symlinked directory
+/// (simulating a git worktree at a deep, symlinked path) must still produce
+/// valid, non-malformed relative image paths.
+#[cfg(unix)]
+#[test]
+fn build_through_symlinked_root_produces_valid_relative_paths() {
+    use std::os::unix::fs::symlink;
+
+    let real_repo = tempfile::TempDir::new().unwrap();
+    fs::write(real_repo.path().join("minds.yaml"), "schema: '1'\nprojects:\n  - projects/2026-blogs\n").unwrap();
+    let project = real_repo.path().join("projects/2026-blogs");
+    fs::create_dir_all(project.join("docs/my-article")).unwrap();
+    fs::write(project.join("mind.yaml"), "schema: '1'\n").unwrap();
+    fs::write(project.join("docs/my-article/01-opening.md"), "# Opening\n\n![hero](../../assets/pic.png)\n").unwrap();
+
+    let link_parent = tempfile::TempDir::new().unwrap();
+    let symlinked_repo = link_parent.path().join("worktree-link");
+    symlink(real_repo.path(), &symlinked_repo).unwrap();
+    let symlinked_project = symlinked_repo.join("projects/2026-blogs");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&symlinked_project)
+        .args(["build", "@projects/2026-blogs/docs/my-article/", "--out", "outputs/my-article.md"])
+        .assert()
+        .success();
+
+    // Read back through the real (non-symlinked) path — atomic_write resolves
+    // symlinked parent dirs, so the file lands in the real tree either way.
+    let output_path = project.join("outputs/my-article.md");
+    assert!(output_path.exists(), "output should exist at the real path: {output_path:?}");
+    let content = fs::read_to_string(&output_path).unwrap();
+    assert!(content.contains("![hero](../assets/pic.png)"), "path must be valid relative form: {content}");
+    assert!(!content.contains("////"), "must never contain a malformed path fragment: {content}");
+}
+
+/// Bug #22 defense in depth: a reference whose relative path genuinely
+/// cannot be resolved (mixed base) is kept verbatim and reported as a
+/// warning on stderr, not written as a malformed path. Exercised at the
+/// service layer via `rewrite_target`/`rewrite_relative_paths` unit tests in
+/// `src/service/build.rs`; this test confirms the CLI end-to-end contract
+/// still succeeds (exit 0) for a normal build with no unresolvable refs.
+#[test]
+fn build_succeeds_and_emits_no_warnings_when_all_references_resolve() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "new", "Test Article"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "test-article"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("WARN:"), "a normal build must not emit path warnings: {stderr}");
 }

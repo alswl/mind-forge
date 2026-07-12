@@ -7,6 +7,8 @@ use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::CommandCtx;
 use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
+use crate::output::warning::emit_warning;
+use crate::service::util::markdown;
 use crate::service::{build as build_svc, util as svc_util};
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -45,17 +47,37 @@ pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome>
         (svc_util::resolve_project(root, project, cwd)?, None, args.article.clone())
     };
 
+    // Bug #22: a relative `--out` must be resolved against the same
+    // canonicalized base as the (possibly canonicalized) article path,
+    // otherwise the build service ends up comparing an absolute source
+    // directory against a relative output directory and cannot compute a
+    // valid relative image path between them. Canonicalizing cwd here
+    // (rather than a plain join) also keeps behavior identical when cwd is
+    // reached through a symlink (e.g. a git worktree under a symlinked path).
+    let output_override: Option<PathBuf> = match args.output.as_deref() {
+        Some(p) if p.is_absolute() => Some(p.to_path_buf()),
+        Some(p) => {
+            let cwd_canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+            Some(markdown::normalize_lexical(&cwd_canonical.join(p)))
+        }
+        None => None,
+    };
+
     let output = match article_path {
         Some(article_path) => build_svc::build_article_path(
             &project_path,
             root,
             &article_path,
             args.dry_run.dry_run,
-            args.output.as_deref(),
+            output_override.as_deref(),
         )?,
-        None => {
-            build_svc::build_article(&project_path, root, &article_name, args.dry_run.dry_run, args.output.as_deref())?
-        }
+        None => build_svc::build_article(
+            &project_path,
+            root,
+            &article_name,
+            args.dry_run.dry_run,
+            output_override.as_deref(),
+        )?,
     };
 
     match output {
@@ -102,8 +124,16 @@ pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome>
                 "size_bytes": result.size_bytes,
             });
 
+            // Bug #22 defense in depth: any reference the service could not
+            // safely rewrite is reported here (stderr + JSON envelope) rather
+            // than silently written as a malformed path.
+            let mut warnings = Vec::new();
+            for w in &result.warnings {
+                emit_warning(w, &mut warnings);
+            }
+
             match format {
-                crate::output::Format::Json => Ok(CommandOutcome::Success(data, Vec::new(), None)),
+                crate::output::Format::Json => Ok(CommandOutcome::Success(data, warnings, None)),
                 crate::output::Format::Text => {
                     let size_kb = format!("{:.1}", result.size_bytes as f64 / 1024.0);
                     let msg = format!(

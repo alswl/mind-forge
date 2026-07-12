@@ -12,11 +12,13 @@ use crate::model::article::Article;
 use crate::model::config::{MindConfig, PublishTarget, PublishTargetType};
 use crate::model::index::{PublishRecord, PublishStatus};
 use crate::model::publish::{
-    EffectiveDateOut, LocalRunOutcome, PublishRunOutcome, PublishUpdateOutcome, UpdateAction, YuquePromptRunOutcome,
+    EffectiveDateOut, LocalRunOutcome, PayloadTransforms, PublishRunOutcome, PublishUpdateOutcome, UpdateAction,
+    YuquePromptRunOutcome,
 };
 use crate::service::effective_date as effective_date_svc;
 use crate::service::index;
 use crate::service::publisher as publisher_svc;
+use crate::service::util::markdown;
 use crate::service::util::path_template::PathTemplate;
 use crate::service::{config as config_svc, util};
 
@@ -445,7 +447,9 @@ fn run_yuque_prompt(
 ) -> Result<YuquePromptRunOutcome> {
     let (artifact_path, _size_bytes) = locate_build_artifact(project_path, config, article_entry)?;
 
-    let content = fs::read_to_string(&artifact_path).map_err(MfError::Io)?;
+    let raw_content = fs::read_to_string(&artifact_path).map_err(MfError::Io)?;
+    let artifact_dir = artifact_path.parent().unwrap_or(Path::new("."));
+    let (content, transforms) = apply_svg_to_png_transform(&raw_content, artifact_dir);
 
     let envelope = target.config.clone().unwrap_or_else(|| serde_json::json!({}));
 
@@ -475,7 +479,34 @@ After publishing, run:\n\
         envelope,
         suggested_update_command,
         dry_run: args.dry_run.dry_run,
+        transforms,
     })
+}
+
+/// Substitute relative `.svg` image references with a sibling `.png` when one
+/// exists next to the build artifact (spec 064 FR-013). The outputs file on
+/// disk is never modified — this operates on an in-memory copy of the
+/// artifact content only. Absolute paths, URLs, and non-`.svg` references are
+/// left untouched.
+fn apply_svg_to_png_transform(content: &str, artifact_dir: &Path) -> (String, PayloadTransforms) {
+    let mut replaced = Vec::new();
+    let mut missing = Vec::new();
+
+    let new_content = markdown::rewrite_references(content, |target| {
+        if !target.ends_with(".svg") || !markdown::should_rewrite_target(target) {
+            return None;
+        }
+        let png_rel = Path::new(target).with_extension("png");
+        if artifact_dir.join(&png_rel).exists() {
+            replaced.push(target.to_string());
+            Some(png_rel.to_string_lossy().replace('\\', "/"))
+        } else {
+            missing.push(target.to_string());
+            None
+        }
+    });
+
+    (new_content, PayloadTransforms { svg_png_replaced: replaced, svg_png_missing: missing })
 }
 
 fn target_type_kebab(t: &PublishTargetType) -> &'static str {

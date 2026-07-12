@@ -14,6 +14,7 @@ use crate::model::publisher::PublishersOutcome;
 use crate::model::Resource;
 use crate::output::list::{render_text, ListCell, ListOpts, ListRow, ListView};
 use crate::output::show::{json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowOpts, ShowValue};
+use crate::output::warning::emit_warning;
 use crate::output::Format;
 use crate::service::publish as publish_svc;
 use crate::service::publisher as publisher_svc;
@@ -284,10 +285,23 @@ fn handle_target_show(args: &PublishTargetShowArgs, ctx: &CommandCtx) -> Result<
 }
 
 fn render_run_outcome(outcome: PublishRunOutcome, format: Format) -> Result<CommandOutcome> {
+    // Spec 064 FR-013: a `.svg` reference with no sibling `.png` is kept
+    // as-is and reported here as a warning (stderr + JSON envelope), not
+    // silently dropped.
+    let mut warnings = Vec::new();
+    if let PublishRunOutcome::YuquePrompt(o) = &outcome {
+        for missing in &o.transforms.svg_png_missing {
+            emit_warning(
+                &format!("no .png counterpart found for '{missing}'; kept original .svg reference"),
+                &mut warnings,
+            );
+        }
+    }
+
     match format {
         Format::Json => {
             let data = serde_json::to_value(&outcome)?;
-            Ok(CommandOutcome::Success(data, Vec::new(), None))
+            Ok(CommandOutcome::Success(data, warnings, None))
         }
         Format::Text => {
             let text = match &outcome {

@@ -2,19 +2,18 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Convert article shape between directory and single-file
+Manage blocks within a directory article
 
-Usage: mf article convert [OPTIONS]
+Usage: mf article block [OPTIONS] <COMMAND>
+
+Commands:
+  rename  Rename a block within a directory article
+  rm      Remove a block within a directory article [aliases: remove]
 
 Options:
       --root <PATH>      Mind Repo root directory
-      --to-single-file   Convert directory articles to single-file articles
       --config <PATH>    Config file path
-      --to-directory     Convert single-file articles to directory articles
-      --merge            Allow `--to-single-file` to merge multi-block directory articles
-                         (concatenated in filename order) instead of skipping them
   -v, --verbose...       Verbose output
-      --dry-run          Preview changes without writing
   -q, --quiet            Silence non-error output
   -o, --output <FORMAT>  Output format [default: text] [possible values: text, json]
       --json             Shorthand for --output json

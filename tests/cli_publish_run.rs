@@ -621,6 +621,128 @@ fn yuque_prompt_does_not_modify_index() {
 }
 
 // ---------------------------------------------------------------------------
+// Bug #21 (spec 064): yuque-prompt SVG→PNG payload transform
+// ---------------------------------------------------------------------------
+
+fn write_artifact_content(repo: &common::TempDir, content: &[u8]) {
+    fs::write(repo.path().join("my-project/_build/my-article.md"), content).unwrap();
+}
+
+#[test]
+fn yuque_prompt_svg_replaced_with_existing_sibling_png() {
+    let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
+    fs::create_dir_all(repo.path().join("my-project/_build/assets")).unwrap();
+    fs::write(repo.path().join("my-project/_build/assets/logo.png"), b"fake-png-bytes").unwrap();
+    write_artifact_content(
+        &repo,
+        b"# Hello\n\n![logo](assets/logo.svg)\n\n<img src=\"assets/logo.svg\" alt=\"logo\">\n",
+    );
+
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
+    assert_eq!(out.status.code(), Some(0), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let content = v["data"]["content"].as_str().unwrap();
+
+    assert!(content.contains("![logo](assets/logo.png)"), "markdown ref must be replaced: {content}");
+    assert!(content.contains(r#"<img src="assets/logo.png" alt="logo">"#), "html ref must be replaced: {content}");
+
+    // Both the Markdown image and the HTML <img> reference the same file, so
+    // each occurrence is reported (no cross-reference dedup).
+    let replaced = v["data"]["transforms"]["svg_png_replaced"].as_array().unwrap();
+    assert_eq!(replaced.len(), 2);
+    assert!(replaced.iter().all(|r| r == "assets/logo.svg"));
+    assert_eq!(v["data"]["transforms"]["svg_png_missing"], serde_json::json!([]));
+}
+
+#[test]
+fn yuque_prompt_svg_missing_png_kept_and_warned() {
+    let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
+    write_artifact_content(&repo, b"# Hello\n\n![logo](assets/missing.svg)\n");
+
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let content = v["data"]["content"].as_str().unwrap();
+
+    assert!(content.contains("![logo](assets/missing.svg)"), "svg ref must be kept as-is: {content}");
+    let missing = v["data"]["transforms"]["svg_png_missing"].as_array().unwrap();
+    assert_eq!(missing.len(), 1);
+    assert_eq!(missing[0], "assets/missing.svg");
+    assert_eq!(v["data"]["transforms"]["svg_png_replaced"], serde_json::json!([]));
+
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(stderr.contains("assets/missing.svg"), "stderr should name the missing reference: {stderr}");
+    assert!(stderr.contains("no .png counterpart"), "stderr: {stderr}");
+}
+
+#[test]
+fn yuque_prompt_svg_transform_skips_fenced_code_blocks() {
+    let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
+    fs::create_dir_all(repo.path().join("my-project/_build/assets")).unwrap();
+    fs::write(repo.path().join("my-project/_build/assets/logo.png"), b"fake-png-bytes").unwrap();
+    write_artifact_content(
+        &repo,
+        b"# Hello\n\n```markdown\n![logo](assets/logo.svg)\n```\n\n![real](assets/logo.svg)\n",
+    );
+
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let content = v["data"]["content"].as_str().unwrap();
+
+    // Fenced reference stays verbatim; the real one outside the fence is replaced.
+    assert!(content.contains("```markdown\n![logo](assets/logo.svg)\n```"), "fenced ref must stay verbatim: {content}");
+    assert!(content.contains("![real](assets/logo.png)"), "real ref must be replaced: {content}");
+}
+
+#[test]
+fn yuque_prompt_svg_transform_does_not_modify_outputs_file() {
+    let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
+    fs::create_dir_all(repo.path().join("my-project/_build/assets")).unwrap();
+    fs::write(repo.path().join("my-project/_build/assets/logo.png"), b"fake-png-bytes").unwrap();
+    let original = b"# Hello\n\n![logo](assets/logo.svg)\n".to_vec();
+    write_artifact_content(&repo, &original);
+
+    let out = run_publish(&repo, &["publish", "run", ARTICLE, "--target", "yuque-draft"]);
+    assert_eq!(out.status.code(), Some(0));
+
+    let artifact_after = fs::read(repo.path().join("my-project/_build/my-article.md")).unwrap();
+    assert_eq!(artifact_after, original, "outputs file on disk must never be modified by publish");
+}
+
+#[test]
+fn yuque_prompt_svg_transform_dry_run_still_returns_transformed_payload() {
+    let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
+    fs::create_dir_all(repo.path().join("my-project/_build/assets")).unwrap();
+    fs::write(repo.path().join("my-project/_build/assets/logo.png"), b"fake-png-bytes").unwrap();
+    write_artifact_content(&repo, b"# Hello\n\n![logo](assets/logo.svg)\n");
+
+    let out =
+        run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "yuque-draft", "--dry-run"]);
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"]["dry_run"], true);
+    let content = v["data"]["content"].as_str().unwrap();
+    assert!(content.contains("![logo](assets/logo.png)"), "dry-run must still preview the transform: {content}");
+}
+
+#[test]
+fn local_target_payload_untouched_by_svg_transform() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets(&local_target_yaml("blog", dest_root.path()));
+    fs::create_dir_all(repo.path().join("my-project/_build/assets")).unwrap();
+    fs::write(repo.path().join("my-project/_build/assets/logo.png"), b"fake-png-bytes").unwrap();
+    let original = b"# Hello\n\n![logo](assets/logo.svg)\n".to_vec();
+    write_artifact_content(&repo, &original);
+
+    let out = run_publish(&repo, &["publish", "run", ARTICLE, "--target", "blog"]);
+    assert_eq!(out.status.code(), Some(0));
+
+    let dest_file = dest_root.path().join("my-article.md");
+    assert_eq!(fs::read(&dest_file).unwrap(), original, "local target payload must not get the svg->png transform");
+}
+
+// ---------------------------------------------------------------------------
 // E2E — quickstart scenario A (SC-004)
 // ---------------------------------------------------------------------------
 

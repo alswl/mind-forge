@@ -314,14 +314,23 @@ open-domain judgment.
 `-o, --output <PATH>`, `--dry-run`. `ARTICLE` may be an indexed name/slug or
 a repo-relative path prefixed with `@` (e.g. `@projects/blog/docs/2026-03-review/`).
 Directory articles are built by merging Markdown files in filename order. Relative
-image/link/reference paths are automatically rewritten to resolve from the output
-directory; paths inside fenced code blocks, absolute paths, and URLs are left unchanged.
+image/link/reference paths (Markdown `![]()`/`[]()`/reference definitions and HTML
+`<img src>`) are automatically rewritten to resolve from the output directory,
+regardless of checkout location (main repo, git worktree, symlinked path); paths
+inside fenced code blocks, absolute paths, and URLs are left unchanged. A
+reference that cannot be safely rewritten is kept as-is and reported as a warning
+rather than written as a malformed path.
+
+A management banner can be injected into every build via `build.banner` in
+`mind.yaml` (`text`, optional `level: note|tip|warning|danger`) — it survives
+rebuilds since it is generated from config each time, not hand-edited into
+`outputs/`.
 
 ### `mf publish` — Publish articles & manage targets
 
 | Subcommand | Description |
 |-----------|-------------|
-| `run <ARTICLE>` | Publish to a target (supported: `local`, `yuque-prompt`). `--target <TARGET>` (optional when `publish.default_target` is configured). File-based publishers discovered for both explicit and default targets. Local publishers honor `config.prefix`. |
+| `run <ARTICLE>` | Publish to a target (supported: `local`, `yuque-prompt`). `--target <TARGET>` (optional when `publish.default_target` is configured). File-based publishers discovered for both explicit and default targets. Local publishers honor `config.prefix`. For `yuque-prompt` targets, relative `.svg` image references in the payload are substituted with a sibling `.png` when one exists next to the build artifact (kept as-is with a warning otherwise); the result is reported in an additive `transforms: { svg_png_replaced, svg_png_missing }` field. This only affects the in-memory payload — the build artifact on disk is never modified. |
 | `update <ARTICLE>` | Update a publish record. `--target <TARGET>` (required), `--status draft\|published\|archived`, `--target-url <URL>`, `--set <KEY=VALUE>` |
 | `target list` | List publish targets and diagnostics |
 | `target show <NAME>` | Show publish target details |

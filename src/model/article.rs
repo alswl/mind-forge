@@ -184,6 +184,10 @@ pub struct ConversionResult {
     pub reason: Option<String>,
     pub index_updated: bool,
     pub source_removed: bool,
+    /// Source block files folded into the target, in merge order. Present
+    /// only when this conversion merged multiple blocks (spec 064 FR-007).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub merged_section_files: Option<Vec<String>>,
 }
 
 /// Top-level conversion command result.

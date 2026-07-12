@@ -9,6 +9,8 @@ All notable changes to this project will be documented in this file.
 - Clarify `--filter`/`--alias`/`--tag` help text for `term list`
 
 ### Features
+- Add `mf article block rm` to remove a single block from a directory article (refuses to remove the last remaining block); add `mf article convert --to-single-file --merge` to collapse multi-block directory articles into a single file, re-depthing asset references and rebinding any bound prompt (spec 064)
+- `mf publish run` on `yuque-prompt` targets substitutes relative `.svg` image references with a sibling `.png` when one exists, reporting the result in an additive `transforms` field; the build artifact on disk is never modified (spec 064)
 - Complete term CLI lifecycle (spec 051)
 - Boundary-aware linting with standalone mode (spec 044)
 - Add model update commands
@@ -21,6 +23,7 @@ All notable changes to this project will be documented in this file.
 - Align CLI internals with rust-cli.md guide (spec 049)
 
 ### Bug Fixes
+- `mf build` no longer emits malformed image/link paths (mixing a relative prefix with an absolute path) when a canonicalized `@`-path is combined with a relative `--out`, including from git worktrees or symlinked checkouts; also now rewrites HTML `<img src>` references, not just Markdown; an unresolvable reference is kept as-is and reported as a warning instead of written malformed (spec 064)
 - `article rm` resolves the target by title, `article_path`, or index key (with or without `.md`) and persists the index removal for every form; no more false success leaving a dangling entry (spec 062)
 - `project index` also reconciles each project's article index, pruning stale entries whose target file is absent on disk; declared/template-origin articles with existing files are never removed; per-project reconcile failures surface as warnings instead of silent skips (spec 062)
 - Strip ./ prefix from project paths for consistency
