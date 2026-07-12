@@ -12,11 +12,13 @@ use crate::model::article::Article;
 use crate::model::config::{MindConfig, PublishTarget, PublishTargetType};
 use crate::model::index::{PublishRecord, PublishStatus};
 use crate::model::publish::{
-    EffectiveDateOut, LocalRunOutcome, PublishRunOutcome, PublishUpdateOutcome, UpdateAction, YuquePromptRunOutcome,
+    EffectiveDateOut, LocalRunOutcome, PayloadTransforms, PublishRunOutcome, PublishUpdateOutcome, UpdateAction,
+    YuquePromptRunOutcome,
 };
 use crate::service::effective_date as effective_date_svc;
 use crate::service::index;
 use crate::service::publisher as publisher_svc;
+use crate::service::util::markdown;
 use crate::service::util::path_template::PathTemplate;
 use crate::service::{config as config_svc, util};
 
@@ -445,7 +447,9 @@ fn run_yuque_prompt(
 ) -> Result<YuquePromptRunOutcome> {
     let (artifact_path, _size_bytes) = locate_build_artifact(project_path, config, article_entry)?;
 
-    let content = fs::read_to_string(&artifact_path).map_err(MfError::Io)?;
+    let raw_content = fs::read_to_string(&artifact_path).map_err(MfError::Io)?;
+    let artifact_dir = artifact_path.parent().unwrap_or(Path::new("."));
+    let (content, transforms) = apply_svg_to_png_transform(&raw_content, artifact_dir);
 
     let envelope = target.config.clone().unwrap_or_else(|| serde_json::json!({}));
 
@@ -475,7 +479,34 @@ After publishing, run:\n\
         envelope,
         suggested_update_command,
         dry_run: args.dry_run.dry_run,
+        transforms,
     })
+}
+
+/// Substitute relative `.svg` image references with a sibling `.png` when one
+/// exists next to the build artifact (spec 064 FR-013). The outputs file on
+/// disk is never modified — this operates on an in-memory copy of the
+/// artifact content only. Absolute paths, URLs, and non-`.svg` references are
+/// left untouched.
+fn apply_svg_to_png_transform(content: &str, artifact_dir: &Path) -> (String, PayloadTransforms) {
+    let mut replaced = Vec::new();
+    let mut missing = Vec::new();
+
+    let new_content = markdown::rewrite_references(content, |target| {
+        if !target.ends_with(".svg") || !markdown::should_rewrite_target(target) {
+            return None;
+        }
+        let png_rel = Path::new(target).with_extension("png");
+        if artifact_dir.join(&png_rel).exists() {
+            replaced.push(target.to_string());
+            Some(png_rel.to_string_lossy().replace('\\', "/"))
+        } else {
+            missing.push(target.to_string());
+            None
+        }
+    });
+
+    (new_content, PayloadTransforms { svg_png_replaced: replaced, svg_png_missing: missing })
 }
 
 fn target_type_kebab(t: &PublishTargetType) -> &'static str {
@@ -486,5 +517,58 @@ fn target_type_kebab(t: &PublishTargetType) -> &'static str {
         PublishTargetType::GithubPages => "github_pages",
         PublishTargetType::Custom => "custom",
         PublishTargetType::YuqueCc => "yuque_cc",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::*;
+
+    #[test]
+    fn svg_to_png_transform_rewrites_markdown_and_html_and_records_replacements() {
+        let tmp = tempfile::tempdir().unwrap();
+        let artifact_dir = tmp.path();
+        fs::create_dir_all(artifact_dir.join("assets")).unwrap();
+        fs::write(artifact_dir.join("assets/logo.png"), b"png").unwrap();
+
+        let input = "# Hello\n\n![logo](assets/logo.svg)\n\n<img src=\"assets/logo.svg\" alt=\"logo\">\n";
+        let (content, transforms) = apply_svg_to_png_transform(input, artifact_dir);
+
+        assert!(content.contains("![logo](assets/logo.png)"), "Markdown svg ref should become png: {content}");
+        assert!(
+            content.contains(r#"<img src="assets/logo.png" alt="logo">"#),
+            "HTML svg ref should become png: {content}"
+        );
+        assert!(!content.contains("assets/logo.svg"), "rewritten payload should not keep replaced svg refs: {content}");
+        assert_eq!(transforms.svg_png_replaced, vec!["assets/logo.svg", "assets/logo.svg"]);
+        assert!(transforms.svg_png_missing.is_empty(), "no missing png should be recorded");
+    }
+
+    #[test]
+    fn svg_to_png_transform_keeps_missing_and_skips_fenced_absolute_url_and_data_refs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let artifact_dir = tmp.path();
+        fs::create_dir_all(artifact_dir.join("assets")).unwrap();
+
+        let input = concat!(
+            "```markdown\n",
+            "![fenced](assets/logo.svg)\n",
+            "```\n\n",
+            "![missing](assets/missing.svg)\n",
+            "![absolute](/assets/absolute.svg)\n",
+            "![url](https://example.test/logo.svg)\n",
+            "![data](data:image/svg+xml;base64,AAAA)\n",
+        );
+        let (content, transforms) = apply_svg_to_png_transform(input, artifact_dir);
+
+        assert!(content.contains("```markdown\n![fenced](assets/logo.svg)\n```"), "fenced ref must stay verbatim");
+        assert!(content.contains("![missing](assets/missing.svg)"), "missing sibling should keep original svg");
+        assert!(content.contains("![absolute](/assets/absolute.svg)"), "absolute path should not be transformed");
+        assert!(content.contains("![url](https://example.test/logo.svg)"), "URL should not be transformed");
+        assert!(content.contains("![data](data:image/svg+xml;base64,AAAA)"), "data URI should not be transformed");
+        assert!(transforms.svg_png_replaced.is_empty(), "no replacements expected");
+        assert_eq!(transforms.svg_png_missing, vec!["assets/missing.svg"]);
     }
 }

@@ -207,55 +207,7 @@ pub fn rename_block(
         ));
     }
 
-    // Parse old_block: full filename like "02-notes.md", filename without extension
-    // like "02-notes", or just the slug like "notes"
-    let old_block_filename = if old_block.contains('.') {
-        if !old_block.ends_with(".md") {
-            return Err(MfError::usage(
-                format!("block identifier '{}' must be a .md file", old_block),
-                Some("use the filename (e.g. '02-notes.md') or the slug (e.g. 'notes')".to_string()),
-            ));
-        }
-        old_block.to_string()
-    } else {
-        let sanitized_old = util::to_filename(old_block);
-        // First pass: exact match against filename without extension (e.g. "02-notes")
-        let mut candidates: Vec<&String> = section_files
-            .iter()
-            .filter(|f| {
-                let name = Path::new(f).file_name().and_then(|n| n.to_str()).unwrap_or("");
-                name.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)) == Some(&sanitized_old)
-            })
-            .collect();
-        // Second pass: match by slug only if the first pass found nothing
-        if candidates.is_empty() {
-            candidates = section_files
-                .iter()
-                .filter(|f| {
-                    let name = Path::new(f).file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    extract_slug_from_filename(name).as_deref() == Some(&sanitized_old)
-                })
-                .collect();
-        }
-        match candidates.len() {
-            0 => {
-                return Err(MfError::not_found(
-                    format!("block '{}' not found in article '{}'", old_block, article_path),
-                    Some("use `mf article show <article>` to list blocks".to_string()),
-                ));
-            }
-            1 => {
-                let full_path = candidates[0];
-                Path::new(full_path).file_name().and_then(|n| n.to_str()).unwrap_or("").to_string()
-            }
-            _ => {
-                return Err(MfError::usage(
-                    format!("multiple blocks match '{}' in article '{}'", old_block, article_path),
-                    Some("use the full filename (e.g. '02-notes.md') to disambiguate".to_string()),
-                ));
-            }
-        }
-    };
+    let old_block_filename = resolve_block_filename(&section_files, article_path, old_block)?;
 
     // 3. Verify the block file exists on disk
     let old_block_full_path = article_full.join(&old_block_filename);
@@ -314,6 +266,54 @@ pub fn rename_block(
     })
 }
 
+/// Resolve a block identifier (full filename like "02-notes.md", filename
+/// stem like "02-notes", or slug like "notes") against a directory article's
+/// block files. Returns the matched filename. Does not verify the file
+/// exists on disk — callers do that themselves. Shared by `rename_block` and
+/// `block::remove_block`.
+pub(crate) fn resolve_block_filename(section_files: &[String], article_path: &str, block: &str) -> Result<String> {
+    if block.contains('.') {
+        if !block.ends_with(".md") {
+            return Err(MfError::usage(
+                format!("block identifier '{}' must be a .md file", block),
+                Some("use the filename (e.g. '02-notes.md') or the slug (e.g. 'notes')".to_string()),
+            ));
+        }
+        return Ok(block.to_string());
+    }
+
+    let sanitized = util::to_filename(block);
+    // First pass: exact match against filename without extension (e.g. "02-notes")
+    let mut candidates: Vec<&String> = section_files
+        .iter()
+        .filter(|f| {
+            let name = Path::new(f.as_str()).file_name().and_then(|n| n.to_str()).unwrap_or("");
+            name.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)) == Some(sanitized.as_str())
+        })
+        .collect();
+    // Second pass: match by slug only if the first pass found nothing
+    if candidates.is_empty() {
+        candidates = section_files
+            .iter()
+            .filter(|f| {
+                let name = Path::new(f.as_str()).file_name().and_then(|n| n.to_str()).unwrap_or("");
+                extract_slug_from_filename(name).as_deref() == Some(sanitized.as_str())
+            })
+            .collect();
+    }
+    match candidates.len() {
+        0 => Err(MfError::not_found(
+            format!("block '{}' not found in article '{}'", block, article_path),
+            Some("use `mf article show <article>` to list blocks".to_string()),
+        )),
+        1 => Ok(Path::new(candidates[0].as_str()).file_name().and_then(|n| n.to_str()).unwrap_or("").to_string()),
+        _ => Err(MfError::usage(
+            format!("multiple blocks match '{}' in article '{}'", block, article_path),
+            Some("use the full filename (e.g. '02-notes.md') to disambiguate".to_string()),
+        )),
+    }
+}
+
 /// Extract the numeric prefix from a block filename like "02-notes.md" → "02".
 fn extract_number_prefix(filename: &str) -> Option<String> {
     let name = filename.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)).unwrap_or(filename);
@@ -339,7 +339,11 @@ fn extract_slug_from_filename(filename: &str) -> Option<String> {
 }
 
 /// Replace the `article:` binding in a prompt's YAML frontmatter.
-fn update_prompt_article_binding(content: &str, old_path: &str, new_path: &str) -> String {
+///
+/// Shared with the article-conversion path (spec 064 FR-010): converting a
+/// directory article to a single file also changes `article_path`, and any
+/// prompt bound to the old path must be rebound the same way a rename does.
+pub(crate) fn update_prompt_article_binding(content: &str, old_path: &str, new_path: &str) -> String {
     let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
     let mut in_frontmatter = false;
     let mut frontmatter_open = false;

@@ -1,6 +1,13 @@
 use super::*;
 
 pub(super) fn handle_convert(args: ArticleConvertArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+    if args.merge && !args.to_single_file {
+        return Err(MfError::usage(
+            "--merge requires --to-single-file",
+            Some("pass `--to-single-file --merge` to merge multi-block directory articles".to_string()),
+        ));
+    }
+
     let root = ctx.require_repo_path()?;
     let format = ctx.format();
     let project_path = svc_util::resolve_project(root, ctx.project(), ctx.cwd())?;
@@ -23,7 +30,7 @@ pub(super) fn handle_convert(args: ArticleConvertArgs, ctx: &mut CommandCtx) -> 
         }
     };
 
-    let inspections = article_svc::plan_conversion(&project_path, &article_paths, direction)?;
+    let inspections = article_svc::plan_conversion(&project_path, &article_paths, direction, args.merge)?;
 
     let mut converted: Vec<ConversionResult> = Vec::new();
     let mut skipped: Vec<ConversionResult> = Vec::new();
@@ -55,6 +62,20 @@ pub(super) fn handle_convert(args: ArticleConvertArgs, ctx: &mut CommandCtx) -> 
                 match article_svc::update_index_for_conversion(&project_path, &conv.source_path, &conv.target_path) {
                     Ok(()) => {
                         conv.index_updated = true;
+                        // Spec 064 FR-010: keep any prompt bound to this article
+                        // valid across the path change. Best-effort — a failure
+                        // here does not roll back the conversion.
+                        if let Err(e) = article_svc::update_prompt_binding_for_conversion(
+                            &project_path,
+                            &conv.source_path,
+                            &conv.target_path,
+                        ) {
+                            tracing::warn!(
+                                "failed to rebind prompt for converted article '{}': {}",
+                                conv.source_path,
+                                e
+                            );
+                        }
                         converted.push(conv);
                     }
                     Err(e) => {

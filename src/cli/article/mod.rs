@@ -24,7 +24,7 @@ use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, 
 use crate::output::Format;
 use crate::service::{article as article_svc, config as config_svc, identity, util as svc_util};
 
-use self::block::handle_block_rename;
+use self::block::{handle_block_rename, handle_block_rm};
 use self::convert::handle_convert;
 use self::lint::handle_lint;
 use self::show::handle_article_show;
@@ -156,6 +156,10 @@ pub struct ArticleConvertArgs {
     /// Convert single-file articles to directory articles
     #[arg(long = "to-directory", conflicts_with = "to_single_file")]
     pub to_directory: bool,
+    /// Allow `--to-single-file` to merge multi-block directory articles
+    /// (concatenated in filename order) instead of skipping them
+    #[arg(long)]
+    pub merge: bool,
     /// Preview conversions without writing changes
     #[command(flatten)]
     pub dry_run: DryRunFlag,
@@ -165,6 +169,8 @@ pub struct ArticleConvertArgs {
 pub enum ArticleBlockSubcommand {
     #[command(about = "Rename a block within a directory article")]
     Rename(ArticleBlockRenameArgs),
+    #[command(about = "Remove a block within a directory article", visible_alias = "remove")]
+    Rm(ArticleBlockRmArgs),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -177,6 +183,20 @@ pub struct ArticleBlockRenameArgs {
     pub new_slug: String,
     #[command(flatten)]
     pub force: ForceFlag,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ArticleBlockRmArgs {
+    /// Article path (e.g. docs/my-article) or title
+    pub article: String,
+    /// Block filename (e.g. "02-notes.md"), stem (e.g. "02-notes"), or slug (e.g. "notes")
+    pub block: String,
+    #[command(flatten)]
+    pub force: ForceFlag,
+    #[command(flatten)]
+    pub yes: YesFlag,
     #[command(flatten)]
     pub dry_run: DryRunFlag,
 }
@@ -680,6 +700,7 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
         }
         Some(ArticleSubcommand::Block(block_cmd)) => match block_cmd {
             ArticleBlockSubcommand::Rename(args) => handle_block_rename(args, ctx),
+            ArticleBlockSubcommand::Rm(args) => handle_block_rm(args, ctx),
         },
         Some(ArticleSubcommand::Convert(args)) => handle_convert(args, ctx),
     }

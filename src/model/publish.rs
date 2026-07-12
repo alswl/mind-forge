@@ -41,6 +41,22 @@ pub struct YuquePromptRunOutcome {
     pub envelope: serde_json::Value,
     pub suggested_update_command: String,
     pub dry_run: bool,
+    /// SVG→PNG payload substitutions applied to `content` (spec 064 FR-013).
+    /// The outputs file on disk is never modified; this only describes the
+    /// in-memory payload transform.
+    pub transforms: PayloadTransforms,
+}
+
+/// Payload transforms applied to a yuque-prompt publish payload.
+///
+/// Empty vectors serialize as `[]` (constitution V determinism), never
+/// omitted, so callers can always inspect what happened.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct PayloadTransforms {
+    /// Relative `.svg` references substituted with an existing sibling `.png`.
+    pub svg_png_replaced: Vec<String>,
+    /// Relative `.svg` references kept as-is because no sibling `.png` exists.
+    pub svg_png_missing: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -93,11 +109,14 @@ mod tests {
             suggested_update_command: "mf publish update a --target tgt --status published --target-url <URL>"
                 .to_string(),
             dry_run: true,
+            transforms: PayloadTransforms::default(),
         });
         let v = serde_json::to_value(&outcome).unwrap();
         assert_eq!(v["target_type"], "yuque-prompt");
         assert_eq!(v["dry_run"], true);
         assert_eq!(v["envelope"], serde_json::json!({}));
+        assert_eq!(v["transforms"]["svg_png_replaced"], serde_json::json!([]));
+        assert_eq!(v["transforms"]["svg_png_missing"], serde_json::json!([]));
     }
 
     #[test]

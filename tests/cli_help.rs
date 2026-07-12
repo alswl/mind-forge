@@ -255,6 +255,27 @@ fn article_convert_help_snapshot() {
 }
 
 #[test]
+fn article_block_help_snapshot() {
+    let (stdout, _, code) = run(&["article", "block", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("article_block_help", stdout);
+}
+
+#[test]
+fn article_block_rename_help_snapshot() {
+    let (stdout, _, code) = run(&["article", "block", "rename", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("article_block_rename_help", stdout);
+}
+
+#[test]
+fn article_block_rm_help_snapshot() {
+    let (stdout, _, code) = run(&["article", "block", "rm", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("article_block_rm_help", stdout);
+}
+
+#[test]
 fn render_template_list_help_snapshot() {
     let (stdout, _, code) = run(&["render", "template", "list", "--help"]);
     assert_eq!(code, 0);
