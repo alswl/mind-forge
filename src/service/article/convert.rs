@@ -392,3 +392,75 @@ pub fn update_prompt_binding_for_conversion(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::*;
+
+    fn write_section(project: &Path, rel: &str, content: &str) {
+        let path = project.join(rel);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, content).unwrap();
+    }
+
+    #[test]
+    fn inspect_multi_block_directory_requires_merge_opt_in() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path();
+        write_section(project, "docs/my-article/01-opening.md", "# Opening\n");
+        write_section(project, "docs/my-article/02-body.md", "## Body\n");
+
+        let without_merge =
+            inspect_candidate(project, "docs/my-article", ConversionDirection::ToSingleFile, false).unwrap();
+        assert!(!without_merge.eligible, "multi-block directory must skip without --merge");
+        assert_eq!(without_merge.skip_reason.as_deref(), Some(skip_reason::MULTIPLE_SECTION_FILES));
+        assert!(without_merge.section_files.is_empty(), "skipped candidate should not expose merge inputs");
+
+        let with_merge =
+            inspect_candidate(project, "docs/my-article", ConversionDirection::ToSingleFile, true).unwrap();
+        assert!(with_merge.eligible, "multi-block directory must become eligible with --merge");
+        assert_eq!(
+            with_merge.section_files,
+            vec!["docs/my-article/01-opening.md".to_string(), "docs/my-article/02-body.md".to_string()]
+        );
+        assert_eq!(with_merge.target_path, "docs/my-article.md");
+    }
+
+    #[test]
+    fn execute_to_single_file_merge_strips_frontmatter_rewrites_assets_and_removes_source_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path();
+        fs::create_dir_all(project.join("assets")).unwrap();
+        fs::write(project.join("assets/pic.png"), b"png").unwrap();
+        write_section(
+            project,
+            "docs/my-article/01-opening.md",
+            "---\ntypora-copy-images-to: ../assets\n---\n# Opening\n\n![hero](../../assets/pic.png)\n",
+        );
+        write_section(
+            project,
+            "docs/my-article/02-body.md",
+            "---\ntypora-copy-images-to: ../assets\n---\n## Body\n\n<img src=\"../../assets/pic.png\">\n",
+        );
+
+        let inspection =
+            inspect_candidate(project, "docs/my-article", ConversionDirection::ToSingleFile, true).unwrap();
+        let result = execute_to_single_file(project, &inspection).unwrap();
+
+        assert_eq!(result.status, ConversionStatus::Converted);
+        assert_eq!(
+            result.merged_section_files.as_deref(),
+            Some(&["docs/my-article/01-opening.md".to_string(), "docs/my-article/02-body.md".to_string()][..])
+        );
+        assert!(!project.join("docs/my-article").exists(), "source directory should be removed");
+        assert!(project.join("docs/my-article.md").exists(), "target single-file article should be created");
+
+        let content = fs::read_to_string(project.join("docs/my-article.md")).unwrap();
+        assert!(!content.contains("typora-copy-images-to"), "Typora frontmatter must be stripped: {content}");
+        assert!(content.find("# Opening").unwrap() < content.find("## Body").unwrap(), "merge order: {content}");
+        assert!(content.contains("![hero](../assets/pic.png)"), "Markdown image path must be re-depthed: {content}");
+        assert!(content.contains(r#"<img src="../assets/pic.png">"#), "HTML image path must be re-depthed: {content}");
+    }
+}

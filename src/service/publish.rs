@@ -519,3 +519,56 @@ fn target_type_kebab(t: &PublishTargetType) -> &'static str {
         PublishTargetType::YuqueCc => "yuque_cc",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::*;
+
+    #[test]
+    fn svg_to_png_transform_rewrites_markdown_and_html_and_records_replacements() {
+        let tmp = tempfile::tempdir().unwrap();
+        let artifact_dir = tmp.path();
+        fs::create_dir_all(artifact_dir.join("assets")).unwrap();
+        fs::write(artifact_dir.join("assets/logo.png"), b"png").unwrap();
+
+        let input = "# Hello\n\n![logo](assets/logo.svg)\n\n<img src=\"assets/logo.svg\" alt=\"logo\">\n";
+        let (content, transforms) = apply_svg_to_png_transform(input, artifact_dir);
+
+        assert!(content.contains("![logo](assets/logo.png)"), "Markdown svg ref should become png: {content}");
+        assert!(
+            content.contains(r#"<img src="assets/logo.png" alt="logo">"#),
+            "HTML svg ref should become png: {content}"
+        );
+        assert!(!content.contains("assets/logo.svg"), "rewritten payload should not keep replaced svg refs: {content}");
+        assert_eq!(transforms.svg_png_replaced, vec!["assets/logo.svg", "assets/logo.svg"]);
+        assert!(transforms.svg_png_missing.is_empty(), "no missing png should be recorded");
+    }
+
+    #[test]
+    fn svg_to_png_transform_keeps_missing_and_skips_fenced_absolute_url_and_data_refs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let artifact_dir = tmp.path();
+        fs::create_dir_all(artifact_dir.join("assets")).unwrap();
+
+        let input = concat!(
+            "```markdown\n",
+            "![fenced](assets/logo.svg)\n",
+            "```\n\n",
+            "![missing](assets/missing.svg)\n",
+            "![absolute](/assets/absolute.svg)\n",
+            "![url](https://example.test/logo.svg)\n",
+            "![data](data:image/svg+xml;base64,AAAA)\n",
+        );
+        let (content, transforms) = apply_svg_to_png_transform(input, artifact_dir);
+
+        assert!(content.contains("```markdown\n![fenced](assets/logo.svg)\n```"), "fenced ref must stay verbatim");
+        assert!(content.contains("![missing](assets/missing.svg)"), "missing sibling should keep original svg");
+        assert!(content.contains("![absolute](/assets/absolute.svg)"), "absolute path should not be transformed");
+        assert!(content.contains("![url](https://example.test/logo.svg)"), "URL should not be transformed");
+        assert!(content.contains("![data](data:image/svg+xml;base64,AAAA)"), "data URI should not be transformed");
+        assert!(transforms.svg_png_replaced.is_empty(), "no replacements expected");
+        assert_eq!(transforms.svg_png_missing, vec!["assets/missing.svg"]);
+    }
+}
