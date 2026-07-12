@@ -1,6 +1,7 @@
 use assert_cmd::Command;
 use predicates::str;
 use std::fs;
+use std::path::Path;
 
 mod common;
 
@@ -998,6 +999,64 @@ fn build_at_path_with_relative_out_produces_valid_relative_paths() {
     );
     assert!(!content.contains("////"), "must never contain a malformed path fragment: {content}");
     assert!(!content.contains("..//"), "must never contain a malformed path fragment: {content}");
+}
+
+/// Bug #22 corrected repro: the malformed-path case is not specific to
+/// worktree depth. It appears when `--out` is outside the project tree, so
+/// build must still emit a resolvable relative path instead of stitching a
+/// relative prefix to an absolute asset path.
+#[test]
+fn build_with_absolute_outside_repo_out_produces_resolvable_relative_paths() {
+    let repo = tempfile::TempDir::new().unwrap();
+    fs::write(repo.path().join("minds.yaml"), "schema: '1'\nprojects:\n  - projects/2026-blogs\n").unwrap();
+    let project = repo.path().join("projects/2026-blogs");
+    let asset = project.join("assets/pic.png");
+    fs::create_dir_all(project.join("docs/my-article")).unwrap();
+    fs::create_dir_all(project.join("assets")).unwrap();
+    fs::write(project.join("mind.yaml"), "schema: '1'\n").unwrap();
+    fs::write(&asset, b"png").unwrap();
+    fs::write(
+        project.join("docs/my-article/01-opening.md"),
+        "# Opening\n\n![hero](../../assets/pic.png)\n\n[ref]: ../../assets/pic.png\n\n<img src=\"../../assets/pic.png\" alt=\"hero\">\n",
+    )
+    .unwrap();
+
+    let outside = tempfile::TempDir::new().unwrap();
+    let output_path = outside.path().join("exports/my-article.md");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project)
+        .args(["build", "@projects/2026-blogs/docs/my-article/", "--out", output_path.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(&output_path).unwrap();
+    assert!(!content.contains(&project.display().to_string()), "must not embed the project absolute path: {content}");
+    assert!(!content.contains("////"), "must never contain a malformed path fragment: {content}");
+    assert!(!content.contains("..//"), "must never contain a malformed path fragment: {content}");
+
+    let expected_asset = asset.canonicalize().unwrap();
+    let output_dir = output_path.parent().unwrap();
+    for target in [
+        extract_between(&content, "![hero](", ")"),
+        extract_between(&content, "[ref]: ", "\n"),
+        extract_between(&content, r#"<img src=""#, r#"""#),
+    ] {
+        assert!(!Path::new(target).is_absolute(), "output reference must be relative: {target}");
+        assert_eq!(
+            output_dir.join(target).canonicalize().unwrap(),
+            expected_asset,
+            "output reference must resolve to the original asset: {target}"
+        );
+    }
+}
+
+fn extract_between<'a>(content: &'a str, start: &str, end: &str) -> &'a str {
+    let start_idx = content.find(start).unwrap_or_else(|| panic!("missing start marker {start:?} in {content:?}"));
+    let rest = &content[start_idx + start.len()..];
+    let end_idx = rest.find(end).unwrap_or_else(|| panic!("missing end marker {end:?} after {start:?} in {content:?}"));
+    &rest[..end_idx]
 }
 
 /// Bug #22: building the same article via `@`-path + relative `--out` and via

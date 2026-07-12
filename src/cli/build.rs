@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use clap::Args;
@@ -47,21 +48,12 @@ pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome>
         (svc_util::resolve_project(root, project, cwd)?, None, args.article.clone())
     };
 
-    // Bug #22: a relative `--out` must be resolved against the same
-    // canonicalized base as the (possibly canonicalized) article path,
-    // otherwise the build service ends up comparing an absolute source
-    // directory against a relative output directory and cannot compute a
-    // valid relative image path between them. Canonicalizing cwd here
-    // (rather than a plain join) also keeps behavior identical when cwd is
-    // reached through a symlink (e.g. a git worktree under a symlinked path).
-    let output_override: Option<PathBuf> = match args.output.as_deref() {
-        Some(p) if p.is_absolute() => Some(p.to_path_buf()),
-        Some(p) => {
-            let cwd_canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
-            Some(markdown::normalize_lexical(&cwd_canonical.join(p)))
-        }
-        None => None,
-    };
+    // Bug #22: `--out` must be normalized against the same canonical path
+    // space as the source article. Otherwise the build service can compare
+    // paths like `/private/var/...` and `/var/...` as if they were unrelated,
+    // then emit a relative path that climbs to the filesystem root before
+    // descending into the asset tree.
+    let output_override: Option<PathBuf> = args.output.as_deref().map(|p| normalize_output_override(cwd, p));
 
     let output = match article_path {
         Some(article_path) => build_svc::build_article_path(
@@ -174,4 +166,36 @@ fn project_root_for_source(repo_root: &Path, article_path: &Path) -> Result<Path
             })?
             .to_path_buf();
     }
+}
+
+fn normalize_output_override(cwd: &Path, output: &Path) -> PathBuf {
+    let path = if output.is_absolute() {
+        output.to_path_buf()
+    } else {
+        let cwd_canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+        cwd_canonical.join(output)
+    };
+    canonicalize_existing_prefix(&path)
+}
+
+fn canonicalize_existing_prefix(path: &Path) -> PathBuf {
+    let mut cursor = path.to_path_buf();
+    let mut suffix: Vec<OsString> = Vec::new();
+
+    while !cursor.exists() {
+        let Some(name) = cursor.file_name() else {
+            return markdown::normalize_lexical(path);
+        };
+        suffix.push(name.to_os_string());
+        let Some(parent) = cursor.parent() else {
+            return markdown::normalize_lexical(path);
+        };
+        cursor = parent.to_path_buf();
+    }
+
+    let mut normalized = cursor.canonicalize().unwrap_or(cursor);
+    for part in suffix.iter().rev() {
+        normalized.push(part);
+    }
+    markdown::normalize_lexical(&normalized)
 }

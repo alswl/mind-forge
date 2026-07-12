@@ -279,6 +279,12 @@ pub fn relative_path_from(from: &Path, to: &Path) -> Option<String> {
 
     // Find common prefix length
     let common_len = from_comps.iter().zip(to_comps.iter()).take_while(|(a, b)| a == b).count();
+    if from.is_absolute() {
+        let anchor_len = absolute_anchor_len(&from_comps).max(absolute_anchor_len(&to_comps));
+        if common_len <= anchor_len {
+            return None;
+        }
+    }
 
     let up_count = from_comps.len() - common_len;
     let mut parts: Vec<&str> = vec![".."; up_count];
@@ -291,6 +297,10 @@ pub fn relative_path_from(from: &Path, to: &Path) -> Option<String> {
         return Some(".".to_string());
     }
     Some(parts.join("/"))
+}
+
+fn absolute_anchor_len(comps: &[Component<'_>]) -> usize {
+    comps.iter().take_while(|comp| matches!(comp, Component::Prefix(_) | Component::RootDir)).count()
 }
 
 /// Resolve a relative link/image `target` (interpreted relative to
@@ -637,6 +647,11 @@ mod tests {
             relative_path_from(Path::new("/repo/outputs"), Path::new("/repo/assets/x.png")).unwrap(),
             "../assets/x.png"
         );
+    }
+
+    #[test]
+    fn relative_path_from_rejects_root_only_absolute_common_prefix() {
+        assert_eq!(relative_path_from(Path::new("/tmp/out"), Path::new("/Users/me/repo/assets/x.png")), None);
     }
 
     #[test]
