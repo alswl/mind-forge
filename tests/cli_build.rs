@@ -1199,11 +1199,10 @@ fn build_dry_run_output_unaffected_by_prompts_and_thinking_data() {
     )
     .unwrap();
     std::fs::write(project.join("thinking/regression-test.md"), "## Notes\n\nLedger.\n").unwrap();
-    Command::cargo_bin("mf").expect("binary exists").current_dir(&project).args(["prompt", "index"]).assert().success();
     Command::cargo_bin("mf")
         .expect("binary exists")
         .current_dir(&project)
-        .args(["thinking", "index"])
+        .args(["article", "index"])
         .assert()
         .success();
 

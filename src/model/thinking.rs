@@ -4,9 +4,8 @@ use serde::{Deserialize, Serialize};
 ///
 /// The Markdown file is the source of truth. `article` associates the ledger
 /// with an article by key alignment (no thinking-specific frontmatter is
-/// required). `binding_status` is never persisted — it is computed at query
-/// time against the current `articles` set (see
-/// `service::index::resolve_thinking_bindings`).
+/// required). Presence for a given article is resolved at query time (see
+/// `service::article::thinking_view_for_article`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Thinking {
     #[serde(default)]

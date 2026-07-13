@@ -14,7 +14,7 @@ fn run(args: &[&str]) -> (String, String, i32) {
 /// Spec 065 FR-012: converting an article's shape (single-file <-> directory)
 /// keeps a bound prompt's frontmatter and both projections consistent — no
 /// spurious `orphan_prompt`/`missing_thinking` finding immediately after
-/// conversion, without an explicit `mf prompt index`/`mf thinking index`.
+/// conversion, without an explicit `mf article index`.
 #[test]
 fn article_convert_to_directory_keeps_prompt_and_thinking_consistent() {
     let repo = common::setup_repo();
@@ -46,9 +46,7 @@ articles:
 "#;
     common::write_index(&repo, "alpha", index_yaml);
 
-    let (_o, e, c) = run(&["--root", &repo.path().to_string_lossy(), "prompt", "index", "--project", "alpha"]);
-    assert_eq!(c, 0, "stderr: {e}");
-    let (_o, e, c) = run(&["--root", &repo.path().to_string_lossy(), "thinking", "index", "--project", "alpha"]);
+    let (_o, e, c) = run(&["--root", &repo.path().to_string_lossy(), "article", "index", "--project", "alpha"]);
     assert_eq!(c, 0, "stderr: {e}");
 
     let (_stdout, stderr, code) =
@@ -63,13 +61,22 @@ articles:
     assert!(prompt_content.contains("article:"), "{prompt_content}");
 
     // Projections immediately reflect the converted article — no re-index required.
-    let (list_stdout, list_stderr, list_code) =
-        run(&["--root", &repo.path().to_string_lossy(), "--output", "json", "prompt", "list", "--project", "alpha"]);
-    assert_eq!(list_code, 0, "stderr: {list_stderr}");
-    let parsed: serde_json::Value = serde_json::from_str(&list_stdout).unwrap();
-    let prompts = parsed["data"]["prompts"].as_array().unwrap();
-    let entry = prompts.iter().find(|p| p["path"] == "prompts/my-article.md").expect("prompt in projection");
-    assert_eq!(entry["binding_status"], "bound", "{list_stdout}");
+    // Converting to a directory shape drops the `.md` suffix from the article path.
+    let (show_stdout, show_stderr, show_code) = run(&[
+        "--root",
+        &repo.path().to_string_lossy(),
+        "--output",
+        "json",
+        "article",
+        "show",
+        "docs/my-article",
+        "--project",
+        "alpha",
+    ]);
+    assert_eq!(show_code, 0, "stderr: {show_stderr}");
+    let parsed: serde_json::Value = serde_json::from_str(&show_stdout).unwrap();
+    assert_eq!(parsed["data"]["prompt"]["path"], "prompts/my-article.md");
+    assert_eq!(parsed["data"]["prompt"]["binding_status"], "bound", "{show_stdout}");
 
     // No spurious lint findings after conversion.
     let (lint_stdout, lint_stderr, lint_code) =

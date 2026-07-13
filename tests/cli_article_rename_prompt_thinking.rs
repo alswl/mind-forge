@@ -14,7 +14,7 @@ fn run(args: &[&str]) -> (String, String, i32) {
 /// Spec 065 FR-012: renaming an article keeps the prompt file, thinking
 /// file, and both projections consistent — no spurious `orphan_prompt` or
 /// `missing_thinking` lint finding should appear immediately after rename,
-/// without requiring an explicit `mf prompt index`/`mf thinking index`.
+/// without requiring an explicit `mf article index`.
 #[test]
 fn article_rename_keeps_prompt_and_thinking_consistent() {
     let repo = common::setup_repo();
@@ -48,9 +48,7 @@ articles:
 
     // Reconcile once so the projection is populated before rename, matching
     // the realistic case where the projection already exists.
-    let (_o, e, c) = run(&["--root", &repo.path().to_string_lossy(), "prompt", "index", "--project", "alpha"]);
-    assert_eq!(c, 0, "stderr: {e}");
-    let (_o, e, c) = run(&["--root", &repo.path().to_string_lossy(), "thinking", "index", "--project", "alpha"]);
+    let (_o, e, c) = run(&["--root", &repo.path().to_string_lossy(), "article", "index", "--project", "alpha"]);
     assert_eq!(c, 0, "stderr: {e}");
 
     // Rename the article.
@@ -77,27 +75,34 @@ articles:
     assert!(prompt_content.contains("article: docs/new-name.md"), "{prompt_content}");
 
     // Projections immediately reflect the rename — no re-index required.
+    let (show_stdout, show_stderr, show_code) = run(&[
+        "--root",
+        &repo.path().to_string_lossy(),
+        "--output",
+        "json",
+        "article",
+        "show",
+        "docs/new-name.md",
+        "--project",
+        "alpha",
+    ]);
+    assert_eq!(show_code, 0, "stderr: {show_stderr}");
+    let parsed: serde_json::Value = serde_json::from_str(&show_stdout).unwrap();
+    assert_eq!(parsed["data"]["prompt"]["path"], "prompts/new-name.md");
+    assert_eq!(parsed["data"]["prompt"]["binding_status"], "bound");
+    assert_eq!(parsed["data"]["thinking"]["path"], "thinking/new-name.md");
+
+    // The stale old-name projection entry should be pruned — a bare `mf
+    // article list` no longer shows it bound to anything.
     let (list_stdout, list_stderr, list_code) =
-        run(&["--root", &repo.path().to_string_lossy(), "--output", "json", "prompt", "list", "--project", "alpha"]);
+        run(&["--root", &repo.path().to_string_lossy(), "--output", "json", "article", "list", "--project", "alpha"]);
     assert_eq!(list_code, 0, "stderr: {list_stderr}");
     let parsed: serde_json::Value = serde_json::from_str(&list_stdout).unwrap();
-    let prompts = parsed["data"]["prompts"].as_array().unwrap();
-    let renamed = prompts.iter().find(|p| p["path"] == "prompts/new-name.md").expect("renamed prompt in projection");
-    assert_eq!(renamed["article"], "docs/new-name.md");
-    assert_eq!(renamed["binding_status"], "bound");
+    let articles = parsed["data"]["articles"].as_array().unwrap();
     assert!(
-        !prompts.iter().any(|p| p["path"] == "prompts/old-name.md"),
-        "stale old-name projection entry should be pruned"
+        !articles.iter().any(|a| a["prompt"]["path"] == "prompts/old-name.md"),
+        "stale old-name projection entry should be pruned: {list_stdout}"
     );
-
-    let (thinking_stdout, thinking_stderr, thinking_code) =
-        run(&["--root", &repo.path().to_string_lossy(), "--output", "json", "thinking", "list", "--project", "alpha"]);
-    assert_eq!(thinking_code, 0, "stderr: {thinking_stderr}");
-    let parsed: serde_json::Value = serde_json::from_str(&thinking_stdout).unwrap();
-    let thinking = parsed["data"]["thinking"].as_array().unwrap();
-    let renamed_thinking =
-        thinking.iter().find(|t| t["path"] == "thinking/new-name.md").expect("renamed thinking in projection");
-    assert_eq!(renamed_thinking["binding_status"], "bound");
 
     // No spurious lint findings.
     let (lint_stdout, lint_stderr, lint_code) =

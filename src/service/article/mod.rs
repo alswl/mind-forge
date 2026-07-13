@@ -1,3 +1,4 @@
+mod binding;
 mod block;
 mod convert;
 mod index;
@@ -10,6 +11,9 @@ mod template;
 mod typora;
 mod update;
 
+pub use self::binding::{
+    prompt_view_for_article, prompt_views_by_article, thinking_view_for_article, thinking_views_by_key,
+};
 pub use self::block::remove_block;
 pub use self::convert::{
     execute_to_directory, execute_to_single_file, list_section_files, plan_conversion, plausible_directions,

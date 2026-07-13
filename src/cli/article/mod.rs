@@ -345,6 +345,13 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
                     let project_path = svc_util::resolve_project(root, Some(&resolved), cwd)?;
                     let articles = article_svc::list_articles(&project_path)?;
                     let config = config_svc::load_project(&project_path, Some(root))?;
+                    let idx = crate::service::index::load(&project_path)?;
+                    // Computed once for the whole listing rather than per-article: each
+                    // of these does a single pass over all prompts/thinking entries, so
+                    // looking them up per-article below is O(1) instead of re-scanning
+                    // the whole project's bindings once per row.
+                    let prompt_views = article_svc::prompt_views_by_article(&idx);
+                    let thinking_views = article_svc::thinking_views_by_key(&idx);
 
                     let mut enriched: Vec<(serde_json::Value, u64)> = articles
                         .iter()
@@ -384,6 +391,11 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
                             v["path"] = serde_json::Value::String(a.article_path.clone());
                             let mtime = article_svc::article_file_mtime(&project_path, &a.article_path);
                             v["mtime"] = serde_json::Value::Number(mtime.into());
+                            let prompt_view = prompt_views.get(&a.article_path);
+                            let thinking_key = crate::service::index::article_output_stem(&a.article_path);
+                            let thinking_view = thinking_views.get(thinking_key);
+                            v["prompt"] = serde_json::to_value(prompt_view).unwrap_or(serde_json::Value::Null);
+                            v["thinking"] = serde_json::to_value(thinking_view).unwrap_or(serde_json::Value::Null);
                             (v, mtime)
                         })
                         .collect();
@@ -406,17 +418,26 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
                                 let identity = v["identity"].as_str().unwrap_or("").to_string();
                                 let title = v["title"].as_str().unwrap_or("").to_string();
                                 let status = v["status"].as_str().unwrap_or("draft");
+                                let prompt_status = v["prompt"]["binding_status"].as_str();
+                                let prompt_cell_text = match prompt_status {
+                                    None => "-".to_string(),
+                                    Some("duplicate") => "duplicate".to_string(),
+                                    Some(_) => v["prompt"]["mode"].as_str().unwrap_or("bound").to_string(),
+                                };
+                                let thinking_cell_text = if v["thinking"].is_null() { "-" } else { "yes" };
                                 rows.push(ListRow {
                                     cells: vec![
                                         ListCell::Path(identity),
                                         ListCell::Text(title),
                                         status_cell(status),
+                                        ListCell::Text(prompt_cell_text),
+                                        ListCell::Text(thinking_cell_text.to_string()),
                                         ListCell::Text(format_mtime(*mtime)),
                                     ],
                                 });
                             }
                             let view = ListView {
-                                headers: &["PATH", "TITLE", "STATUS", "UPDATED"],
+                                headers: &["PATH", "TITLE", "STATUS", "PROMPT", "THINKING", "UPDATED"],
                                 rows,
                                 plural_noun: "articles",
                             };
@@ -462,12 +483,16 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
             let scanned_count = scanned.len();
 
             if args.dry_run.dry_run {
+                let prompt_report = crate::service::prompt::reconcile(&project_path, true)?;
+                let thinking_report = crate::service::thinking::reconcile(&project_path, true)?;
                 let details = serde_json::json!({
                     "added": diff.added,
                     "removed": diff.removed,
                     "kept_count": kept_count,
                     "scanned_count": scanned_count,
                     "templates_scanned": templates_scanned,
+                    "prompts": reconcile_store_json(&prompt_report.added, &prompt_report.removed, prompt_report.kept_count),
+                    "thinking": reconcile_store_json(&thinking_report.added, &thinking_report.removed, thinking_report.kept_count),
                 });
                 let result = VerbResult {
                     verb: Verb::Index,
@@ -534,12 +559,20 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
             crate::service::index::save(&project_path, &updated)?;
             let final_count = updated.articles.as_ref().map(|a| a.len()).unwrap_or(0);
 
+            // Reconcile prompts/thinking after articles are persisted, so
+            // thinking's key-alignment resolves against the up-to-date
+            // article set (FR-006).
+            let prompt_report = crate::service::prompt::reconcile(&project_path, false)?;
+            let thinking_report = crate::service::thinking::reconcile(&project_path, false)?;
+
             let details = serde_json::json!({
                 "added": added_for_json,
                 "removed": removed_for_json,
                 "kept_count": final_count,
                 "scanned_count": scanned_count,
                 "templates_scanned": templates_scanned,
+                "prompts": reconcile_store_json(&prompt_report.added, &prompt_report.removed, prompt_report.kept_count),
+                "thinking": reconcile_store_json(&thinking_report.added, &thinking_report.removed, thinking_report.kept_count),
             });
             let result = VerbResult {
                 verb: Verb::Index,
@@ -731,6 +764,19 @@ fn format_mtime(mtime_secs: u64) -> String {
     chrono::DateTime::from_timestamp(mtime_secs as i64, 0)
         .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
         .unwrap_or_else(|| "-".to_string())
+}
+
+/// Shapes a prompt/thinking reconcile report into the JSON object embedded
+/// under `data.prompts`/`data.thinking` in `article index`'s envelope.
+/// `scanned_count` counts files found on disk (`added` + `kept`); `removed`
+/// entries are, by definition, no longer on disk.
+fn reconcile_store_json<T: serde::Serialize>(added: &[T], removed: &[T], kept_count: u64) -> serde_json::Value {
+    serde_json::json!({
+        "added": added,
+        "removed": removed,
+        "kept_count": kept_count,
+        "scanned_count": added.len() as u64 + kept_count,
+    })
 }
 
 #[cfg(test)]
