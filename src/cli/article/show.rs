@@ -51,12 +51,43 @@ pub(super) fn handle_article_show(
             fields.push(ShowField { label: "Created", value: ShowValue::Text(article.created_at.clone()) });
             fields.push(ShowField { label: "Updated", value: ShowValue::Text(article.updated_at.clone()) });
 
+            let idx = crate::service::index::load(project_path)?;
+            let prompt_view = article_svc::prompt_view_for_article(&idx, &article.article_path);
+            let thinking_view = article_svc::thinking_view_for_article(&idx, &article.article_path);
+
+            match &prompt_view {
+                Some(p) => {
+                    fields.push(ShowField { label: "Prompt", value: ShowValue::Path(p.path.clone()) });
+                    fields.push(ShowField {
+                        label: "Prompt mode",
+                        value: ShowValue::Optional(p.mode.map(|m| m.to_string())),
+                    });
+                    fields.push(ShowField {
+                        label: "Prompt status",
+                        value: ShowValue::Text(p.binding_status.as_str().to_string()),
+                    });
+                    if !p.conflicts.is_empty() {
+                        fields.push(ShowField {
+                            label: "Prompt conflicts",
+                            value: ShowValue::Text(p.conflicts.join(", ")),
+                        });
+                    }
+                }
+                None => fields.push(ShowField { label: "Prompt", value: ShowValue::Optional(None) }),
+            }
+            match &thinking_view {
+                Some(t) => fields.push(ShowField { label: "Thinking", value: ShowValue::Path(t.path.clone()) }),
+                None => fields.push(ShowField { label: "Thinking", value: ShowValue::Optional(None) }),
+            }
+
             let block = ShowBlock { kind: "article", identity: article.article_path.clone(), fields, sections: vec![] };
 
             match format {
                 Format::Json => {
                     let article_json = serde_json::to_value(article).map_err(MfError::Json)?;
-                    let extra = article_json.as_object().cloned().unwrap_or_default();
+                    let mut extra = article_json.as_object().cloned().unwrap_or_default();
+                    extra.insert("prompt".to_string(), serde_json::to_value(&prompt_view).map_err(MfError::Json)?);
+                    extra.insert("thinking".to_string(), serde_json::to_value(&thinking_view).map_err(MfError::Json)?);
                     Ok(CommandOutcome::Success(json_envelope(&block, extra), Vec::new(), None))
                 }
                 Format::Text => Ok(CommandOutcome::Raw(

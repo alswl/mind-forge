@@ -126,6 +126,9 @@ pub enum LintKind {
     NameConvention,
     MissingManifest,
     DuplicateKey,
+    OrphanPrompt,
+    DuplicateBinding,
+    MissingThinking,
 }
 
 // ---------------------------------------------------------------------------

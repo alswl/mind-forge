@@ -101,7 +101,8 @@ Update project metadata in `mind.yaml`.
 
 **`mf project lint`**
 Lint project(s). Requires `-p, --project <PROJECT>`.
-Rule kinds: `missing_directory`, `stale_index_entry`, `name_convention`, `missing_manifest`, `duplicate_key`.
+Rule kinds: `missing_directory`, `stale_index_entry`, `name_convention`, `missing_manifest`, `duplicate_key`, `orphan_prompt`, `duplicate_binding`, `missing_thinking`.
+`orphan_prompt` (error) — a prompt's `article:` binding resolves to no indexed article. `duplicate_binding` (error) — two or more prompts resolve to the same article. `missing_thinking` (warning) — an article has a bound prompt but no matching `thinking/<key>.md`. `missing_directory` intentionally does NOT cover `prompts/`/`thinking/`: unlike `docs/`/`sources/`/`assets/` (guaranteed by `mf project new`), those two are optional — their absence just means the writing workflow hasn't started yet, not a lint violation.
 
 **`mf project index`** — Index projects (mf extension). Also reconciles each project's article index: prunes stale entries whose target file no longer exists on disk. Entries whose files exist — including declared and template-origin articles outside `docs/` — are never removed. A project whose `mind-index.yaml` fails to load is skipped with a warning (stderr; `data.warnings` in JSON) rather than silently. Use this to clear `stale_index_entry` lint warnings without hand-editing `mind-index.yaml`.
 
@@ -127,9 +128,9 @@ Template `## ` headings inside fenced code blocks are treated as body text, not 
 
 JSON envelope `details`: `template`, `shape` (`directory`|`file`), `path`, `files`, `typora_front_matter_injected` (bool), `typora_copy_images_to` (string|null). When the Typora plugin is enabled, each generated file starts with a YAML front-matter block containing `typora-copy-images-to` pointing to the project assets directory.
 
-**`mf article list`** (alias `ls`) — List articles. When run outside a project dir without `--project`, auto-matches all projects and sorts by most recently modified.
+**`mf article list`** (alias `ls`) — List articles. When run outside a project dir without `--project`, auto-matches all projects and sorts by most recently modified. In single-project mode each row also carries a `PROMPT` column (the bound prompt's mode, `duplicate` if two prompts conflict, `-` if none) and a `THINKING` column (`yes`/`-`); JSON rows expose nullable `prompt`/`thinking` objects. These are derived-projection reads — see "Prompt/thinking binding" below.
 
-**`mf article show <PATH>`** — Show article details. `<PATH>` accepts a path (e.g. `docs/weekly.md`) or a title.
+**`mf article show <PATH>`** — Show article details. `<PATH>` accepts a path (e.g. `docs/weekly.md`) or a title. Also shows the article's bound prompt (path, mode, binding status, updated) and thinking ledger (path, updated) when present — `-`/`null` when absent. When binding status is `duplicate`, every conflicting prompt path is listed.
 
 **`mf article update <PATH>`**
 Update article metadata in `mind-index.yaml`.
@@ -151,7 +152,11 @@ Without a direction flag in a TTY, the CLI infers the unique reasonable directio
 
 **`mf article block rename <ARTICLE> <OLD_BLOCK> <NEW_SLUG>`** — Rename a block file within a directory article. `<ARTICLE>` accepts a path (e.g. `docs/my-article`) or a title. `<OLD_BLOCK>` is the current block filename (e.g. `02-notes.md`), filename without extension (e.g. `02-notes`), or just the slug (e.g. `notes`). `<NEW_SLUG>` is the new slug — the number prefix is preserved (e.g. `thoughts` produces `02-thoughts.md`). The H2 heading and file content are NOT changed. Use `--dry-run` to preview. Use `--force` to overwrite an existing target block file. Only works on directory articles; single-file articles should use `mf article rename` instead.
 
-**`mf article index`** — Index articles (mf extension). `-n` is short for `--dry-run`.
+**`mf article index`** — Index articles (mf extension). `-n` is short for `--dry-run`. In the same run, also reconciles the `prompts:` and `thinking:` projections against `prompts/*.md`/`thinking/*.md` on disk (add present files, prune stale entries, keep survivors) — no separate command is needed. The JSON envelope carries additive `prompts`/`thinking` objects (`added`/`removed`/`kept_count`/`scanned_count`), alongside the existing article-level fields. `--dry-run` covers all three stores and writes nothing.
+
+#### Prompt/thinking binding
+
+`prompts/` (control plane: objective, mode, constraints, decisions) and `thinking/` (working ledger) are derived-projection schema, reconciled by `mf article index` and surfaced through `mf article list`/`show` above — there is no standalone `mf prompt`/`mf thinking` command group. `prompts/<key>.md` is the source of truth (frontmatter `article:` and optional `mode:` of `editorial`/`research`/`decision-research`); `thinking/<key>.md` associates with an article purely by key alignment (its own filename stem matching the article's), carries no frontmatter, and has no `duplicate` state. Binding status (`bound`/`orphan`/`duplicate`) is computed at query time against the current `articles` set and is never persisted. Cross-article anomalies (an orphaned prompt, two prompts bound to one article) have no single article row to attach to — they surface only through `mf project lint`'s `orphan_prompt`/`duplicate_binding`/`missing_thinking` rules (see below).
 
 ### `mf source` — Manage content sources
 
@@ -427,6 +432,12 @@ mf publish target show local
 mf render template list
 mf render template show arch
 
+# Prompts & thinking (writing-workflow bindings) — surfaced via `mf article`
+mf article index --project my-project                  # reconciles articles + prompts: + thinking: in one run
+mf article list --project my-project                   # PROMPT/THINKING columns per article
+mf article show my-first-post --project my-project      # bound/orphan/duplicate status + thinking presence
+mf project lint --project my-project                    # surfaces orphan_prompt/duplicate_binding/missing_thinking
+
 # Terms
 mf term new "Zettelkasten" --definition "A note-taking method" --project my-project
 mf term new "API" --alias "Application Programming Interface" --tag tech
@@ -494,3 +505,4 @@ mf version --json
 - `term show`, `term update`, and `term remove` operate on the selected correction without requiring sibling substring entries to be migrated first.
 - `article convert` evaluates eligible articles project-wide; it does not take an article selector.
 - `mf init` is the preferred bootstrap command; `mf config init` remains deprecated compatibility.
+- `mind-index.yaml`'s `prompts:`/`thinking:` sections are reconciled caches, never the source of truth — that's always the Markdown files under `prompts/`/`thinking/`. There is no standalone `mf prompt`/`mf thinking` command group; binding info is surfaced through `mf article list`/`show` and reconciled by `mf article index`, and binding status is computed at query time and never persisted. `article rename`/`article convert` keep both files and both projections consistent automatically; a manual `mf article index` is only needed after hand-edited files.

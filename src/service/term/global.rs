@@ -182,6 +182,8 @@ fn global_index(terms: Vec<Term>) -> IndexFile {
         sources: None,
         assets: None,
         articles: None,
+        prompts: None,
+        thinking: None,
         publish_records: None,
         extra: None,
     }

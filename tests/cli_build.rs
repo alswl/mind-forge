@@ -1161,3 +1161,61 @@ fn build_succeeds_and_emits_no_warnings_when_all_references_resolve() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!stderr.contains("WARN:"), "a normal build must not emit path warnings: {stderr}");
 }
+
+// ---------------------------------------------------------------------------
+// Spec 065 FR-013 / SC-005: build is byte-identical whether or not a project
+// has prompts/thinking data. `mf build`/`mf publish` never read
+// `IndexFile.prompts`/`.thinking` (verified structurally too — see spec 065
+// research.md D-notes); this test proves it behaviorally.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn build_dry_run_output_unaffected_by_prompts_and_thinking_data() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    let project = repo.path().join("my-project");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project)
+        .args(["article", "new", "Regression Test"])
+        .assert()
+        .success();
+
+    let baseline = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project)
+        .args(["build", "regression-test", "--dry-run"])
+        .output()
+        .expect("command runs");
+    assert!(baseline.status.success());
+
+    // Add prompts/thinking data — including a bound entry — for the same article.
+    std::fs::create_dir_all(project.join("prompts")).unwrap();
+    std::fs::create_dir_all(project.join("thinking")).unwrap();
+    std::fs::write(
+        project.join("prompts/regression-test.md"),
+        "---\narticle: docs/regression-test.md\nmode: research\n---\n\nBrief.\n",
+    )
+    .unwrap();
+    std::fs::write(project.join("thinking/regression-test.md"), "## Notes\n\nLedger.\n").unwrap();
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project)
+        .args(["article", "index"])
+        .assert()
+        .success();
+
+    let with_prompts = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project)
+        .args(["build", "regression-test", "--dry-run"])
+        .output()
+        .expect("command runs");
+    assert!(with_prompts.status.success());
+
+    assert_eq!(
+        baseline.stdout, with_prompts.stdout,
+        "build --dry-run output must be byte-identical regardless of prompts/thinking data"
+    );
+}

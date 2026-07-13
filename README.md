@@ -238,7 +238,7 @@ default `projects/` container). Defaults to the current directory.
 | `rename <OLD_PATH> <NEW_PATH>` | Rename a project |
 | `remove <PATH>` (rm) | Remove a project (interactive confirmation in TTY) |
 | `archive <NAME_OR_PATH>` | Archive a project to `_archived/` (interactive confirmation in TTY) |
-| `lint` | Lint project(s). Rules: `missing_directory`, `stale_index_entry`, `name_convention`, `missing_manifest`, `duplicate_key`. Requires `-p, --project <PROJECT>` |
+| `lint` | Lint project(s). Rules: `missing_directory`, `stale_index_entry`, `name_convention`, `missing_manifest`, `duplicate_key`, `orphan_prompt`, `duplicate_binding`, `missing_thinking`. Requires `-p, --project <PROJECT>` |
 | `index` | Index projects (mf extension). Also reconciles each project's article index: prunes stale entries whose target file no longer exists on disk (entries with existing files — including declared/template articles — are never removed); per-project reconcile failures surface as warnings instead of being skipped silently |
 | `import <DIRECTORY>` | Import a directory as a project. `--type <TYPE>`, `--source <DIR>`, `--assets <DIR>`, `-y, --yes` |
 
@@ -247,14 +247,14 @@ default `projects/` container). Defaults to the current directory.
 | Subcommand | Description |
 |-----------|-------------|
 | `new <TITLE>` | Create an article. `-t, --template blank\|arch\|prd\|blog\|<path>`, `--file`, `--tag <TAG>`, `--draft` |
-| `list` (ls) | List articles. Omitting `--project` outside a project dir lists all articles across all projects, sorted by most recently modified. |
-| `show <PATH>` | Show article details |
+| `list` (ls) | List articles. Omitting `--project` outside a project dir lists all articles across all projects, sorted by most recently modified. In single-project mode each row also carries a `PROMPT` column (bound prompt's mode, `duplicate` on conflict, `-` if none) and a `THINKING` column (`yes`/`-`) |
+| `show <PATH>` | Show article details, including bound prompt (path, mode, binding status, updated) and thinking ledger (path, updated) when present |
 | `update <PATH>` | Update article metadata. `--status draft\|published` |
 | `rename <OLD_PATH> <NEW_PATH>` | Rename an article |
 | `remove <PATH>` (rm) | Remove an article (interactive confirmation in TTY). Accepts the title, the `article_path`, or the index key — with or without a trailing `.md`; all forms resolve to the same entry |
 | `lint` | Lint articles |
 | `convert` | Convert article shape between directory and single-file. `--to-single-file`, `--to-directory`, `--dry-run` |
-| `index` | Index articles (mf extension). `--dry-run` previews without writing |
+| `index` | Index articles (mf extension). Also reconciles the `prompts:`/`thinking:` projections against `prompts/*.md`/`thinking/*.md` on disk in the same run (added/removed/kept counts per store in JSON). `--dry-run` previews without writing |
 
 ### `mf source` — Manage content sources
 
@@ -368,6 +368,7 @@ the same Cargo version remain distinguishable. JSON includes `version`,
 - **Project lifecycle** — `mf project new | list | show | update | rename | remove | archive | lint | index | import`; path-based identity supports Unicode, emoji, dates, spaces
 - **Project auto-detection** — running inside a project directory auto-injects `--project`; `mf article list` without `--project` outside a project dir auto-matches all projects, sorted by most recently modified; cwd-relative paths normalized to repo-relative canonical identity
 - **Article management** — `mf article new | list | show | update | rename | remove | lint | index`; directory articles by default, `--file` for single-file shape; `--template blank|arch|prd|blog` or custom project-local template path
+- **Prompt/thinking binding** — `prompts/<key>.md` (objective, mode, constraints) and `thinking/<key>.md` (working ledger) bind to articles by key; `mf article index` reconciles both projections, `mf article list | show` surface binding status, and `mf project lint` flags `orphan_prompt` / `duplicate_binding` / `missing_thinking`
 - **Sources** — `mf source new | list | show | update | rename | remove | index | clean`; `--file-kind auto|pdf|file|rss|web`, `--source-kind yuque|meeting|misc`, `--register-only` to index an in-tree file without copying
 - **Assets** — `mf asset new | list | show | update | rename | remove | index | clean`; `--copy`/`--link` for copy vs symlink
 - **Glossary** — `mf term new | list | show | update | correction | move | rename | remove | lint`; global terms in `minds-terms.yaml`, project-scoped in `mind-index.yaml`

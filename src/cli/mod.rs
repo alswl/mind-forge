@@ -5,7 +5,6 @@ pub mod completion;
 pub mod config;
 pub mod deprecation;
 pub mod project;
-pub mod prompt;
 pub mod publish;
 pub mod render;
 pub mod shared_flags;

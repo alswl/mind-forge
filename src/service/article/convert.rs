@@ -390,6 +390,15 @@ pub fn update_prompt_binding_for_conversion(
     if updated != content {
         std::fs::write(&prompt_path, updated).map_err(MfError::Io)?;
     }
+
+    // Spec 065 FR-012: refresh the prompt/thinking projections from disk so
+    // no spurious `orphan`/`missing_thinking` finding appears before the
+    // next explicit `prompt index`/`thinking index` run. The thinking file's
+    // own key is unaffected by shape conversion (article_output_stem strips
+    // both the directory-article and single-file forms to the same stem),
+    // so only its `article` projection field needs refreshing.
+    crate::service::prompt::reconcile(project_root, false)?;
+    crate::service::thinking::reconcile(project_root, false)?;
     Ok(())
 }
 

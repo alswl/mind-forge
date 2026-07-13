@@ -139,6 +139,24 @@ pub fn rename_article(
                 });
             }
         }
+
+        // Rename associated thinking file if it exists (spec 065 FR-012).
+        let old_thinking_path = project_path.join(defaults::THINKING_DIR).join(format!("{old_key}.md"));
+        if old_thinking_path.exists() {
+            let new_thinking_path = project_path.join(defaults::THINKING_DIR).join(format!("{new_key}.md"));
+            if new_thinking_path.exists() && force {
+                fs::remove_file(&new_thinking_path).map_err(MfError::Io)?;
+            }
+            if !new_thinking_path.exists() {
+                fs::rename(&old_thinking_path, &new_thinking_path).map_err(MfError::Io)?;
+                side_effects.push(crate::model::lifecycle::PlannedChange {
+                    op: crate::model::lifecycle::PlannedOp::RenameFile,
+                    path: new_thinking_path.to_string_lossy().to_string(),
+                    old: Some(old_thinking_path.to_string_lossy().to_string()),
+                    new: Some(new_thinking_path.to_string_lossy().to_string()),
+                });
+            }
+        }
     }
 
     // Update the index entry — title is left unchanged
@@ -146,6 +164,17 @@ pub fn rename_article(
     article.article_path = new_article_path.clone();
     article.updated_at = now;
     index::save(project_path, &index)?;
+
+    // Spec 065 FR-012: refresh the prompt/thinking projections from disk so
+    // no spurious `orphan`/`missing_thinking` finding appears before the
+    // next explicit `prompt index`/`thinking index` run. Best-effort — a
+    // reconcile failure here does not roll back the rename.
+    if let Err(e) = crate::service::prompt::reconcile(project_path, false) {
+        tracing::warn!("failed to reconcile prompts after article rename: {}", e);
+    }
+    if let Err(e) = crate::service::thinking::reconcile(project_path, false) {
+        tracing::warn!("failed to reconcile thinking after article rename: {}", e);
+    }
 
     Ok(ArticleRenameReport {
         old_title: old_article_title.clone(),
