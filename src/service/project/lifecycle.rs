@@ -20,6 +20,9 @@ pub fn lint_project(
             LintKind::StaleIndexEntry,
             LintKind::NameConvention,
             LintKind::MissingManifest,
+            LintKind::OrphanPrompt,
+            LintKind::DuplicateBinding,
+            LintKind::MissingThinking,
         ]
     } else {
         rules.to_vec()
@@ -45,6 +48,15 @@ pub fn lint_project(
             }
             LintKind::DuplicateKey => {
                 check_duplicate_key(project_path, fix, &mut issues, &mut fixable_count, &mut unfixed_count)?;
+            }
+            LintKind::OrphanPrompt => {
+                check_orphan_prompt(project_path, &mut issues, &mut unfixed_count)?;
+            }
+            LintKind::DuplicateBinding => {
+                check_duplicate_binding(project_path, &mut issues, &mut unfixed_count)?;
+            }
+            LintKind::MissingThinking => {
+                check_missing_thinking(project_path, &mut issues, &mut unfixed_count)?;
             }
         }
     }
@@ -229,6 +241,8 @@ fn check_stale_index_entry(
             sources: Some(filtered_sources),
             assets: Some(filtered_assets),
             articles: Some(articles),
+            prompts: index.prompts,
+            thinking: index.thinking,
             terms,
             publish_records: None,
             extra: None,
@@ -356,6 +370,123 @@ fn check_duplicate_key(
 
     Ok(())
 }
+/// FR-008: a prompt bound to no existing article (error).
+fn check_orphan_prompt(project_path: &Path, issues: &mut Vec<ProjectLintIssue>, unfixed_count: &mut u64) -> Result<()> {
+    let index_path = project_path.join("mind-index.yaml");
+    if !index_path.exists() {
+        return Ok(());
+    }
+    let idx = match crate::service::index::load(project_path) {
+        Ok(idx) => idx,
+        Err(_) => return Ok(()),
+    };
+
+    for binding in crate::service::index::resolve_prompt_bindings(&idx) {
+        if binding.status == crate::model::prompt::BindingStatus::Orphan {
+            let article_display = if binding.prompt.article.is_empty() { "(none)" } else { &binding.prompt.article };
+            issues.push(ProjectLintIssue {
+                severity: LintSeverity::Error,
+                kind: LintKind::OrphanPrompt,
+                message: format!(
+                    "prompt '{}' is bound to non-existent article '{}'",
+                    binding.prompt.path, article_display
+                ),
+                path: binding.prompt.path.clone(),
+                fixable: false,
+                fixed: false,
+            });
+            *unfixed_count += 1;
+        }
+    }
+    Ok(())
+}
+
+/// FR-008: two or more prompts bound to the same article (error).
+fn check_duplicate_binding(
+    project_path: &Path,
+    issues: &mut Vec<ProjectLintIssue>,
+    unfixed_count: &mut u64,
+) -> Result<()> {
+    let index_path = project_path.join("mind-index.yaml");
+    if !index_path.exists() {
+        return Ok(());
+    }
+    let idx = match crate::service::index::load(project_path) {
+        Ok(idx) => idx,
+        Err(_) => return Ok(()),
+    };
+
+    let bindings = crate::service::index::resolve_prompt_bindings(&idx);
+    let mut by_article: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
+    for binding in &bindings {
+        if binding.status == crate::model::prompt::BindingStatus::Duplicate {
+            by_article.entry(binding.prompt.article.as_str()).or_default().push(binding.prompt.path.as_str());
+        }
+    }
+
+    for (article, mut paths) in by_article {
+        paths.sort();
+        issues.push(ProjectLintIssue {
+            severity: LintSeverity::Error,
+            kind: LintKind::DuplicateBinding,
+            message: format!("article '{}' has multiple bound prompts: {}", article, paths.join(", ")),
+            path: article.to_string(),
+            fixable: false,
+            fixed: false,
+        });
+        *unfixed_count += 1;
+    }
+    Ok(())
+}
+
+/// FR-008: an article (with a bound prompt) has no matching thinking ledger
+/// file (warning).
+fn check_missing_thinking(
+    project_path: &Path,
+    issues: &mut Vec<ProjectLintIssue>,
+    unfixed_count: &mut u64,
+) -> Result<()> {
+    let index_path = project_path.join("mind-index.yaml");
+    if !index_path.exists() {
+        return Ok(());
+    }
+    let idx = match crate::service::index::load(project_path) {
+        Ok(idx) => idx,
+        Err(_) => return Ok(()),
+    };
+
+    let thinking_keys: std::collections::HashSet<String> =
+        idx.thinking.iter().flatten().map(|t| crate::service::index::derive_store_key(&t.path)).collect();
+
+    let bound_article_paths: std::collections::HashSet<&str> = crate::service::index::resolve_prompt_bindings(&idx)
+        .into_iter()
+        .filter(|b| b.status == crate::model::prompt::BindingStatus::Bound)
+        .map(|b| b.prompt.article.as_str())
+        .collect();
+
+    for article in idx.articles.iter().flatten() {
+        if !bound_article_paths.contains(article.article_path.as_str()) {
+            continue;
+        }
+        let key = crate::service::index::article_output_stem(&article.article_path);
+        if !thinking_keys.contains(key) {
+            issues.push(ProjectLintIssue {
+                severity: LintSeverity::Warning,
+                kind: LintKind::MissingThinking,
+                message: format!(
+                    "article '{}' has no thinking ledger (expected thinking/{}.md)",
+                    article.article_path, key
+                ),
+                path: article.article_path.clone(),
+                fixable: false,
+                fixed: false,
+            });
+            *unfixed_count += 1;
+        }
+    }
+    Ok(())
+}
+
 fn check_article_dirs(
     project_path: &Path,
     issues: &mut Vec<ProjectLintIssue>,

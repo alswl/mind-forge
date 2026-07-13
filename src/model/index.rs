@@ -6,8 +6,10 @@ use crate::defaults;
 
 use super::article::Article;
 use super::asset::Asset;
+use super::prompt::Prompt;
 use super::source::Source;
 use super::term::Term;
+use super::thinking::Thinking;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -37,6 +39,10 @@ pub struct IndexFile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub articles: Option<Vec<Article>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompts: Option<Vec<Prompt>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<Vec<Thinking>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terms: Option<Vec<Term>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub publish_records: Option<Vec<PublishRecord>>,
@@ -53,6 +59,8 @@ impl IndexFile {
             sources: None,
             assets: None,
             articles: None,
+            prompts: None,
+            thinking: None,
             terms: None,
             publish_records: None,
             extra: None,
@@ -188,8 +196,96 @@ impl<'de> Deserialize<'de> for IndexFile {
             }
         }
 
+        // Convert dictionary-valued prompt entries to list, adding defaults.
+        // Tolerates a legacy opaque scalar value (e.g. `prompts: active`): it
+        // falls through the `_ => value.clone()` arm, which later fails to
+        // parse as a sequence and degrades to `None` rather than erroring
+        // (FR-011). The next `prompt index` reconcile replaces it with the
+        // typed projection.
+        fn dict_to_prompts_list(value: &serde_yaml::Value) -> serde_yaml::Value {
+            match value {
+                serde_yaml::Value::Mapping(m) => {
+                    let items: Vec<serde_yaml::Value> = m
+                        .iter()
+                        .map(|(k, v)| {
+                            let mut entry = match v {
+                                serde_yaml::Value::Mapping(e) => e.clone(),
+                                serde_yaml::Value::Null => serde_yaml::Mapping::new(),
+                                _ => serde_yaml::Mapping::new(),
+                            };
+                            if !entry.contains_key(yaml_key("path")) {
+                                entry.insert(
+                                    yaml_key("path"),
+                                    serde_yaml::Value::String(format!(
+                                        "{}/{}.{}",
+                                        defaults::PROMPTS_DIR,
+                                        key_string(k),
+                                        defaults::MARKDOWN_EXTENSION
+                                    )),
+                                );
+                            }
+                            default_str(&mut entry, "article", "");
+                            default_str(&mut entry, "updated_at", "");
+                            serde_yaml::Value::Mapping(entry)
+                        })
+                        .collect();
+                    serde_yaml::Value::Sequence(items)
+                }
+                serde_yaml::Value::Sequence(_) => value.clone(),
+                serde_yaml::Value::Null => serde_yaml::Value::Sequence(vec![]),
+                _ => value.clone(),
+            }
+        }
+
+        // Convert dictionary-valued thinking entries to list, adding defaults.
+        // Same legacy-scalar tolerance as `dict_to_prompts_list`.
+        fn dict_to_thinking_list(value: &serde_yaml::Value) -> serde_yaml::Value {
+            match value {
+                serde_yaml::Value::Mapping(m) => {
+                    let items: Vec<serde_yaml::Value> = m
+                        .iter()
+                        .map(|(k, v)| {
+                            let mut entry = match v {
+                                serde_yaml::Value::Mapping(e) => e.clone(),
+                                serde_yaml::Value::Null => serde_yaml::Mapping::new(),
+                                _ => serde_yaml::Mapping::new(),
+                            };
+                            if !entry.contains_key(yaml_key("path")) {
+                                entry.insert(
+                                    yaml_key("path"),
+                                    serde_yaml::Value::String(format!(
+                                        "{}/{}.{}",
+                                        defaults::THINKING_DIR,
+                                        key_string(k),
+                                        defaults::MARKDOWN_EXTENSION
+                                    )),
+                                );
+                            }
+                            default_str(&mut entry, "article", "");
+                            default_str(&mut entry, "updated_at", "");
+                            serde_yaml::Value::Mapping(entry)
+                        })
+                        .collect();
+                    serde_yaml::Value::Sequence(items)
+                }
+                serde_yaml::Value::Sequence(_) => value.clone(),
+                serde_yaml::Value::Null => serde_yaml::Value::Sequence(vec![]),
+                _ => value.clone(),
+            }
+        }
+
         // Normalize fields
-        let known_keys = ["schema_version", "schema", "sources", "assets", "articles", "terms", "publish_records"];
+        let known_keys = [
+            "schema_version",
+            "schema",
+            "sources",
+            "assets",
+            "articles",
+            "prompts",
+            "thinking",
+            "terms",
+            "publish_records",
+        ];
 
         let mut extra = serde_yaml::Mapping::new();
         let mut normalized = serde_yaml::Mapping::new();
@@ -208,6 +304,12 @@ impl<'de> Deserialize<'de> for IndexFile {
                 }
                 "articles" => {
                     normalized.insert(yaml_key("articles"), dict_articles_to_list(v));
+                }
+                "prompts" => {
+                    normalized.insert(yaml_key("prompts"), dict_to_prompts_list(v));
+                }
+                "thinking" => {
+                    normalized.insert(yaml_key("thinking"), dict_to_thinking_list(v));
                 }
                 "schema_version" | "schema" => {
                     normalized.insert(yaml_key("schema_version"), v.clone());
@@ -256,6 +358,8 @@ impl IndexFile {
         let sources = parse_vec_field::<Source>(vec_from_field("sources"), "sources")?;
         let assets = parse_vec_field::<Asset>(vec_from_field("assets"), "assets")?;
         let articles = parse_vec_field::<Article>(vec_from_field("articles"), "articles")?;
+        let prompts = parse_vec_field::<Prompt>(vec_from_field("prompts"), "prompts")?;
+        let thinking = parse_vec_field::<Thinking>(vec_from_field("thinking"), "thinking")?;
         let terms = parse_vec_field::<Term>(vec_from_field("terms"), "terms")?;
         let publish_records = parse_vec_field::<PublishRecord>(vec_from_field("publish_records"), "publish_records")?;
 
@@ -268,7 +372,7 @@ impl IndexFile {
                 .collect::<HashMap<_, _>>()
         });
 
-        Ok(IndexFile { schema_version, sources, assets, articles, terms, publish_records, extra })
+        Ok(IndexFile { schema_version, sources, assets, articles, prompts, thinking, terms, publish_records, extra })
     }
 }
 
@@ -472,14 +576,106 @@ schema_version: '1'
 project: my-project
 updated: 2026-05-01
 docs: active
-prompts: active
 "#;
         let index: IndexFile = serde_yaml::from_str(yaml).unwrap();
         let extra = index.extra.expect("extra should be populated");
         assert!(extra.contains_key("project"), "extra should contain project");
         assert!(extra.contains_key("updated"), "extra should contain updated");
         assert!(extra.contains_key("docs"), "extra should contain docs");
-        assert!(extra.contains_key("prompts"), "extra should contain prompts");
+    }
+
+    /// FR-011: a legacy opaque `prompts:`/`thinking:` scalar value (pre-dating
+    /// the typed schema) must not error on load, and must not leak into
+    /// `extra` either — `prompts`/`thinking` are now known keys, so the
+    /// scalar is simply tolerated and degrades to an empty projection ready
+    /// to be replaced by the next `prompt index`/`thinking index` reconcile.
+    #[test]
+    fn test_legacy_opaque_prompts_thinking_scalar_does_not_error() {
+        let yaml = r#"
+schema_version: '1'
+updated: 2026-05-01
+prompts: active
+thinking: active
+"#;
+        let index: IndexFile = serde_yaml::from_str(yaml).unwrap();
+        assert!(index.prompts.is_none(), "legacy scalar should degrade to no projection, not error");
+        assert!(index.thinking.is_none(), "legacy scalar should degrade to no projection, not error");
+        let extra = index.extra.expect("extra should be populated");
+        assert!(extra.contains_key("updated"), "unrelated unknown field should still round-trip via extra");
+        assert!(!extra.contains_key("prompts"), "prompts is now a known key, not an extra field");
+        assert!(!extra.contains_key("thinking"), "thinking is now a known key, not an extra field");
+    }
+
+    #[test]
+    fn test_deserialize_dictionary_prompts() {
+        let yaml = r#"
+schema_version: '1'
+prompts:
+  my-post:
+    path: prompts/my-post.md
+    article: docs/my-post.md
+    mode: research
+    updated_at: '2026-07-12T09:00:00Z'
+  orphaned:
+    article: docs/does-not-exist.md
+"#;
+        let index: IndexFile = serde_yaml::from_str(yaml).unwrap();
+        let prompts = index.prompts.unwrap();
+        assert_eq!(prompts.len(), 2);
+        let bound = prompts.iter().find(|p| p.path == "prompts/my-post.md").unwrap();
+        assert_eq!(bound.article, "docs/my-post.md");
+        assert_eq!(bound.mode, Some(crate::model::prompt::PromptMode::Research));
+        let orphaned = prompts.iter().find(|p| p.path == "prompts/orphaned.md").unwrap();
+        assert_eq!(orphaned.article, "docs/does-not-exist.md");
+    }
+
+    #[test]
+    fn test_deserialize_dictionary_thinking() {
+        let yaml = r#"
+schema_version: '1'
+thinking:
+  my-post:
+    path: thinking/my-post.md
+    article: docs/my-post.md
+    updated_at: '2026-07-12T09:00:00Z'
+"#;
+        let index: IndexFile = serde_yaml::from_str(yaml).unwrap();
+        let thinking = index.thinking.unwrap();
+        assert_eq!(thinking.len(), 1);
+        assert_eq!(thinking[0].path, "thinking/my-post.md");
+        assert_eq!(thinking[0].article, "docs/my-post.md");
+    }
+
+    #[test]
+    fn test_deserialize_list_format_prompts_and_thinking() {
+        let yaml = r#"
+schema_version: '1'
+prompts:
+  - path: prompts/my-post.md
+    article: docs/my-post.md
+    updated_at: '2026-07-12T09:00:00Z'
+thinking:
+  - path: thinking/my-post.md
+    article: docs/my-post.md
+    updated_at: '2026-07-12T09:00:00Z'
+"#;
+        let index: IndexFile = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(index.prompts.unwrap().len(), 1);
+        assert_eq!(index.thinking.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_invalid_prompt_mode_returns_error() {
+        let yaml = r#"
+schema_version: '1'
+prompts:
+  my-post:
+    path: prompts/my-post.md
+    article: docs/my-post.md
+    mode: not_a_mode
+"#;
+        let err = serde_yaml::from_str::<IndexFile>(yaml).unwrap_err().to_string();
+        assert!(err.contains("invalid prompts[0]"), "{err}");
     }
 
     #[test]

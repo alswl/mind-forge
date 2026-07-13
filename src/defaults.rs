@@ -13,6 +13,8 @@ pub const SOURCES_DIR: &str = "sources";
 pub const ASSETS_DIR: &str = "assets";
 pub const TEMPLATES_DIR: &str = "templates";
 pub const ARCHIVE_DIR: &str = "_archived";
+pub const PROMPTS_DIR: &str = "prompts";
+pub const THINKING_DIR: &str = "thinking";
 
 pub const REQUIRED_PROJECT_DIRS: &[&str] = &[DOCS_DIR, SOURCES_DIR, ASSETS_DIR];
 

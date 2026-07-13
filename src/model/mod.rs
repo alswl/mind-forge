@@ -4,10 +4,12 @@ pub mod config;
 pub mod index;
 pub mod lifecycle;
 pub mod project;
+pub mod prompt;
 pub mod publish;
 pub mod source;
 pub mod term;
 pub mod terminal;
+pub mod thinking;
 
 pub mod manifest;
 pub mod publisher;
@@ -80,6 +82,20 @@ impl Resource for term::Correction {
     const KIND: &'static str = "term_correction";
     fn identity(&self) -> String {
         format!("{}::{}", self.original, self.correct)
+    }
+}
+
+impl Resource for prompt::Prompt {
+    const KIND: &'static str = "prompt";
+    fn identity(&self) -> String {
+        self.path.clone()
+    }
+}
+
+impl Resource for thinking::Thinking {
+    const KIND: &'static str = "thinking";
+    fn identity(&self) -> String {
+        self.path.clone()
     }
 }
 

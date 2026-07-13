@@ -771,6 +771,8 @@ mod tests {
             sources: None,
             assets: None,
             articles: None,
+            prompts: None,
+            thinking: None,
             publish_records: None,
             extra: None,
         };

@@ -101,7 +101,8 @@ Update project metadata in `mind.yaml`.
 
 **`mf project lint`**
 Lint project(s). Requires `-p, --project <PROJECT>`.
-Rule kinds: `missing_directory`, `stale_index_entry`, `name_convention`, `missing_manifest`, `duplicate_key`.
+Rule kinds: `missing_directory`, `stale_index_entry`, `name_convention`, `missing_manifest`, `duplicate_key`, `orphan_prompt`, `duplicate_binding`, `missing_thinking`.
+`orphan_prompt` (error) — a prompt's `article:` binding resolves to no indexed article. `duplicate_binding` (error) — two or more prompts resolve to the same article. `missing_thinking` (warning) — an article has a bound prompt but no matching `thinking/<key>.md`. `missing_directory` intentionally does NOT cover `prompts/`/`thinking/`: unlike `docs/`/`sources/`/`assets/` (guaranteed by `mf project new`), those two are optional — their absence just means the writing workflow hasn't started yet, not a lint violation.
 
 **`mf project index`** — Index projects (mf extension). Also reconciles each project's article index: prunes stale entries whose target file no longer exists on disk. Entries whose files exist — including declared and template-origin articles outside `docs/` — are never removed. A project whose `mind-index.yaml` fails to load is skipped with a warning (stderr; `data.warnings` in JSON) rather than silently. Use this to clear `stale_index_entry` lint warnings without hand-editing `mind-index.yaml`.
 
@@ -294,6 +295,22 @@ Lint term consistency using `word`, `substring`, and `pinyin`. `substring + loos
 First-class alias for `term lint --fix`. Same flags as `term lint`, including `--include-suggested`/`--min-confidence` for suggested corrections and `--exclude-term`/`--exclude-original` to narrow scope.
 Accepts a repeatable `--term <NAME>` (canonical name, case-sensitive exact match) or `--term <NAME:ORIGINAL>` (a specific correction pair) to scope corrections. When omitted, all terms are applied (unchanged). Naming a term or pair that does not exist in scope exits with code 2 and lists the unknown term(s) on stderr — no edits are made. Deleting a single correction uses a separate existing command: `mf term correction remove <TERM> <ORIGINAL>`.
 
+### `mf prompt` — Inspect article writing-prompt bindings
+
+Subcommands: `list` (alias `ls`), `show`, `index`. `prompts/<key>.md` is the source of truth (frontmatter `article:` and optional `mode:`); `mind-index.yaml`'s `prompts:` section is a derived, reconciled projection — never hand-edit it. Binding status (`bound`/`orphan`/`duplicate`) is computed at query time against the current `articles` set and is never persisted.
+
+**`mf prompt list`** (alias `ls`) — List prompts with computed binding status. `identity` is the prompt's path (e.g. `prompts/my-post.md`) and round-trips into `show`.
+
+**`mf prompt show <IDENTITY>`** — Show one prompt's path, bound article, mode, binding status, and last-updated timestamp. Read-only.
+
+**`mf prompt index`** — Reconcile the `prompts:` projection with `prompts/*.md` on disk: re-parses every present file's frontmatter (upsert), prunes entries whose file no longer exists, keeps entries whose file persists. `--dry-run` (`-n`) previews without writing. Idempotent and byte-stable when disk content is unchanged. Tolerates missing/malformed frontmatter per file (never aborts the whole run) — an unparseable `article:` binding just resolves to `orphan`.
+
+### `mf thinking` — Inspect article thinking-ledger bindings
+
+Subcommands: `list` (alias `ls`), `show`, `index`. Mirrors `mf prompt` exactly, but `thinking/<key>.md` carries no frontmatter — a thinking file associates with an article purely by key alignment (its own filename stem matching the article's). Binding status is `bound`/`orphan` only (no `duplicate`, since association is by unique key).
+
+**`mf thinking list`** / **`mf thinking show <IDENTITY>`** / **`mf thinking index [--dry-run]`** — Same contracts as their `mf prompt` counterparts.
+
 ### `mf build <ARTICLE>` — Build/assemble an article
 
 `-o`, `--output <PATH>` — Output file path
@@ -427,6 +444,14 @@ mf publish target show local
 mf render template list
 mf render template show arch
 
+# Prompts & thinking (writing-workflow bindings)
+mf prompt index --project my-project                  # reconcile prompts: projection with prompts/*.md
+mf prompt list --project my-project                    # bound/orphan/duplicate status per prompt
+mf prompt show prompts/my-first-post.md --project my-project
+mf thinking index --project my-project
+mf thinking list --project my-project
+mf project lint --project my-project                   # surfaces orphan_prompt/duplicate_binding/missing_thinking
+
 # Terms
 mf term new "Zettelkasten" --definition "A note-taking method" --project my-project
 mf term new "API" --alias "Application Programming Interface" --tag tech
@@ -494,3 +519,4 @@ mf version --json
 - `term show`, `term update`, and `term remove` operate on the selected correction without requiring sibling substring entries to be migrated first.
 - `article convert` evaluates eligible articles project-wide; it does not take an article selector.
 - `mf init` is the preferred bootstrap command; `mf config init` remains deprecated compatibility.
+- `mf prompt`/`mf thinking` are derived-projection commands: `mind-index.yaml`'s `prompts:`/`thinking:` sections are reconciled caches, never the source of truth — that's always the Markdown files under `prompts/`/`thinking/`. Binding status is computed at query time and never persisted. `article rename`/`article convert` keep both files and both projections consistent automatically; a manual `mf prompt index`/`mf thinking index` is only needed after hand-edited files.

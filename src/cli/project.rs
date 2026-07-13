@@ -349,7 +349,7 @@ fn handle_lint(args: ProjectLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome
                     MfError::usage(
                         format!("unknown lint rule '{r}': {e}"),
                         Some(
-                            "available rules: missing_directory, stale_index_entry, name_convention, missing_manifest, duplicate_key"
+                            "available rules: missing_directory, stale_index_entry, name_convention, missing_manifest, duplicate_key, orphan_prompt, duplicate_binding, missing_thinking"
                                 .to_string(),
                         ),
                     )

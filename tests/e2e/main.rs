@@ -12,6 +12,7 @@ mod mind_yaml;
 mod placeholders;
 mod project_index;
 mod project_lifecycle;
+mod prompt_thinking_workflow;
 mod publisher;
 mod repo_lifecycle;
 mod source_index;

@@ -110,6 +110,8 @@ pub fn build_index(project_root: &Path, config: &MindConfig) -> Result<IndexFile
         publish_records: existing.publish_records,
         sources: existing.sources,
         assets: existing.assets,
+        prompts: existing.prompts,
+        thinking: existing.thinking,
         terms: existing.terms,
         extra: existing.extra,
     };

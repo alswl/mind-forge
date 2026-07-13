@@ -97,6 +97,15 @@ pub fn atomic_write_directory(target: &Path, files: &[(&str, &str)]) -> Result<(
     Ok(())
 }
 
+/// Return the modification time of `path` as RFC 3339 UTC string
+/// (e.g. "2026-07-12T09:00:00Z").
+pub fn file_mtime_rfc3339(path: &Path) -> Result<String> {
+    let meta = fs::metadata(path).map_err(MfError::Io)?;
+    let modified = meta.modified().map_err(MfError::Io)?;
+    let datetime: chrono::DateTime<chrono::Utc> = modified.into();
+    Ok(datetime.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+}
+
 /// Canonicalize a path, falling back to the raw path on failure.
 ///
 /// Canonicalization failures are logged as a debug warning so callers
@@ -120,6 +129,29 @@ pub fn rel_posix_path(project_path: &Path, abs: &Path) -> Result<String> {
         )
     })?;
     Ok(rel.to_string_lossy().replace('\\', "/"))
+}
+
+/// List direct `*.md` children of `dir`, sorted, as project-relative POSIX
+/// paths. Tolerates a missing directory (empty result). Skips dot-files.
+pub fn scan_md_paths(project_path: &Path, dir: &Path) -> Result<Vec<String>> {
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut paths = Vec::new();
+    for entry in fs::read_dir(dir).map_err(MfError::Io)? {
+        let entry = entry.map_err(MfError::Io)?;
+        if !entry.file_type().map_err(MfError::Io)?.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str.starts_with('.') || !name_str.ends_with(&format!(".{}", defaults::MARKDOWN_EXTENSION)) {
+            continue;
+        }
+        paths.push(rel_posix_path(project_path, &entry.path())?);
+    }
+    paths.sort();
+    Ok(paths)
 }
 
 /// Detect the current project from `cwd` within a `repo_root`.

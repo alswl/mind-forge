@@ -8,27 +8,27 @@ use crate::output::list::{json_collection, render_text, ListCell, ListOpts, List
 use crate::output::show::{json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowOpts, ShowValue};
 use crate::output::verb::{Verb, VerbOpts, VerbResult};
 use crate::output::Format;
-use crate::service::prompt::PromptRecord;
-use crate::service::{prompt as svc_prompt, util as svc_util};
+use crate::service::thinking::ThinkingRecord;
+use crate::service::{thinking as svc_thinking, util as svc_util};
 
 #[derive(Debug, Clone, Args)]
-pub struct PromptCmd {
+pub struct ThinkingCmd {
     #[command(subcommand)]
-    pub command: Option<PromptSubcommand>,
+    pub command: Option<ThinkingSubcommand>,
 }
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum PromptSubcommand {
-    #[command(about = "List prompts", visible_alias = "ls")]
-    List(PromptListArgs),
-    #[command(about = "Show prompt details")]
-    Show(PromptShowArgs),
-    #[command(about = "Reconcile the prompts projection with prompts/ on disk")]
-    Index(PromptIndexArgs),
+pub enum ThinkingSubcommand {
+    #[command(about = "List thinking ledger entries", visible_alias = "ls")]
+    List(ThinkingListArgs),
+    #[command(about = "Show thinking entry details")]
+    Show(ThinkingShowArgs),
+    #[command(about = "Reconcile the thinking projection with thinking/ on disk")]
+    Index(ThinkingIndexArgs),
 }
 
 #[derive(Debug, Clone, Args)]
-pub struct PromptListArgs {
+pub struct ThinkingListArgs {
     #[command(flatten)]
     pub no_headers: NoHeadersFlag,
     #[command(flatten)]
@@ -36,29 +36,29 @@ pub struct PromptListArgs {
 }
 
 #[derive(Debug, Clone, Args)]
-pub struct PromptShowArgs {
-    /// Prompt identity (path), e.g. prompts/my-post.md — as emitted by `mf prompt list`
+pub struct ThinkingShowArgs {
+    /// Thinking entry identity (path), e.g. thinking/my-post.md — as emitted by `mf thinking list`
     pub selector: String,
 }
 
 #[derive(Debug, Clone, Args)]
-pub struct PromptIndexArgs {
+pub struct ThinkingIndexArgs {
     #[command(flatten)]
     pub dry_run: DryRunFlag,
 }
 
-pub fn dispatch(command: PromptCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+pub fn dispatch(command: ThinkingCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     match command.command {
-        None => Ok(CommandOutcome::GroupHelp("prompt")),
-        Some(PromptSubcommand::List(args)) => handle_list(args, ctx),
-        Some(PromptSubcommand::Show(args)) => handle_show(args, ctx),
-        Some(PromptSubcommand::Index(args)) => handle_index(args, ctx),
+        None => Ok(CommandOutcome::GroupHelp("thinking")),
+        Some(ThinkingSubcommand::List(args)) => handle_list(args, ctx),
+        Some(ThinkingSubcommand::Show(args)) => handle_show(args, ctx),
+        Some(ThinkingSubcommand::Index(args)) => handle_index(args, ctx),
     }
 }
 
-fn handle_list(args: PromptListArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+fn handle_list(args: ThinkingListArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
-    let records = svc_prompt::list(&project_path)?;
+    let records = svc_thinking::list(&project_path)?;
 
     let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
         .with_repo_root(Some(project_path.to_path_buf()));
@@ -75,7 +75,7 @@ fn handle_list(args: PromptListArgs, ctx: &CommandCtx) -> Result<CommandOutcome>
                     Ok(v)
                 })
                 .collect::<Result<Vec<_>>>()?;
-            Ok(CommandOutcome::Success(json_collection("prompts", items), Vec::new(), None))
+            Ok(CommandOutcome::Success(json_collection("thinking", items), Vec::new(), None))
         }
         Format::Text => {
             let mut rows = Vec::with_capacity(records.len());
@@ -84,28 +84,24 @@ fn handle_list(args: PromptListArgs, ctx: &CommandCtx) -> Result<CommandOutcome>
                     cells: vec![
                         ListCell::Path(r.path.clone()),
                         ListCell::Text(if r.article.is_empty() { "-".to_string() } else { r.article.clone() }),
-                        ListCell::Text(r.mode.map(|m| m.as_str().to_string()).unwrap_or_else(|| "-".to_string())),
                         ListCell::Text(r.binding_status.as_str().to_string()),
                         ListCell::Text(r.updated_at.clone()),
                     ],
                 });
             }
-            let view = ListView {
-                headers: &["IDENTITY", "ARTICLE", "MODE", "STATUS", "UPDATED"],
-                rows,
-                plural_noun: "prompts",
-            };
+            let view =
+                ListView { headers: &["IDENTITY", "ARTICLE", "STATUS", "UPDATED"], rows, plural_noun: "thinking" };
             Ok(CommandOutcome::Raw(render_text(&view, &opts), None))
         }
     }
 }
 
-fn handle_show(args: PromptShowArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+fn handle_show(args: ThinkingShowArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
-    let record: PromptRecord = svc_prompt::show(&project_path, &args.selector)?;
+    let record: ThinkingRecord = svc_thinking::show(&project_path, &args.selector)?;
 
     let block = ShowBlock {
-        kind: "prompt",
+        kind: "thinking",
         identity: record.identity(),
         fields: vec![
             ShowField { label: "Path", value: ShowValue::Path(record.path.clone()) },
@@ -113,7 +109,6 @@ fn handle_show(args: PromptShowArgs, ctx: &CommandCtx) -> Result<CommandOutcome>
                 label: "Article",
                 value: ShowValue::Optional(if record.article.is_empty() { None } else { Some(record.article.clone()) }),
             },
-            ShowField { label: "Mode", value: ShowValue::Optional(record.mode.map(|m| m.as_str().to_string())) },
             ShowField { label: "Binding status", value: ShowValue::Text(record.binding_status.as_str().to_string()) },
             ShowField { label: "Updated", value: ShowValue::Text(record.updated_at.clone()) },
         ],
@@ -134,15 +129,15 @@ fn handle_show(args: PromptShowArgs, ctx: &CommandCtx) -> Result<CommandOutcome>
     }
 }
 
-fn handle_index(args: PromptIndexArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+fn handle_index(args: ThinkingIndexArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
-    let report = svc_prompt::reconcile(&project_path, args.dry_run.dry_run)?;
+    let report = svc_thinking::reconcile(&project_path, args.dry_run.dry_run)?;
     let scanned_count = report.added.len() + report.removed.len() + report.kept_count as usize;
 
     match ctx.format() {
         Format::Json => {
             let data = serde_json::json!({
-                "kind": "prompt",
+                "kind": "thinking",
                 "added": report.added,
                 "removed": report.removed,
                 "kept_count": report.kept_count,
@@ -160,7 +155,7 @@ fn handle_index(args: PromptIndexArgs, ctx: &CommandCtx) -> Result<CommandOutcom
             });
             let result = VerbResult {
                 verb: Verb::Index,
-                kind: "prompt",
+                kind: "thinking",
                 identity: String::new(),
                 old_identity: None,
                 path: None,

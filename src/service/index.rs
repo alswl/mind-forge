@@ -360,6 +360,8 @@ pub fn serialize_mind_index(index: &IndexFile) -> std::result::Result<String, se
     insert_mapping_collection(&mut map, "sources", index.sources.as_ref(), source_key)?;
     insert_mapping_collection(&mut map, "assets", index.assets.as_ref(), |asset| Ok(asset.name.clone()))?;
     insert_mapping_collection(&mut map, "articles", index.articles.as_ref(), article_key)?;
+    insert_mapping_collection(&mut map, "prompts", index.prompts.as_ref(), prompt_key)?;
+    insert_mapping_collection(&mut map, "thinking", index.thinking.as_ref(), thinking_key)?;
     insert_sequence_collection(&mut map, "terms", index.terms.as_ref())?;
     insert_sequence_collection(&mut map, "publish_records", index.publish_records.as_ref())?;
     serde_yaml::to_string(&serde_yaml::Value::Mapping(map))
@@ -432,6 +434,96 @@ pub fn article_output_stem(article_path: &str) -> &str {
     path.strip_prefix(defaults::DOCS_PATH_PREFIX)
         .or_else(|| path.strip_prefix(defaults::BUILD_OUTPUT_PATH_PREFIX))
         .unwrap_or(path)
+}
+
+/// Derive a store entry's own dictionary/identity key from its file path
+/// (e.g. `prompts/my-post.md` -> `my-post`). Used for both `prompts:` and
+/// `thinking:` YAML dict keys. Deliberately independent of binding health —
+/// unlike `article_output_stem`, this must remain derivable even when a
+/// prompt/thinking file's binding is missing or malformed (FR-002).
+pub(crate) fn derive_store_key(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| path.to_string())
+}
+
+fn prompt_key(prompt: &crate::model::prompt::Prompt) -> std::result::Result<String, serde_yaml::Error> {
+    Ok(derive_store_key(&prompt.path))
+}
+
+fn thinking_key(entry: &crate::model::thinking::Thinking) -> std::result::Result<String, serde_yaml::Error> {
+    Ok(derive_store_key(&entry.path))
+}
+
+/// A prompt projection paired with its computed binding status. Binding
+/// status is never persisted (see `model::prompt::BindingStatus`).
+pub struct PromptBinding<'a> {
+    pub prompt: &'a crate::model::prompt::Prompt,
+    pub status: crate::model::prompt::BindingStatus,
+}
+
+/// A thinking projection paired with its computed binding status (`Bound` or
+/// `Orphan` only).
+pub struct ThinkingBinding<'a> {
+    pub thinking: &'a crate::model::thinking::Thinking,
+    pub status: crate::model::prompt::BindingStatus,
+}
+
+/// Resolve each prompt's binding status against the current `articles` set.
+///
+/// `Orphan`: the prompt's `article` is empty or matches no indexed article's
+/// `article_path`. `Duplicate`: two or more prompts resolve to the same
+/// article. Otherwise `Bound`. Computed fresh on every call; never persisted.
+pub fn resolve_prompt_bindings(index: &IndexFile) -> Vec<PromptBinding<'_>> {
+    let prompts: &[crate::model::prompt::Prompt] = index.prompts.as_deref().unwrap_or(&[]);
+    let articles: &[Article] = index.articles.as_deref().unwrap_or(&[]);
+
+    let mut group_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for p in prompts {
+        if !p.article.is_empty() && articles.iter().any(|a| a.article_path == p.article) {
+            *group_counts.entry(p.article.as_str()).or_insert(0) += 1;
+        }
+    }
+
+    prompts
+        .iter()
+        .map(|p| {
+            let bound = !p.article.is_empty() && articles.iter().any(|a| a.article_path == p.article);
+            let status = if !bound {
+                crate::model::prompt::BindingStatus::Orphan
+            } else if group_counts.get(p.article.as_str()).copied().unwrap_or(0) > 1 {
+                crate::model::prompt::BindingStatus::Duplicate
+            } else {
+                crate::model::prompt::BindingStatus::Bound
+            };
+            PromptBinding { prompt: p, status }
+        })
+        .collect()
+}
+
+/// Resolve each thinking entry's binding status against the current
+/// `articles` set by key alignment (own filename stem vs. each article's
+/// `article_output_stem`). `Bound` when a match exists, else `Orphan`.
+pub fn resolve_thinking_bindings(index: &IndexFile) -> Vec<ThinkingBinding<'_>> {
+    let thinking: &[crate::model::thinking::Thinking] = index.thinking.as_deref().unwrap_or(&[]);
+    let articles: &[Article] = index.articles.as_deref().unwrap_or(&[]);
+    let article_keys: std::collections::HashSet<&str> =
+        articles.iter().map(|a| article_output_stem(&a.article_path)).collect();
+
+    thinking
+        .iter()
+        .map(|t| {
+            let key = derive_store_key(&t.path);
+            let status = if article_keys.contains(key.as_str()) {
+                crate::model::prompt::BindingStatus::Bound
+            } else {
+                crate::model::prompt::BindingStatus::Orphan
+            };
+            ThinkingBinding { thinking: t, status }
+        })
+        .collect()
 }
 
 fn json_to_yaml(value: &serde_json::Value) -> serde_yaml::Value {
@@ -631,6 +723,8 @@ mod tests {
             publish_records: None,
             sources: None,
             assets: None,
+            prompts: None,
+            thinking: None,
             terms: None,
             extra: None,
         }
@@ -936,5 +1030,83 @@ terms:
         );
         assert!(msg.contains("_aidc"), "message should name the correction: {msg}");
         assert_eq!(err.exit_code(), crate::exit::ExitCode::UsageError);
+    }
+
+    // ── resolve_prompt_bindings / resolve_thinking_bindings ──────────────────
+
+    fn make_prompt(path: &str, article: &str) -> crate::model::prompt::Prompt {
+        crate::model::prompt::Prompt {
+            path: path.to_string(),
+            article: article.to_string(),
+            mode: None,
+            updated_at: "2026-07-12T00:00:00Z".to_string(),
+        }
+    }
+
+    fn make_thinking(path: &str) -> crate::model::thinking::Thinking {
+        crate::model::thinking::Thinking {
+            path: path.to_string(),
+            article: String::new(),
+            updated_at: "2026-07-12T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn resolve_prompt_bindings_bound() {
+        let mut index = IndexFile::create_default();
+        index.articles = Some(vec![make_article("docs/my-post.md", None)]);
+        index.prompts = Some(vec![make_prompt("prompts/my-post.md", "docs/my-post.md")]);
+
+        let bindings = resolve_prompt_bindings(&index);
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].prompt.path, "prompts/my-post.md");
+        assert_eq!(bindings[0].status, crate::model::prompt::BindingStatus::Bound);
+    }
+
+    #[test]
+    fn resolve_prompt_bindings_orphan_when_article_missing() {
+        let mut index = IndexFile::create_default();
+        index.articles = Some(vec![make_article("docs/my-post.md", None)]);
+        index.prompts = Some(vec![make_prompt("prompts/widowed.md", "docs/does-not-exist.md")]);
+
+        let bindings = resolve_prompt_bindings(&index);
+        assert_eq!(bindings[0].status, crate::model::prompt::BindingStatus::Orphan);
+    }
+
+    #[test]
+    fn resolve_prompt_bindings_orphan_when_article_empty() {
+        let mut index = IndexFile::create_default();
+        index.articles = Some(vec![make_article("docs/my-post.md", None)]);
+        index.prompts = Some(vec![make_prompt("prompts/unbound.md", "")]);
+
+        let bindings = resolve_prompt_bindings(&index);
+        assert_eq!(bindings[0].status, crate::model::prompt::BindingStatus::Orphan);
+    }
+
+    #[test]
+    fn resolve_prompt_bindings_duplicate_when_two_prompts_share_article() {
+        let mut index = IndexFile::create_default();
+        index.articles = Some(vec![make_article("docs/my-post.md", None)]);
+        index.prompts = Some(vec![
+            make_prompt("prompts/my-post.md", "docs/my-post.md"),
+            make_prompt("prompts/my-post-old.md", "docs/my-post.md"),
+        ]);
+
+        let bindings = resolve_prompt_bindings(&index);
+        assert_eq!(bindings.len(), 2);
+        assert!(bindings.iter().all(|b| b.status == crate::model::prompt::BindingStatus::Duplicate));
+    }
+
+    #[test]
+    fn resolve_thinking_bindings_bound_and_orphan() {
+        let mut index = IndexFile::create_default();
+        index.articles = Some(vec![make_article("docs/my-post.md", None)]);
+        index.thinking = Some(vec![make_thinking("thinking/my-post.md"), make_thinking("thinking/orphaned.md")]);
+
+        let bindings = resolve_thinking_bindings(&index);
+        let bound = bindings.iter().find(|b| b.thinking.path == "thinking/my-post.md").unwrap();
+        assert_eq!(bound.status, crate::model::prompt::BindingStatus::Bound);
+        let orphan = bindings.iter().find(|b| b.thinking.path == "thinking/orphaned.md").unwrap();
+        assert_eq!(orphan.status, crate::model::prompt::BindingStatus::Orphan);
     }
 }

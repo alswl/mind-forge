@@ -99,6 +99,8 @@ pub fn import_project(
                 updated_at: now,
                 template_origin: None,
             }]),
+            prompts: None,
+            thinking: None,
             terms: None,
             publish_records: None,
             extra: None,

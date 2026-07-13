@@ -13,6 +13,8 @@ Commands:
   source      Manage content sources
   asset       Manage project assets
   term        Manage terminology [aliases: terms]
+  prompt      Inspect article writing-prompt bindings
+  thinking    Inspect article thinking-ledger bindings
   build       Build articles
   publish     Publish articles to configured targets
   render      Generate render prompts (emits prompts only, no output files)

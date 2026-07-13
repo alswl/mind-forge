@@ -11,6 +11,7 @@ pub mod render;
 pub mod shared_flags;
 pub mod source;
 pub mod term;
+pub mod thinking;
 pub mod version;
 
 use std::path::PathBuf;
@@ -145,6 +146,10 @@ pub enum TopLevelCommand {
     Asset(asset::AssetCmd),
     #[command(about = "Manage terminology", visible_alias = "terms")]
     Term(term::TermCmd),
+    #[command(about = "Inspect article writing-prompt bindings")]
+    Prompt(prompt::PromptCmd),
+    #[command(about = "Inspect article thinking-ledger bindings")]
+    Thinking(thinking::ThinkingCmd),
 
     // ── Workflows ──
     #[command(about = "Build articles")]
@@ -194,6 +199,8 @@ impl RootCli {
             Some(TopLevelCommand::Project(command)) => project::dispatch(command, ctx),
             Some(TopLevelCommand::Article(command)) => article::dispatch(command, ctx),
             Some(TopLevelCommand::Term(command)) => term::dispatch(command, ctx),
+            Some(TopLevelCommand::Prompt(command)) => prompt::dispatch(command, ctx),
+            Some(TopLevelCommand::Thinking(command)) => thinking::dispatch(command, ctx),
             Some(TopLevelCommand::Completion(command)) => completion::dispatch(command, ctx),
             Some(TopLevelCommand::Build(args)) => build::dispatch(args, ctx),
             Some(TopLevelCommand::Publish(command)) => publish::dispatch(command, ctx),

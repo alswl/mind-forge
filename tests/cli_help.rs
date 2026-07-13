@@ -150,6 +150,64 @@ fn source_add_help_snapshot() {
     assert_snapshot!("source_add_help", stdout);
 }
 
+// ── Prompt / Thinking help snapshots (065-prompts-thinking-schema) ──────
+
+#[test]
+fn prompt_help_snapshot() {
+    let (stdout, _, code) = run(&["prompt", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("prompt_help", stdout);
+}
+
+#[test]
+fn prompt_list_help_snapshot() {
+    let (stdout, _, code) = run(&["prompt", "list", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("prompt_list_help", stdout);
+}
+
+#[test]
+fn prompt_show_help_snapshot() {
+    let (stdout, _, code) = run(&["prompt", "show", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("prompt_show_help", stdout);
+}
+
+#[test]
+fn prompt_index_help_snapshot() {
+    let (stdout, _, code) = run(&["prompt", "index", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("prompt_index_help", stdout);
+}
+
+#[test]
+fn thinking_help_snapshot() {
+    let (stdout, _, code) = run(&["thinking", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("thinking_help", stdout);
+}
+
+#[test]
+fn thinking_list_help_snapshot() {
+    let (stdout, _, code) = run(&["thinking", "list", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("thinking_list_help", stdout);
+}
+
+#[test]
+fn thinking_show_help_snapshot() {
+    let (stdout, _, code) = run(&["thinking", "show", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("thinking_show_help", stdout);
+}
+
+#[test]
+fn thinking_index_help_snapshot() {
+    let (stdout, _, code) = run(&["thinking", "index", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("thinking_index_help", stdout);
+}
+
 // ── Term help snapshots (012-term-core) ─────────────────────────────────
 
 #[test]
