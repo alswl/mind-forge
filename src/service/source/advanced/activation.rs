@@ -137,6 +137,42 @@ pub fn activate(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<Activ
     let store = LanceStore::create(&db_path)?;
     store.ensure_tables()?;
 
+    // The activation snapshot is only valid once the legacy inventory is in
+    // the primary catalog.  Previously this created an empty table while
+    // reporting the preview count, which made Lance mode look ready without
+    // any registrations to query or sync.
+    let registrations = preview
+        .items
+        .iter()
+        .map(|item| crate::model::source_advanced::SourceRegistration {
+            registration_key: item.registration_key.clone(),
+            project_key: identity::project_key(&item.project_path),
+            project_identity: item.project_identity.clone(),
+            project_path: item.project_path.clone(),
+            source_identity: item.source_identity.clone(),
+            source_type: item.source_type.clone(),
+            source_kind: None,
+            registered_location: item.registered_location.clone(),
+            tags_json: "[]".to_string(),
+            fact_fingerprint: identity::raw_fingerprint(
+                format!("{}\\n{}\\n{}", item.source_identity, item.source_type, item.registered_location).as_bytes(),
+            ),
+            registration_revision: 1,
+            state: crate::model::source_advanced::RegistrationState::Live,
+        })
+        .collect::<Vec<_>>();
+    store.append_registrations(&registrations)?;
+    let imported_count = store.count_rows("registrations")?;
+    if imported_count != registrations.len() {
+        return Err(MfError::advanced_store(
+            format!(
+                "activation catalog validation failed: expected {} registrations, found {imported_count}",
+                registrations.len()
+            ),
+            Some("legacy backend remains active; retry activation after resolving the storage error".to_string()),
+        ));
+    }
+
     // 3. Compute the catalog fingerprint from all registration keys
     let mut keys: Vec<String> = preview.items.iter().map(|i| i.registration_key.clone()).collect();
     keys.sort();
@@ -168,7 +204,7 @@ pub fn activate(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<Activ
         search_policy_version: "1".to_string(),
         model_identity: None,
         aggregate_counts: Some(serde_json::json!({
-            "registrations": preview.total_registrations,
+            "registrations": imported_count,
             "documents": 0,
             "chunks": 0,
             "enrichments": 0
@@ -305,5 +341,38 @@ sources:
 
         assert_eq!(fs::read_to_string(dir.path().join(".mind/.gitignore")).unwrap(), "*\n!.gitignore\n");
         assert!(!dir.path().join(".gitignore").exists());
+    }
+
+    #[test]
+    fn activation_persists_legacy_registrations_before_switching_backend() {
+        let dir = tempfile::tempdir().unwrap();
+        let project_dir = dir.path().join("projects/alpha");
+        fs::create_dir_all(&project_dir).unwrap();
+        fs::write(
+            project_dir.join("mind-index.yaml"),
+            "project: alpha\nsources:\n  - name: notes\n    kind: file\n    path: notes.md\n",
+        )
+        .unwrap();
+        fs::write(dir.path().join("minds.yaml"), "schema_version: '1'\nprojects: []\n").unwrap();
+
+        let config = ResolvedSourceConfig {
+            backend: SourceBackend::Legacy,
+            is_lance_active: false,
+            is_marker_corrupt: false,
+            activation_snapshot_id: None,
+            storage_schema_version: None,
+            chunk_tokens: 384,
+            chunk_overlap: 48,
+            default_search_mode: SearchDefaultMode::Basic,
+        };
+        let result = activate(dir.path(), &config).unwrap();
+        assert_eq!(result.total_registrations, 1);
+
+        let store = LanceStore::open(
+            &dir.path().join(".mind/source/advanced/generations").join(&result.generation_id).join("lancedb"),
+        )
+        .unwrap();
+        assert_eq!(store.count_rows("registrations").unwrap(), 1);
+        assert!(fs::read_to_string(dir.path().join("minds.yaml")).unwrap().contains("backend: lance"));
     }
 }

@@ -7,6 +7,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use arrow_array::{ArrayRef, Int64Array, RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use futures::TryStreamExt;
 use lance_index::scalar::FullTextSearchQuery;
@@ -15,6 +16,7 @@ use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::table::Table;
 
 use crate::error::{MfError, Result};
+use crate::model::source_advanced::SourceRegistration;
 
 // ── Table names ────────────────────────────────────────────────────────────
 
@@ -278,6 +280,55 @@ impl LanceStore {
                 .map(|_| ())
                 .map_err(|e| MfError::advanced_store(format!("failed to append to '{table_name}': {e}"), None))
         })
+    }
+
+    /// Append primary registration facts during activation.  Keeping this
+    /// conversion in the storage adapter makes the Arrow boundary explicit and
+    /// prevents activation from publishing a marker for an empty catalog.
+    pub fn append_registrations(&self, registrations: &[SourceRegistration]) -> Result<()> {
+        if registrations.is_empty() {
+            return Ok(());
+        }
+
+        let batch = RecordBatch::try_new(
+            registrations_schema(),
+            vec![
+                Arc::new(StringArray::from(
+                    registrations.iter().map(|r| r.registration_key.as_str()).collect::<Vec<_>>(),
+                )) as ArrayRef,
+                Arc::new(StringArray::from(registrations.iter().map(|r| r.project_key.as_str()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(
+                    registrations.iter().map(|r| r.project_identity.as_str()).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(registrations.iter().map(|r| r.project_path.as_str()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(
+                    registrations.iter().map(|r| r.source_identity.as_str()).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(registrations.iter().map(|r| r.source_type.as_str()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(registrations.iter().map(|r| r.source_kind.as_deref()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(
+                    registrations.iter().map(|r| r.registered_location.as_str()).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(registrations.iter().map(|r| r.tags_json.as_str()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(
+                    registrations.iter().map(|r| r.fact_fingerprint.as_str()).collect::<Vec<_>>(),
+                )),
+                Arc::new(Int64Array::from(registrations.iter().map(|r| r.registration_revision).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(
+                    registrations
+                        .iter()
+                        .map(|r| match r.state {
+                            crate::model::source_advanced::RegistrationState::Live => "live",
+                            crate::model::source_advanced::RegistrationState::Pending => "pending",
+                            crate::model::source_advanced::RegistrationState::Failed => "failed",
+                            crate::model::source_advanced::RegistrationState::Orphaned => "orphaned",
+                        })
+                        .collect::<Vec<_>>(),
+                )),
+            ],
+        )
+        .map_err(|e| MfError::advanced_store(format!("failed to build registrations batch: {e}"), None))?;
+        self.append_rows(TABLE_REGISTRATIONS, batch)
     }
 
     /// Count rows in a table. Returns 0 if the table is empty or missing.
