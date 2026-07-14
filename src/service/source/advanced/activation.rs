@@ -42,6 +42,9 @@ pub struct ActivationItem {
     pub project_path: String,
     pub source_identity: String,
     pub source_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_kind: Option<String>,
+    pub tags: Vec<String>,
     pub registered_location: String,
     pub registration_key: String,
 }
@@ -87,6 +90,12 @@ pub fn preview_activation(repo_root: &Path, _config: &ResolvedSourceConfig) -> R
                             .or_else(|| source.get("url"))
                             .and_then(|v| v.as_str())
                             .unwrap_or("unknown");
+                        let source_kind = source.get("source_kind").and_then(|v| v.as_str()).map(str::to_string);
+                        let tags = source
+                            .get("tags")
+                            .and_then(|v| v.as_sequence())
+                            .map(|tags| tags.iter().filter_map(|tag| tag.as_str().map(str::to_string)).collect())
+                            .unwrap_or_default();
                         let project_path_rel =
                             project_path.strip_prefix(repo_root).unwrap_or(&project_path).to_string_lossy().to_string();
 
@@ -98,6 +107,8 @@ pub fn preview_activation(repo_root: &Path, _config: &ResolvedSourceConfig) -> R
                             project_path: project_path_rel,
                             source_identity: name.to_string(),
                             source_type: kind.to_string(),
+                            source_kind,
+                            tags,
                             registered_location: location.to_string(),
                             registration_key: rk,
                         });
@@ -151,11 +162,18 @@ pub fn activate(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<Activ
             project_path: item.project_path.clone(),
             source_identity: item.source_identity.clone(),
             source_type: item.source_type.clone(),
-            source_kind: None,
+            source_kind: item.source_kind.clone(),
             registered_location: item.registered_location.clone(),
-            tags_json: "[]".to_string(),
+            tags_json: serde_json::to_string(&item.tags).unwrap_or_else(|_| "[]".to_string()),
             fact_fingerprint: identity::raw_fingerprint(
-                format!("{}\\n{}\\n{}", item.source_identity, item.source_type, item.registered_location).as_bytes(),
+                format!(
+                    "{}\\n{}\\n{}\\n{}",
+                    item.source_identity,
+                    item.source_type,
+                    item.registered_location,
+                    item.tags.join("\\n")
+                )
+                .as_bytes(),
             ),
             registration_revision: 1,
             state: crate::model::source_advanced::RegistrationState::Live,
