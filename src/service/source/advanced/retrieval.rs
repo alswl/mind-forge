@@ -151,68 +151,104 @@ fn search_repository_with_store(
 
     // Enumerate all live project registrations
     let mut all_registrations: Vec<BasicCandidate> = Vec::new();
-    for project_entry in std::fs::read_dir(&projects_dir)? {
-        let project_entry = project_entry?;
-        if !project_entry.file_type()?.is_dir() {
-            continue;
+    if let Some(s) = store {
+        let config = super::config::load_repository_config(repo_root)?;
+        let catalog = super::catalog::SourceCatalog::discover(&config, repo_root)?;
+        for registration in catalog.registrations(Some(s))? {
+            if project_filter.is_some_and(|filter| {
+                filter != registration.project_identity
+                    && filter
+                        != Path::new(&registration.project_path)
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .unwrap_or("")
+            }) {
+                continue;
+            }
+            if kind_filter.is_some_and(|kind| kind != registration.source_type)
+                || source_filter.is_some_and(|source| source != registration.source_identity)
+            {
+                continue;
+            }
+            all_registrations.push(BasicCandidate {
+                registration_key: registration.registration_key,
+                project_identity: registration.project_identity,
+                project_path: registration.project_path,
+                source_identity: registration.source_identity,
+                source_type: registration.source_type,
+                registered_location: registration.registered_location,
+                source_kind: registration.source_kind,
+                tags: serde_json::from_str(&registration.tags_json).unwrap_or_default(),
+                match_field: String::new(),
+            });
         }
-        let project_path = project_entry.path();
-        let project_name = project_path.file_name().unwrap_or_default().to_string_lossy();
+    } else {
+        for project_entry in std::fs::read_dir(&projects_dir)? {
+            let project_entry = project_entry?;
+            if !project_entry.file_type()?.is_dir() {
+                continue;
+            }
+            let project_path = project_entry.path();
+            let project_name = project_path.file_name().unwrap_or_default().to_string_lossy();
 
-        if let Some(filter) = project_filter
-            && project_name != filter
-        {
-            continue;
-        }
+            if let Some(filter) = project_filter
+                && project_name != filter
+            {
+                continue;
+            }
 
-        let index_path = project_path.join("mind-index.yaml");
-        if !index_path.exists() {
-            continue;
-        }
+            let index_path = project_path.join("mind-index.yaml");
+            if !index_path.exists() {
+                continue;
+            }
 
-        if let Ok(yaml_data) = std::fs::read_to_string(&index_path)
-            && let Ok(index) = serde_yaml::from_str::<serde_yaml::Value>(&yaml_data)
-        {
-            let project_identity = index.get("project").and_then(|v| v.as_str()).unwrap_or(&project_name);
-            if let Some(sources) = index.get("sources").and_then(|v| v.as_sequence()) {
-                for source in sources {
-                    let name = source.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
-                    let kind = source.get("kind").and_then(|v| v.as_str()).unwrap_or("file");
-                    let location =
-                        source.get("path").or_else(|| source.get("url")).and_then(|v| v.as_str()).unwrap_or("unknown");
-                    let tags: Vec<String> = source
-                        .get("tags")
-                        .and_then(|v| v.as_sequence())
-                        .map(|s| s.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
-                        .unwrap_or_default();
-                    let source_kind = source.get("source_kind").and_then(|v| v.as_str()).map(|s| s.to_string());
+            if let Ok(yaml_data) = std::fs::read_to_string(&index_path)
+                && let Ok(index) = serde_yaml::from_str::<serde_yaml::Value>(&yaml_data)
+            {
+                let project_identity = index.get("project").and_then(|v| v.as_str()).unwrap_or(&project_name);
+                if let Some(sources) = index.get("sources").and_then(|v| v.as_sequence()) {
+                    for source in sources {
+                        let name = source.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        let kind = source.get("kind").and_then(|v| v.as_str()).unwrap_or("file");
+                        let location = source
+                            .get("path")
+                            .or_else(|| source.get("url"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown");
+                        let tags: Vec<String> = source
+                            .get("tags")
+                            .and_then(|v| v.as_sequence())
+                            .map(|s| s.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+                            .unwrap_or_default();
+                        let source_kind = source.get("source_kind").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-                    // Apply filters
-                    if let Some(kf) = kind_filter
-                        && kind != kf
-                    {
-                        continue;
+                        // Apply filters
+                        if let Some(kf) = kind_filter
+                            && kind != kf
+                        {
+                            continue;
+                        }
+                        if let Some(sf) = source_filter
+                            && name != sf
+                        {
+                            continue;
+                        }
+
+                        let pk = identity::project_key(&project_name);
+                        let rk = identity::registration_key(&pk, kind, location);
+
+                        all_registrations.push(BasicCandidate {
+                            registration_key: rk,
+                            project_identity: project_identity.to_string(),
+                            project_path: project_name.to_string(),
+                            source_identity: name.to_string(),
+                            source_type: kind.to_string(),
+                            registered_location: location.to_string(),
+                            source_kind,
+                            tags,
+                            match_field: String::new(),
+                        });
                     }
-                    if let Some(sf) = source_filter
-                        && name != sf
-                    {
-                        continue;
-                    }
-
-                    let pk = identity::project_key(&project_name);
-                    let rk = identity::registration_key(&pk, kind, location);
-
-                    all_registrations.push(BasicCandidate {
-                        registration_key: rk,
-                        project_identity: project_identity.to_string(),
-                        project_path: project_name.to_string(),
-                        source_identity: name.to_string(),
-                        source_type: kind.to_string(),
-                        registered_location: location.to_string(),
-                        source_kind,
-                        tags,
-                        match_field: String::new(),
-                    });
                 }
             }
         }
