@@ -346,8 +346,14 @@ fn handle_sync(args: AdvancedSyncArgs, ctx: &mut CommandCtx) -> Result<CommandOu
     let config = svc::source::advanced::config::load_repository_config(repo)?;
     let dry_run = args.dry_run.dry_run;
 
-    let report =
-        svc::source::advanced::sync::sync_repository(repo, &config, args.project.as_deref(), dry_run, args.offline)?;
+    let report = svc::source::advanced::sync::sync_repository(
+        repo,
+        &config,
+        args.project.as_deref(),
+        args.source.as_deref(),
+        dry_run,
+        args.offline,
+    )?;
 
     let json = serde_json::to_value(&report).unwrap_or_default();
     let warnings: Vec<String> = if report.registrations_failed > 0 {

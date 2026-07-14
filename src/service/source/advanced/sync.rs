@@ -27,12 +27,13 @@ pub fn sync_repository(
     repo_root: &Path,
     config: &ResolvedSourceConfig,
     project_filter: Option<&str>,
+    source_filter: Option<&str>,
     dry_run: bool,
     offline: bool,
 ) -> Result<SyncReport> {
     if config.is_lance() {
         let store = open_active_store(repo_root)?;
-        return sync_lance_catalog(repo_root, config, project_filter, dry_run, offline, &store);
+        return sync_lance_catalog(repo_root, config, project_filter, source_filter, dry_run, offline, &store);
     }
     let mut items = Vec::new();
     let mut added = 0u64;
@@ -101,6 +102,9 @@ pub fn sync_repository(
             if let Some(sources) = index.get("sources").and_then(|v| v.as_sequence()) {
                 for source in sources {
                     let name = source.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                    if source_filter.is_some_and(|filter| filter != name) {
+                        continue;
+                    }
                     let kind = source.get("kind").and_then(|v| v.as_str()).unwrap_or("file");
                     let location =
                         source.get("path").or_else(|| source.get("url")).and_then(|v| v.as_str()).unwrap_or("unknown");
@@ -184,6 +188,7 @@ fn sync_lance_catalog(
     repo_root: &Path,
     config: &ResolvedSourceConfig,
     project_filter: Option<&str>,
+    source_filter: Option<&str>,
     dry_run: bool,
     offline: bool,
     store: &LanceStore,
@@ -207,6 +212,9 @@ fn sync_lance_catalog(
             .and_then(|name| name.to_str())
             .unwrap_or(&registration.project_identity);
         if project_filter.is_some_and(|filter| filter != project_name && filter != registration.project_identity) {
+            continue;
+        }
+        if source_filter.is_some_and(|filter| filter != registration.source_identity) {
             continue;
         }
         let project_path = repo_root.join(&registration.project_path);
@@ -479,7 +487,7 @@ pub fn rebuild_repository(
 ) -> Result<SyncReport> {
     // Rebuild is a full repository sync without project filter.
     // In Lance mode, this would create a fresh generation and publish atomically.
-    sync_repository(repo_root, config, None, dry_run, offline).map(|mut report| {
+    sync_repository(repo_root, config, None, None, dry_run, offline).map(|mut report| {
         report.scope = "rebuild".to_string();
         if !dry_run && report.registrations_failed == 0 {
             report.index_revision = Some(format!("rebuild-{}", chrono::Utc::now().format("%Y%m%dT%H%M%SZ")));
@@ -521,7 +529,7 @@ pub fn clear_derived(
     }
 
     // For now, clear operates on the sync model: mark all affected items as "cleared"
-    let mut report = sync_repository(repo_root, config, project, true, true)?;
+    let mut report = sync_repository(repo_root, config, project, source, true, true)?;
     report.scope = "clear".to_string();
     report.dry_run = dry_run;
 
@@ -540,7 +548,7 @@ pub fn clear_derived(
     }
 
     // Add items showing what would be cleared
-    let items = sync_repository(repo_root, config, project, true, true)?
+    let items = sync_repository(repo_root, config, project, source, true, true)?
         .items
         .into_iter()
         .map(|mut item| {
@@ -659,7 +667,7 @@ mod tests {
             chunk_overlap: 48,
             default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
         };
-        let report = sync_repository(dir.path(), &config, None, false, false).unwrap();
+        let report = sync_repository(dir.path(), &config, None, None, false, false).unwrap();
         assert_eq!(report.registrations_total, 0);
         assert_eq!(report.scope, "repository");
     }
@@ -689,12 +697,39 @@ mod tests {
         };
 
         // Matches filter
-        let report = sync_repository(dir.path(), &config, Some("alpha"), false, false).unwrap();
+        let report = sync_repository(dir.path(), &config, Some("alpha"), None, false, false).unwrap();
         assert!(report.registrations_total > 0);
 
         // Non-matching filter
-        let report = sync_repository(dir.path(), &config, Some("beta"), false, false).unwrap();
+        let report = sync_repository(dir.path(), &config, Some("beta"), None, false, false).unwrap();
         assert_eq!(report.registrations_total, 0);
+    }
+
+    #[test]
+    fn sync_with_source_filter_only_processes_the_selected_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("projects/alpha");
+        std::fs::create_dir_all(project.join("sources")).unwrap();
+        std::fs::write(project.join("sources/one.md"), "# One").unwrap();
+        std::fs::write(project.join("sources/two.md"), "# Two").unwrap();
+        std::fs::write(
+            project.join("mind-index.yaml"),
+            "project: alpha\nsources:\n  - name: one\n    kind: file\n    path: sources/one.md\n  - name: two\n    kind: file\n    path: sources/two.md\n",
+        )
+        .unwrap();
+        let config = ResolvedSourceConfig {
+            backend: crate::model::manifest::SourceBackend::Legacy,
+            is_lance_active: false,
+            is_marker_corrupt: false,
+            activation_snapshot_id: None,
+            storage_schema_version: None,
+            chunk_tokens: 384,
+            chunk_overlap: 48,
+            default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
+        };
+        let report = sync_repository(dir.path(), &config, None, Some("two"), false, false).unwrap();
+        assert_eq!(report.registrations_total, 1);
+        assert_eq!(report.items[0].source_identity, "two");
     }
 
     #[test]
@@ -727,7 +762,7 @@ mod tests {
         // source of truth.  Sync must keep using the persisted primary row.
         std::fs::write(project_dir.join("mind-index.yaml"), "project: alpha\nsources: []\n").unwrap();
 
-        let report = sync_repository(dir.path(), &lance, None, false, false).unwrap();
+        let report = sync_repository(dir.path(), &lance, None, None, false, false).unwrap();
         assert_eq!(report.registrations_added, 1);
 
         let store = open_active_store(dir.path()).unwrap();
@@ -800,7 +835,7 @@ mod tests {
         assert_eq!(projection.primary_count, 1);
         assert!(std::fs::read_to_string(project_dir.join("mind-index.yaml")).unwrap().contains("sources/notes.md"));
 
-        sync_repository(dir.path(), &lance, None, false, false).unwrap();
+        sync_repository(dir.path(), &lance, None, None, false, false).unwrap();
         assert_eq!(store.count_rows("documents").unwrap(), 1);
         assert_eq!(store.count_rows("registration_content").unwrap(), 1);
         assert_eq!(store.count_rows("chunks").unwrap(), 1);
@@ -837,13 +872,13 @@ mod tests {
         };
         crate::service::source::advanced::activation::activate(dir.path(), &legacy).unwrap();
         let lance = crate::service::source::advanced::config::load_repository_config(dir.path()).unwrap();
-        let first = sync_repository(dir.path(), &lance, None, false, false).unwrap();
+        let first = sync_repository(dir.path(), &lance, None, None, false, false).unwrap();
         assert_eq!(first.registrations_added, 1);
 
         let store = open_active_store(dir.path()).unwrap();
         let versions_before =
             ["documents", "registration_content", "chunks"].map(|table| store.table_version(table).unwrap());
-        let second = sync_repository(dir.path(), &lance, None, false, false).unwrap();
+        let second = sync_repository(dir.path(), &lance, None, None, false, false).unwrap();
         assert_eq!(second.registrations_added, 0);
         assert_eq!(second.registrations_skipped, 1);
         assert_eq!(second.items[0].action, "skipped");
