@@ -253,6 +253,7 @@ pub fn ensure_gitignore(advanced_dir: &Path) -> Result<()> {
         .parent()
         .and_then(Path::parent)
         .ok_or_else(|| MfError::advanced_store("invalid advanced dir path".to_string(), None))?;
+    fs::create_dir_all(mind_dir)?;
     let gitignore_path = mind_dir.join(GITIGNORE);
 
     if !gitignore_path.exists() {
