@@ -194,7 +194,24 @@ fn sync_lance_catalog(
     store: &LanceStore,
 ) -> Result<SyncReport> {
     let catalog = super::catalog::SourceCatalog::discover(config, repo_root)?;
-    let registrations = catalog.registrations(Some(store))?;
+    let registrations = catalog
+        .registrations(Some(store))?
+        .into_iter()
+        .filter(|registration| {
+            let project_name = Path::new(&registration.project_path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(&registration.project_identity);
+            project_filter.is_none_or(|filter| filter == project_name || filter == registration.project_identity)
+        })
+        .filter(|registration| source_filter.is_none_or(|filter| filter == registration.source_identity))
+        .collect::<Vec<_>>();
+    if source_filter.is_some() && project_filter.is_none() && registrations.len() > 1 {
+        return Err(crate::error::MfError::usage(
+            "--source matches more than one project; add --project to select one binding".to_string(),
+            Some("use `mf source advanced sync --source <IDENTITY> --project <PROJECT>`".to_string()),
+        ));
+    }
     let chunk_config = ChunkConfig {
         target_tokens: config.chunk_tokens,
         overlap_tokens: config.chunk_overlap,
@@ -207,16 +224,6 @@ fn sync_lance_catalog(
     let mut projects = std::collections::BTreeMap::<String, bool>::new();
 
     for registration in registrations {
-        let project_name = Path::new(&registration.project_path)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or(&registration.project_identity);
-        if project_filter.is_some_and(|filter| filter != project_name && filter != registration.project_identity) {
-            continue;
-        }
-        if source_filter.is_some_and(|filter| filter != registration.source_identity) {
-            continue;
-        }
         let project_path = repo_root.join(&registration.project_path);
         let outcome = sync_one_source(
             &project_path,
@@ -992,5 +999,35 @@ mod tests {
         assert_eq!(store.count_rows("registration_content").unwrap(), 0);
         assert_eq!(store.count_rows("documents").unwrap(), 0);
         assert_eq!(store.count_rows("chunks").unwrap(), 0);
+    }
+
+    #[test]
+    fn lance_sync_rejects_cross_project_ambiguous_source_filter() {
+        let dir = tempfile::tempdir().unwrap();
+        for project in ["alpha", "beta"] {
+            let path = dir.path().join("projects").join(project);
+            std::fs::create_dir_all(path.join("sources")).unwrap();
+            std::fs::write(path.join("sources/notes.md"), format!("# {project}")).unwrap();
+            std::fs::write(
+                path.join("mind-index.yaml"),
+                format!("project: {project}\nsources:\n  - name: notes\n    kind: file\n    path: sources/notes.md\n"),
+            )
+            .unwrap();
+        }
+        std::fs::write(dir.path().join("minds.yaml"), "schema_version: '1'\nprojects: []\n").unwrap();
+        let legacy = ResolvedSourceConfig {
+            backend: crate::model::manifest::SourceBackend::Legacy,
+            is_lance_active: false,
+            is_marker_corrupt: false,
+            activation_snapshot_id: None,
+            storage_schema_version: None,
+            chunk_tokens: 384,
+            chunk_overlap: 48,
+            default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
+        };
+        crate::service::source::advanced::activation::activate(dir.path(), &legacy).unwrap();
+        let lance = crate::service::source::advanced::config::load_repository_config(dir.path()).unwrap();
+        let error = sync_repository(dir.path(), &lance, None, Some("notes"), false, false).unwrap_err();
+        assert!(error.to_string().contains("more than one project"));
     }
 }
