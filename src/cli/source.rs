@@ -268,7 +268,8 @@ pub fn dispatch(command: SourceCmd, ctx: &mut CommandCtx) -> Result<CommandOutco
 }
 
 fn handle_list(args: SourceListArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
+    let repo_root = ctx.require_repo_path()?;
+    let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
 
     // Resolve type filter (CliSourceKind → model FileKind; Auto is rejected)
     let type_filter = match args.kind {
@@ -285,7 +286,45 @@ fn handle_list(args: SourceListArgs, ctx: &CommandCtx) -> Result<CommandOutcome>
         None => None,
     };
 
-    let sources = svc_source::list(&project_path, args.filter.as_deref(), type_filter)?;
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    let sources = if config.is_lance() {
+        let store = svc_source::advanced::sync::open_active_store(repo_root)?;
+        let catalog = svc_source::advanced::catalog::SourceCatalog::discover(&config, repo_root)?;
+        let project_path_rel =
+            project_path.strip_prefix(repo_root).unwrap_or(&project_path).to_string_lossy().replace('\\', "/");
+        catalog
+            .registrations(Some(&store))?
+            .into_iter()
+            .filter(|registration| registration.project_path == project_path_rel)
+            .filter_map(|registration| {
+                let kind = match registration.source_type.as_str() {
+                    "pdf" => FileKind::Pdf,
+                    "rss" => FileKind::Rss,
+                    "web" => FileKind::Web,
+                    "file" => FileKind::File,
+                    _ => return None,
+                };
+                let is_url = registration.registered_location.starts_with("http://")
+                    || registration.registered_location.starts_with("https://");
+                Some(crate::model::source::Source {
+                    name: registration.source_identity,
+                    kind,
+                    source_kind: None,
+                    url: is_url.then(|| registration.registered_location.clone()),
+                    path: (!is_url).then_some(registration.registered_location),
+                    tags: vec![],
+                    added_at: String::new(),
+                    updated_at: String::new(),
+                })
+            })
+            .filter(|source| {
+                args.filter.as_ref().is_none_or(|filter| source.name.to_lowercase().contains(&filter.to_lowercase()))
+            })
+            .filter(|source| type_filter.as_ref().is_none_or(|kind| source.kind == *kind))
+            .collect()
+    } else {
+        svc_source::list(&project_path, args.filter.as_deref(), type_filter)?
+    };
 
     let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
         .with_repo_root(Some(project_path.to_path_buf()));
