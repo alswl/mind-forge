@@ -368,7 +368,8 @@ fn handle_list(args: SourceListArgs, ctx: &CommandCtx) -> Result<CommandOutcome>
 }
 
 fn handle_update(args: SourceUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
+    let repo_root = ctx.require_repo_path()?;
+    let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
     identity::validate_entity_path(&project_path, &args.path)?;
 
     if args.dry_run.dry_run {
@@ -403,7 +404,18 @@ fn handle_update(args: SourceUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutc
     let update_args =
         svc_source::UpdateArgs { name: &args.path, rename: args.rename.as_deref(), url: args.url.as_deref() };
 
-    let source = svc_source::update(&project_path, &update_args)?;
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    let source = if config.is_lance() {
+        svc_source::advanced::primary::update_registration(
+            repo_root,
+            &project_path,
+            &args.path,
+            args.rename.as_deref(),
+            args.url.as_deref(),
+        )?
+    } else {
+        svc_source::update(&project_path, &update_args)?
+    };
 
     let mut changes = serde_json::Map::new();
     if let Some(ref rename) = args.rename {

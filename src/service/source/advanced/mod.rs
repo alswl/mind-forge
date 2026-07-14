@@ -19,6 +19,7 @@ pub mod identity;
 pub mod lance_store;
 pub mod lifecycle;
 pub mod model_store;
+pub mod primary;
 pub mod publication;
 pub mod retrieval;
 pub mod skill_install;
