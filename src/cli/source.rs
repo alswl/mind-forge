@@ -607,9 +607,50 @@ fn handle_rename(args: SourceRenameArgs, ctx: &CommandCtx) -> Result<CommandOutc
 // ---------------------------------------------------------------------------
 
 fn handle_source_show(args: SourceShowArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
+    let repo_root = ctx.require_repo_path()?;
+    let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
     identity::validate_entity_path(&project_path, &args.path)?;
-    let sources = svc_source::list(&project_path, None, None)?;
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    let sources = if config.is_lance() {
+        let store = svc_source::advanced::sync::open_active_store(repo_root)?;
+        let catalog = svc_source::advanced::catalog::SourceCatalog::discover(&config, repo_root)?;
+        let project_path_rel =
+            project_path.strip_prefix(repo_root).unwrap_or(&project_path).to_string_lossy().replace('\\', "/");
+        catalog
+            .registrations(Some(&store))?
+            .into_iter()
+            .filter(|registration| registration.project_path == project_path_rel)
+            .filter_map(|registration| {
+                let kind = match registration.source_type.as_str() {
+                    "pdf" => FileKind::Pdf,
+                    "rss" => FileKind::Rss,
+                    "web" => FileKind::Web,
+                    "file" => FileKind::File,
+                    _ => return None,
+                };
+                let is_url = registration.registered_location.starts_with("http://")
+                    || registration.registered_location.starts_with("https://");
+                let source_kind = match registration.source_kind.as_deref() {
+                    Some("yuque") => Some(SourceKind::Yuque),
+                    Some("meeting") => Some(SourceKind::Meeting),
+                    Some("misc") => Some(SourceKind::Misc),
+                    _ => None,
+                };
+                Some(crate::model::source::Source {
+                    name: registration.source_identity,
+                    kind,
+                    source_kind,
+                    url: is_url.then(|| registration.registered_location.clone()),
+                    path: (!is_url).then_some(registration.registered_location),
+                    tags: serde_json::from_str(&registration.tags_json).unwrap_or_default(),
+                    added_at: String::new(),
+                    updated_at: String::new(),
+                })
+            })
+            .collect()
+    } else {
+        svc_source::list(&project_path, None, None)?
+    };
 
     let resolved = sources
         .iter()
