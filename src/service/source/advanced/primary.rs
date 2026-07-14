@@ -9,7 +9,7 @@ use std::path::Path;
 
 use crate::error::{MfError, Result};
 use crate::model::lifecycle::{PlannedChange, PlannedOp};
-use crate::model::source::{FileKind, Source, SourceKind, SourceRemoveReport};
+use crate::model::source::{FileKind, Source, SourceIndexEntry, SourceIndexReport, SourceKind, SourceRemoveReport};
 use crate::model::source_advanced::{RegistrationState, SourceRegistration};
 use crate::service::source::rename::{SourceRenameIdentity, SourceRenameReport};
 
@@ -357,6 +357,51 @@ pub fn remove_registration(
     Ok(SourceRemoveReport { source, file_deleted, references, side_effects: vec![], force, dry_run })
 }
 
+/// Remove stale local registrations from the Lance primary catalog.  This is
+/// the Lance counterpart of `mf source clean`: missing files are detected from
+/// primary facts, while YAML is refreshed only after those facts are changed.
+pub fn clean_registrations(repo_root: &Path, project_path: &Path, dry_run: bool) -> Result<SourceIndexReport> {
+    let config = ResolvedSourceConfig::from_config(
+        crate::service::repo::load_manifest(&repo_root.join("minds.yaml"))?.source.as_ref(),
+    )?;
+    if !config.is_lance() {
+        return Err(MfError::usage("Lance primary mutation requires an active Lance backend".to_string(), None));
+    }
+    let store = sync::open_active_store(repo_root)?;
+    let catalog = SourceCatalog::discover(&config, repo_root)?;
+    let project_rel = project_path.strip_prefix(repo_root).unwrap_or(project_path).to_string_lossy().replace('\\', "/");
+    let rows = catalog.registrations(Some(&store))?;
+    let project_rows = rows.iter().filter(|row| row.project_path == project_rel).collect::<Vec<_>>();
+    let stale = project_rows
+        .iter()
+        .copied()
+        .filter(|row| {
+            !row.registered_location.starts_with("http://")
+                && !row.registered_location.starts_with("https://")
+                && !project_path.join(&row.registered_location).exists()
+        })
+        .collect::<Vec<_>>();
+    let mut removed = stale
+        .iter()
+        .map(|row| SourceIndexEntry {
+            name: row.source_identity.clone(),
+            kind: file_kind(&row.source_type),
+            path: row.registered_location.clone(),
+        })
+        .collect::<Vec<_>>();
+    removed.sort_by(|left, right| left.name.cmp(&right.name));
+    if !dry_run && !stale.is_empty() {
+        let keys = stale.iter().map(|row| row.registration_key.clone()).collect::<std::collections::BTreeSet<_>>();
+        store.clear_content_bindings(&keys)?;
+        for row in &stale {
+            store.delete_rows("registrations", &format!("registration_key = '{}'", row.registration_key))?;
+        }
+        // Every stale row is in the same project because of the filter above.
+        super::compatibility::export_project(repo_root, &stale[0].project_identity, false)?;
+    }
+    Ok(SourceIndexReport { added: vec![], removed, kept_count: (project_rows.len() - stale.len()) as u64, dry_run })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -445,5 +490,44 @@ mod tests {
         let projection = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
         assert!(projection.contains("name: renamed"));
         assert!(projection.contains("path: sources/renamed.md"));
+    }
+
+    #[test]
+    fn clean_removes_missing_local_registration_from_primary() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("projects/alpha");
+        std::fs::create_dir_all(project.join("sources")).unwrap();
+        std::fs::write(
+            project.join("mind-index.yaml"),
+            "project: alpha\nsources:\n  - name: missing\n    kind: file\n    path: sources/missing.md\n  - name: remote\n    kind: web\n    url: https://example.com\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("minds.yaml"), "schema_version: '1'\nprojects: []\n").unwrap();
+        let legacy = ResolvedSourceConfig {
+            backend: SourceBackend::Legacy,
+            is_lance_active: false,
+            is_marker_corrupt: false,
+            activation_snapshot_id: None,
+            storage_schema_version: None,
+            chunk_tokens: 384,
+            chunk_overlap: 48,
+            default_search_mode: SearchDefaultMode::Basic,
+        };
+        super::super::activation::activate(dir.path(), &legacy).unwrap();
+
+        let report = clean_registrations(dir.path(), &project, false).unwrap();
+        assert_eq!(report.removed.len(), 1);
+        assert_eq!(report.removed[0].name, "missing");
+        assert_eq!(report.kept_count, 1);
+        let config = ResolvedSourceConfig::from_config(
+            crate::service::repo::load_manifest(&dir.path().join("minds.yaml")).unwrap().source.as_ref(),
+        )
+        .unwrap();
+        let store = sync::open_active_store(dir.path()).unwrap();
+        let catalog = SourceCatalog::discover(&config, dir.path()).unwrap();
+        let rows = catalog.registrations(Some(&store)).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].source_identity, "remote");
+        assert!(!std::fs::read_to_string(project.join("mind-index.yaml")).unwrap().contains("name: missing"));
     }
 }

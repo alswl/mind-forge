@@ -587,9 +587,15 @@ fn handle_remove(args: SourceRemoveArgs, ctx: &mut CommandCtx) -> Result<Command
 }
 
 fn handle_clean(args: SourceCleanArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
+    let repo_root = ctx.require_repo_path()?;
+    let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
 
-    let report = svc_source::clean(&project_path, args.dry_run.dry_run)?;
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    let report = if config.is_lance() {
+        svc_source::advanced::primary::clean_registrations(repo_root, &project_path, args.dry_run.dry_run)?
+    } else {
+        svc_source::clean(&project_path, args.dry_run.dry_run)?
+    };
 
     match ctx.format() {
         Format::Json => {
