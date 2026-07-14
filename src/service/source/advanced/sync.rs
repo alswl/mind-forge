@@ -645,6 +645,19 @@ mod tests {
         assert_eq!(applied.state, "ready");
         assert_eq!(store.count_rows("enrichments").unwrap(), 1);
 
+        let search = crate::service::source::advanced::retrieval::search_repository(
+            dir.path(),
+            "unique searchable phrase",
+            crate::model::source_search::SearchMode::Advanced,
+            None,
+            None,
+            None,
+            10,
+        )
+        .unwrap();
+        assert_eq!(search.results.len(), 1);
+        assert!(search.results[0].snippet.contains("unique searchable phrase"));
+
         sync_repository(dir.path(), &lance, None, false, false).unwrap();
         assert_eq!(store.count_rows("documents").unwrap(), 1);
         assert_eq!(store.count_rows("registration_content").unwrap(), 1);

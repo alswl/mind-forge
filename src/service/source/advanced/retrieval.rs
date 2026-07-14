@@ -272,6 +272,73 @@ fn search_repository_with_store(
         }
     }
 
+    // An FTS index is an optimization, not a correctness prerequisite.  A
+    // newly synced repository must be searchable before the optional index is
+    // built, so scan the pinned chunks as a deterministic local fallback.
+    if advanced_results.is_empty()
+        && let Some(s) = store
+    {
+        let query_lower = query.to_lowercase();
+        for batch in s.scan_rows("chunks")? {
+            let Some(texts) =
+                batch.column_by_name("text").and_then(|c| c.as_any().downcast_ref::<arrow_array::StringArray>())
+            else {
+                continue;
+            };
+            let Some(ids) =
+                batch.column_by_name("chunk_id").and_then(|c| c.as_any().downcast_ref::<arrow_array::StringArray>())
+            else {
+                continue;
+            };
+            let Some(documents) = batch
+                .column_by_name("document_key")
+                .and_then(|c| c.as_any().downcast_ref::<arrow_array::StringArray>())
+            else {
+                continue;
+            };
+            let Some(locators) = batch
+                .column_by_name("locator_json")
+                .and_then(|c| c.as_any().downcast_ref::<arrow_array::StringArray>())
+            else {
+                continue;
+            };
+            for row in 0..batch.num_rows() {
+                let text = texts.value(row);
+                if !text.to_lowercase().contains(&query_lower) {
+                    continue;
+                }
+                advanced_results.push(SourceSearchResult {
+                    document_key: Some(documents.value(row).to_string()),
+                    source_type: "file".to_string(),
+                    location: locators.value(row).to_string(),
+                    locator: Some(SourceLocator::Source),
+                    chunk_id: Some(ids.value(row).to_string()),
+                    snippet: text.chars().take(200).collect(),
+                    registrations: all_registrations
+                        .iter()
+                        .map(|reg| SearchResultRegistration {
+                            registration_key: reg.registration_key.clone(),
+                            project_identity: reg.project_identity.clone(),
+                            project_path: reg.project_path.clone(),
+                            source_identity: reg.source_identity.clone(),
+                            registered_location: reg.registered_location.clone(),
+                            source_kind: reg.source_kind.clone(),
+                            tags: reg.tags.clone(),
+                        })
+                        .collect(),
+                    retrieval_paths: vec!["advanced_keyword".to_string()],
+                    keyword_score: Some(1.0),
+                    semantic_score: None,
+                    combined_score: 1.0,
+                    freshness: Some("ready".to_string()),
+                    enrichment: None,
+                    deduplicated: false,
+                });
+            }
+        }
+        advanced_results.sort_by(|a, b| a.chunk_id.cmp(&b.chunk_id));
+    }
+
     match mode {
         SearchMode::Basic => {
             results = basic_results.into_iter().take(limit as usize).collect();
