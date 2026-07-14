@@ -38,7 +38,9 @@ pub struct CatalogRegistration {
     pub project_path: String,
     pub source_identity: String,
     pub source_type: String,
+    pub source_kind: Option<String>,
     pub registered_location: String,
+    pub tags_json: String,
     pub state: String,
 }
 
@@ -97,7 +99,9 @@ impl SourceCatalog {
             let paths = column("project_path")?;
             let sources = column("source_identity")?;
             let types = column("source_type")?;
+            let source_kinds = column("source_kind")?;
             let locations = column("registered_location")?;
+            let tags = column("tags_json")?;
             let states = column("state")?;
             for row in 0..batch.num_rows() {
                 registrations.push(CatalogRegistration {
@@ -107,7 +111,9 @@ impl SourceCatalog {
                     project_path: paths.value(row).to_string(),
                     source_identity: sources.value(row).to_string(),
                     source_type: types.value(row).to_string(),
+                    source_kind: (!source_kinds.is_null(row)).then(|| source_kinds.value(row).to_string()),
                     registered_location: locations.value(row).to_string(),
+                    tags_json: tags.value(row).to_string(),
                     state: states.value(row).to_string(),
                 });
             }

@@ -306,13 +306,19 @@ fn handle_list(args: SourceListArgs, ctx: &CommandCtx) -> Result<CommandOutcome>
                 };
                 let is_url = registration.registered_location.starts_with("http://")
                     || registration.registered_location.starts_with("https://");
+                let source_kind = match registration.source_kind.as_deref() {
+                    Some("yuque") => Some(SourceKind::Yuque),
+                    Some("meeting") => Some(SourceKind::Meeting),
+                    Some("misc") => Some(SourceKind::Misc),
+                    _ => None,
+                };
                 Some(crate::model::source::Source {
                     name: registration.source_identity,
                     kind,
-                    source_kind: None,
+                    source_kind,
                     url: is_url.then(|| registration.registered_location.clone()),
                     path: (!is_url).then_some(registration.registered_location),
-                    tags: vec![],
+                    tags: serde_json::from_str(&registration.tags_json).unwrap_or_default(),
                     added_at: String::new(),
                     updated_at: String::new(),
                 })
