@@ -527,8 +527,80 @@ pub fn clear_derived(
             },
         });
     }
+    if source.is_some() && project.is_none() {
+        return Err(crate::error::MfError::usage(
+            "clearing one Source requires --project to make the binding unambiguous".to_string(),
+            Some("use `mf source advanced clear <SOURCE> --project <PROJECT> --yes`".to_string()),
+        ));
+    }
+    if all && source.is_some() {
+        return Err(crate::error::MfError::usage("clear accepts either a Source or --all, not both".to_string(), None));
+    }
 
-    // For now, clear operates on the sync model: mark all affected items as "cleared"
+    if config.is_lance() {
+        let store = open_active_store(repo_root)?;
+        let catalog = super::catalog::SourceCatalog::discover(config, repo_root)?;
+        let project_path = project.map(|name| format!("projects/{name}"));
+        let selected = catalog
+            .registrations(Some(&store))?
+            .into_iter()
+            .filter(|registration| project_path.as_ref().is_none_or(|path| &registration.project_path == path))
+            .filter(|registration| source.is_none_or(|name| registration.source_identity == name))
+            .collect::<Vec<_>>();
+        let keys = selected
+            .iter()
+            .map(|registration| registration.registration_key.clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        let items = selected
+            .iter()
+            .map(|registration| SyncItem {
+                project_identity: registration.project_identity.clone(),
+                registration_key: registration.registration_key.clone(),
+                source_identity: registration.source_identity.clone(),
+                action: if dry_run { "would_clear" } else { "cleared" }.to_string(),
+                before_state: Some(RelationState::Ready),
+                after_state: RelationState::Missing,
+                detected_format: Some(registration.source_type.clone()),
+                affected_chunks: 0,
+                error: None,
+            })
+            .collect::<Vec<_>>();
+        if !dry_run {
+            if all && project.is_none() {
+                for table in ["registration_content", "chunks", "enrichments", "documents"] {
+                    store.delete_rows(table, "true")?;
+                }
+            } else {
+                store.clear_content_bindings(&keys)?;
+            }
+        }
+        let total = items.len() as u64;
+        return Ok(SyncReport {
+            scope: if project.is_some() { "project" } else { "repository" }.to_string(),
+            dry_run,
+            registrations_total: total,
+            registrations_added: 0,
+            registrations_updated: if dry_run { 0 } else { total },
+            registrations_skipped: 0,
+            registrations_failed: 0,
+            projects_processed: selected
+                .iter()
+                .map(|entry| &entry.project_identity)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len() as u64,
+            projects_ready: selected
+                .iter()
+                .map(|entry| &entry.project_identity)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len() as u64,
+            projects_failed: 0,
+            items,
+            index_revision: (!dry_run).then(|| format!("clear-{}", chrono::Utc::now().format("%Y%m%dT%H%M%SZ"))),
+            warnings: vec![],
+        });
+    }
+
+    // Legacy has no advanced derived state. Preserve its existing Source facts.
     let mut report = sync_repository(repo_root, config, project, source, true, true)?;
     report.scope = "clear".to_string();
     report.dry_run = dry_run;
@@ -885,5 +957,40 @@ mod tests {
         let versions_after =
             ["documents", "registration_content", "chunks"].map(|table| store.table_version(table).unwrap());
         assert_eq!(versions_before, versions_after);
+    }
+
+    #[test]
+    fn scoped_lance_clear_removes_only_derived_binding() {
+        let dir = tempfile::tempdir().unwrap();
+        let project_dir = dir.path().join("projects/alpha");
+        std::fs::create_dir_all(project_dir.join("sources")).unwrap();
+        std::fs::write(project_dir.join("sources/notes.md"), "# Clear\nDerived content only.\n").unwrap();
+        std::fs::write(
+            project_dir.join("mind-index.yaml"),
+            "project: alpha\nsources:\n  - name: notes\n    kind: file\n    path: sources/notes.md\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("minds.yaml"), "schema_version: '1'\nprojects: []\n").unwrap();
+        let legacy = ResolvedSourceConfig {
+            backend: crate::model::manifest::SourceBackend::Legacy,
+            is_lance_active: false,
+            is_marker_corrupt: false,
+            activation_snapshot_id: None,
+            storage_schema_version: None,
+            chunk_tokens: 384,
+            chunk_overlap: 48,
+            default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
+        };
+        crate::service::source::advanced::activation::activate(dir.path(), &legacy).unwrap();
+        let lance = crate::service::source::advanced::config::load_repository_config(dir.path()).unwrap();
+        sync_repository(dir.path(), &lance, None, None, false, false).unwrap();
+        let store = open_active_store(dir.path()).unwrap();
+
+        let report = clear_derived(dir.path(), &lance, Some("alpha"), Some("notes"), false, false).unwrap();
+        assert_eq!(report.registrations_updated, 1);
+        assert_eq!(store.count_rows("registrations").unwrap(), 1);
+        assert_eq!(store.count_rows("registration_content").unwrap(), 0);
+        assert_eq!(store.count_rows("documents").unwrap(), 0);
+        assert_eq!(store.count_rows("chunks").unwrap(), 0);
     }
 }

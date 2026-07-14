@@ -4,6 +4,7 @@
 //! table access. All mutation goes through the publication module;
 //! this module provides the raw store primitives.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -458,6 +459,52 @@ impl LanceStore {
             }
         }
         Ok(false)
+    }
+
+    /// Remove selected registration-to-content bindings and return the shared
+    /// documents which became unreferenced. Primary registrations are never
+    /// touched. This is the only destructive primitive used by scoped clear.
+    pub fn clear_content_bindings(&self, registration_keys: &BTreeSet<String>) -> Result<usize> {
+        if registration_keys.is_empty() {
+            return Ok(0);
+        }
+        let affected = self.document_keys_for_bindings(Some(registration_keys))?;
+        for key in registration_keys {
+            self.delete_rows(TABLE_REGISTRATION_CONTENT, &format!("registration_key = '{key}'"))?;
+        }
+        let still_bound = self.document_keys_for_bindings(None)?;
+        for document_key in affected.difference(&still_bound) {
+            self.delete_rows(TABLE_CHUNKS, &format!("document_key = '{document_key}'"))?;
+            self.delete_rows(TABLE_ENRICHMENTS, &format!("document_key = '{document_key}'"))?;
+            self.delete_rows(TABLE_DOCUMENTS, &format!("document_key = '{document_key}'"))?;
+        }
+        Ok(affected.len())
+    }
+
+    fn document_keys_for_bindings(&self, keys: Option<&BTreeSet<String>>) -> Result<BTreeSet<String>> {
+        let mut documents = BTreeSet::new();
+        for batch in self.scan_rows(TABLE_REGISTRATION_CONTENT)? {
+            let registrations = batch
+                .column_by_name("registration_key")
+                .and_then(|column| column.as_any().downcast_ref::<StringArray>())
+                .ok_or_else(|| {
+                    MfError::advanced_store("registration_content table missing 'registration_key'".to_string(), None)
+                })?;
+            let document_keys = batch
+                .column_by_name("document_key")
+                .and_then(|column| column.as_any().downcast_ref::<StringArray>())
+                .ok_or_else(|| {
+                    MfError::advanced_store("registration_content table missing 'document_key'".to_string(), None)
+                })?;
+            for row in 0..batch.num_rows() {
+                if keys.is_none_or(|selected| selected.contains(registrations.value(row)))
+                    && !document_keys.is_null(row)
+                {
+                    documents.insert(document_keys.value(row).to_string());
+                }
+            }
+        }
+        Ok(documents)
     }
 
     /// Replace the enrichment for one document revision.  The caller has
