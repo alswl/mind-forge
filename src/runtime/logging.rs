@@ -22,6 +22,9 @@ pub fn init(global: &GlobalOpts) -> Result<()> {
         }
     };
 
-    let _ = FmtSubscriber::builder().with_max_level(level).without_time().try_init();
+    // Diagnostics go to stderr so stdout stays a clean machine-readable
+    // contract (JSON envelopes). Dependencies such as LanceDB emit INFO-level
+    // tracing events that would otherwise corrupt `--output json` stdout.
+    let _ = FmtSubscriber::builder().with_max_level(level).without_time().with_writer(std::io::stderr).try_init();
     Ok(())
 }
