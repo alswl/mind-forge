@@ -247,8 +247,12 @@ pub fn list_snapshots(advanced_dir: &Path) -> Result<Vec<RepositorySourceIndexSn
 
 /// Atomically create `.mind/.gitignore` with the runtime ignore policy.
 pub fn ensure_gitignore(advanced_dir: &Path) -> Result<()> {
-    let mind_dir =
-        advanced_dir.parent().ok_or_else(|| MfError::advanced_store("invalid advanced dir path".to_string(), None))?;
+    // `advanced_dir` is `<repo>/.mind/source/advanced`; the runtime ignore
+    // policy belongs to `.mind`, not its `source` child and never repo root.
+    let mind_dir = advanced_dir
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| MfError::advanced_store("invalid advanced dir path".to_string(), None))?;
     let gitignore_path = mind_dir.join(GITIGNORE);
 
     if !gitignore_path.exists() {

@@ -12,7 +12,11 @@ use crate::model::manifest::{RepositorySourceConfig, SearchDefaultMode, SourceBa
 /// accidentally treating an activated Lance repository as legacy.  An absent
 /// `source` block deliberately retains the legacy defaults.
 pub fn load_repository_config(repo_root: &std::path::Path) -> Result<ResolvedSourceConfig> {
-    let manifest = crate::service::repo::load_manifest(&repo_root.join("minds.yaml"))?;
+    let manifest_path = repo_root.join("minds.yaml");
+    if !manifest_path.exists() {
+        return ResolvedSourceConfig::from_config(None);
+    }
+    let manifest = crate::service::repo::load_manifest(&manifest_path)?;
     ResolvedSourceConfig::from_config(manifest.source.as_ref())
 }
 
