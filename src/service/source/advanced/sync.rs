@@ -30,6 +30,10 @@ pub fn sync_repository(
     dry_run: bool,
     offline: bool,
 ) -> Result<SyncReport> {
+    if config.is_lance() {
+        let store = open_active_store(repo_root)?;
+        return sync_lance_catalog(repo_root, config, project_filter, dry_run, offline, &store);
+    }
     let mut items = Vec::new();
     let mut added = 0u64;
     let mut updated = 0u64;
@@ -47,7 +51,7 @@ pub fn sync_repository(
     // Sync is the explicit mutation boundary.  In Lance mode it must write
     // derived content to the database selected by the active pointer; it must
     // never create an alternate per-project store.
-    let store = if !dry_run && config.is_lance() { Some(open_active_store(repo_root)?) } else { None };
+    let store: Option<LanceStore> = None;
 
     // Enumerate projects and their registrations
     let projects_dir = repo_root.join("projects");
@@ -169,6 +173,99 @@ pub fn sync_repository(
         projects_failed,
         items,
         index_revision: if dry_run { None } else { Some("sync-1".to_string()) },
+        warnings: vec![],
+    })
+}
+
+/// Reconcile the Lance-primary registration catalog.  Compatibility YAML is
+/// deliberately not inspected here: once activation succeeds it is an
+/// outbound projection, not an input that can resurrect or alter primary facts.
+fn sync_lance_catalog(
+    repo_root: &Path,
+    config: &ResolvedSourceConfig,
+    project_filter: Option<&str>,
+    dry_run: bool,
+    offline: bool,
+    store: &LanceStore,
+) -> Result<SyncReport> {
+    let catalog = super::catalog::SourceCatalog::discover(config, repo_root)?;
+    let registrations = catalog.registrations(Some(store))?;
+    let chunk_config = ChunkConfig {
+        target_tokens: config.chunk_tokens,
+        overlap_tokens: config.chunk_overlap,
+        policy_version: "v1".to_string(),
+    };
+    let mut items = Vec::new();
+    let mut added = 0u64;
+    let mut skipped = 0u64;
+    let mut failed = 0u64;
+    let mut projects = std::collections::BTreeMap::<String, bool>::new();
+
+    for registration in registrations {
+        let project_name = Path::new(&registration.project_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&registration.project_identity);
+        if project_filter.is_some_and(|filter| filter != project_name && filter != registration.project_identity) {
+            continue;
+        }
+        let project_path = repo_root.join(&registration.project_path);
+        let outcome = sync_one_source(
+            &project_path,
+            &registration.source_identity,
+            &registration.source_type,
+            &registration.registered_location,
+            &registration.registration_key,
+            &chunk_config,
+            dry_run,
+            offline,
+            (!dry_run).then_some(store),
+        );
+        match outcome {
+            Ok(mut item) => {
+                item.project_identity = registration.project_identity.clone();
+                match item.action.as_str() {
+                    "added" => added += 1,
+                    "failed" => {
+                        failed += 1;
+                        projects.insert(registration.project_identity.clone(), true);
+                    }
+                    _ => skipped += 1,
+                }
+                projects.entry(registration.project_identity).or_insert(false);
+                items.push(item);
+            }
+            Err(error) => {
+                failed += 1;
+                projects.insert(registration.project_identity.clone(), true);
+                items.push(SyncItem {
+                    project_identity: registration.project_identity,
+                    registration_key: registration.registration_key,
+                    source_identity: registration.source_identity,
+                    action: "failed".to_string(),
+                    before_state: None,
+                    after_state: RelationState::Failed,
+                    detected_format: None,
+                    affected_chunks: 0,
+                    error: Some(error.to_string()),
+                });
+            }
+        }
+    }
+    let projects_failed = projects.values().filter(|failed| **failed).count() as u64;
+    Ok(SyncReport {
+        scope: project_filter.map(|_| "project").unwrap_or("repository").to_string(),
+        dry_run,
+        registrations_total: items.len() as u64,
+        registrations_added: added,
+        registrations_updated: 0,
+        registrations_skipped: skipped,
+        registrations_failed: failed,
+        projects_processed: projects.len() as u64,
+        projects_ready: projects.len() as u64 - projects_failed,
+        projects_failed,
+        items,
+        index_revision: (!dry_run).then(|| "sync-primary".to_string()),
         warnings: vec![],
     })
 }
@@ -603,6 +700,10 @@ mod tests {
         };
         crate::service::source::advanced::activation::activate(dir.path(), &legacy).unwrap();
         let lance = crate::service::source::advanced::config::load_repository_config(dir.path()).unwrap();
+
+        // After activation this compatibility projection is not an inbound
+        // source of truth.  Sync must keep using the persisted primary row.
+        std::fs::write(project_dir.join("mind-index.yaml"), "project: alpha\nsources: []\n").unwrap();
 
         let report = sync_repository(dir.path(), &lance, None, false, false).unwrap();
         assert_eq!(report.registrations_added, 1);
