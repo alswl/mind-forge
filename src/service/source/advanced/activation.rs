@@ -80,39 +80,51 @@ pub fn preview_activation(repo_root: &Path, _config: &ResolvedSourceConfig) -> R
             if let Ok(index_yaml) = fs::read_to_string(&index_path)
                 && let Ok(index) = serde_yaml::from_str::<serde_yaml::Value>(&index_yaml)
             {
-                let project_identity = index.get("project").and_then(|v| v.as_str()).unwrap_or("unknown");
-                if let Some(sources) = index.get("sources").and_then(|v| v.as_sequence()) {
-                    for source in sources {
-                        let name = source.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
-                        let kind = source.get("kind").and_then(|v| v.as_str()).unwrap_or("file");
-                        let location = source
-                            .get("path")
-                            .or_else(|| source.get("url"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("unknown");
-                        let source_kind = source.get("source_kind").and_then(|v| v.as_str()).map(str::to_string);
-                        let tags = source
-                            .get("tags")
-                            .and_then(|v| v.as_sequence())
-                            .map(|tags| tags.iter().filter_map(|tag| tag.as_str().map(str::to_string)).collect())
-                            .unwrap_or_default();
-                        let project_path_rel =
-                            project_path.strip_prefix(repo_root).unwrap_or(&project_path).to_string_lossy().to_string();
+                // Project identity is stored in older sequence-form indexes; the
+                // current mapping-form index omits it, so fall back to the
+                // project directory name.
+                let project_identity =
+                    index.get("project").and_then(|v| v.as_str()).map(str::to_string).unwrap_or_else(|| {
+                        project_path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string()
+                    });
+                let project_path_rel =
+                    project_path.strip_prefix(repo_root).unwrap_or(&project_path).to_string_lossy().to_string();
+                let pk = identity::project_key(&project_path_rel);
 
-                        let pk = identity::project_key(&project_path_rel);
-                        let rk = identity::registration_key(&pk, kind, location);
+                // `sources` is a mapping keyed by registered path in current
+                // indexes, but a sequence in older ones — accept both.
+                let source_entries: Vec<&serde_yaml::Value> = match index.get("sources") {
+                    Some(serde_yaml::Value::Mapping(map)) => map.values().collect(),
+                    Some(serde_yaml::Value::Sequence(seq)) => seq.iter().collect(),
+                    _ => Vec::new(),
+                };
+                for source in source_entries {
+                    let name = source.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                    // Registrations record the file kind under `type`; older
+                    // indexes used `kind`.
+                    let kind =
+                        source.get("type").or_else(|| source.get("kind")).and_then(|v| v.as_str()).unwrap_or("file");
+                    let location =
+                        source.get("path").or_else(|| source.get("url")).and_then(|v| v.as_str()).unwrap_or("unknown");
+                    let source_kind = source.get("source_kind").and_then(|v| v.as_str()).map(str::to_string);
+                    let tags = source
+                        .get("tags")
+                        .and_then(|v| v.as_sequence())
+                        .map(|tags| tags.iter().filter_map(|tag| tag.as_str().map(str::to_string)).collect())
+                        .unwrap_or_default();
 
-                        items.push(ActivationItem {
-                            project_identity: project_identity.to_string(),
-                            project_path: project_path_rel,
-                            source_identity: name.to_string(),
-                            source_type: kind.to_string(),
-                            source_kind,
-                            tags,
-                            registered_location: location.to_string(),
-                            registration_key: rk,
-                        });
-                    }
+                    let rk = identity::registration_key(&pk, kind, location);
+
+                    items.push(ActivationItem {
+                        project_identity: project_identity.clone(),
+                        project_path: project_path_rel.clone(),
+                        source_identity: name.to_string(),
+                        source_type: kind.to_string(),
+                        source_kind,
+                        tags,
+                        registered_location: location.to_string(),
+                        registration_key: rk,
+                    });
                 }
             }
         }
@@ -377,6 +389,45 @@ sources:
         let preview = preview_activation(dir.path(), &config).unwrap();
         assert_eq!(preview.total_registrations, 2);
         assert_eq!(preview.projects, 1);
+    }
+
+    #[test]
+    fn preview_imports_mapping_form_index_with_type_field() {
+        // `source index` writes `sources` as a mapping keyed by path, with the
+        // file kind under `type` and no top-level `project` field. Activation
+        // must import these, deriving project identity from the directory name.
+        let dir = tempfile::tempdir().unwrap();
+        let projects_dir = dir.path().join("projects").join("alpha");
+        fs::create_dir_all(&projects_dir).unwrap();
+
+        let index_yaml = r#"
+schema: '1'
+sources:
+  sources/file/notes.md:
+    name: notes
+    type: file
+    path: sources/file/notes.md
+    tags: []
+"#;
+        fs::write(projects_dir.join("mind-index.yaml"), index_yaml).unwrap();
+
+        let config = ResolvedSourceConfig {
+            backend: SourceBackend::Legacy,
+            is_lance_active: false,
+            is_marker_corrupt: false,
+            activation_snapshot_id: None,
+            storage_schema_version: None,
+            chunk_tokens: 384,
+            chunk_overlap: 48,
+            default_search_mode: SearchDefaultMode::Basic,
+        };
+        let preview = preview_activation(dir.path(), &config).unwrap();
+        assert_eq!(preview.total_registrations, 1);
+        assert_eq!(preview.projects, 1);
+        let item = &preview.items[0];
+        assert_eq!(item.project_identity, "alpha");
+        assert_eq!(item.source_type, "file");
+        assert_eq!(item.registered_location, "sources/file/notes.md");
     }
 
     #[test]
