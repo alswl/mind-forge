@@ -211,5 +211,11 @@ mod tests {
         let primary = catalog.registrations(Some(&store)).unwrap();
         assert_eq!(primary[0].source_identity, "renamed");
         assert!(std::fs::read_to_string(project.join("mind-index.yaml")).unwrap().contains("name: renamed"));
+
+        let removed = remove_registration(dir.path(), &project, "renamed", false, false, false).unwrap();
+        assert!(removed.file_deleted);
+        assert!(!project.join("sources/notes.md").exists());
+        assert!(catalog.registrations(Some(&store)).unwrap().is_empty());
+        assert!(!std::fs::read_to_string(project.join("mind-index.yaml")).unwrap().contains("name: renamed"));
     }
 }
