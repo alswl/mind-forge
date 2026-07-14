@@ -7,7 +7,7 @@ agents.
 
 ## 1. Install
 
-Requires Rust 1.75+.
+Requires Rust 1.91+.
 
 ```bash
 git clone https://github.com/alswl/mind-forge.git
@@ -204,6 +204,49 @@ available for compatibility.
 `sources/` directory without copying or moving its bytes. It is idempotent —
 re-registering the same path is a no-op — and cannot be combined with `--link`
 or `--force`.
+
+### 7.1 Experimental Advanced Source status
+
+`mf source advanced` is the planned repository-wide LanceDB backend for
+Sources. Its runtime state lives at `.mind/source/advanced/`; back it up with
+the repository, but do not add it to source scanning or commit it. The command
+surface is available now, but the durable registration import, content
+publication, enrichment persistence, vector retrieval, and hybrid ranking are
+still incomplete. Treat it as an implementation preview, not a production RAG
+feature.
+
+The safe local workflow in this version is:
+
+```bash
+# Run from the Mind Repo root. Inspect before mutating.
+mf source advanced enable --dry-run
+mf source advanced enable
+mf source advanced status
+
+# Repository-wide metadata search: ready for local use and read-only.
+mf source search "retrieval" --mode basic
+mf source search "retrieval" --mode basic --project blog --limit 20
+```
+
+`enable` creates an experimental LanceDB generation and switches the repository
+marker only after its setup completes. `status` is read-only. `model install`
+may access the network; `model import` is local-only. `sync`, `rebuild`,
+`enrich`, `advanced` search, and `both` search are exposed for contract testing
+but do not yet provide a complete persistent RAG corpus. In particular, do not
+depend on `sync`/`enrich apply` for durable advanced-search results.
+
+```bash
+# Safe inspection / preview commands
+mf source advanced model status
+mf source advanced sync --dry-run --offline
+mf source advanced skill install --dry-run
+mf source advanced status --json
+```
+
+When the implementation reaches a persistent corpus, the intended order will
+be `enable` → explicit model install or import → `sync` → `search --mode
+advanced|both`; until then, use `--mode basic` for local repository-wide Source
+search. Web/RSS acquisition is also not ready for routine RAG use.
 
 ## 8. Assets
 

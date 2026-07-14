@@ -67,7 +67,7 @@ any repo-local embedded stores.
 
 ## Install
 
-Requires Rust 1.75+.
+Requires Rust 1.91+.
 
 ```bash
 git clone https://github.com/alswl/mind-forge.git
@@ -118,6 +118,30 @@ See [docs/manual.md](docs/manual.md) for the full user manual, including repo
 layout, shared CLI contracts, scripting patterns, and end-to-end workflows for
 projects, articles, sources, assets, terms, builds, publishing, templates, and
 configuration.
+
+## Experimental: repository-wide Source RAG
+
+`mf source advanced` is the experimental, repo-wide Source backend. Its data
+directory is `.mind/source/advanced/`; it is local runtime state and should be
+included in backups, not committed. Start from ordinary per-project Sources,
+then inspect the planned activation before making any change:
+
+```bash
+# From the Mind Repo root
+mf source advanced enable --dry-run
+mf source advanced enable
+mf source advanced status
+mf source search "your query" --mode basic
+```
+
+`basic` search is the usable local path today: it searches registered Source
+metadata across the repository without network access or index mutation.
+`advanced` and `both` are experimental interfaces, not yet a complete local
+RAG workflow: activation/sync/enrichment storage, vector retrieval, and hybrid
+ranking are still being completed. Do not rely on them for production search or
+expect `sync` to produce a persistent corpus yet. See the manual's
+[Advanced Source status](docs/manual.md#71-experimental-advanced-source-status)
+for the exact boundary and safe commands.
 
 ## Core Concepts
 
