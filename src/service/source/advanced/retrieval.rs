@@ -276,7 +276,7 @@ fn search_repository_with_store(
                         .and_then(|a| if row < a.len() { Some(a.value(row).to_string()) } else { None });
                     if let (Some(t), Some(id), Some(dk)) = (t, id, dk) {
                         advanced_results.push(SourceSearchResult {
-                            document_key: Some(dk),
+                            document_key: Some(dk.clone()),
                             source_type: "file".to_string(),
                             location: "indexed-content".to_string(),
                             locator: Some(SourceLocator::Source),

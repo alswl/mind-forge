@@ -7,6 +7,8 @@
 
 use std::path::Path;
 
+use arrow_array::{Array, StringArray};
+
 use crate::error::Result;
 use crate::model::manifest::SourceBackend;
 
@@ -72,13 +74,48 @@ impl SourceCatalog {
     ///
     /// In Lance mode this queries the pinned snapshot. In legacy mode it
     /// returns an empty list (the caller uses project-level indexing).
-    pub fn registrations(&self, _store: Option<&LanceStore>) -> Result<Vec<CatalogRegistration>> {
+    pub fn registrations(&self, store: Option<&LanceStore>) -> Result<Vec<CatalogRegistration>> {
         if !self.from_lance_primary {
             return Ok(Vec::new());
         }
-        // In Lance mode, query the registrations table from the pinned snapshot.
-        // This is a placeholder — the full implementation queries LanceDB.
-        Ok(Vec::new())
+        let store = store.ok_or_else(|| {
+            crate::error::MfError::advanced_store(
+                "Lance primary catalog requested without an open store".to_string(),
+                None,
+            )
+        })?;
+        let mut registrations = Vec::new();
+        for batch in store.scan_rows("registrations")? {
+            let column = |name| -> Result<&StringArray> {
+                batch.column_by_name(name).and_then(|column| column.as_any().downcast_ref::<StringArray>()).ok_or_else(
+                    || crate::error::MfError::advanced_store(format!("registrations table missing '{name}'"), None),
+                )
+            };
+            let keys = column("registration_key")?;
+            let project_keys = column("project_key")?;
+            let projects = column("project_identity")?;
+            let paths = column("project_path")?;
+            let sources = column("source_identity")?;
+            let types = column("source_type")?;
+            let locations = column("registered_location")?;
+            let states = column("state")?;
+            for row in 0..batch.num_rows() {
+                registrations.push(CatalogRegistration {
+                    registration_key: keys.value(row).to_string(),
+                    project_key: project_keys.value(row).to_string(),
+                    project_identity: projects.value(row).to_string(),
+                    project_path: paths.value(row).to_string(),
+                    source_identity: sources.value(row).to_string(),
+                    source_type: types.value(row).to_string(),
+                    registered_location: locations.value(row).to_string(),
+                    state: states.value(row).to_string(),
+                });
+            }
+        }
+        registrations.sort_by(|a, b| {
+            a.project_path.cmp(&b.project_path).then_with(|| a.source_identity.cmp(&b.source_identity))
+        });
+        Ok(registrations)
     }
 }
 
