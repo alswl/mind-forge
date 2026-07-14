@@ -550,6 +550,9 @@ fn handle_disable(args: AdvancedDisableArgs, ctx: &mut CommandCtx) -> Result<Com
             Some("disable requires all projections to be current before switching to legacy backend".to_string()),
         ));
     }
+    if !args.dry_run.dry_run {
+        svc::source::advanced::activation::disable_backend(repo)?;
+    }
     Ok(CommandOutcome::Success(
         serde_json::json!({
             "status": "ok",
@@ -558,7 +561,8 @@ fn handle_disable(args: AdvancedDisableArgs, ctx: &mut CommandCtx) -> Result<Com
                 "dry_run": args.dry_run.dry_run,
                 "projections_current": projections.len(),
                 "projections_drifted": drift_count,
-                "ready": drift_count == 0
+                "ready": drift_count == 0,
+                "disabled": !args.dry_run.dry_run && drift_count == 0
             }
         }),
         vec![],

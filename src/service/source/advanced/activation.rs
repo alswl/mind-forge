@@ -295,6 +295,35 @@ fn patch_backend_marker(repo_root: &Path, snapshot_id: &str, catalog_fingerprint
     Ok(())
 }
 
+/// Switch a healthy, fully-exported repository back to the legacy backend.
+///
+/// Callers are responsible for checking primary health and projection parity
+/// first. Keeping the marker update here makes enable/disable use the same
+/// atomic file-replacement boundary.
+pub fn disable_backend(repo_root: &Path) -> Result<()> {
+    let minds_yaml = repo_root.join("minds.yaml");
+    let original = fs::read_to_string(&minds_yaml)?;
+    let mut root: serde_yaml::Value = serde_yaml::from_str(&original)
+        .map_err(|e| MfError::advanced_store(format!("cannot parse minds.yaml: {e}"), None))?;
+    let source = root
+        .get_mut("source")
+        .and_then(serde_yaml::Value::as_mapping_mut)
+        .ok_or_else(|| MfError::advanced_store("minds.yaml has no Source activation block".to_string(), None))?;
+    source.insert("backend".into(), serde_yaml::Value::String("legacy".into()));
+    for field in ["activation_snapshot_id", "activation_catalog_fingerprint", "storage_schema_version"] {
+        source.remove(serde_yaml::Value::String(field.to_string()));
+    }
+    let updated = serde_yaml::to_string(&root)
+        .map_err(|e| MfError::advanced_store(format!("cannot serialize minds.yaml: {e}"), None))?;
+    let tmp = minds_yaml.with_extension("tmp");
+    fs::write(&tmp, updated)?;
+    fs::rename(&tmp, &minds_yaml)?;
+    if let Some(parent) = minds_yaml.parent() {
+        fs::File::open(parent)?.sync_all()?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -392,5 +421,20 @@ sources:
         .unwrap();
         assert_eq!(store.count_rows("registrations").unwrap(), 1);
         assert!(fs::read_to_string(dir.path().join("minds.yaml")).unwrap().contains("backend: lance"));
+    }
+
+    #[test]
+    fn disable_backend_clears_only_lance_activation_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("minds.yaml"),
+            "schema_version: '1'\nprojects: []\nsource:\n  backend: lance\n  activation_snapshot_id: snap\n  activation_catalog_fingerprint: catalog\n  storage_schema_version: '1'\n  search:\n    default_mode: both\n",
+        )
+        .unwrap();
+        disable_backend(dir.path()).unwrap();
+        let rendered = fs::read_to_string(dir.path().join("minds.yaml")).unwrap();
+        assert!(rendered.contains("backend: legacy"));
+        assert!(!rendered.contains("activation_snapshot_id"));
+        assert!(rendered.contains("default_mode: both"));
     }
 }
