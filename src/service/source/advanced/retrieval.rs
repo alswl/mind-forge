@@ -7,7 +7,7 @@
 //! Read-only — never mutates, fetches, or creates files. Degraded mode (both
 //! without advanced) returns basic results with a warning.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Component;
 use std::path::Path;
 
@@ -221,6 +221,31 @@ fn search_repository_with_store(
     // Perform basic search
     let basic_results = basic_search(query, &all_registrations);
     let total_basic = basic_results.len();
+    let mut document_bindings = BTreeMap::<String, BTreeSet<String>>::new();
+    if let Some(s) = store {
+        for batch in s.scan_rows("registration_content")? {
+            let Some(registrations) = batch
+                .column_by_name("registration_key")
+                .and_then(|c| c.as_any().downcast_ref::<arrow_array::StringArray>())
+            else {
+                continue;
+            };
+            let Some(documents) = batch
+                .column_by_name("document_key")
+                .and_then(|c| c.as_any().downcast_ref::<arrow_array::StringArray>())
+            else {
+                continue;
+            };
+            for row in 0..batch.num_rows() {
+                if !documents.is_null(row) {
+                    document_bindings
+                        .entry(documents.value(row).to_string())
+                        .or_default()
+                        .insert(registrations.value(row).to_string());
+                }
+            }
+        }
+    }
 
     // Try LanceDB advanced search if store is available
     let lancedb_available = store.is_some();
@@ -257,7 +282,7 @@ fn search_repository_with_store(
                             locator: Some(SourceLocator::Source),
                             chunk_id: Some(id),
                             snippet: t.chars().take(200).collect(),
-                            registrations: vec![],
+                            registrations: registrations_for_document(&all_registrations, &document_bindings, &dk),
                             retrieval_paths: vec!["advanced_keyword".to_string()],
                             keyword_score: None,
                             semantic_score: Some(0.5),
@@ -314,18 +339,11 @@ fn search_repository_with_store(
                     locator: Some(SourceLocator::Source),
                     chunk_id: Some(ids.value(row).to_string()),
                     snippet: text.chars().take(200).collect(),
-                    registrations: all_registrations
-                        .iter()
-                        .map(|reg| SearchResultRegistration {
-                            registration_key: reg.registration_key.clone(),
-                            project_identity: reg.project_identity.clone(),
-                            project_path: reg.project_path.clone(),
-                            source_identity: reg.source_identity.clone(),
-                            registered_location: reg.registered_location.clone(),
-                            source_kind: reg.source_kind.clone(),
-                            tags: reg.tags.clone(),
-                        })
-                        .collect(),
+                    registrations: registrations_for_document(
+                        &all_registrations,
+                        &document_bindings,
+                        documents.value(row),
+                    ),
                     retrieval_paths: vec!["advanced_keyword".to_string()],
                     keyword_score: Some(1.0),
                     semantic_score: None,
@@ -460,6 +478,30 @@ fn basic_search(query: &str, registrations: &[BasicCandidate]) -> Vec<SourceSear
             deduplicated: false,
         })
         .collect()
+}
+
+fn registrations_for_document(
+    candidates: &[BasicCandidate],
+    bindings: &BTreeMap<String, BTreeSet<String>>,
+    document_key: &str,
+) -> Vec<SearchResultRegistration> {
+    let Some(keys) = bindings.get(document_key) else { return Vec::new() };
+    let mut registrations = candidates
+        .iter()
+        .filter(|candidate| keys.contains(&candidate.registration_key))
+        .map(|reg| SearchResultRegistration {
+            registration_key: reg.registration_key.clone(),
+            project_identity: reg.project_identity.clone(),
+            project_path: reg.project_path.clone(),
+            source_identity: reg.source_identity.clone(),
+            registered_location: reg.registered_location.clone(),
+            source_kind: reg.source_kind.clone(),
+            tags: reg.tags.clone(),
+        })
+        .collect::<Vec<_>>();
+    registrations
+        .sort_by(|a, b| a.project_path.cmp(&b.project_path).then_with(|| a.source_identity.cmp(&b.source_identity)));
+    registrations
 }
 
 /// Reciprocal Rank Fusion: score = sum(1/(k+rank_i)) for each result list.
