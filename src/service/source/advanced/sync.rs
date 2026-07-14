@@ -779,6 +779,11 @@ mod tests {
         assert_eq!(search.results.len(), 1);
         assert!(search.results[0].snippet.contains("unique searchable phrase"));
 
+        let projection =
+            crate::service::source::advanced::compatibility::export_project(dir.path(), "alpha", false).unwrap();
+        assert_eq!(projection.primary_count, 1);
+        assert!(std::fs::read_to_string(project_dir.join("mind-index.yaml")).unwrap().contains("sources/notes.md"));
+
         sync_repository(dir.path(), &lance, None, false, false).unwrap();
         assert_eq!(store.count_rows("documents").unwrap(), 1);
         assert_eq!(store.count_rows("registration_content").unwrap(), 1);

@@ -47,33 +47,81 @@ pub fn export_project(repo_root: &Path, project_name: &str, dry_run: bool) -> Re
     }
 
     let yaml_data = fs::read_to_string(&index_path)?;
-    let legacy: serde_yaml::Value = serde_yaml::from_str(&yaml_data)
+    let mut legacy: serde_yaml::Value = serde_yaml::from_str(&yaml_data)
         .map_err(|e| MfError::advanced_store(format!("cannot parse legacy index: {e}"), None))?;
 
-    let source_count = legacy.get("sources").and_then(|s| s.as_sequence()).map(|s| s.len()).unwrap_or(0);
-
-    let expected_fp = crate::service::source::advanced::identity::raw_fingerprint(yaml_data.as_bytes());
+    let legacy_count = legacy.get("sources").and_then(|s| s.as_sequence()).map(|s| s.len()).unwrap_or(0);
+    let config = super::config::load_repository_config(repo_root)?;
+    if !config.is_lance() {
+        return Err(MfError::usage("legacy export requires an active Lance backend".to_string(), None));
+    }
+    let store = super::sync::open_active_store(repo_root)?;
+    let catalog = super::catalog::SourceCatalog::discover(&config, repo_root)?;
+    let expected_path = format!("projects/{project_name}");
+    let registrations = catalog
+        .registrations(Some(&store))?
+        .into_iter()
+        .filter(|registration| registration.project_path == expected_path)
+        .collect::<Vec<_>>();
+    let primary_count = registrations.len();
+    let mut projected = Vec::with_capacity(primary_count);
+    for registration in registrations {
+        let mut source = serde_yaml::Mapping::new();
+        source.insert("name".into(), serde_yaml::Value::String(registration.source_identity));
+        source.insert("kind".into(), serde_yaml::Value::String(registration.source_type));
+        if registration.registered_location.starts_with("http://")
+            || registration.registered_location.starts_with("https://")
+        {
+            source.insert("url".into(), serde_yaml::Value::String(registration.registered_location));
+        } else {
+            source.insert("path".into(), serde_yaml::Value::String(registration.registered_location));
+        }
+        if let Some(source_kind) = registration.source_kind {
+            source.insert("source_kind".into(), serde_yaml::Value::String(source_kind));
+        }
+        let tags: Vec<String> = serde_json::from_str(&registration.tags_json).unwrap_or_default();
+        if !tags.is_empty() {
+            source.insert(
+                "tags".into(),
+                serde_yaml::Value::Sequence(tags.into_iter().map(serde_yaml::Value::String).collect()),
+            );
+        }
+        projected.push(serde_yaml::Value::Mapping(source));
+    }
+    if let serde_yaml::Value::Mapping(ref mut root) = legacy {
+        root.insert("sources".into(), serde_yaml::Value::Sequence(projected));
+    }
+    let rendered = serde_yaml::to_string(&legacy)
+        .map_err(|e| MfError::advanced_store(format!("cannot serialize legacy projection: {e}"), None))?;
+    let expected_fp = crate::service::source::advanced::identity::raw_fingerprint(rendered.as_bytes());
+    let observed_fp = crate::service::source::advanced::identity::raw_fingerprint(yaml_data.as_bytes());
 
     if dry_run {
         return Ok(ProjectionComparison {
             project_key: project_name.to_string(),
             project_identity: legacy.get("project").and_then(|v| v.as_str()).unwrap_or(project_name).to_string(),
-            primary_count: source_count,
-            legacy_count: source_count,
-            state: ProjectionStatus::Current,
+            primary_count,
+            legacy_count,
+            state: if expected_fp == observed_fp { ProjectionStatus::Current } else { ProjectionStatus::Drifted },
             expected_fingerprint: Some(expected_fp.clone()),
-            observed_fingerprint: Some(expected_fp.clone()),
-            drift_details: vec![],
+            observed_fingerprint: Some(observed_fp),
+            drift_details: if expected_fp
+                == crate::service::source::advanced::identity::raw_fingerprint(yaml_data.as_bytes())
+            {
+                vec![]
+            } else {
+                vec!["legacy YAML differs from Lance primary projection".to_string()]
+            },
         });
     }
-
-    // In a real implementation, this would rewrite the YAML from Lance primary.
-    // For now, report current (no mutation needed if nothing changed in Lance).
+    let tmp = index_path.with_extension("yaml.tmp");
+    fs::write(&tmp, &rendered)?;
+    fs::rename(&tmp, &index_path)?;
     Ok(ProjectionComparison {
         project_key: project_name.to_string(),
         project_identity: legacy.get("project").and_then(|v| v.as_str()).unwrap_or(project_name).to_string(),
-        primary_count: source_count,
-        legacy_count: source_count,
+        primary_count,
+        legacy_count,
         state: ProjectionStatus::Current,
         expected_fingerprint: Some(expected_fp.clone()),
         observed_fingerprint: Some(expected_fp),
@@ -114,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn export_dry_run_reads_legacy() {
+    fn export_requires_lance_primary() {
         let dir = tempfile::tempdir().unwrap();
         let proj = dir.path().join("projects").join("alpha");
         fs::create_dir_all(&proj).unwrap();
@@ -124,8 +172,6 @@ mod tests {
         )
         .unwrap();
 
-        let result = export_project(dir.path(), "alpha", true).unwrap();
-        assert_eq!(result.state, ProjectionStatus::Current);
-        assert_eq!(result.primary_count, 1);
+        assert!(export_project(dir.path(), "alpha", true).is_err());
     }
 }
