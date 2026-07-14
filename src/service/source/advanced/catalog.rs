@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use crate::error::Result;
-use crate::model::manifest::{SearchDefaultMode, SourceBackend};
+use crate::model::manifest::SourceBackend;
 
 use super::config::ResolvedSourceConfig;
 use super::lance_store::LanceStore;
@@ -85,6 +85,7 @@ impl SourceCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::manifest::SearchDefaultMode;
 
     #[test]
     fn legacy_catalog_is_empty() {

@@ -19,7 +19,6 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::error::{MfError, Result};
-use crate::model::manifest::{SearchDefaultMode, SourceBackend};
 use crate::service::source::advanced::config::ResolvedSourceConfig;
 use crate::service::source::advanced::identity;
 use crate::service::source::advanced::lance_store::LanceStore;
@@ -245,6 +244,7 @@ fn patch_backend_marker(repo_root: &Path, snapshot_id: &str, catalog_fingerprint
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::manifest::{SearchDefaultMode, SourceBackend};
 
     #[test]
     fn preview_returns_empty_for_missing_repo() {

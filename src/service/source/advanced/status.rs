@@ -7,7 +7,6 @@ use std::fs;
 use std::path::Path;
 
 use crate::error::Result;
-use crate::model::manifest::{SearchDefaultMode, SourceBackend};
 use crate::model::source_advanced::{AdvancedSourceStatusReport, IndexStatus, ProjectAdvancedStatus, ProjectionStatus};
 
 use super::config::ResolvedSourceConfig;
@@ -126,6 +125,7 @@ pub fn build_status(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<A
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::manifest::{SearchDefaultMode, SourceBackend};
 
     #[test]
     fn legacy_status_reports_inactive() {
