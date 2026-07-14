@@ -367,7 +367,7 @@ fn handle_enrich(cmd: EnrichCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome>
     let repo = ctx.require_repo_path()?;
     match cmd {
         EnrichCmd::List(args) => {
-            let jobs = svc::source::advanced::enrichment::list_jobs(args.state.as_deref(), args.limit)?;
+            let jobs = svc::source::advanced::enrichment::list_jobs(repo, args.state.as_deref(), args.limit)?;
             let json = serde_json::to_value(&jobs).unwrap_or_default();
             Ok(CommandOutcome::Success(
                 serde_json::json!({"status": "ok", "command": "source.advanced.enrich.list", "data": {"jobs": json}}),

@@ -434,6 +434,23 @@ impl LanceStore {
         })
     }
 
+    /// Read rows for deterministic service-side filtering.  Callers use this
+    /// only for bounded control-plane data such as enrichment jobs; it never
+    /// creates indexes or mutates the table.
+    pub fn scan_rows(&self, table_name: &str) -> Result<Vec<RecordBatch>> {
+        let table = self.open_table(table_name)?;
+        self.rt().block_on(async {
+            table
+                .query()
+                .execute()
+                .await
+                .map_err(|e| MfError::advanced_store(format!("scan failed on '{table_name}': {e}"), None))?
+                .try_collect::<Vec<_>>()
+                .await
+                .map_err(|e| MfError::advanced_store(format!("failed to collect rows from '{table_name}': {e}"), None))
+        })
+    }
+
     /// Delete rows from a table matching a predicate string.
     pub fn delete_rows(&self, table_name: &str, predicate: &str) -> Result<()> {
         let table = self.open_table(table_name)?;

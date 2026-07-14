@@ -7,6 +7,7 @@
 
 use std::path::Path;
 
+use arrow_array::{Array, Int64Array, StringArray, UInt32Array};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{MfError, Result};
@@ -96,22 +97,95 @@ pub struct EnrichmentApplyResult {
 }
 
 /// List enrichment jobs (stub — full impl queries LanceDB enrichments table).
-pub fn list_jobs(_state_filter: Option<&str>, _limit: u32) -> Result<Vec<EnrichmentJob>> {
-    // Stub: returns empty list until LanceDB enrichments table is populated.
-    Ok(Vec::new())
+pub fn list_jobs(repo_root: &Path, state_filter: Option<&str>, limit: u32) -> Result<Vec<EnrichmentJob>> {
+    let store = super::sync::open_active_store(repo_root)?;
+    let chunks = store.scan_rows("chunks")?;
+    let documents = store.scan_rows("documents")?;
+    let mut totals = std::collections::BTreeMap::<String, u32>::new();
+    for batch in chunks {
+        let keys = string_column(&batch, "document_key")?;
+        for row in 0..batch.num_rows() {
+            *totals.entry(keys.value(row).to_string()).or_default() += 1;
+        }
+    }
+    let mut jobs = Vec::new();
+    for batch in documents {
+        let keys = string_column(&batch, "document_key")?;
+        let fps = string_column(&batch, "content_fingerprint")?;
+        let revisions = int64_column(&batch, "content_revision")?;
+        for row in 0..batch.num_rows() {
+            let state = "pending";
+            if state_filter.is_none_or(|filter| filter == state) {
+                jobs.push(EnrichmentJob {
+                    document_key: keys.value(row).to_string(),
+                    content_revision: revisions.value(row),
+                    content_fingerprint: fps.value(row).to_string(),
+                    state: state.to_string(),
+                    total_chunks: totals.get(keys.value(row)).copied().unwrap_or(0),
+                    registrations: vec![],
+                    prompt_version: PROMPT_VERSION.to_string(),
+                });
+            }
+        }
+    }
+    jobs.sort_by(|a, b| a.document_key.cmp(&b.document_key));
+    jobs.truncate(limit as usize);
+    Ok(jobs)
 }
 
 /// Show a bounded chunk batch for a document.
-pub fn show_document(document_key: &str, _batch_size: u32, _repo_root: &Path) -> Result<EnrichShowResult> {
-    // Stub: returns empty result until sync has populated chunks.
+pub fn show_document(document_key: &str, batch_size: u32, repo_root: &Path) -> Result<EnrichShowResult> {
+    let store = super::sync::open_active_store(repo_root)?;
+    let mut chunks = Vec::new();
+    let mut revision = 1;
+    for batch in store.scan_rows("chunks")? {
+        let keys = string_column(&batch, "document_key")?;
+        let ordinals = uint32_column(&batch, "ordinal")?;
+        let texts = string_column(&batch, "text")?;
+        let locators = string_column(&batch, "locator_json")?;
+        let revisions = int64_column(&batch, "content_revision")?;
+        for row in 0..batch.num_rows() {
+            if keys.value(row) == document_key {
+                revision = revisions.value(row);
+                chunks.push(EnrichChunkText {
+                    ordinal: ordinals.value(row),
+                    text: texts.value(row).to_string(),
+                    locator_json: locators.value(row).to_string(),
+                });
+            }
+        }
+    }
+    chunks.sort_by_key(|chunk| chunk.ordinal);
+    let size = batch_size.max(1) as usize;
+    let total = chunks.len();
+    let first = chunks.into_iter().take(size).collect::<Vec<_>>();
     Ok(EnrichShowResult {
         document_key: document_key.to_string(),
-        content_revision: 1,
+        content_revision: revision,
         batch_index: 0,
-        batch_count: 0,
-        chunks: Vec::new(),
-        processed_range: "0/0".to_string(),
+        batch_count: total.div_ceil(size) as u32,
+        processed_range: format!("{}/{}", first.len(), total),
+        chunks: first,
     })
+}
+
+fn string_column<'a>(batch: &'a arrow_array::RecordBatch, name: &str) -> Result<&'a StringArray> {
+    batch
+        .column_by_name(name)
+        .and_then(|column| column.as_any().downcast_ref())
+        .ok_or_else(|| MfError::advanced_store(format!("missing string column '{name}'"), None))
+}
+fn int64_column<'a>(batch: &'a arrow_array::RecordBatch, name: &str) -> Result<&'a Int64Array> {
+    batch
+        .column_by_name(name)
+        .and_then(|column| column.as_any().downcast_ref())
+        .ok_or_else(|| MfError::advanced_store(format!("missing int64 column '{name}'"), None))
+}
+fn uint32_column<'a>(batch: &'a arrow_array::RecordBatch, name: &str) -> Result<&'a UInt32Array> {
+    batch
+        .column_by_name(name)
+        .and_then(|column| column.as_any().downcast_ref())
+        .ok_or_else(|| MfError::advanced_store(format!("missing uint32 column '{name}'"), None))
 }
 
 /// Validate and apply an enrichment submission.
@@ -305,7 +379,8 @@ mod tests {
 
     #[test]
     fn list_jobs_returns_empty_initially() {
-        let jobs = list_jobs(None, 10).unwrap();
-        assert!(jobs.is_empty());
+        let dir = tempfile::tempdir().unwrap();
+        let jobs = list_jobs(dir.path(), None, 10);
+        assert!(jobs.is_err());
     }
 }

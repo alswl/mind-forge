@@ -335,7 +335,7 @@ fn sync_one_source(
 /// Open exactly the database named by the active repository pointer.  A sync
 /// must fail closed if Lance mode has no valid pointer, rather than silently
 /// rebuilding a second store from legacy YAML.
-fn open_active_store(repo_root: &Path) -> Result<LanceStore> {
+pub(crate) fn open_active_store(repo_root: &Path) -> Result<LanceStore> {
     let advanced_dir = repo_root.join(".mind/source/advanced");
     let pointer = publication::read_pointer(&advanced_dir)?.ok_or_else(|| {
         crate::error::MfError::missing_lance_pointer(
@@ -611,6 +611,13 @@ mod tests {
         assert_eq!(store.count_rows("documents").unwrap(), 1);
         assert_eq!(store.count_rows("registration_content").unwrap(), 1);
         assert_eq!(store.count_rows("chunks").unwrap(), 1);
+
+        let jobs = crate::service::source::advanced::enrichment::list_jobs(dir.path(), Some("pending"), 10).unwrap();
+        assert_eq!(jobs.len(), 1);
+        let shown =
+            crate::service::source::advanced::enrichment::show_document(&jobs[0].document_key, 10, dir.path()).unwrap();
+        assert_eq!(shown.chunks.len(), 1);
+        assert!(shown.chunks[0].text.contains("unique searchable phrase"));
 
         sync_repository(dir.path(), &lance, None, false, false).unwrap();
         assert_eq!(store.count_rows("documents").unwrap(), 1);
