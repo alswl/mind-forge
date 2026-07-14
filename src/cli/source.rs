@@ -622,9 +622,39 @@ fn handle_clean(args: SourceCleanArgs, ctx: &CommandCtx) -> Result<CommandOutcom
 // ── Handle: mf source rename ────────────────────────────────────────────────
 
 fn handle_rename(args: SourceRenameArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
+    let repo_root = ctx.require_repo_path()?;
+    let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
     identity::validate_entity_path(&project_path, &args.old_path)?;
     identity::validate_entity_path(&project_path, &args.new_path)?;
+
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    if config.is_lance() {
+        let report = svc_source::advanced::primary::rename_registration(
+            repo_root,
+            &project_path,
+            &args.old_path,
+            &args.new_path,
+            args.force.force,
+            args.dry_run.dry_run,
+        )?;
+        let result = VerbResult {
+            verb: Verb::Rename,
+            kind: "source",
+            identity: report.after.name.clone(),
+            old_identity: Some(report.before.name.clone()),
+            path: report.after.path.clone(),
+            dry_run: report.dry_run,
+            details: serde_json::json!({}),
+        };
+        return match ctx.format() {
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
+            Format::Text => Ok(CommandOutcome::Success(
+                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
+                Vec::new(),
+                None,
+            )),
+        };
+    }
 
     if args.dry_run.dry_run {
         let result = VerbResult {
