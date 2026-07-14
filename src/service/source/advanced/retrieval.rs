@@ -8,11 +8,12 @@
 //! without advanced) returns basic results with a warning.
 
 use std::collections::BTreeMap;
+use std::path::Component;
 use std::path::Path;
 
 use arrow_array::Array;
 
-use crate::error::Result;
+use crate::error::{MfError, Result};
 use crate::model::source_advanced::{
     SearchResultRegistration, SearchScope, SourceLocator, SourceSearchReport, SourceSearchResult,
 };
@@ -67,7 +68,56 @@ pub fn search_repository(
     source_filter: Option<&str>,
     limit: u32,
 ) -> Result<SourceSearchReport> {
-    search_repository_with_store(repo_root, query, mode, project_filter, kind_filter, source_filter, limit, None)
+    let store = open_active_store(repo_root)?;
+    search_repository_with_store(
+        repo_root,
+        query,
+        mode,
+        project_filter,
+        kind_filter,
+        source_filter,
+        limit,
+        store.as_ref(),
+    )
+}
+
+/// Open only the database selected by the active, validated pointer.
+///
+/// A pointer is durable repository state, so its relative URI is treated as
+/// untrusted input: absolute paths and `..` escapes are rejected before a
+/// reader opens LanceDB.  Legacy repositories intentionally return no store.
+fn open_active_store(repo_root: &Path) -> Result<Option<super::lance_store::LanceStore>> {
+    let config = super::config::load_repository_config(repo_root)?;
+    if config.is_legacy() {
+        return Ok(None);
+    }
+
+    let advanced_dir = repo_root.join(".mind/source/advanced");
+    let pointer = super::publication::read_pointer(&advanced_dir)?.ok_or_else(|| {
+        MfError::missing_lance_pointer(
+            "missing",
+            "Lance backend is active but current.json is absent".to_string(),
+            Some("run `mf source advanced recover --snapshot ID --yes`".to_string()),
+        )
+    })?;
+    let relative = Path::new(&pointer.database_uri)
+        .strip_prefix("./")
+        .map_err(|_| MfError::advanced_store("pointer database_uri must be a relative path".to_string(), None))?;
+    if relative.components().any(|component| !matches!(component, Component::Normal(_))) {
+        return Err(MfError::advanced_store(
+            "pointer database_uri escapes the advanced Source store".to_string(),
+            None,
+        ));
+    }
+    let database_path = advanced_dir.join(relative);
+    if !database_path.is_dir() {
+        return Err(MfError::missing_lance_pointer(
+            "corrupt",
+            format!("pointed database directory is missing: {}", database_path.display()),
+            None,
+        ));
+    }
+    super::lance_store::LanceStore::open(&database_path).map(Some)
 }
 
 /// Internal: search with optional LanceStore handle for advanced retrieval.
@@ -270,11 +320,16 @@ fn search_repository_with_store(
         }
     }
 
-    // Determine actual paths used
-    let actual_paths = match mode {
-        SearchMode::Basic => vec!["basic".to_string()],
-        SearchMode::Advanced => vec!["basic".to_string()], // degraded
-        SearchMode::Both => vec!["basic".to_string()],     // partial
+    // Derive the report from the paths actually present in returned results,
+    // rather than from the requested mode. This keeps degradation observable.
+    let mut actual_paths: Vec<String> =
+        results.iter().flat_map(|result| result.retrieval_paths.iter().cloned()).collect();
+    actual_paths.sort();
+    actual_paths.dedup();
+    let degraded = match mode {
+        SearchMode::Basic => false,
+        SearchMode::Advanced => actual_paths.iter().any(|path| path == "basic"),
+        SearchMode::Both => !actual_paths.iter().any(|path| path.starts_with("advanced")),
     };
 
     Ok(SourceSearchReport {
@@ -283,7 +338,7 @@ fn search_repository_with_store(
         resolved_mode: mode_to_str(mode),
         scope: SearchScope { kind: "repository".to_string(), project: project_filter.map(|s| s.to_string()) },
         actual_paths,
-        degraded: mode != SearchMode::Basic,
+        degraded,
         results,
         warnings,
     })

@@ -19,6 +19,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::error::{MfError, Result};
+use crate::model::manifest::{SearchDefaultMode, SourceBackend};
 use crate::service::source::advanced::config::ResolvedSourceConfig;
 use crate::service::source::advanced::identity;
 use crate::service::source::advanced::lance_store::LanceStore;
@@ -114,12 +115,19 @@ pub fn preview_activation(repo_root: &Path, _config: &ResolvedSourceConfig) -> R
 
 /// Execute activation: import all legacy registrations and switch the backend marker.
 pub fn activate(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<ActivationResult> {
+    if config.is_lance() {
+        return Err(MfError::usage(
+            "Lance-backed Sources are already enabled".to_string(),
+            Some("use `mf source advanced status` to inspect the active index".to_string()),
+        ));
+    }
+
     // 1. Preview to count and collect all registrations
     let preview = preview_activation(repo_root, config)?;
 
     // 2. Create the advanced directory and LanceDB store
     let advanced_dir = repo_root.join(".mind").join("source").join("advanced");
-    publication::ensure_gitignore(repo_root.join(".mind").as_path())?;
+    publication::ensure_gitignore(&advanced_dir)?;
 
     let lock_file = publication::try_acquire_writer_lock(&advanced_dir)?;
 
@@ -249,6 +257,7 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            default_search_mode: SearchDefaultMode::Basic,
         };
         let preview = preview_activation(dir.path(), &config).unwrap();
         assert_eq!(preview.total_registrations, 0);
@@ -280,9 +289,21 @@ sources:
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            default_search_mode: SearchDefaultMode::Basic,
         };
         let preview = preview_activation(dir.path(), &config).unwrap();
         assert_eq!(preview.total_registrations, 2);
         assert_eq!(preview.projects, 1);
+    }
+
+    #[test]
+    fn activation_runtime_ignore_is_written_under_mind_not_repo_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let advanced_dir = dir.path().join(".mind/source/advanced");
+
+        publication::ensure_gitignore(&advanced_dir).unwrap();
+
+        assert_eq!(fs::read_to_string(dir.path().join(".mind/.gitignore")).unwrap(), "*\n!.gitignore\n");
+        assert!(!dir.path().join(".gitignore").exists());
     }
 }

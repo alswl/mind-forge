@@ -281,7 +281,7 @@ pub fn dispatch(cmd: SourceAdvancedCmd, ctx: &mut CommandCtx) -> Result<CommandO
 
 fn handle_enable(args: AdvancedEnableArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     let repo = ctx.require_repo_path()?;
-    let config = svc::source::advanced::config::ResolvedSourceConfig::from_config(None)?;
+    let config = svc::source::advanced::config::load_repository_config(repo)?;
 
     if args.dry_run.dry_run {
         let preview = svc::source::advanced::activation::preview_activation(repo, &config)?;
@@ -343,7 +343,7 @@ fn handle_model(cmd: ModelCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
 
 fn handle_sync(args: AdvancedSyncArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     let repo = ctx.require_repo_path()?;
-    let config = svc::source::advanced::config::ResolvedSourceConfig::from_config(None)?;
+    let config = svc::source::advanced::config::load_repository_config(repo)?;
     let dry_run = args.dry_run.dry_run;
 
     let report =
@@ -411,7 +411,7 @@ fn handle_skill_install(args: AdvancedSkillInstallArgs, ctx: &mut CommandCtx) ->
 
 fn handle_status(_args: AdvancedStatusArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     let repo = ctx.require_repo_path()?;
-    let config = svc::source::advanced::config::ResolvedSourceConfig::from_config(None)?;
+    let config = svc::source::advanced::config::load_repository_config(repo)?;
     let report = svc::source::advanced::status::build_status(repo, &config)?;
     let json = serde_json::to_value(&report).unwrap_or_default();
     let warnings = report.warnings.clone();
@@ -424,7 +424,7 @@ fn handle_status(_args: AdvancedStatusArgs, ctx: &mut CommandCtx) -> Result<Comm
 
 fn handle_rebuild(args: AdvancedRebuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     let repo = ctx.require_repo_path()?;
-    let config = svc::source::advanced::config::ResolvedSourceConfig::from_config(None)?;
+    let config = svc::source::advanced::config::load_repository_config(repo)?;
     let report = svc::source::advanced::sync::rebuild_repository(repo, &config, args.dry_run.dry_run, args.offline)?;
     let json = serde_json::to_value(&report).unwrap_or_default();
     let warnings: Vec<String> = if report.registrations_failed > 0 {
@@ -450,7 +450,7 @@ fn handle_clear(args: AdvancedClearArgs, ctx: &mut CommandCtx) -> Result<Command
             Some("use --dry-run to preview, then --yes to execute".to_string()),
         ));
     }
-    let config = svc::source::advanced::config::ResolvedSourceConfig::from_config(None)?;
+    let config = svc::source::advanced::config::load_repository_config(repo)?;
     let report = svc::source::advanced::sync::clear_derived(
         repo,
         &config,

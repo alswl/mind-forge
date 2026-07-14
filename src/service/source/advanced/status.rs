@@ -7,6 +7,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::error::Result;
+use crate::model::manifest::{SearchDefaultMode, SourceBackend};
 use crate::model::source_advanced::{AdvancedSourceStatusReport, IndexStatus, ProjectAdvancedStatus, ProjectionStatus};
 
 use super::config::ResolvedSourceConfig;
@@ -144,6 +145,7 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            default_search_mode: SearchDefaultMode::Basic,
         };
         let report = build_status(dir.path(), &config).unwrap();
         assert_eq!(report.backend, "legacy");
@@ -164,6 +166,7 @@ mod tests {
             storage_schema_version: Some("1".into()),
             chunk_tokens: 384,
             chunk_overlap: 48,
+            default_search_mode: SearchDefaultMode::Both,
         };
         let report = build_status(dir.path(), &config).unwrap();
         assert_eq!(report.index_status, IndexStatus::Missing);

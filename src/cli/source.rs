@@ -719,12 +719,17 @@ fn source_add_outcome(
 
 fn handle_search(args: SourceSearchArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     let repo = ctx.require_repo_path()?;
+    let source_config = crate::service::source::advanced::config::load_repository_config(repo)?;
 
     let mode = match args.mode {
         Some(SearchModeArg::Basic) => crate::model::source_search::SearchMode::Basic,
         Some(SearchModeArg::Advanced) => crate::model::source_search::SearchMode::Advanced,
         Some(SearchModeArg::Both) => crate::model::source_search::SearchMode::Both,
-        None => crate::model::source_search::SearchMode::Basic,
+        None => match source_config.default_search_mode {
+            crate::model::manifest::SearchDefaultMode::Basic => crate::model::source_search::SearchMode::Basic,
+            crate::model::manifest::SearchDefaultMode::Advanced => crate::model::source_search::SearchMode::Advanced,
+            crate::model::manifest::SearchDefaultMode::Both => crate::model::source_search::SearchMode::Both,
+        },
     };
 
     let report = crate::service::source::advanced::retrieval::search_repository(

@@ -4,7 +4,17 @@
 //! effective backend mode, and validates the Lance activation marker.
 
 use crate::error::{MfError, Result};
-use crate::model::manifest::{RepositorySourceConfig, SourceBackend};
+use crate::model::manifest::{RepositorySourceConfig, SearchDefaultMode, SourceBackend};
+
+/// Load and validate the Source configuration selected by a Mind repository.
+///
+/// Keeping this at the service boundary prevents command handlers from
+/// accidentally treating an activated Lance repository as legacy.  An absent
+/// `source` block deliberately retains the legacy defaults.
+pub fn load_repository_config(repo_root: &std::path::Path) -> Result<ResolvedSourceConfig> {
+    let manifest = crate::service::repo::load_manifest(&repo_root.join("minds.yaml"))?;
+    ResolvedSourceConfig::from_config(manifest.source.as_ref())
+}
 
 /// Validated backend mode and search configuration for a Source operation.
 #[derive(Debug, Clone)]
@@ -20,6 +30,8 @@ pub struct ResolvedSourceConfig {
     pub chunk_tokens: u32,
     /// Chunk overlap from advanced config (default 48).
     pub chunk_overlap: u32,
+    /// Search mode used when the CLI does not provide an explicit override.
+    pub default_search_mode: SearchDefaultMode,
 }
 
 impl ResolvedSourceConfig {
@@ -54,6 +66,11 @@ impl ResolvedSourceConfig {
             storage_schema_version: cfg.storage_schema_version.clone(),
             chunk_tokens: adv.map(|a| a.chunk_tokens).unwrap_or(384),
             chunk_overlap: adv.map(|a| a.chunk_overlap).unwrap_or(48),
+            default_search_mode: if cfg.is_lance_active() {
+                cfg.search.as_ref().map(|search| search.default_mode).unwrap_or_default()
+            } else {
+                SearchDefaultMode::Basic
+            },
         })
     }
 
@@ -97,6 +114,7 @@ mod tests {
         assert_eq!(resolved.chunk_tokens, 256);
         assert_eq!(resolved.chunk_overlap, 32);
         assert_eq!(resolved.activation_snapshot_id.as_deref(), Some("snap-1"));
+        assert_eq!(resolved.default_search_mode, SearchDefaultMode::Both);
     }
 
     #[test]
@@ -113,5 +131,19 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("incomplete"));
+    }
+
+    #[test]
+    fn load_repository_config_uses_manifest_source_block() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("minds.yaml"),
+            "schema_version: '1'\nprojects: []\nsource:\n  backend: lance\n  activation_snapshot_id: snap-1\n  activation_catalog_fingerprint: fp-1\n  storage_schema_version: '1'\n",
+        )
+        .unwrap();
+
+        let resolved = load_repository_config(dir.path()).unwrap();
+        assert!(resolved.is_lance());
+        assert_eq!(resolved.activation_snapshot_id.as_deref(), Some("snap-1"));
     }
 }

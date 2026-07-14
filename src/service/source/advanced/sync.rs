@@ -419,6 +419,7 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
         };
         let report = rebuild_repository(dir.path(), &config, true, false).unwrap();
         assert_eq!(report.scope, "rebuild");
@@ -435,6 +436,7 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
         };
         let report = clear_derived(dir.path(), &config, None, None, false, true).unwrap();
         assert_eq!(report.registrations_total, 0);
@@ -460,6 +462,7 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
         };
         let report = sync_repository(dir.path(), &config, None, false, false).unwrap();
         assert_eq!(report.registrations_total, 0);
@@ -487,6 +490,7 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
         };
 
         // Matches filter

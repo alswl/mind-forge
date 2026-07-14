@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use crate::error::Result;
-use crate::model::manifest::SourceBackend;
+use crate::model::manifest::{SearchDefaultMode, SourceBackend};
 
 use super::config::ResolvedSourceConfig;
 use super::lance_store::LanceStore;
@@ -96,6 +96,7 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            default_search_mode: SearchDefaultMode::Basic,
         };
         let catalog = SourceCatalog::discover(&config, Path::new("/tmp")).unwrap();
         assert!(!catalog.from_lance_primary);
@@ -112,6 +113,7 @@ mod tests {
             storage_schema_version: Some("1".into()),
             chunk_tokens: 384,
             chunk_overlap: 48,
+            default_search_mode: SearchDefaultMode::Both,
         };
         let catalog = SourceCatalog::discover(&config, Path::new("/tmp")).unwrap();
         assert!(catalog.from_lance_primary);

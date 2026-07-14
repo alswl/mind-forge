@@ -10,7 +10,7 @@ use std::sync::Arc;
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use futures::TryStreamExt;
 use lancedb::connect;
-use lancedb::query::{ExecutableQuery, QueryBase};
+use lancedb::query::{ExecutableQuery, FullTextSearchQuery, QueryBase};
 use lancedb::table::Table;
 
 use crate::error::{MfError, Result};
@@ -331,7 +331,7 @@ impl LanceStore {
     pub fn fts_search(
         &self,
         table_name: &str,
-        _query_text: &str,
+        query_text: &str,
         _columns: &[&str],
         limit: usize,
     ) -> Result<Vec<arrow_array::RecordBatch>> {
@@ -339,6 +339,7 @@ impl LanceStore {
         self.rt().block_on(async {
             let stream = table
                 .query()
+                .full_text_search(FullTextSearchQuery::new(query_text.to_owned()))
                 .limit(limit)
                 .execute()
                 .await
