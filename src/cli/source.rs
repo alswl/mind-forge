@@ -435,9 +435,49 @@ fn handle_update(args: SourceUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutc
 }
 
 fn handle_index(args: SourceIndexArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
-
-    let report = svc_source::reconcile(&project_path, args.dry_run.dry_run)?;
+    let repo_root = ctx.require_repo_path()?;
+    let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    let report = if config.is_lance() {
+        // The compatibility YAML is not an input after activation.  Indexing
+        // in Lance mode therefore means reconciling the selected primary
+        // registrations' derived content, never rebuilding YAML from disk.
+        let project = project_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| MfError::usage("cannot determine the selected project identity".to_string(), None))?;
+        let sync = svc_source::advanced::sync::sync_repository(
+            repo_root,
+            &config,
+            Some(project),
+            None,
+            args.dry_run.dry_run,
+            false,
+        )?;
+        let kind = |name: &str| match name {
+            "pdf" => FileKind::Pdf,
+            "rss" => FileKind::Rss,
+            "web" => FileKind::Web,
+            _ => FileKind::File,
+        };
+        crate::model::source::SourceIndexReport {
+            added: sync
+                .items
+                .iter()
+                .filter(|item| item.action == "added")
+                .map(|item| crate::model::source::SourceIndexEntry {
+                    name: item.source_identity.clone(),
+                    kind: kind(item.detected_format.as_deref().unwrap_or("file")),
+                    path: String::new(),
+                })
+                .collect(),
+            removed: vec![],
+            kept_count: sync.registrations_skipped,
+            dry_run: args.dry_run.dry_run,
+        }
+    } else {
+        svc_source::reconcile(&project_path, args.dry_run.dry_run)?
+    };
 
     let scanned_count = report.added.len() + report.removed.len() + report.kept_count as usize;
 
