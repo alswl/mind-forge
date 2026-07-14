@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use crate::error::{MfError, Result};
-use crate::model::source::{FileKind, Source, SourceKind};
+use crate::model::source::{FileKind, Source, SourceKind, SourceRemoveReport};
 use crate::model::source_advanced::{RegistrationState, SourceRegistration};
 
 use super::{catalog::SourceCatalog, config::ResolvedSourceConfig, identity, sync};
@@ -102,6 +102,73 @@ pub fn update_registration(
         added_at: String::new(),
         updated_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
     })
+}
+
+/// Remove a Lance-primary registration and its derived binding. Compatibility
+/// YAML is only rewritten after the primary mutation has succeeded.
+pub fn remove_registration(
+    repo_root: &Path,
+    project_path: &Path,
+    name_or_path: &str,
+    keep_file: bool,
+    force: bool,
+    dry_run: bool,
+) -> Result<SourceRemoveReport> {
+    let config = ResolvedSourceConfig::from_config(
+        crate::service::repo::load_manifest(&repo_root.join("minds.yaml"))?.source.as_ref(),
+    )?;
+    let store = sync::open_active_store(repo_root)?;
+    let catalog = SourceCatalog::discover(&config, repo_root)?;
+    let project_rel = project_path.strip_prefix(repo_root).unwrap_or(project_path).to_string_lossy().replace('\\', "/");
+    let row = catalog
+        .registrations(Some(&store))?
+        .into_iter()
+        .find(|row| {
+            row.project_path == project_rel
+                && (row.source_identity == name_or_path || row.registered_location == name_or_path)
+        })
+        .ok_or_else(|| MfError::usage(format!("source '{name_or_path}' not found"), None))?;
+    let kind = match row.source_type.as_str() {
+        "pdf" => FileKind::Pdf,
+        "rss" => FileKind::Rss,
+        "web" => FileKind::Web,
+        _ => FileKind::File,
+    };
+    let is_url = row.registered_location.starts_with("http://") || row.registered_location.starts_with("https://");
+    let source = Source {
+        name: row.source_identity.clone(),
+        kind,
+        source_kind: None,
+        url: is_url.then(|| row.registered_location.clone()),
+        path: (!is_url).then(|| row.registered_location.clone()),
+        tags: serde_json::from_str(&row.tags_json).unwrap_or_default(),
+        added_at: String::new(),
+        updated_at: String::new(),
+    };
+    let index = crate::service::index::load(project_path)?;
+    let references = crate::service::lifecycle::scan_references(
+        project_path,
+        &index,
+        crate::model::lifecycle::ObjectKind::Source,
+        &source.name,
+    );
+    if !references.is_empty() && !force {
+        return Err(MfError::usage(
+            format!("source '{}' is referenced; use --force to remove anyway", source.name),
+            None,
+        ));
+    }
+    let path = source.path.as_ref().map(|path| project_path.join(path));
+    let file_deleted = !keep_file && path.as_ref().is_some_and(|path| path.exists());
+    if !dry_run {
+        store.clear_content_bindings(&std::collections::BTreeSet::from([row.registration_key.clone()]))?;
+        store.delete_rows("registrations", &format!("registration_key = '{}'", row.registration_key))?;
+        if file_deleted {
+            std::fs::remove_file(path.expect("checked"))?;
+        }
+        super::compatibility::export_project(repo_root, &row.project_identity, false)?;
+    }
+    Ok(SourceRemoveReport { source, file_deleted, references, side_effects: vec![], force, dry_run })
 }
 
 #[cfg(test)]

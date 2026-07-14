@@ -546,13 +546,26 @@ fn handle_remove(args: SourceRemoveArgs, ctx: &mut CommandCtx) -> Result<Command
         force: args.force.force,
     })?;
 
-    let report = svc_source::remove_source(
-        &project_path,
-        &args.name_or_path,
-        args.keep_file,
-        args.force.force,
-        args.dry_run.dry_run,
-    )?;
+    let repo_root = ctx.require_repo_path()?;
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    let report = if config.is_lance() {
+        svc_source::advanced::primary::remove_registration(
+            repo_root,
+            &project_path,
+            &args.name_or_path,
+            args.keep_file,
+            args.force.force,
+            args.dry_run.dry_run,
+        )?
+    } else {
+        svc_source::remove_source(
+            &project_path,
+            &args.name_or_path,
+            args.keep_file,
+            args.force.force,
+            args.dry_run.dry_run,
+        )?
+    };
 
     let result = VerbResult {
         verb: Verb::Remove,
