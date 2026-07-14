@@ -28,10 +28,13 @@ futures = "0.3"
 
 # Advanced Sources (LanceDB RAG)
 lancedb = "0.31.0"
+lance-index = "8.0.0"
 arrow-array = "58"
 arrow-schema = "58"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util"] }
-fastembed = "5.17.2"
+# ORT is loaded from the verified repo-local runtime bundle.  Avoid native
+# downloads/linking so every release target can compile offline.
+fastembed = { version = "5.17.2", default-features = false, features = ["hf-hub-rustls-tls", "ort-load-dynamic"] }
 sha2 = "0.10"
 fs2 = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }

@@ -9,8 +9,9 @@ use std::sync::Arc;
 
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use futures::TryStreamExt;
+use lance_index::scalar::FullTextSearchQuery;
 use lancedb::connect;
-use lancedb::query::{ExecutableQuery, FullTextSearchQuery, QueryBase};
+use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::table::Table;
 
 use crate::error::{MfError, Result};
