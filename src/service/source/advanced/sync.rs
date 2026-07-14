@@ -653,6 +653,11 @@ mod tests {
             crate::service::source::advanced::enrichment::list_jobs(dir.path(), Some("ready"), 10).unwrap().len(),
             1
         );
+        let status = crate::service::source::advanced::status::build_status(dir.path(), &lance).unwrap();
+        assert_eq!(status.registrations_count, 1);
+        assert_eq!(status.documents_count, 1);
+        assert_eq!(status.chunks_count, 1);
+        assert_eq!(status.enrichments_ready, 1);
 
         let search = crate::service::source::advanced::retrieval::search_repository(
             dir.path(),

@@ -6,6 +6,8 @@
 use std::fs;
 use std::path::Path;
 
+use arrow_array::Array;
+
 use crate::error::Result;
 use crate::model::source_advanced::{AdvancedSourceStatusReport, IndexStatus, ProjectAdvancedStatus, ProjectionStatus};
 
@@ -45,12 +47,37 @@ pub fn build_status(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<A
     // Enumerate project-level stats
     let mut projects = Vec::new();
     let mut total_regs = 0u64;
-    let total_docs = 0u64;
+    let mut total_docs = 0u64;
     let mut total_rels = 0u64;
-    let total_chunks = 0u64;
-    let enrichments_ready = 0u64;
-    let enrichments_pending = 0u64;
-    let enrichments_failed = 0u64;
+    let mut total_chunks = 0u64;
+    let mut enrichments_ready = 0u64;
+    let mut enrichments_pending = 0u64;
+    let mut enrichments_failed = 0u64;
+
+    // Lance-mode status reports the primary/derived store, not compatibility
+    // YAML. All reads are explicitly side-effect-free.
+    if config.is_lance()
+        && let Ok(store) = super::sync::open_active_store(repo_root)
+    {
+        total_regs = store.count_rows("registrations")? as u64;
+        total_docs = store.count_rows("documents")? as u64;
+        total_rels = store.count_rows("registration_content")? as u64;
+        total_chunks = store.count_rows("chunks")? as u64;
+        for batch in store.scan_rows("enrichments")? {
+            if let Some(states) = batch
+                .column_by_name("state")
+                .and_then(|column| column.as_any().downcast_ref::<arrow_array::StringArray>())
+            {
+                for row in 0..batch.num_rows() {
+                    match states.value(row) {
+                        "ready" => enrichments_ready += 1,
+                        "failed" => enrichments_failed += 1,
+                        _ => enrichments_pending += 1,
+                    }
+                }
+            }
+        }
+    }
 
     let projects_dir = repo_root.join("projects");
     if projects_dir.exists() {
@@ -77,8 +104,10 @@ pub fn build_status(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<A
                 proj_ready = sources.len() as u64; // all legacy sources are "ready"
             }
 
-            total_regs += proj_regs;
-            total_rels += proj_regs;
+            if !config.is_lance() {
+                total_regs += proj_regs;
+                total_rels += proj_regs;
+            }
 
             projects.push(ProjectAdvancedStatus {
                 project_key: proj_name.clone(),
