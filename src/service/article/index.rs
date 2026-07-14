@@ -104,6 +104,18 @@ pub fn build_index(project_root: &Path, config: &MindConfig) -> Result<IndexFile
     // Sort for deterministic output
     articles.sort_by(|a, b| a.article_path.cmp(&b.article_path));
 
+    // Every discovery path above is allowed to refresh derived metadata (for
+    // example a template origin), but indexing the same filesystem must not
+    // turn a no-op into a timestamp-only mutation.  Some entries can be seen
+    // by more than one discovery phase, so enforce the invariant once after
+    // merge rather than relying on each phase's precedence branch.
+    for article in &mut articles {
+        if let Some(existing) = existing_map.get(article.article_path.as_str()) {
+            article.created_at = existing.created_at.clone();
+            article.updated_at = existing.updated_at.clone();
+        }
+    }
+
     let index = IndexFile {
         schema_version: defaults::SCHEMA_VERSION.to_string(),
         articles: Some(articles),
