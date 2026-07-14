@@ -29,6 +29,9 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{MfError, Result};
+use crate::service::source::advanced::lance_store::{
+    TABLE_CHUNKS, TABLE_DOCUMENTS, TABLE_ENRICHMENTS, TABLE_REGISTRATION_CONTENT, TABLE_REGISTRATIONS,
+};
 
 // ── Filesystem paths ───────────────────────────────────────────────────────
 
@@ -112,6 +115,36 @@ pub struct RepositorySourceIndexSnapshot {
     pub created_at: String,
 }
 
+/// Validate the self-contained invariants of a snapshot manifest before it is
+/// made visible or used for recovery.  Storage-specific version availability
+/// is verified by the caller against the target LanceDB generation.
+pub fn validate_snapshot(snapshot: &RepositorySourceIndexSnapshot) -> Result<()> {
+    if snapshot.snapshot_id.trim().is_empty()
+        || snapshot.schema_version.trim().is_empty()
+        || snapshot.generation_id.trim().is_empty()
+        || snapshot.primary_catalog_fingerprint.trim().is_empty()
+        || snapshot.search_policy_version.trim().is_empty()
+    {
+        return Err(MfError::advanced_store("snapshot manifest has required empty fields".to_string(), None));
+    }
+    let references = [
+        (&snapshot.registrations_version, TABLE_REGISTRATIONS),
+        (&snapshot.documents_version, TABLE_DOCUMENTS),
+        (&snapshot.registration_content_version, TABLE_REGISTRATION_CONTENT),
+        (&snapshot.chunks_version, TABLE_CHUNKS),
+        (&snapshot.enrichments_version, TABLE_ENRICHMENTS),
+    ];
+    for (reference, expected_table) in references {
+        if reference.table != expected_table || reference.tag.trim().is_empty() {
+            return Err(MfError::advanced_store(
+                format!("snapshot '{}' has invalid reference for '{expected_table}'", snapshot.snapshot_id),
+                None,
+            ));
+        }
+    }
+    Ok(())
+}
+
 // ── Lock helpers ───────────────────────────────────────────────────────────
 
 /// Acquire an exclusive filesystem lock.
@@ -186,6 +219,7 @@ pub fn write_pointer(advanced_dir: &Path, pointer: &RepositorySourceIndexPointer
 
 /// Write a snapshot manifest to the immutable snapshots directory.
 pub fn write_snapshot(advanced_dir: &Path, snapshot: &RepositorySourceIndexSnapshot) -> Result<()> {
+    validate_snapshot(snapshot)?;
     let path = snapshot_path(advanced_dir, &snapshot.generation_id, &snapshot.snapshot_id);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -322,6 +356,31 @@ mod tests {
         let back: RepositorySourceIndexSnapshot = serde_json::from_str(&json).unwrap();
         assert_eq!(back.snapshot_id, "snap-1");
         assert_eq!(back.registrations_version.table, "registrations");
+    }
+
+    #[test]
+    fn snapshot_validation_rejects_wrong_table_reference() {
+        let reference = |table: &str| TableVersionRef { table: table.to_string(), version: 1, tag: "tag".to_string() };
+        let snapshot = RepositorySourceIndexSnapshot {
+            snapshot_id: "snap-1".into(),
+            schema_version: "1".into(),
+            generation_id: "gen-1".into(),
+            registrations_version: reference("wrong"),
+            documents_version: reference("documents"),
+            registration_content_version: reference("registration_content"),
+            chunks_version: reference("chunks"),
+            enrichments_version: reference("enrichments"),
+            primary_catalog_fingerprint: "fp".into(),
+            activation_legacy_inventory_fingerprint: None,
+            active_project_catalog_fingerprint: String::new(),
+            content_fingerprint: None,
+            index_fingerprint: None,
+            search_policy_version: "1".into(),
+            model_identity: None,
+            aggregate_counts: None,
+            created_at: "2026-07-13T00:00:00Z".into(),
+        };
+        assert!(validate_snapshot(&snapshot).is_err());
     }
 
     #[test]

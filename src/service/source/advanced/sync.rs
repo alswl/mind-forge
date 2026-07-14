@@ -656,13 +656,12 @@ pub fn recover_from_snapshot(
         )
     })?;
 
-    // Validate snapshot: schema version, table references, fingerprint
-    if target.schema_version.is_empty() {
-        return Err(crate::error::MfError::recovery_unavailable(
-            format!("snapshot '{snapshot_id}' has invalid schema version"),
+    super::publication::validate_snapshot(target).map_err(|error| {
+        crate::error::MfError::recovery_unavailable(
+            format!("snapshot '{snapshot_id}' failed manifest validation: {error}"),
             None,
-        ));
-    }
+        )
+    })?;
 
     let generation_dir = super::publication::generation_path(advanced_dir, &target.generation_id);
     let database_path = generation_dir.join("lancedb");
