@@ -55,12 +55,13 @@ fn lifecycle_remove(
     }
 
     let mut planned: Vec<PlannedChange> = Vec::new();
-    if !keep_file && matches!(entry.kind, FileKind::Pdf | FileKind::File) {
-        if let Some(ref rel_path) = entry.path {
-            let abs_path = project_path.join(rel_path);
-            if abs_path.exists() {
-                planned.push(lifecycle::planned_remove_file(&abs_path.to_string_lossy()));
-            }
+    if !keep_file
+        && matches!(entry.kind, FileKind::Pdf | FileKind::File)
+        && let Some(ref rel_path) = entry.path
+    {
+        let abs_path = project_path.join(rel_path);
+        if abs_path.exists() {
+            planned.push(lifecycle::planned_remove_file(&abs_path.to_string_lossy()));
         }
     }
     planned.push(lifecycle::planned_yaml_update(
@@ -138,12 +139,13 @@ fn lifecycle_remove_by_path(
     }
 
     let mut planned: Vec<PlannedChange> = Vec::new();
-    if !keep_file && matches!(entry.kind, FileKind::Pdf | FileKind::File) {
-        if let Some(ref rel_path) = entry.path {
-            let abs_path = project_path.join(rel_path);
-            if abs_path.exists() {
-                planned.push(lifecycle::planned_remove_file(&abs_path.to_string_lossy()));
-            }
+    if !keep_file
+        && matches!(entry.kind, FileKind::Pdf | FileKind::File)
+        && let Some(ref rel_path) = entry.path
+    {
+        let abs_path = project_path.join(rel_path);
+        if abs_path.exists() {
+            planned.push(lifecycle::planned_remove_file(&abs_path.to_string_lossy()));
         }
     }
     planned.push(lifecycle::planned_yaml_update(
@@ -188,16 +190,17 @@ fn lifecycle_remove_by_path(
 }
 
 fn delete_file_if_needed(project_path: &Path, entry: &crate::model::source::Source, keep_file: bool) -> Result<bool> {
-    if !keep_file && matches!(entry.kind, FileKind::Pdf | FileKind::File) {
-        if let Some(ref rel_path) = entry.path {
-            let abs_path = project_path.join(rel_path);
-            match std::fs::remove_file(&abs_path) {
-                Ok(_) => return Ok(true),
-                Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    return Ok(false);
-                }
-                Err(e) => return Err(MfError::Io(e)),
+    if !keep_file
+        && matches!(entry.kind, FileKind::Pdf | FileKind::File)
+        && let Some(ref rel_path) = entry.path
+    {
+        let abs_path = project_path.join(rel_path);
+        match std::fs::remove_file(&abs_path) {
+            Ok(_) => return Ok(true),
+            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(false);
             }
+            Err(e) => return Err(MfError::Io(e)),
         }
     }
     Ok(false)

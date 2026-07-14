@@ -3,8 +3,10 @@
 **A local-first, AI-native CLI for card-based writing.**
 
 `mf` treats your knowledge base as a codebase. Articles are assembled from
-composable Blocks, every piece of state lives in plain files on disk, and the
-CLI is shaped so both humans and Agents can drive it.
+composable Blocks, authored content and configuration live in plain files on
+disk, and the CLI is shaped so both humans and Agents can drive it. Features
+may use explicitly specified repo-local embedded stores for advanced indexing
+and retrieval without introducing a cloud dependency.
 
 ## Philosophy
 
@@ -59,8 +61,9 @@ This is an independent philosophy, not a subset of DaC: AI Native CLI
 rejects interactive prompts, colored output designed for human eyes, and
 inconsistent exit codes. The tool is a reliable API for an LLM to call.
 
-Local-first underpins all three: no cloud, no lock-in, plain markdown and
-YAML you can edit in any editor.
+Local-first underpins all three: no required cloud service, plain Markdown and
+YAML for authored content and configuration, plus portable migration paths for
+any repo-local embedded stores.
 
 ## Install
 
@@ -268,6 +271,23 @@ default `projects/` container). Defaults to the current directory.
 | `remove <NAME_OR_PATH>` (rm) | Remove a source. `--keep-file` |
 | `index` | Index sources (mf extension) |
 | `clean` | Clean stale index entries |
+| `search <QUERY>` | Search sources across all projects. `--mode basic\|advanced\|both`, `-p, --project <NAME>`, `--file-kind <KIND>`, `--source <NAME>`, `--limit <N>` |
+| `advanced enable` | Activate LanceDB-backed repository Sources (imports all legacy registrations). `--dry-run` |
+| `advanced sync` | Reconcile content for Source registrations. `-p, --project <NAME>`, `--offline`, `--dry-run` |
+| `advanced model install` | Download and install the embedding model (requires network). `--model <ID>`, `--dry-run` |
+| `advanced model import <DIR>` | Import a local model bundle (network-free). `--dry-run` |
+| `advanced model status` | Report model installation status (read-only) |
+| `advanced enrich list` | List pending/stale enrichment jobs for Claude Skill workflow |
+| `advanced enrich show <KEY>` | Show bounded chunk batch for a document (for `/mf-source` Skill) |
+| `advanced enrich apply <KEY> --input <FILE>` | Apply validated enrichment JSON to a document |
+| `advanced skill install` | Install the `/mf-source` Claude Code Skill into this repo |
+| `advanced status` | Report aggregate status of the advanced Source index |
+| `advanced rebuild` | Rebuild the entire LanceDB index. `--offline`, `--dry-run` |
+| `advanced clear` | Clear derived content. `--all`, `-p, --project <NAME>`, `--yes`, `--dry-run` |
+| `advanced recover --snapshot <ID>` | Recover from a retained snapshot. `--yes`, `--dry-run` |
+| `advanced legacy status` | Check legacy projection health |
+| `advanced legacy export` | Export Lance registrations to legacy YAML projections. `--dry-run` |
+| `advanced disable` | Switch back to legacy backend (requires all projections current). `--dry-run` |
 
 ### `mf asset` — Manage project assets
 

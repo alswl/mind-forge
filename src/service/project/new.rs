@@ -55,10 +55,10 @@ pub fn scaffold(
     let mut scaffolded: Vec<String> = Vec::new();
 
     // Create parent directories first
-    if let Some(parent) = resolved.parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent).map_err(MfError::Io)?;
-        }
+    if let Some(parent) = resolved.parent()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent).map_err(MfError::Io)?;
     }
 
     for dir in defaults::REQUIRED_PROJECT_DIRS {

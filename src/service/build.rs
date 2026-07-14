@@ -70,7 +70,7 @@ fn insert_banner_into_content(content: &str, banner_text: &str) -> String {
         // Find the closing `---` marker
         if let Some(end) = rest.find("\n---") {
             let split = 3 + end + 4; // position after closing `---`
-                                     // Check if there's a newline after the closing `---`
+            // Check if there's a newline after the closing `---`
             let after_split =
                 if split < content.len() && content[split..].starts_with('\n') { split + 1 } else { split };
             let mut result = content[..after_split].to_string();

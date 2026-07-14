@@ -347,11 +347,7 @@ pub(crate) fn resolve_block_filename(section_files: &[String], article_path: &st
 fn extract_number_prefix(filename: &str) -> Option<String> {
     let name = filename.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)).unwrap_or(filename);
     let prefix: String = name.chars().take_while(|c| c.is_ascii_digit()).collect();
-    if prefix.is_empty() {
-        None
-    } else {
-        Some(prefix)
-    }
+    if prefix.is_empty() { None } else { Some(prefix) }
 }
 
 /// Extract the slug from a block filename like "02-notes.md" → "notes"
@@ -360,11 +356,7 @@ fn extract_slug_from_filename(filename: &str) -> Option<String> {
     let name = filename.strip_suffix(&format!(".{}", defaults::MARKDOWN_EXTENSION)).unwrap_or(filename);
     let non_digit_pos = name.find(|c: char| !c.is_ascii_digit())?;
     let slug = name[non_digit_pos..].trim_start_matches('-');
-    if slug.is_empty() {
-        None
-    } else {
-        Some(slug.to_string())
-    }
+    if slug.is_empty() { None } else { Some(slug.to_string()) }
 }
 
 /// Replace the `article:` binding in a prompt's YAML frontmatter.
@@ -386,12 +378,11 @@ pub(crate) fn update_prompt_article_binding(content: &str, old_path: &str, new_p
                 break;
             }
         }
-        if in_frontmatter {
-            if let Some(rest) = line.strip_prefix("article:") {
-                if rest.trim() == old_path {
-                    *line = format!("article: {}", new_path);
-                }
-            }
+        if in_frontmatter
+            && let Some(rest) = line.strip_prefix("article:")
+            && rest.trim() == old_path
+        {
+            *line = format!("article: {}", new_path);
         }
     }
     lines.join("\n") + if content.ends_with('\n') { "\n" } else { "" }

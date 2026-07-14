@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use clap::{Args, CommandFactory, ValueEnum};
-use clap_complete::{generate, Shell};
+use clap_complete::{Shell, generate};
 use serde::Serialize;
 
 use crate::cli::{CommandCtx, CommandOutcome, RootCli};

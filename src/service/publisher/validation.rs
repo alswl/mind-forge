@@ -141,9 +141,10 @@ pub fn process_definition(
     }
 
     // Check for secret-bearing keys
-    if let Some(ref config) = def.config {
-        if let Some(found) = contains_secret_key(config, "config") {
-            local_diagnostics.push(PublisherDiagnostic {
+    if let Some(ref config) = def.config
+        && let Some(found) = contains_secret_key(config, "config")
+    {
+        local_diagnostics.push(PublisherDiagnostic {
                 kind: PublisherDiagnosticKind::SecretField,
                 path: Some(path.to_path_buf()),
                 publisher_name: Some(name.clone()),
@@ -152,7 +153,6 @@ pub fn process_definition(
                     "move secret values to environment variables or explicit CLI parameters and declare required_inputs instead".to_string(),
                 ),
             });
-        }
     }
 
     // Check for duplicates

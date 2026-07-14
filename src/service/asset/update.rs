@@ -99,11 +99,11 @@ pub fn update_one(project_path: &Path, cwd: &Path, input: &Path) -> Result<Asset
     let changed = new_size != old_size || new_hash != old_hash;
 
     if changed {
-        if let Some(assets) = &mut index.assets {
-            if let Some(entry) = assets.get_mut(entry_idx) {
-                entry.size = new_size;
-                entry.hash = new_hash.clone();
-            }
+        if let Some(assets) = &mut index.assets
+            && let Some(entry) = assets.get_mut(entry_idx)
+        {
+            entry.size = new_size;
+            entry.hash = new_hash.clone();
         }
         index::save(project_path, &index)?;
     }

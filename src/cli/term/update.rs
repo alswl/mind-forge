@@ -112,10 +112,8 @@ pub(super) fn handle_update(args: TermUpdateArgs, ctx: &CommandCtx) -> Result<Co
         dry_run: false,
         details: serde_json::json!({"changes": changes}),
     };
-    if global_fallback {
-        if let serde_json::Value::Object(ref mut map) = result.details {
-            map.insert("scope".to_string(), serde_json::json!("global"));
-        }
+    if global_fallback && let serde_json::Value::Object(ref mut map) = result.details {
+        map.insert("scope".to_string(), serde_json::json!("global"));
     }
     match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
@@ -180,10 +178,10 @@ fn handle_update_dry_run(
     }
 
     let scope_str = scope.as_str();
-    if scope_str == "global" {
-        if let Some(pn) = ctx.project() {
-            emit_scope_fallback_warning(pn, &args.term, warnings);
-        }
+    if scope_str == "global"
+        && let Some(pn) = ctx.project()
+    {
+        emit_scope_fallback_warning(pn, &args.term, warnings);
     }
 
     let result = VerbResult {

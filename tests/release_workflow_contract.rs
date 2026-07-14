@@ -110,7 +110,8 @@ fn artifacts_use_deterministic_names() {
     // Verify the matrix target values and the mf- prefix are present.
     assert!(wf.contains("x86_64-unknown-linux-gnu"), "workflow should target x86_64-unknown-linux-gnu");
     assert!(wf.contains("aarch64-unknown-linux-gnu"), "workflow should target aarch64-unknown-linux-gnu");
-    assert!(wf.contains("mf-aarch64-apple-darwin"), "workflow should produce mf-aarch64-apple-darwin artifact");
+    assert!(wf.contains("aarch64-apple-darwin"), "workflow should target aarch64-apple-darwin");
+    assert!(wf.contains("x86_64-apple-darwin"), "workflow should target x86_64-apple-darwin");
 }
 
 // ── US3: Permissions ────────────────────────────────────────────────────

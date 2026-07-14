@@ -53,14 +53,21 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
+    strategy:
+      matrix:
+        target:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
     steps:
       - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ci-build-macos
-      - run: cargo build --release --locked
+          shared-key: ci-build-macos-${{ matrix.target }}
+      - run: cargo build --release --locked --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v6
         with:
-          name: mf-aarch64-apple-darwin
-          path: target/release/mf
+          name: mf-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/mf

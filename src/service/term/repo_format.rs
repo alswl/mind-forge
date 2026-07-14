@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::defaults;
 use crate::error::{MfError, Result};
-use crate::model::term::{validate_corrections, Term};
+use crate::model::term::{Term, validate_corrections};
 use crate::service::util::{atomic_write, validate_schema_version};
 
 // ── File model ──────────────────────────────────────────────────────────────

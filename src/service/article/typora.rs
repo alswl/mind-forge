@@ -52,11 +52,7 @@ fn relative_path_from(from_dir: &Path, to_dir: &Path) -> String {
         result.push(c.to_string_lossy().to_string());
     }
 
-    if result.is_empty() {
-        ".".to_string()
-    } else {
-        result.join("/")
-    }
+    if result.is_empty() { ".".to_string() } else { result.join("/") }
 }
 
 /// Inject or merge `typora-copy-images-to` into an initial YAML front-matter block.

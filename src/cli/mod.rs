@@ -9,6 +9,7 @@ pub mod publish;
 pub mod render;
 pub mod shared_flags;
 pub mod source;
+pub mod source_advanced;
 pub mod term;
 pub mod version;
 
@@ -118,11 +119,7 @@ pub struct GlobalOpts {
 
 impl GlobalOpts {
     pub fn effective_format(&self) -> Format {
-        if self.json {
-            Format::Json
-        } else {
-            self.format
-        }
+        if self.json { Format::Json } else { self.format }
     }
 }
 

@@ -1,0 +1,32 @@
+---
+source: tests/cli_help.rs
+assertion_line: 24
+expression: stdout
+---
+Manage content sources
+
+Usage: mf source [OPTIONS] [COMMAND]
+
+Commands:
+  list      List sources [aliases: ls]
+  new       Create a source
+  update    Update a source
+  index     Index sources
+  remove    Remove a source [aliases: rm]
+  rename    Rename a source
+  clean     Clean source index
+  show      Show source details
+  search    Search sources across the repository
+  advanced  Manage advanced LanceDB-backed Sources (enable, sync, enrich, model, skill)
+
+Options:
+      --root <PATH>      Mind Repo root directory
+      --config <PATH>    Config file path
+  -v, --verbose...       Verbose output
+  -q, --quiet            Silence non-error output
+  -o, --output <FORMAT>  Output format [default: text] [possible values: text, json]
+      --json             Shorthand for --output json
+      --no-color         Disable colored output
+  -p, --project <NAME>   Project name for project-scoped operations
+  -h, --help             Print help
+  -V, --version          Print version

@@ -206,11 +206,7 @@ pub fn to_filename(raw: &str) -> String {
         .trim_matches('-')
         .to_string();
 
-    if collapsed.is_empty() {
-        "untitled".to_string()
-    } else {
-        collapsed
-    }
+    if collapsed.is_empty() { "untitled".to_string() } else { collapsed }
 }
 
 /// Extract the directory name from a path as a string.
@@ -273,11 +269,7 @@ pub fn resolve_project(repo_root: &Path, project: Option<&str>, cwd: &Path) -> R
 /// `projects_dir == "."` (or empty) is the flat layout (`<repo>/<name>`).
 pub fn project_dir_for(repo_root: &Path, projects_dir: &str, name: &str) -> PathBuf {
     let trimmed = projects_dir.trim_matches('/');
-    if trimmed.is_empty() || trimmed == "." {
-        repo_root.join(name)
-    } else {
-        repo_root.join(trimmed).join(name)
-    }
+    if trimmed.is_empty() || trimmed == "." { repo_root.join(name) } else { repo_root.join(trimmed).join(name) }
 }
 
 /// Validate that `s` is non-empty after trimming.

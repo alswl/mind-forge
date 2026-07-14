@@ -66,30 +66,26 @@ impl FenceTracker {
         let indent = line.len() - trimmed.len();
 
         // Only lines indented ≤3 spaces can be fence markers (CommonMark §4.4).
-        if indent <= 3 {
-            if let Some((fc, flen)) = self.detect_fence(trimmed) {
-                match self.open_fence {
-                    // Not inside a fence — open one.
-                    None => {
-                        self.open_fence = Some((fc, flen));
-                        return FenceStatus::Inside;
-                    }
-                    // Inside a fence of the same char — close if long enough.
-                    Some((open_char, open_len)) if fc == open_char && flen >= open_len => {
-                        self.open_fence = None;
-                        return FenceStatus::Inside;
-                    }
-                    // Different char or too-short fence — still inside.
-                    _ => {}
+        if indent <= 3
+            && let Some((fc, flen)) = self.detect_fence(trimmed)
+        {
+            match self.open_fence {
+                // Not inside a fence — open one.
+                None => {
+                    self.open_fence = Some((fc, flen));
+                    return FenceStatus::Inside;
                 }
+                // Inside a fence of the same char — close if long enough.
+                Some((open_char, open_len)) if fc == open_char && flen >= open_len => {
+                    self.open_fence = None;
+                    return FenceStatus::Inside;
+                }
+                // Different char or too-short fence — still inside.
+                _ => {}
             }
         }
 
-        if self.open_fence.is_some() {
-            FenceStatus::Inside
-        } else {
-            FenceStatus::Outside
-        }
+        if self.open_fence.is_some() { FenceStatus::Inside } else { FenceStatus::Outside }
     }
 
     /// Returns true if currently inside a fence.
@@ -133,11 +129,7 @@ impl FenceTracker {
             '`' => {
                 let rest = remainder.trim_end_matches(|c: char| c.is_ascii_whitespace());
                 // Info string: must not contain any backtick.
-                if rest.is_empty() || rest.chars().all(|c| c != '`') {
-                    Some(('`', flen))
-                } else {
-                    None
-                }
+                if rest.is_empty() || rest.chars().all(|c| c != '`') { Some(('`', flen)) } else { None }
             }
             _ => unreachable!(),
         }

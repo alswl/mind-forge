@@ -31,16 +31,15 @@ pub(crate) fn strip_exempt_regions(content: &str, fm_end: Option<usize>) -> Vec<
                     && bytes[i + 3] == b'-'
                 {
                     let is_line_start = i == start_offset || bytes[i - 1] == b'\n';
-                    if is_line_start {
-                        if let Some(comment_end) = find_comment_close(bytes, i + 4) {
-                            if content[i + 4..comment_end].trim() == "mf-term-lint:off" {
-                                let end = (comment_end + 3).min(len);
-                                out[i..end].copy_from_slice(&bytes[i..end]);
-                                i = comment_end + 3;
-                                state = ScanCursor::BlockExempt;
-                                continue;
-                            }
-                        }
+                    if is_line_start
+                        && let Some(comment_end) = find_comment_close(bytes, i + 4)
+                        && content[i + 4..comment_end].trim() == "mf-term-lint:off"
+                    {
+                        let end = (comment_end + 3).min(len);
+                        out[i..end].copy_from_slice(&bytes[i..end]);
+                        i = comment_end + 3;
+                        state = ScanCursor::BlockExempt;
+                        continue;
                     }
                     state = ScanCursor::HtmlComment;
                     out[i] = bytes[i];
@@ -176,16 +175,15 @@ pub(crate) fn strip_exempt_regions(content: &str, fm_end: Option<usize>) -> Vec<
                     && bytes[i + 3] == b'-'
                 {
                     let is_line_start = i == start_offset || bytes[i - 1] == b'\n';
-                    if is_line_start {
-                        if let Some(comment_end) = find_comment_close(bytes, i + 4) {
-                            if content[i + 4..comment_end].trim() == "mf-term-lint:on" {
-                                let end = (comment_end + 3).min(len);
-                                out[i..end].copy_from_slice(&bytes[i..end]);
-                                i = comment_end + 3;
-                                state = ScanCursor::Body;
-                                continue;
-                            }
-                        }
+                    if is_line_start
+                        && let Some(comment_end) = find_comment_close(bytes, i + 4)
+                        && content[i + 4..comment_end].trim() == "mf-term-lint:on"
+                    {
+                        let end = (comment_end + 3).min(len);
+                        out[i..end].copy_from_slice(&bytes[i..end]);
+                        i = comment_end + 3;
+                        state = ScanCursor::Body;
+                        continue;
                     }
                 }
                 if bytes[i] == b'\n' || bytes[i] == b'\r' {
@@ -225,7 +223,7 @@ fn count_repeated(slice: &[u8], byte: u8) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::service::term::lint::front_matter::{parse_front_matter_skip_flag, FrontMatterDecision};
+    use crate::service::term::lint::front_matter::{FrontMatterDecision, parse_front_matter_skip_flag};
 
     #[test]
     fn strip_plain_text_preserved() {

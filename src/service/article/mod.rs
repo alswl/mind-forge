@@ -30,4 +30,4 @@ pub use self::remove::remove_article;
 pub use self::rename::{rename_article, rename_block};
 pub use self::template::{resolve_template, validate_template_blocks};
 pub use self::typora::{compute_typora_assets_path, effective_typora_enabled, inject_typora_front_matter};
-pub use self::update::{update_article, ArticleUpdate};
+pub use self::update::{ArticleUpdate, update_article};

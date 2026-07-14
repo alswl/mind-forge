@@ -9,7 +9,7 @@ pub(crate) use self::new::{scaffold, upsert_project_entry};
 pub use self::remove::remove_project;
 pub use self::rename::rename_project;
 pub use self::show::show;
-pub use self::update::{update_project, ProjectUpdate};
+pub use self::update::{ProjectUpdate, update_project};
 
 pub mod remove;
 pub mod rename;
@@ -36,17 +36,17 @@ pub(crate) fn read_index_counts(project_path: &Path) -> (u64, Option<String>) {
 
     let mut max_ts: Option<String> = None;
     for entry in index.articles.iter().flatten() {
-        if max_ts.as_ref().map_or(true, |m| &entry.updated_at > m) {
+        if max_ts.as_ref().is_none_or(|m| &entry.updated_at > m) {
             max_ts = Some(entry.updated_at.clone());
         }
     }
     for entry in index.assets.iter().flatten() {
-        if max_ts.as_ref().map_or(true, |m| &entry.added_at > m) {
+        if max_ts.as_ref().is_none_or(|m| &entry.added_at > m) {
             max_ts = Some(entry.added_at.clone());
         }
     }
     for entry in index.sources.iter().flatten() {
-        if max_ts.as_ref().map_or(true, |m| &entry.updated_at > m) {
+        if max_ts.as_ref().is_none_or(|m| &entry.updated_at > m) {
             max_ts = Some(entry.updated_at.clone());
         }
     }

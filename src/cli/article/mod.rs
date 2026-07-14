@@ -3,25 +3,25 @@ use std::path::Path;
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
+use crate::cli::CommandCtx;
+use crate::cli::CommandOutcome;
 use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::LintFlags;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::shared_flags::YesFlag;
-use crate::cli::CommandCtx;
-use crate::cli::CommandOutcome;
 use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::article::{
     ArticleStatus, ConversionDirection, ConversionResult, ConversionStatus, ConversionSummary, DirectionSource,
 };
 use crate::model::config::TemplateMode;
-use crate::output::confirm::{prompt_confirmation, require_confirmation, ConfirmArgs, ConfirmOutcome};
-use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
-use crate::output::show::{json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowOpts, ShowValue};
-use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, Verb, VerbOpts, VerbResult};
 use crate::output::Format;
+use crate::output::confirm::{ConfirmArgs, ConfirmOutcome, prompt_confirmation, require_confirmation};
+use crate::output::list::{ListCell, ListOpts, ListRow, ListView, json_collection, render_text};
+use crate::output::show::{ShowBlock, ShowField, ShowOpts, ShowValue, json_envelope, render_text as render_show_text};
+use crate::output::verb::{Verb, VerbOpts, VerbResult, json_envelope as verb_json, render_text as verb_text};
 use crate::service::{article as article_svc, config as config_svc, identity, util as svc_util};
 
 use self::block::{handle_block_rename, handle_block_rm};
@@ -377,11 +377,7 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
                                             .and_then(|v| v.as_object())
                                             .is_some_and(|map| map.contains_key(short_key))
                                 });
-                                if is_declared {
-                                    "declared"
-                                } else {
-                                    "docs"
-                                }
+                                if is_declared { "declared" } else { "docs" }
                             };
                             v["origin"] = serde_json::Value::String(origin.to_string());
                             v["article_present"] = serde_json::Value::Bool(project_path.join(&a.article_path).exists());

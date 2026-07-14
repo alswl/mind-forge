@@ -45,10 +45,10 @@ pub(crate) fn resolve_custom_template_path(project_path: &Path, template_arg: &s
         return util::canonicalize_within(project_path, &tmpl_path);
     }
 
-    if let Some(parent) = tmpl_path.parent() {
-        if parent.exists() {
-            let _ = util::canonicalize_within(project_path, parent)?;
-        }
+    if let Some(parent) = tmpl_path.parent()
+        && parent.exists()
+    {
+        let _ = util::canonicalize_within(project_path, parent)?;
     }
     Ok(tmpl_path)
 }

@@ -20,9 +20,9 @@ mod scan;
 mod segment;
 
 use self::exempt::strip_exempt_regions;
-pub(crate) use self::fix::{apply_fixes, FixSpan};
-pub(crate) use self::front_matter::{parse_front_matter_skip_flag, FrontMatterDecision};
-pub(crate) use self::scan::{scan_file_for_corrections, InternalFinding};
+pub(crate) use self::fix::{FixSpan, apply_fixes};
+pub(crate) use self::front_matter::{FrontMatterDecision, parse_front_matter_skip_flag};
+pub(crate) use self::scan::{InternalFinding, scan_file_for_corrections};
 
 pub(crate) struct CorrectionEntry {
     pub(crate) original: String,
@@ -595,13 +595,12 @@ fn apply_term_fixes(
 
     for (path_rel, indices) in &by_path {
         let full_path = base_path.join(path_rel);
-        if let Some(safety) = safety_dir {
-            if canonicalize_within(safety, &full_path).is_err() {
-                let safety_label = rel_posix_path(base_path, safety).unwrap_or_else(|_| safety.display().to_string());
-                failures
-                    .push(TermLintFailure { path: path_rel.clone(), reason: format!("path escapes {safety_label}/") });
-                continue;
-            }
+        if let Some(safety) = safety_dir
+            && canonicalize_within(safety, &full_path).is_err()
+        {
+            let safety_label = rel_posix_path(base_path, safety).unwrap_or_else(|_| safety.display().to_string());
+            failures.push(TermLintFailure { path: path_rel.clone(), reason: format!("path escapes {safety_label}/") });
+            continue;
         }
 
         let content_orig = match fs::read_to_string(&full_path) {

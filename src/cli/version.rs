@@ -1,7 +1,7 @@
+use crate::CommandOutcome;
 use crate::cli::CommandCtx;
 use crate::error::Result;
 use crate::output::Format;
-use crate::CommandOutcome;
 
 pub const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-dev+", env!("CARGO_GIT_SHA"));
 

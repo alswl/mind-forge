@@ -1,8 +1,8 @@
 [package]
 name = "mf"
 version = "0.3.0"
-edition = "2021"
-rust-version = "1.75"
+edition = "2024"
+rust-version = "1.91"
 description = "mind-forge CLI framework"
 license = "MIT"
 
@@ -24,6 +24,20 @@ pinyin = "0.10"
 jieba-rs = "0.7"
 unicode-width = "0.1"
 walkdir = "2"
+futures = "0.3"
+
+# Advanced Sources (LanceDB RAG)
+lancedb = "0.31.0"
+arrow-array = "58"
+arrow-schema = "58"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util"] }
+fastembed = "5.17.2"
+sha2 = "0.10"
+fs2 = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+scraper = "0.27"
+feed-rs = "2.4"
+pdf-extract = "0.12"
 
 [dev-dependencies]
 assert_cmd = "2"

@@ -91,26 +91,20 @@ pub fn rename_source(
     // Plan file rename if source has an on-disk file
     if let Some(ref file_path) = entry.path {
         let old_full = project_path.join(file_path);
-        if old_full.exists() {
-            if let Some(parent) = old_full.parent() {
-                if old_full.file_stem().and_then(|s| s.to_str()).is_some() {
-                    if let Some(ext) = old_full.extension().and_then(|e| e.to_str()) {
-                        let new_path = format!(
-                            "{}/{}.{}",
-                            parent.strip_prefix(project_path).unwrap_or(parent).display(),
-                            new_name,
-                            ext
-                        );
-                        planned.push(PlannedChange {
-                            op: crate::model::lifecycle::PlannedOp::RenameFile,
-                            path: old_full.to_string_lossy().to_string(),
-                            old: Some(old_name.to_string()),
-                            new: Some(new_name.to_string()),
-                        });
-                        let _ = new_path; // used when executing
-                    }
-                }
-            }
+        if old_full.exists()
+            && let Some(parent) = old_full.parent()
+            && old_full.file_stem().and_then(|s| s.to_str()).is_some()
+            && let Some(ext) = old_full.extension().and_then(|e| e.to_str())
+        {
+            let new_path =
+                format!("{}/{}.{}", parent.strip_prefix(project_path).unwrap_or(parent).display(), new_name, ext);
+            planned.push(PlannedChange {
+                op: crate::model::lifecycle::PlannedOp::RenameFile,
+                path: old_full.to_string_lossy().to_string(),
+                old: Some(old_name.to_string()),
+                new: Some(new_name.to_string()),
+            });
+            let _ = new_path; // used when executing
         }
     }
 
@@ -133,21 +127,19 @@ pub fn rename_source(
 
     if let Some(ref file_path) = entry.path {
         let old_full = project_path.join(file_path);
-        if old_full.exists() {
-            if let Some(parent) = old_full.parent() {
-                if let Some(ext) = old_full.extension().and_then(|e| e.to_str()) {
-                    let new_file_name = format!("{}.{}", new_name, ext);
-                    let new_full = parent.join(&new_file_name);
-                    if new_full.exists() && !force {
-                        return Err(MfError::file_exists(new_full));
-                    }
-                    std::fs::rename(&old_full, &new_full).map_err(MfError::Io)?;
-                    // Update path relative to project
-                    let new_rel =
-                        new_full.strip_prefix(project_path).unwrap_or(&new_full).to_string_lossy().to_string();
-                    entry.path = Some(new_rel);
-                }
+        if old_full.exists()
+            && let Some(parent) = old_full.parent()
+            && let Some(ext) = old_full.extension().and_then(|e| e.to_str())
+        {
+            let new_file_name = format!("{}.{}", new_name, ext);
+            let new_full = parent.join(&new_file_name);
+            if new_full.exists() && !force {
+                return Err(MfError::file_exists(new_full));
             }
+            std::fs::rename(&old_full, &new_full).map_err(MfError::Io)?;
+            // Update path relative to project
+            let new_rel = new_full.strip_prefix(project_path).unwrap_or(&new_full).to_string_lossy().to_string();
+            entry.path = Some(new_rel);
         }
     }
 

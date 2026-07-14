@@ -1,22 +1,22 @@
 use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 
+use crate::cli::CommandCtx;
+use crate::cli::CommandOutcome;
 use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::shared_flags::YesFlag;
-use crate::cli::CommandCtx;
-use crate::cli::CommandOutcome;
 use crate::defaults;
 use crate::error::{MfError, Result};
-use crate::model::source::{FileKind, SourceKind};
 use crate::model::Resource;
-use crate::output::confirm::{require_confirmation, ConfirmArgs};
-use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
-use crate::output::show::{json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowOpts, ShowValue};
-use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, Verb, VerbOpts, VerbResult};
+use crate::model::source::{FileKind, SourceKind};
 use crate::output::Format;
+use crate::output::confirm::{ConfirmArgs, require_confirmation};
+use crate::output::list::{ListCell, ListOpts, ListRow, ListView, json_collection, render_text};
+use crate::output::show::{ShowBlock, ShowField, ShowOpts, ShowValue, json_envelope, render_text as render_show_text};
+use crate::output::verb::{Verb, VerbOpts, VerbResult, json_envelope as verb_json, render_text as verb_text};
 use crate::service::source::InputForm;
 use crate::service::{identity, source as svc_source, util as svc_util};
 
@@ -44,6 +44,10 @@ pub enum SourceSubcommand {
     Clean(SourceCleanArgs),
     #[command(about = "Show source details")]
     Show(SourceShowArgs),
+    #[command(about = "Search sources across the repository")]
+    Search(SourceSearchArgs),
+    #[command(about = "Manage advanced LanceDB-backed Sources (enable, sync, enrich, model, skill)")]
+    Advanced(crate::cli::source_advanced::SourceAdvancedCmd),
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +219,34 @@ pub struct SourceShowArgs {
     pub path: String,
 }
 
+#[derive(Debug, Clone, Args)]
+pub struct SourceSearchArgs {
+    /// Search query
+    pub query: String,
+    /// Search mode: basic (metadata), advanced (content), or both (fused)
+    #[arg(long, value_enum)]
+    pub mode: Option<SearchModeArg>,
+    /// Limit search to a specific project
+    #[arg(short = 'p', long)]
+    pub project: Option<String>,
+    /// Filter by file kind
+    #[arg(long)]
+    pub file_kind: Option<String>,
+    /// Filter by source identity
+    #[arg(long)]
+    pub source: Option<String>,
+    /// Maximum results to return
+    #[arg(long, default_value = "20")]
+    pub limit: u32,
+}
+
+#[derive(Debug, Clone, clap::ValueEnum)]
+pub enum SearchModeArg {
+    Basic,
+    Advanced,
+    Both,
+}
+
 // ---------------------------------------------------------------------------
 // T017: Dispatch — replaced by user story tasks
 // ---------------------------------------------------------------------------
@@ -230,6 +262,8 @@ pub fn dispatch(command: SourceCmd, ctx: &mut CommandCtx) -> Result<CommandOutco
         Some(SourceSubcommand::Rename(args)) => handle_rename(args, ctx),
         Some(SourceSubcommand::Clean(args)) => handle_clean(args, ctx),
         Some(SourceSubcommand::Show(args)) => handle_source_show(args, ctx),
+        Some(SourceSubcommand::Search(args)) => handle_search(args, ctx),
+        Some(SourceSubcommand::Advanced(args)) => crate::cli::source_advanced::dispatch(args, ctx),
     }
 }
 
@@ -681,4 +715,33 @@ fn source_add_outcome(
             None,
         )),
     }
+}
+
+fn handle_search(args: SourceSearchArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+    let repo = ctx.require_repo_path()?;
+
+    let mode = match args.mode {
+        Some(SearchModeArg::Basic) => crate::model::source_search::SearchMode::Basic,
+        Some(SearchModeArg::Advanced) => crate::model::source_search::SearchMode::Advanced,
+        Some(SearchModeArg::Both) => crate::model::source_search::SearchMode::Both,
+        None => crate::model::source_search::SearchMode::Basic,
+    };
+
+    let report = crate::service::source::advanced::retrieval::search_repository(
+        repo,
+        &args.query,
+        mode,
+        args.project.as_deref(),
+        args.file_kind.as_deref(),
+        args.source.as_deref(),
+        args.limit,
+    )?;
+
+    let json = serde_json::to_value(&report).unwrap_or_default();
+    let warnings = report.warnings.clone();
+    Ok(CommandOutcome::Success(
+        serde_json::json!({"status": "ok", "command": "source.search", "data": json}),
+        warnings,
+        None,
+    ))
 }

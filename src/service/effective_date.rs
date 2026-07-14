@@ -34,10 +34,10 @@ pub struct EffectiveDate {
 /// slot match (added in T023).
 pub fn for_article(article: &Article) -> Result<EffectiveDate> {
     // US2: TemplateOrigin branch added in T023
-    if let Some(origin) = &article.template_origin {
-        if let Ok(date) = NaiveDate::parse_from_str(&origin.slot_value, "%Y-%m-%d") {
-            return Ok(EffectiveDate { date, origin: EffectiveDateOrigin::TemplateSlot });
-        }
+    if let Some(origin) = &article.template_origin
+        && let Ok(date) = NaiveDate::parse_from_str(&origin.slot_value, "%Y-%m-%d")
+    {
+        return Ok(EffectiveDate { date, origin: EffectiveDateOrigin::TemplateSlot });
     }
 
     // US1: parse from filename prefix

@@ -63,7 +63,7 @@ pub fn register_only(project_path: &Path, cwd: &Path, args: &AddArgs, dry_run: b
         Some(FileKind::Auto) | None => infer_kind_from_path(&source_canonical),
         Some(kind @ (FileKind::Pdf | FileKind::File)) => kind,
         Some(FileKind::Rss | FileKind::Web) => {
-            return Err(MfError::usage("cannot use --file-kind rss or --file-kind web with a local file", None))
+            return Err(MfError::usage("cannot use --file-kind rss or --file-kind web with a local file", None));
         }
     };
     let name = args.name.map(str::to_string).unwrap_or(derive_name_from_path(&source_path)?);
@@ -111,11 +111,7 @@ pub(crate) enum InputForm {
 }
 
 pub(crate) fn classify_input(input: &str) -> InputForm {
-    if input.starts_with("http://") || input.starts_with("https://") {
-        InputForm::Url
-    } else {
-        InputForm::Path
-    }
+    if input.starts_with("http://") || input.starts_with("https://") { InputForm::Url } else { InputForm::Path }
 }
 
 enum UpsertSlot<'a> {
@@ -163,13 +159,13 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
                 return Err(MfError::usage(
                     "cannot use --type pdf with a URL input",
                     Some("download the file first, then add the local path".to_string()),
-                ))
+                ));
             }
             FileKind::File => {
                 return Err(MfError::usage(
                     "cannot use --type file with a URL input",
                     Some("download the file first, then add the local path".to_string()),
-                ))
+                ));
             }
         },
         None => FileKind::Web,
@@ -246,7 +242,7 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
                 return Err(MfError::usage(
                     "cannot use --type rss or --type web with a local file input",
                     Some("pass an http(s):// URL".to_string()),
-                ))
+                ));
             }
         },
         None => infer_kind_from_path(&source_canonical),
@@ -290,10 +286,10 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
 
             write_file()?;
 
-            if let Some(ref old) = old_path {
-                if *old != rel_path {
-                    let _ = std::fs::remove_file(project_path.join(old));
-                }
+            if let Some(ref old) = old_path
+                && *old != rel_path
+            {
+                let _ = std::fs::remove_file(project_path.join(old));
             }
 
             let source = Source {

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use super::{dedup_preserve_first, sort_terms_by_name, TermInput};
+use super::{TermInput, dedup_preserve_first, sort_terms_by_name};
 use crate::error::{MfError, Result};
 use crate::model::term::{Correction, Term};
 use crate::service::index;

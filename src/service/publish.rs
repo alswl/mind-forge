@@ -336,11 +336,7 @@ fn resolve_local_path(
     };
 
     let path = PathBuf::from(&expanded);
-    if path.is_absolute() {
-        Ok((path, effective_out))
-    } else {
-        Ok((base_dir.join(path), effective_out))
-    }
+    if path.is_absolute() { Ok((path, effective_out)) } else { Ok((base_dir.join(path), effective_out)) }
 }
 
 fn locate_build_artifact(project_path: &Path, config: &MindConfig, article_entry: &Article) -> Result<(PathBuf, u64)> {

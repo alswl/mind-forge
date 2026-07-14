@@ -235,8 +235,10 @@ fn deprecation_d3_warning_format() {
 
     let (_stdout, stderr, _code) =
         run(&["--root", &dir.path().to_string_lossy(), "source", "remove", "some-name", "--project", "alpha"]);
-    assert!(stderr
-        .contains("[deprecated] positional NAME is deprecated, use full PATH (e.g., sources/yuque/foo.md) instead"));
+    assert!(
+        stderr
+            .contains("[deprecated] positional NAME is deprecated, use full PATH (e.g., sources/yuque/foo.md) instead")
+    );
 }
 
 #[test]

@@ -301,13 +301,13 @@ pub fn validate_layout(project_root: &Path, effective: &EffectiveLayout) -> Resu
         })?;
         let full_path = project_root.join(&normalized);
 
-        if let Ok(canonical_full) = full_path.canonicalize() {
-            if canonical_full.strip_prefix(&canonical_root).is_err() {
-                return Err(MfError::usage(
-                    format!("{name} escapes the project root: '{value}'"),
-                    Some("use a directory name that stays inside the project".to_string()),
-                ));
-            }
+        if let Ok(canonical_full) = full_path.canonicalize()
+            && canonical_full.strip_prefix(&canonical_root).is_err()
+        {
+            return Err(MfError::usage(
+                format!("{name} escapes the project root: '{value}'"),
+                Some("use a directory name that stays inside the project".to_string()),
+            ));
         }
 
         // 4. Existing regular file
@@ -376,13 +376,13 @@ pub fn resolve_and_validate(project_root: &Path, config: &mut MindConfig) -> Res
 /// Returns an error for invalid configurations such as:
 /// - Banner present but text is empty
 pub fn validate_new_fields(config: &MindConfig) -> Result<()> {
-    if let Some(banner) = &config.build.banner {
-        if banner.text.trim().is_empty() {
-            return Err(crate::error::MfError::usage(
-                "build.banner.text must be non-empty when banner is configured".to_string(),
-                Some("provide banner text or remove the banner section".to_string()),
-            ));
-        }
+    if let Some(banner) = &config.build.banner
+        && banner.text.trim().is_empty()
+    {
+        return Err(crate::error::MfError::usage(
+            "build.banner.text must be non-empty when banner is configured".to_string(),
+            Some("provide banner text or remove the banner section".to_string()),
+        ));
     }
     Ok(())
 }
@@ -426,10 +426,10 @@ fn find_mind_yaml(start: &Path, repo_root: Option<&Path>) -> Result<Option<PathB
             return Ok(Some(candidate));
         }
         // Stop before crossing the repo root boundary
-        if let Some(ref boundary) = boundary {
-            if current == *boundary {
-                return Ok(None);
-            }
+        if let Some(ref boundary) = boundary
+            && current == *boundary
+        {
+            return Ok(None);
         }
         match current.parent() {
             Some(parent) => {

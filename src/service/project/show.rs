@@ -30,17 +30,17 @@ pub fn show(project_path: &Path, project_name: &str) -> Result<ProjectDetails> {
     // Compute last_active from max timestamp
     let mut last_active: Option<String> = None;
     for entry in index.articles.iter().flatten() {
-        if last_active.as_ref().map_or(true, |m| &entry.updated_at > m) {
+        if last_active.as_ref().is_none_or(|m| &entry.updated_at > m) {
             last_active = Some(entry.updated_at.clone());
         }
     }
     for entry in index.assets.iter().flatten() {
-        if last_active.as_ref().map_or(true, |m| &entry.added_at > m) {
+        if last_active.as_ref().is_none_or(|m| &entry.added_at > m) {
             last_active = Some(entry.added_at.clone());
         }
     }
     for entry in index.sources.iter().flatten() {
-        if last_active.as_ref().map_or(true, |m| &entry.updated_at > m) {
+        if last_active.as_ref().is_none_or(|m| &entry.updated_at > m) {
             last_active = Some(entry.updated_at.clone());
         }
     }

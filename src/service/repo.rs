@@ -11,7 +11,7 @@ use chrono::Utc;
 use serde::Serialize;
 
 use crate::error::{MfError, Result};
-use crate::model::manifest::{default_projects_dir, MindsManifest, ProjectEntry};
+use crate::model::manifest::{MindsManifest, ProjectEntry, default_projects_dir};
 use crate::runtime::repo::detect_repo_root;
 use crate::service::util;
 
@@ -21,11 +21,7 @@ use crate::service::util;
 /// `./<projects_dir>/<name>`. Trailing/leading slashes on `projects_dir` are tolerated.
 pub fn project_relpath(projects_dir: &str, name: &str) -> String {
     let trimmed = projects_dir.trim_matches('/');
-    if trimmed.is_empty() || trimmed == "." {
-        format!("./{name}")
-    } else {
-        format!("./{trimmed}/{name}")
-    }
+    if trimmed.is_empty() || trimmed == "." { format!("./{name}") } else { format!("./{trimmed}/{name}") }
 }
 
 /// Read `projects_dir` from `<repo_root>/minds.yaml`, falling back to default
@@ -132,11 +128,7 @@ fn strip_dot_prefix(path: &str) -> &str {
 
 fn project_path_for_mind_manifest(path: &str) -> String {
     let stripped = strip_dot_prefix(path);
-    if path.starts_with("./") && !stripped.contains('/') {
-        path.to_string()
-    } else {
-        stripped.to_string()
-    }
+    if path.starts_with("./") && !stripped.contains('/') { path.to_string() } else { stripped.to_string() }
 }
 
 fn project_name_from_relpath(path: &str) -> String {
@@ -389,11 +381,7 @@ pub fn classify_repo_target(target: &Path) -> Result<RepoTargetKind> {
 /// bare leaf paths like `Path::new("foo")` whose parent is the empty path.
 fn parent_or_cwd(path: &Path) -> &Path {
     let parent = path.parent().unwrap_or(Path::new("."));
-    if parent.as_os_str().is_empty() {
-        Path::new(".")
-    } else {
-        parent
-    }
+    if parent.as_os_str().is_empty() { Path::new(".") } else { parent }
 }
 
 fn is_directory_empty(path: &Path) -> Result<bool> {
@@ -522,6 +510,7 @@ mod tests {
         let manifest = MindsManifest {
             schema_version: "1".to_string(),
             projects_dir: default_projects_dir(),
+            source: None,
             projects: vec![ProjectEntry {
                 name: "test".to_string(),
                 path: "./test".to_string(),
@@ -677,6 +666,7 @@ projects:
         let manifest = MindsManifest {
             schema_version: "1".to_string(),
             projects_dir: default_projects_dir(),
+            source: None,
             projects: vec![ProjectEntry {
                 name: "old-project".to_string(),
                 path: "./old-project".to_string(),
@@ -697,6 +687,7 @@ projects:
         let manifest = MindsManifest {
             schema_version: "1".to_string(),
             projects_dir: default_projects_dir(),
+            source: None,
             projects: vec![
                 ProjectEntry {
                     name: "keep".to_string(),

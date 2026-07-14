@@ -3,24 +3,24 @@ use serde::Serialize;
 
 use clap::ValueEnum;
 
+use crate::cli::CommandCtx;
 use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::LintFlags;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::shared_flags::YesFlag;
-use crate::cli::CommandCtx;
 use crate::cli::{CommandOutcome, RepoRequirement};
 use crate::error::{MfError, Result};
-use crate::model::project::LintKind;
 use crate::model::Resource;
-use crate::output::confirm::{require_confirmation, ConfirmArgs};
-use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
-use crate::output::show::{
-    json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowOpts, ShowSection, ShowValue,
-};
-use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, Verb, VerbOpts, VerbResult};
+use crate::model::project::LintKind;
 use crate::output::Format;
+use crate::output::confirm::{ConfirmArgs, require_confirmation};
+use crate::output::list::{ListCell, ListOpts, ListRow, ListView, json_collection, render_text};
+use crate::output::show::{
+    ShowBlock, ShowField, ShowOpts, ShowSection, ShowValue, json_envelope, render_text as render_show_text,
+};
+use crate::output::verb::{Verb, VerbOpts, VerbResult, json_envelope as verb_json, render_text as verb_text};
 use crate::service::repo;
 use crate::service::{self as svc};
 
@@ -187,13 +187,13 @@ fn handle_new(args: ProjectNewArgs, ctx: &CommandCtx) -> Result<CommandOutcome> 
     let identity = svc::identity::normalize_project_selector(root, &args.path, cwd)?;
 
     // Reject if the resolved path is inside another existing project (nested).
-    if let Some(parent) = identity.resolved_path.parent() {
-        if let Some(parent_project) = svc::util::detect_current_project(root, parent) {
-            return Err(MfError::usage(
-                format!("project path '{}' is inside another project '{}'", identity.path, parent_project),
-                Some("create the project outside the existing project root".to_string()),
-            ));
-        }
+    if let Some(parent) = identity.resolved_path.parent()
+        && let Some(parent_project) = svc::util::detect_current_project(root, parent)
+    {
+        return Err(MfError::usage(
+            format!("project path '{}' is inside another project '{}'", identity.path, parent_project),
+            Some("create the project outside the existing project root".to_string()),
+        ));
     }
 
     if args.dry_run.dry_run {

@@ -498,11 +498,7 @@ fn e2e_boundary_cjk_asset_identity_roundtrip() {
         .iter()
         .find_map(|a| {
             let id = a["identity"].as_str()?;
-            if id.contains("封面图") {
-                Some(id.to_string())
-            } else {
-                None
-            }
+            if id.contains("封面图") { Some(id.to_string()) } else { None }
         })
         .unwrap_or_else(|| panic!("CJK asset missing from list: {stdout}"));
     assert_eq!(cjk_identity, "assets/资料/封面图.png", "identity must equal exact relative path");

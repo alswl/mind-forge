@@ -98,10 +98,8 @@ fn load_from_str(content: &str, path: &Path, validate_corrections: bool) -> Resu
         path: path.to_path_buf(),
         detail: e.to_string(),
     })?;
-    if validate_corrections {
-        if let Some(terms) = index.terms.as_deref() {
-            crate::model::term::validate_corrections(terms).map_err(|m| MfError::usage(m, None::<String>))?;
-        }
+    if validate_corrections && let Some(terms) = index.terms.as_deref() {
+        crate::model::term::validate_corrections(terms).map_err(|m| MfError::usage(m, None::<String>))?;
     }
     Ok(index)
 }
@@ -545,10 +543,10 @@ pub fn resolve_article<'a>(index: &'a IndexFile, article_arg: &str) -> Result<Re
 
     // 1. Exact canonical article key match (full path)
     for a in articles {
-        if let Ok(key) = article_key(a) {
-            if key == article_arg {
-                return Ok(ResolvedArticle { article: a, canonical_key: key });
-            }
+        if let Ok(key) = article_key(a)
+            && key == article_arg
+        {
+            return Ok(ResolvedArticle { article: a, canonical_key: key });
         }
     }
 
@@ -562,10 +560,11 @@ pub fn resolve_article<'a>(index: &'a IndexFile, article_arg: &str) -> Result<Re
 
     // 3. DOCS_DIR relative name match (e.g. "2026-05-monthly" for docs/2026-05-monthly)
     for a in articles {
-        if let Ok(key) = article_key(a) {
-            if key != article_arg && article_output_stem(&a.article_path) == article_arg {
-                return Ok(ResolvedArticle { article: a, canonical_key: key });
-            }
+        if let Ok(key) = article_key(a)
+            && key != article_arg
+            && article_output_stem(&a.article_path) == article_arg
+        {
+            return Ok(ResolvedArticle { article: a, canonical_key: key });
         }
     }
 

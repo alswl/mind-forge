@@ -8,6 +8,7 @@ use crate::exit::ExitCode;
 pub type Result<T> = std::result::Result<T, MfError>;
 
 #[derive(Debug, Error)]
+#[allow(dead_code)] // advanced variants used in later phases
 pub enum MfError {
     /// User-provided input is invalid. Construct with [`MfError::usage`].
     /// Do NOT use for I/O, parsing, or serialization failures.
@@ -86,7 +87,9 @@ pub enum MfError {
     BuildArtifactMissing { message: String, hint: Option<String> },
 
     /// The requested template name is neither a built-in nor an existing path.
-    #[error("unknown template '{name}': built-ins are blank, arch, prd, blog; otherwise expected a path under the project root")]
+    #[error(
+        "unknown template '{name}': built-ins are blank, arch, prd, blog; otherwise expected a path under the project root"
+    )]
     UnknownTemplate { name: String },
 
     /// Two H2 headings produced the same slug when splitting a template.
@@ -94,8 +97,43 @@ pub enum MfError {
     DuplicateBlockSlug { slug: String, h1: String, h2: String },
 
     /// A file/directory shape conflict: --file vs directory or vice versa.
-    #[error("cannot create {wanted_shape} '{path}': a {existing_shape} with the same name already exists; remove it manually or pick a different title")]
+    #[error(
+        "cannot create {wanted_shape} '{path}': a {existing_shape} with the same name already exists; remove it manually or pick a different title"
+    )]
     ShapeConflict { wanted_shape: String, existing_shape: String, path: PathBuf },
+
+    // ── Advanced Source errors ──────────────────────────────────────────
+    /// The Lance backend marker is incomplete/corrupt.
+    #[error("Lance backend marker is corrupt: {reason}")]
+    CorruptLanceMarker { reason: String, hint: Option<String> },
+
+    /// The LanceDB pointer (`current.json`) is missing or unreadable.
+    #[error("advanced Source index pointer is {state}: {detail}")]
+    MissingLancePointer { state: String, detail: String, hint: Option<String> },
+
+    /// LanceDB operation failed (store open, query, write, schema mismatch).
+    #[error("advanced Source store error: {message}")]
+    AdvancedStore { message: String, hint: Option<String> },
+
+    /// Model install/import/status error.
+    #[error("model error: {message}")]
+    AdvancedModel { message: String, hint: Option<String> },
+
+    /// Advanced sync produced failures for one or more items.
+    #[error("advanced sync failed: {failures} of {total} item(s) failed")]
+    AdvancedSyncFailed { failures: u64, total: u64, hint: Option<String> },
+
+    /// Enrichment validation or application rejected.
+    #[error("enrichment rejected: {reason}")]
+    EnrichmentRejected { reason: String, hint: Option<String> },
+
+    /// Recovery cannot proceed — no valid retained snapshot.
+    #[error("cannot recover: {reason}")]
+    RecoveryUnavailable { reason: String, hint: Option<String> },
+
+    /// Safe disable blocked — projection parity not reached.
+    #[error("cannot disable Lance backend: {reason}")]
+    DisableBlocked { reason: String, hint: Option<String> },
 }
 
 impl MfError {
@@ -125,6 +163,46 @@ impl MfError {
         Self::BuildArtifactMissing { message: message.into(), hint }
     }
 
+    #[allow(dead_code)]
+    pub fn corrupt_lance_marker(reason: impl Into<String>, hint: Option<String>) -> Self {
+        Self::CorruptLanceMarker { reason: reason.into(), hint }
+    }
+
+    #[allow(dead_code)]
+    pub fn missing_lance_pointer(state: impl Into<String>, detail: impl Into<String>, hint: Option<String>) -> Self {
+        Self::MissingLancePointer { state: state.into(), detail: detail.into(), hint }
+    }
+
+    pub fn advanced_store(message: impl Into<String>, hint: Option<String>) -> Self {
+        Self::AdvancedStore { message: message.into(), hint }
+    }
+
+    #[allow(dead_code)]
+    pub fn advanced_sync_failed(failures: u64, total: u64, hint: Option<String>) -> Self {
+        Self::AdvancedSyncFailed { failures, total, hint }
+    }
+
+    #[allow(dead_code)]
+    pub fn enrichment_rejected(reason: impl Into<String>, hint: Option<String>) -> Self {
+        Self::EnrichmentRejected { reason: reason.into(), hint }
+    }
+
+    #[allow(dead_code)]
+    #[allow(dead_code)]
+    pub fn recovery_unavailable(reason: impl Into<String>, hint: Option<String>) -> Self {
+        Self::RecoveryUnavailable { reason: reason.into(), hint }
+    }
+
+    #[allow(dead_code)]
+    pub fn advanced_model(message: impl Into<String>, hint: Option<String>) -> Self {
+        Self::AdvancedModel { message: message.into(), hint }
+    }
+
+    #[allow(dead_code)]
+    pub fn disable_blocked(reason: impl Into<String>, hint: Option<String>) -> Self {
+        Self::DisableBlocked { reason: reason.into(), hint }
+    }
+
     pub fn exit_code(&self) -> ExitCode {
         match self {
             Self::Usage { .. } => ExitCode::UsageError,
@@ -143,6 +221,14 @@ impl MfError {
             Self::UnknownTemplate { .. } => ExitCode::UsageError,
             Self::DuplicateBlockSlug { .. } | Self::ShapeConflict { .. } => ExitCode::Failure,
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => ExitCode::Failure,
+            // Advanced Source errors
+            Self::CorruptLanceMarker { .. } | Self::EnrichmentRejected { .. } => ExitCode::UsageError,
+            Self::MissingLancePointer { .. }
+            | Self::AdvancedStore { .. }
+            | Self::AdvancedModel { .. }
+            | Self::AdvancedSyncFailed { .. }
+            | Self::RecoveryUnavailable { .. }
+            | Self::DisableBlocked { .. } => ExitCode::Failure,
         }
     }
 
@@ -164,6 +250,14 @@ impl MfError {
             Self::UnknownTemplate { .. } => "unknown_template",
             Self::DuplicateBlockSlug { .. } => "duplicate_block_slug",
             Self::ShapeConflict { .. } => "shape_conflict",
+            Self::CorruptLanceMarker { .. } => "corrupt_lance_marker",
+            Self::MissingLancePointer { .. } => "missing_lance_pointer",
+            Self::AdvancedStore { .. } => "advanced_store",
+            Self::AdvancedModel { .. } => "advanced_model",
+            Self::AdvancedSyncFailed { .. } => "advanced_sync_failed",
+            Self::EnrichmentRejected { .. } => "enrichment_rejected",
+            Self::RecoveryUnavailable { .. } => "recovery_unavailable",
+            Self::DisableBlocked { .. } => "disable_blocked",
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => "internal",
         }
     }
@@ -189,6 +283,14 @@ impl MfError {
             Self::Internal(error) => error.to_string(),
             Self::Io(error) => error.to_string(),
             Self::Json(error) => error.to_string(),
+            Self::CorruptLanceMarker { reason, .. } => reason.clone(),
+            Self::MissingLancePointer { detail, .. } => detail.clone(),
+            Self::AdvancedStore { message, .. } => message.clone(),
+            Self::AdvancedModel { message, .. } => message.clone(),
+            Self::AdvancedSyncFailed { .. } => self.to_string(),
+            Self::EnrichmentRejected { reason, .. } => reason.clone(),
+            Self::RecoveryUnavailable { reason, .. } => reason.clone(),
+            Self::DisableBlocked { reason, .. } => reason.clone(),
         }
     }
 
@@ -219,6 +321,20 @@ impl MfError {
             Self::DuplicateBlockSlug { .. } => Some("rename one of the headings to produce a distinct filename"),
             Self::ShapeConflict { .. } => {
                 Some("remove the conflicting file or directory manually, or pick a different title")
+            }
+            Self::CorruptLanceMarker { hint, .. } => {
+                hint.as_deref().or(Some("run `mf source advanced enable` to activate, or set backend to legacy"))
+            }
+            Self::MissingLancePointer { hint, .. } => {
+                hint.as_deref().or(Some("run `mf source advanced status` for diagnosis, or `mf source advanced recover` with a retained snapshot"))
+            }
+            Self::AdvancedStore { hint, .. } => hint.as_deref(),
+            Self::AdvancedModel { hint, .. } => hint.as_deref(),
+            Self::AdvancedSyncFailed { hint, .. } => hint.as_deref(),
+            Self::EnrichmentRejected { hint, .. } => hint.as_deref(),
+            Self::RecoveryUnavailable { hint, .. } => hint.as_deref(),
+            Self::DisableBlocked { hint, .. } => {
+                hint.as_deref().or(Some("recover from a validated snapshot first, then export projections to reach parity"))
             }
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => Some("this is an internal error; please report it"),
         }

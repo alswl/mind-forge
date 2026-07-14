@@ -2,14 +2,14 @@ use std::path::Path;
 
 use crate::error::{MfError, Result};
 
-pub use self::add::{add, register_only, AddArgs, AddMode};
-pub(crate) use self::add::{classify_input, InputForm};
+pub use self::add::{AddArgs, AddMode, add, register_only};
+pub(crate) use self::add::{InputForm, classify_input};
 pub use self::clean::clean;
 pub use self::index::reconcile;
 pub use self::list::list;
 pub use self::remove::remove_source;
 pub use self::rename::rename_source;
-pub use self::update::{update, UpdateArgs};
+pub use self::update::{UpdateArgs, update};
 
 // ── URL validation ───────────────────────────────────────────────────────────
 
@@ -59,6 +59,7 @@ pub(crate) fn infer_kind_from_path(p: &Path) -> crate::model::source::FileKind {
 }
 
 pub mod add;
+pub mod advanced;
 pub mod clean;
 pub mod index;
 pub mod list;

@@ -383,11 +383,7 @@ pub fn scan_templates(project_root: &Path, config: &MindConfig) -> Result<Vec<Ar
 
 fn configured_article_path(article_name: &str, dir_path: &Path, article_dir: &str) -> String {
     let file_name = format!("{article_name}.{}", defaults::MARKDOWN_EXTENSION);
-    if dir_path.join(&file_name).is_file() {
-        format!("{article_dir}/{file_name}")
-    } else {
-        article_dir.to_string()
-    }
+    if dir_path.join(&file_name).is_file() { format!("{article_dir}/{file_name}") } else { article_dir.to_string() }
 }
 
 /// Scan a single directory for markdown files, appending to `scanned`.
@@ -398,16 +394,17 @@ fn scan_md_dir(dir_path: &Path, rel_dir: &str, scanned: &mut Vec<ScannedArticle>
         let ft = entry.file_type().map_err(MfError::Io)?;
 
         // Single-file article: a .md file directly in the docs dir.
-        if ft.is_file() && path.extension().and_then(|e| e.to_str()) == Some(defaults::MARKDOWN_EXTENSION) {
-            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                let title = stem.replace('-', " ");
-                scanned.push(ScannedArticle {
-                    title,
-                    filename: stem.to_string(),
-                    article_dir: Some(rel_dir.to_string()),
-                    article_path: None,
-                });
-            }
+        if ft.is_file()
+            && path.extension().and_then(|e| e.to_str()) == Some(defaults::MARKDOWN_EXTENSION)
+            && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+        {
+            let title = stem.replace('-', " ");
+            scanned.push(ScannedArticle {
+                title,
+                filename: stem.to_string(),
+                article_dir: Some(rel_dir.to_string()),
+                article_path: None,
+            });
         }
 
         // Directory-type article: a sub-directory containing at least one

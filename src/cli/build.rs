@@ -4,9 +4,9 @@ use std::path::{Path, PathBuf};
 use clap::Args;
 use serde::Serialize;
 
-use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::CommandCtx;
 use crate::cli::CommandOutcome;
+use crate::cli::shared_flags::DryRunFlag;
 use crate::error::{MfError, Result};
 use crate::output::warning::emit_warning;
 use crate::service::util::markdown;
