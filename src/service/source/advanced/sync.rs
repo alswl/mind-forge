@@ -619,6 +619,32 @@ mod tests {
         assert_eq!(shown.chunks.len(), 1);
         assert!(shown.chunks[0].text.contains("unique searchable phrase"));
 
+        let applied = crate::service::source::advanced::enrichment::apply_enrichment(
+            &crate::service::source::advanced::enrichment::EnrichmentInput {
+                schema_version: "1".to_string(),
+                prompt_version: "1".to_string(),
+                document_key: jobs[0].document_key.clone(),
+                content_revision: jobs[0].content_revision,
+                content_fingerprint: jobs[0].content_fingerprint.clone(),
+                summary: "A retrieval note.".to_string(),
+                language: "en".to_string(),
+                document_type: "note".to_string(),
+                topics: vec!["retrieval".to_string()],
+                keywords: vec!["search".to_string()],
+                entities: vec![],
+                confidence: 0.9,
+                warnings: vec![],
+                processed_chunks: 1,
+                total_chunks: 1,
+                coverage: "complete".to_string(),
+            },
+            dir.path(),
+            false,
+        )
+        .unwrap();
+        assert_eq!(applied.state, "ready");
+        assert_eq!(store.count_rows("enrichments").unwrap(), 1);
+
         sync_repository(dir.path(), &lance, None, false, false).unwrap();
         assert_eq!(store.count_rows("documents").unwrap(), 1);
         assert_eq!(store.count_rows("registration_content").unwrap(), 1);

@@ -11,6 +11,8 @@ use arrow_array::{Array, Int64Array, StringArray, UInt32Array};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{MfError, Result};
+use crate::model::source_advanced::{EnrichmentCoverage, EnrichmentState, SourceEnrichment};
+use crate::service::source::advanced::identity;
 
 /// An enrichment job visible to the Claude Skill.
 #[derive(Debug, Serialize)]
@@ -65,6 +67,7 @@ pub struct EnrichmentInput {
     pub prompt_version: String,
     pub document_key: String,
     pub content_revision: i64,
+    pub content_fingerprint: String,
     pub summary: String,
     pub language: String,
     pub document_type: String,
@@ -189,7 +192,7 @@ fn uint32_column<'a>(batch: &'a arrow_array::RecordBatch, name: &str) -> Result<
 }
 
 /// Validate and apply an enrichment submission.
-pub fn apply_enrichment(input: &EnrichmentInput, _repo_root: &Path, dry_run: bool) -> Result<EnrichmentApplyResult> {
+pub fn apply_enrichment(input: &EnrichmentInput, repo_root: &Path, dry_run: bool) -> Result<EnrichmentApplyResult> {
     // Validate schema version
     if input.schema_version != SCHEMA_VERSION {
         return Err(MfError::enrichment_rejected(
@@ -210,11 +213,67 @@ pub fn apply_enrichment(input: &EnrichmentInput, _repo_root: &Path, dry_run: boo
         });
     }
 
+    let store = super::sync::open_active_store(repo_root)?;
+    let mut current = None;
+    for batch in store.scan_rows("documents")? {
+        let keys = string_column(&batch, "document_key")?;
+        let revisions = int64_column(&batch, "content_revision")?;
+        let fingerprints = string_column(&batch, "content_fingerprint")?;
+        for row in 0..batch.num_rows() {
+            if keys.value(row) == input.document_key {
+                current = Some((revisions.value(row), fingerprints.value(row).to_string()));
+            }
+        }
+    }
+    let (revision, fingerprint) =
+        current.ok_or_else(|| MfError::enrichment_rejected("unknown document_key".to_string(), None))?;
+    if revision != input.content_revision || fingerprint != input.content_fingerprint {
+        return Err(MfError::enrichment_rejected(
+            "document revision or content fingerprint is stale".to_string(),
+            Some("run `mf source advanced enrich list` and regenerate the submission".to_string()),
+        ));
+    }
+
+    let applied_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let enrichment_key = identity::enrichment_key(
+        &input.document_key,
+        input.content_revision,
+        &input.schema_version,
+        &input.prompt_version,
+    );
+    store.replace_enrichment(&SourceEnrichment {
+        enrichment_key: enrichment_key.clone(),
+        document_key: input.document_key.clone(),
+        content_revision: input.content_revision,
+        schema_version: input.schema_version.clone(),
+        prompt_version: input.prompt_version.clone(),
+        summary: input.summary.clone(),
+        language: input.language.clone(),
+        document_type: input.document_type.clone(),
+        topics_json: serde_json::to_string(&input.topics).map_err(MfError::Json)?,
+        keywords_json: serde_json::to_string(&input.keywords).map_err(MfError::Json)?,
+        entities_json: serde_json::to_string(
+            &input
+                .entities
+                .iter()
+                .map(|e| serde_json::json!({"name": e.name, "type": e.entity_type, "description": e.description}))
+                .collect::<Vec<_>>(),
+        )
+        .map_err(MfError::Json)?,
+        confidence: input.confidence,
+        warnings_json: serde_json::to_string(&input.warnings).map_err(MfError::Json)?,
+        processed_chunks: input.processed_chunks,
+        total_chunks: input.total_chunks,
+        coverage: if input.coverage == "complete" { EnrichmentCoverage::Complete } else { EnrichmentCoverage::Partial },
+        state: EnrichmentState::Ready,
+        generated_at: applied_at.clone(),
+        applied_at: applied_at.clone(),
+    })?;
     Ok(EnrichmentApplyResult {
-        enrichment_key: format!("enrich:{}:{}", input.document_key, input.content_revision),
+        enrichment_key,
         document_key: input.document_key.clone(),
         state: "ready".to_string(),
-        applied_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        applied_at,
     })
 }
 
@@ -311,6 +370,7 @@ mod tests {
             prompt_version: "1".into(),
             document_key: "a".repeat(64),
             content_revision: 1,
+            content_fingerprint: "b".repeat(64),
             summary: "A test summary.".into(),
             language: "en".into(),
             document_type: "reference".into(),
@@ -356,11 +416,10 @@ mod tests {
 
     #[test]
     fn accepts_valid_input() {
-        let result = apply_enrichment(&valid_input(), Path::new("/tmp"), false);
+        let result = apply_enrichment(&valid_input(), Path::new("/tmp"), true);
         assert!(result.is_ok());
         let r = result.unwrap();
-        assert_eq!(r.state, "ready");
-        assert!(r.enrichment_key.contains("enrich:"));
+        assert_eq!(r.state, "dry_run");
     }
 
     #[test]

@@ -18,7 +18,9 @@ use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::table::Table;
 
 use crate::error::{MfError, Result};
-use crate::model::source_advanced::{RegistrationContentRelation, SharedContentDocument, SourceRegistration};
+use crate::model::source_advanced::{
+    RegistrationContentRelation, SharedContentDocument, SourceEnrichment, SourceRegistration,
+};
 
 use super::chunk::Chunk;
 
@@ -418,6 +420,48 @@ impl LanceStore {
         )
         .map_err(|e| MfError::advanced_store(format!("failed to build chunks batch: {e}"), None))?;
         self.append_rows(TABLE_CHUNKS, chunk_batch)
+    }
+
+    /// Replace the enrichment for one document revision.  The caller has
+    /// already validated that the revision is current; this method keeps the
+    /// table's application key unique across retries.
+    pub fn replace_enrichment(&self, enrichment: &SourceEnrichment) -> Result<()> {
+        self.delete_rows(TABLE_ENRICHMENTS, &format!("document_key = '{}'", enrichment.document_key))?;
+        let batch = RecordBatch::try_new(
+            enrichments_schema(),
+            vec![
+                Arc::new(StringArray::from(vec![enrichment.enrichment_key.as_str()])) as ArrayRef,
+                Arc::new(StringArray::from(vec![enrichment.document_key.as_str()])),
+                Arc::new(Int64Array::from(vec![enrichment.content_revision])),
+                Arc::new(StringArray::from(vec![enrichment.schema_version.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.prompt_version.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.summary.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.language.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.document_type.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.topics_json.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.keywords_json.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.entities_json.as_str()])),
+                Arc::new(Float32Array::from(vec![enrichment.confidence])),
+                Arc::new(StringArray::from(vec![enrichment.warnings_json.as_str()])),
+                Arc::new(UInt32Array::from(vec![enrichment.processed_chunks])),
+                Arc::new(UInt32Array::from(vec![enrichment.total_chunks])),
+                Arc::new(StringArray::from(vec![match enrichment.coverage {
+                    crate::model::source_advanced::EnrichmentCoverage::Complete => "complete",
+                    crate::model::source_advanced::EnrichmentCoverage::Partial => "partial",
+                }])),
+                Arc::new(StringArray::from(vec![match enrichment.state {
+                    crate::model::source_advanced::EnrichmentState::Pending => "pending",
+                    crate::model::source_advanced::EnrichmentState::Ready => "ready",
+                    crate::model::source_advanced::EnrichmentState::Stale => "stale",
+                    crate::model::source_advanced::EnrichmentState::Failed => "failed",
+                    crate::model::source_advanced::EnrichmentState::Skipped => "skipped",
+                }])),
+                Arc::new(StringArray::from(vec![enrichment.generated_at.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.applied_at.as_str()])),
+            ],
+        )
+        .map_err(|e| MfError::advanced_store(format!("failed to build enrichment batch: {e}"), None))?;
+        self.append_rows(TABLE_ENRICHMENTS, batch)
     }
 
     /// Count rows in a table. Returns 0 if the table is empty or missing.
