@@ -664,6 +664,37 @@ pub fn recover_from_snapshot(
         ));
     }
 
+    let generation_dir = super::publication::generation_path(advanced_dir, &target.generation_id);
+    let database_path = generation_dir.join("lancedb");
+    if !database_path.exists() {
+        return Err(crate::error::MfError::recovery_unavailable(
+            format!("snapshot '{snapshot_id}' refers to a missing LanceDB generation"),
+            None,
+        ));
+    }
+    let store = LanceStore::open(&database_path)?;
+    let references = [
+        &target.registrations_version,
+        &target.documents_version,
+        &target.registration_content_version,
+        &target.chunks_version,
+        &target.enrichments_version,
+    ];
+    for reference in references {
+        let version = store.table_version(&reference.table).map_err(|_| {
+            crate::error::MfError::recovery_unavailable(
+                format!("snapshot '{snapshot_id}' refers to unavailable table '{}'", reference.table),
+                None,
+            )
+        })?;
+        if version < reference.version || reference.tag.is_empty() {
+            return Err(crate::error::MfError::recovery_unavailable(
+                format!("snapshot '{snapshot_id}' has an invalid retained version for '{}'", reference.table),
+                None,
+            ));
+        }
+    }
+
     if dry_run {
         return Ok(super::publication::RepositorySourceIndexPointer {
             schema_version: target.schema_version.clone(),
@@ -674,7 +705,10 @@ pub fn recover_from_snapshot(
         });
     }
 
-    // Atomically switch the pointer
+    // Serialize pointer replacement with all primary/derived writers.  The
+    // retained generation is immutable from recovery's perspective, so a
+    // validated pointer is the sole visible mutation.
+    let writer_lock = super::publication::try_acquire_writer_lock(advanced_dir)?;
     let pointer = super::publication::RepositorySourceIndexPointer {
         schema_version: target.schema_version.clone(),
         generation_id: target.generation_id.clone(),
@@ -683,6 +717,7 @@ pub fn recover_from_snapshot(
         published_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
     };
     super::publication::write_pointer(advanced_dir, &pointer)?;
+    super::publication::release_writer_lock(writer_lock);
     Ok(pointer)
 }
 
@@ -731,6 +766,38 @@ mod tests {
         std::fs::create_dir_all(&advanced).unwrap();
         let result = recover_from_snapshot(&advanced, "nonexistent", true);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn recover_rejects_snapshot_with_missing_generation() {
+        let dir = tempfile::tempdir().unwrap();
+        let advanced = dir.path().join(".mind/source/advanced");
+        let version = |table: &str| super::super::publication::TableVersionRef {
+            table: table.to_string(),
+            version: 1,
+            tag: "retained".to_string(),
+        };
+        let snapshot = super::super::publication::RepositorySourceIndexSnapshot {
+            snapshot_id: "snap-missing".to_string(),
+            schema_version: "1".to_string(),
+            generation_id: "missing-generation".to_string(),
+            registrations_version: version("registrations"),
+            documents_version: version("documents"),
+            registration_content_version: version("registration_content"),
+            chunks_version: version("chunks"),
+            enrichments_version: version("enrichments"),
+            primary_catalog_fingerprint: "primary".to_string(),
+            activation_legacy_inventory_fingerprint: None,
+            active_project_catalog_fingerprint: "projects".to_string(),
+            content_fingerprint: None,
+            index_fingerprint: None,
+            search_policy_version: "1".to_string(),
+            model_identity: None,
+            aggregate_counts: None,
+            created_at: "2026-07-14T00:00:00Z".to_string(),
+        };
+        super::super::publication::write_snapshot(&advanced, &snapshot).unwrap();
+        assert!(recover_from_snapshot(&advanced, "snap-missing", true).is_err());
     }
 
     #[test]
