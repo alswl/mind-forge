@@ -380,6 +380,22 @@ fn sync_one_source(
     let content_fp = identity::content_fingerprint(&[&extraction.extractor, "v1", "384"]);
     let dk = identity::document_key(&raw_fp, &extracted_fp, &content_fp);
 
+    if let Some(store) = store
+        && store.has_ready_content_binding(registration_key, &dk)?
+    {
+        return Ok(SyncItem {
+            project_identity: String::new(),
+            registration_key: registration_key.to_string(),
+            source_identity: name.to_string(),
+            action: "skipped".to_string(),
+            before_state: Some(RelationState::Ready),
+            after_state: RelationState::Ready,
+            detected_format: Some(extraction.format_label),
+            affected_chunks: 0,
+            error: None,
+        });
+    }
+
     // Chunk the document
     let chunks = super::chunk::chunk_document(&extraction.units, &dk, 1, chunk_config)?;
     let chunk_count = chunks.len() as u64;
@@ -795,5 +811,44 @@ mod tests {
         assert_eq!(store.count_rows("registration_content").unwrap(), 0);
         assert_eq!(store.count_rows("chunks").unwrap(), 0);
         assert_eq!(store.count_rows("enrichments").unwrap(), 0);
+    }
+
+    #[test]
+    fn lance_sync_skips_unchanged_content_without_mutating_tables() {
+        let dir = tempfile::tempdir().unwrap();
+        let project_dir = dir.path().join("projects/alpha");
+        std::fs::create_dir_all(project_dir.join("sources")).unwrap();
+        std::fs::write(project_dir.join("sources/notes.md"), "# Retrieval\nA unique searchable phrase.\n").unwrap();
+        std::fs::write(
+            project_dir.join("mind-index.yaml"),
+            "project: alpha\nsources:\n  - name: notes\n    kind: file\n    path: sources/notes.md\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("minds.yaml"), "schema_version: '1'\nprojects: []\n").unwrap();
+        let legacy = ResolvedSourceConfig {
+            backend: crate::model::manifest::SourceBackend::Legacy,
+            is_lance_active: false,
+            is_marker_corrupt: false,
+            activation_snapshot_id: None,
+            storage_schema_version: None,
+            chunk_tokens: 384,
+            chunk_overlap: 48,
+            default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
+        };
+        crate::service::source::advanced::activation::activate(dir.path(), &legacy).unwrap();
+        let lance = crate::service::source::advanced::config::load_repository_config(dir.path()).unwrap();
+        let first = sync_repository(dir.path(), &lance, None, false, false).unwrap();
+        assert_eq!(first.registrations_added, 1);
+
+        let store = open_active_store(dir.path()).unwrap();
+        let versions_before =
+            ["documents", "registration_content", "chunks"].map(|table| store.table_version(table).unwrap());
+        let second = sync_repository(dir.path(), &lance, None, false, false).unwrap();
+        assert_eq!(second.registrations_added, 0);
+        assert_eq!(second.registrations_skipped, 1);
+        assert_eq!(second.items[0].action, "skipped");
+        let versions_after =
+            ["documents", "registration_content", "chunks"].map(|table| store.table_version(table).unwrap());
+        assert_eq!(versions_before, versions_after);
     }
 }

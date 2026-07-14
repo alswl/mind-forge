@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use arrow_array::{
-    ArrayRef, FixedSizeListArray, Float32Array, Int64Array, RecordBatch, StringArray, UInt32Array, UInt64Array,
+    Array, ArrayRef, FixedSizeListArray, Float32Array, Int64Array, RecordBatch, StringArray, UInt32Array, UInt64Array,
 };
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use futures::TryStreamExt;
@@ -420,6 +420,44 @@ impl LanceStore {
         )
         .map_err(|e| MfError::advanced_store(format!("failed to build chunks batch: {e}"), None))?;
         self.append_rows(TABLE_CHUNKS, chunk_batch)
+    }
+
+    /// Whether a registration already points at this exact ready document.
+    ///
+    /// This deliberately reads the binding rather than relying on file mtimes:
+    /// an unchanged second sync must not rewrite rows (or invalidate an
+    /// enrichment) merely because it was run again.
+    pub fn has_ready_content_binding(&self, registration_key: &str, document_key: &str) -> Result<bool> {
+        for batch in self.scan_rows(TABLE_REGISTRATION_CONTENT)? {
+            let keys = batch
+                .column_by_name("registration_key")
+                .and_then(|column| column.as_any().downcast_ref::<StringArray>())
+                .ok_or_else(|| {
+                    MfError::advanced_store("registration_content table missing 'registration_key'".to_string(), None)
+                })?;
+            let documents = batch
+                .column_by_name("document_key")
+                .and_then(|column| column.as_any().downcast_ref::<StringArray>())
+                .ok_or_else(|| {
+                    MfError::advanced_store("registration_content table missing 'document_key'".to_string(), None)
+                })?;
+            let states = batch
+                .column_by_name("state")
+                .and_then(|column| column.as_any().downcast_ref::<StringArray>())
+                .ok_or_else(|| {
+                    MfError::advanced_store("registration_content table missing 'state'".to_string(), None)
+                })?;
+            for row in 0..batch.num_rows() {
+                if keys.value(row) == registration_key
+                    && !documents.is_null(row)
+                    && documents.value(row) == document_key
+                    && states.value(row) == "ready"
+                {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
     }
 
     /// Replace the enrichment for one document revision.  The caller has
