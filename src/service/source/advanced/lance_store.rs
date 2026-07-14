@@ -7,7 +7,9 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, Int64Array, RecordBatch, StringArray};
+use arrow_array::{
+    ArrayRef, FixedSizeListArray, Float32Array, Int64Array, RecordBatch, StringArray, UInt32Array, UInt64Array,
+};
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use futures::TryStreamExt;
 use lance_index::scalar::FullTextSearchQuery;
@@ -16,7 +18,9 @@ use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::table::Table;
 
 use crate::error::{MfError, Result};
-use crate::model::source_advanced::SourceRegistration;
+use crate::model::source_advanced::{RegistrationContentRelation, SharedContentDocument, SourceRegistration};
+
+use super::chunk::Chunk;
 
 // ── Table names ────────────────────────────────────────────────────────────
 
@@ -329,6 +333,91 @@ impl LanceStore {
         )
         .map_err(|e| MfError::advanced_store(format!("failed to build registrations batch: {e}"), None))?;
         self.append_rows(TABLE_REGISTRATIONS, batch)
+    }
+
+    /// Persist one extracted document, its binding, and its searchable chunks.
+    /// Vectors are intentionally zero-filled until the explicit local model
+    /// pipeline supplies embeddings; FTS can still query the actual text.
+    pub fn append_content(
+        &self,
+        document: &SharedContentDocument,
+        relation: &RegistrationContentRelation,
+        chunks: &[Chunk],
+    ) -> Result<()> {
+        // LanceDB does not enforce application keys. Replace the current
+        // revision deterministically before appending so a retry cannot grow
+        // duplicate documents/chunks/relations. Other bindings may continue
+        // to reference the same document key and remain valid after reinsertion.
+        self.delete_rows(TABLE_REGISTRATION_CONTENT, &format!("registration_key = '{}'", relation.registration_key))?;
+        self.delete_rows(TABLE_CHUNKS, &format!("document_key = '{}'", document.document_key))?;
+        self.delete_rows(TABLE_DOCUMENTS, &format!("document_key = '{}'", document.document_key))?;
+
+        let document_batch = RecordBatch::try_new(
+            documents_schema(),
+            vec![
+                Arc::new(StringArray::from(vec![document.document_key.as_str()])) as ArrayRef,
+                Arc::new(StringArray::from(vec![document.acquisition_kind.as_str()])),
+                Arc::new(StringArray::from(vec![document.raw_fingerprint.as_str()])),
+                Arc::new(StringArray::from(vec![document.extracted_fingerprint.as_str()])),
+                Arc::new(StringArray::from(vec![document.content_fingerprint.as_str()])),
+                Arc::new(Int64Array::from(vec![document.content_revision])),
+                Arc::new(StringArray::from(vec!["ready"])),
+                Arc::new(StringArray::from(vec![document.last_error_kind.as_deref()])),
+                Arc::new(StringArray::from(vec![document.last_error.as_deref()])),
+                Arc::new(StringArray::from(vec![document.fetched_at.as_deref()])),
+                Arc::new(StringArray::from(vec![document.synced_at.as_deref()])),
+                Arc::new(UInt64Array::from(vec![document.chunk_count])),
+            ],
+        )
+        .map_err(|e| MfError::advanced_store(format!("failed to build documents batch: {e}"), None))?;
+        self.append_rows(TABLE_DOCUMENTS, document_batch)?;
+
+        let relation_batch = RecordBatch::try_new(
+            registration_content_schema(),
+            vec![
+                Arc::new(StringArray::from(vec![relation.registration_key.as_str()])) as ArrayRef,
+                Arc::new(StringArray::from(vec![relation.document_key.as_deref()])),
+                Arc::new(Int64Array::from(vec![relation.content_revision])),
+                Arc::new(StringArray::from(vec![relation.acquisition_key.as_str()])),
+                Arc::new(StringArray::from(vec![relation.acquired_location.as_str()])),
+                Arc::new(StringArray::from(vec![relation.registered_revision.as_str()])),
+                Arc::new(StringArray::from(vec!["ready"])),
+                Arc::new(StringArray::from(vec![relation.last_error_kind.as_deref()])),
+                Arc::new(StringArray::from(vec![relation.last_error.as_deref()])),
+                Arc::new(StringArray::from(vec![relation.attempted_at.as_deref()])),
+                Arc::new(StringArray::from(vec![relation.synced_at.as_deref()])),
+            ],
+        )
+        .map_err(|e| MfError::advanced_store(format!("failed to build registration-content batch: {e}"), None))?;
+        self.append_rows(TABLE_REGISTRATION_CONTENT, relation_batch)?;
+
+        if chunks.is_empty() {
+            return Ok(());
+        }
+        let vectors = FixedSizeListArray::try_new(
+            Arc::new(Field::new("item", DataType::Float32, true)),
+            384,
+            Arc::new(Float32Array::from(vec![0.0; chunks.len() * 384])),
+            None,
+        )
+        .map_err(|e| MfError::advanced_store(format!("failed to build chunk vectors: {e}"), None))?;
+        let chunk_batch = RecordBatch::try_new(
+            chunks_schema(),
+            vec![
+                Arc::new(StringArray::from(chunks.iter().map(|c| c.chunk_id.as_str()).collect::<Vec<_>>())) as ArrayRef,
+                Arc::new(StringArray::from(chunks.iter().map(|c| c.document_key.as_str()).collect::<Vec<_>>())),
+                Arc::new(Int64Array::from(chunks.iter().map(|c| c.content_revision).collect::<Vec<_>>())),
+                Arc::new(UInt32Array::from(chunks.iter().map(|c| c.ordinal).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(chunks.iter().map(|c| c.locator_json.as_str()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(chunks.iter().map(|c| c.locator_sort_key.as_str()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(chunks.iter().map(|c| c.text.as_str()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(chunks.iter().map(|c| c.text_fingerprint.as_str()).collect::<Vec<_>>())),
+                Arc::new(UInt32Array::from(chunks.iter().map(|c| c.token_count).collect::<Vec<_>>())),
+                Arc::new(vectors),
+            ],
+        )
+        .map_err(|e| MfError::advanced_store(format!("failed to build chunks batch: {e}"), None))?;
+        self.append_rows(TABLE_CHUNKS, chunk_batch)
     }
 
     /// Count rows in a table. Returns 0 if the table is empty or missing.

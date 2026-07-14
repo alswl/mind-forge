@@ -8,12 +8,16 @@
 use std::path::Path;
 
 use crate::error::Result;
-use crate::model::source_advanced::{RelationState, SyncItem, SyncReport};
+use crate::model::source_advanced::{
+    DocumentState, RegistrationContentRelation, RelationState, SharedContentDocument, SyncItem, SyncReport,
+};
 
 use super::acquisition;
 use super::chunk::ChunkConfig;
 use super::config::ResolvedSourceConfig;
 use super::identity;
+use super::lance_store::LanceStore;
+use super::publication;
 
 /// Sync all live registrations across all projects (or a single project).
 ///
@@ -39,6 +43,11 @@ pub fn sync_repository(
         overlap_tokens: config.chunk_overlap,
         policy_version: "v1".to_string(),
     };
+
+    // Sync is the explicit mutation boundary.  In Lance mode it must write
+    // derived content to the database selected by the active pointer; it must
+    // never create an alternate per-project store.
+    let store = if !dry_run && config.is_lance() { Some(open_active_store(repo_root)?) } else { None };
 
     // Enumerate projects and their registrations
     let projects_dir = repo_root.join("projects");
@@ -95,7 +104,17 @@ pub fn sync_repository(
                     let pk = identity::project_key(&project_name);
                     let rk = identity::registration_key(&pk, kind, location);
 
-                    match sync_one_source(&project_path, name, kind, location, &rk, &chunk_config, dry_run, offline) {
+                    match sync_one_source(
+                        &project_path,
+                        name,
+                        kind,
+                        location,
+                        &rk,
+                        &chunk_config,
+                        dry_run,
+                        offline,
+                        store.as_ref(),
+                    ) {
                         Ok(item) => {
                             match item.action.as_str() {
                                 "added" => added += 1,
@@ -165,6 +184,7 @@ fn sync_one_source(
     chunk_config: &ChunkConfig,
     dry_run: bool,
     offline: bool,
+    store: Option<&LanceStore>,
 ) -> Result<SyncItem> {
     // Check if remote and offline
     if acquisition::is_url(location) {
@@ -267,6 +287,38 @@ fn sync_one_source(
     let chunks = super::chunk::chunk_document(&extraction.units, &dk, 1, chunk_config)?;
     let chunk_count = chunks.len() as u64;
 
+    if let Some(store) = store {
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let document = SharedContentDocument {
+            document_key: dk.clone(),
+            acquisition_kind: content.acquisition_kind.clone(),
+            raw_fingerprint: raw_fp,
+            extracted_fingerprint: extracted_fp,
+            content_fingerprint: content_fp,
+            content_revision: 1,
+            state: DocumentState::Ready,
+            last_error_kind: None,
+            last_error: None,
+            fetched_at: None,
+            synced_at: Some(now.clone()),
+            chunk_count,
+        };
+        let relation = RegistrationContentRelation {
+            registration_key: registration_key.to_string(),
+            document_key: Some(dk),
+            content_revision: Some(1),
+            acquisition_key: identity::acquisition_key(kind, &content.canonical_locator, ""),
+            acquired_location: content.registered_location,
+            registered_revision: "1".to_string(),
+            state: RelationState::Ready,
+            last_error_kind: None,
+            last_error: None,
+            attempted_at: Some(now.clone()),
+            synced_at: Some(now),
+        };
+        store.append_content(&document, &relation, &chunks)?;
+    }
+
     Ok(SyncItem {
         project_identity: String::new(),
         registration_key: registration_key.to_string(),
@@ -278,6 +330,30 @@ fn sync_one_source(
         affected_chunks: chunk_count,
         error: None,
     })
+}
+
+/// Open exactly the database named by the active repository pointer.  A sync
+/// must fail closed if Lance mode has no valid pointer, rather than silently
+/// rebuilding a second store from legacy YAML.
+fn open_active_store(repo_root: &Path) -> Result<LanceStore> {
+    let advanced_dir = repo_root.join(".mind/source/advanced");
+    let pointer = publication::read_pointer(&advanced_dir)?.ok_or_else(|| {
+        crate::error::MfError::missing_lance_pointer(
+            "missing",
+            "Lance backend is active but current.json is absent".to_string(),
+            Some("run `mf source advanced recover --snapshot ID --yes`".to_string()),
+        )
+    })?;
+    let relative = pointer.database_uri.strip_prefix("./").ok_or_else(|| {
+        crate::error::MfError::advanced_store("pointer database_uri must be repo-relative".to_string(), None)
+    })?;
+    if relative.split('/').any(|component| component == ".." || component.is_empty()) {
+        return Err(crate::error::MfError::advanced_store(
+            "pointer database_uri escapes the advanced Source store".to_string(),
+            None,
+        ));
+    }
+    LanceStore::open(&advanced_dir.join(relative))
 }
 
 /// Rebuild the entire index: scan all live projects into a fresh generation.
@@ -500,5 +576,45 @@ mod tests {
         // Non-matching filter
         let report = sync_repository(dir.path(), &config, Some("beta"), false, false).unwrap();
         assert_eq!(report.registrations_total, 0);
+    }
+
+    #[test]
+    fn lance_sync_persists_document_relation_and_chunks() {
+        let dir = tempfile::tempdir().unwrap();
+        let project_dir = dir.path().join("projects/alpha");
+        std::fs::create_dir_all(project_dir.join("sources")).unwrap();
+        std::fs::write(project_dir.join("sources/notes.md"), "# Retrieval\nA unique searchable phrase.\n").unwrap();
+        std::fs::write(
+            project_dir.join("mind-index.yaml"),
+            "project: alpha\nsources:\n  - name: notes\n    kind: file\n    path: sources/notes.md\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("minds.yaml"), "schema_version: '1'\nprojects: []\n").unwrap();
+
+        let legacy = ResolvedSourceConfig {
+            backend: crate::model::manifest::SourceBackend::Legacy,
+            is_lance_active: false,
+            is_marker_corrupt: false,
+            activation_snapshot_id: None,
+            storage_schema_version: None,
+            chunk_tokens: 384,
+            chunk_overlap: 48,
+            default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
+        };
+        crate::service::source::advanced::activation::activate(dir.path(), &legacy).unwrap();
+        let lance = crate::service::source::advanced::config::load_repository_config(dir.path()).unwrap();
+
+        let report = sync_repository(dir.path(), &lance, None, false, false).unwrap();
+        assert_eq!(report.registrations_added, 1);
+
+        let store = open_active_store(dir.path()).unwrap();
+        assert_eq!(store.count_rows("documents").unwrap(), 1);
+        assert_eq!(store.count_rows("registration_content").unwrap(), 1);
+        assert_eq!(store.count_rows("chunks").unwrap(), 1);
+
+        sync_repository(dir.path(), &lance, None, false, false).unwrap();
+        assert_eq!(store.count_rows("documents").unwrap(), 1);
+        assert_eq!(store.count_rows("registration_content").unwrap(), 1);
+        assert_eq!(store.count_rows("chunks").unwrap(), 1);
     }
 }
