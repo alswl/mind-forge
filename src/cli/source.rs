@@ -801,7 +801,8 @@ fn handle_source_show(args: SourceShowArgs, ctx: &CommandCtx) -> Result<CommandO
 // ---------------------------------------------------------------------------
 
 fn handle_add(args: SourceAddArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
+    let repo_root = ctx.require_repo_path()?;
+    let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
 
     let input_form = svc_source::classify_input(&args.input);
 
@@ -830,6 +831,19 @@ fn handle_add(args: SourceAddArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
         link: args.link,
         force: args.force.force,
     };
+
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    if config.is_lance() {
+        let outcome = svc_source::advanced::primary::add_registration(
+            repo_root,
+            &project_path,
+            ctx.cwd(),
+            &add_args,
+            args.register_only,
+            args.dry_run.dry_run,
+        )?;
+        return source_add_outcome(outcome, args.dry_run.dry_run, &project_path, ctx);
+    }
 
     if args.register_only {
         let outcome = svc_source::register_only(&project_path, ctx.cwd(), &add_args, args.dry_run.dry_run)?;

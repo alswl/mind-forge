@@ -11,6 +11,7 @@ use crate::error::{MfError, Result};
 use crate::model::lifecycle::{PlannedChange, PlannedOp};
 use crate::model::source::{FileKind, Source, SourceIndexEntry, SourceIndexReport, SourceKind, SourceRemoveReport};
 use crate::model::source_advanced::{RegistrationState, SourceRegistration};
+use crate::service::source::add::{AddArgs, AddMode, AddOutcome, InputForm};
 use crate::service::source::rename::{SourceRenameIdentity, SourceRenameReport};
 
 use super::{
@@ -108,6 +109,222 @@ pub fn update_registration(
         added_at: String::new(),
         updated_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
     })
+}
+
+/// Add a Source by writing the Lance primary catalog first.  File placement
+/// keeps the established copy/link/register-only behaviour; `mind-index.yaml`
+/// is exported only after the durable registration has been written.
+pub fn add_registration(
+    repo_root: &Path,
+    project_path: &Path,
+    cwd: &Path,
+    args: &AddArgs,
+    register_only: bool,
+    dry_run: bool,
+) -> Result<AddOutcome> {
+    if register_only && args.link {
+        return Err(MfError::usage("--register-only cannot be combined with --link", None));
+    }
+    if register_only && args.force {
+        return Err(MfError::usage("--register-only cannot be combined with --force", None));
+    }
+    let config = ResolvedSourceConfig::from_config(
+        crate::service::repo::load_manifest(&repo_root.join("minds.yaml"))?.source.as_ref(),
+    )?;
+    if !config.is_lance() {
+        return Err(MfError::usage("Lance primary mutation requires an active Lance backend".to_string(), None));
+    }
+    let store = sync::open_active_store(repo_root)?;
+    let catalog = SourceCatalog::discover(&config, repo_root)?;
+    let project_rel = project_path.strip_prefix(repo_root).unwrap_or(project_path).to_string_lossy().replace('\\', "/");
+    let project_key = identity::project_key(&project_rel);
+    let project_identity = project_identity(project_path)?;
+    let rows = catalog.registrations(Some(&store))?;
+
+    let (source, mode, copied_file) = match crate::service::source::classify_input(args.input) {
+        InputForm::Url => add_url_source(args)?,
+        InputForm::Path => add_local_source(project_path, cwd, args, register_only, dry_run)?,
+    };
+    let location = source.path.as_ref().or(source.url.as_ref()).expect("source has location");
+    let existing_by_name =
+        rows.iter().find(|row| row.project_path == project_rel && row.source_identity == source.name);
+    if existing_by_name.is_some() && !args.force {
+        return Err(MfError::file_exists(project_path.join("mind-index.yaml")));
+    }
+    if let Some(existing) = rows.iter().find(|row| {
+        row.project_path == project_rel && row.registered_location == *location && row.source_identity != source.name
+    }) {
+        return Err(MfError::usage(
+            format!("source path '{location}' is already registered as '{}'", existing.source_identity),
+            Some("use the existing source name or update it explicitly".to_string()),
+        ));
+    }
+    if dry_run {
+        return Ok(AddOutcome { source, mode, replaced: existing_by_name.is_some() });
+    }
+    let registration_key = identity::registration_key(&project_key, source.kind.as_str(), location);
+    let tags =
+        existing_by_name.and_then(|row| serde_json::from_str::<Vec<String>>(&row.tags_json).ok()).unwrap_or_default();
+    let registration = SourceRegistration {
+        registration_key: registration_key.clone(),
+        project_key,
+        project_identity: project_identity.clone(),
+        project_path: project_rel,
+        source_identity: source.name.clone(),
+        source_type: source.kind.as_str().to_string(),
+        source_kind: source_kind_name(source.source_kind.as_ref()),
+        registered_location: location.clone(),
+        tags_json: serde_json::to_string(&tags).map_err(MfError::Json)?,
+        fact_fingerprint: identity::raw_fingerprint(
+            format!("{}\n{}\n{location}\n{}", source.name, source.kind.as_str(), tags.join("\n")).as_bytes(),
+        ),
+        registration_revision: 1,
+        state: RegistrationState::Live,
+    };
+    let write_result = (|| -> Result<()> {
+        if let Some(existing) = existing_by_name {
+            store.clear_content_bindings(&std::collections::BTreeSet::from([existing.registration_key.clone()]))?;
+            store.delete_rows("registrations", &format!("registration_key = '{}'", existing.registration_key))?;
+        }
+        store.append_registrations(&[registration])?;
+        super::compatibility::export_project(repo_root, &project_identity, false).map(|_| ())
+    })();
+    if let Err(error) = write_result {
+        if let Some(file) = copied_file {
+            let _ = std::fs::remove_file(file);
+        }
+        return Err(error);
+    }
+    Ok(AddOutcome { source, mode, replaced: existing_by_name.is_some() })
+}
+
+fn add_url_source(args: &AddArgs) -> Result<(Source, AddMode, Option<std::path::PathBuf>)> {
+    crate::service::source::validate_url(args.input)?;
+    let name = args.name.ok_or_else(|| {
+        MfError::usage("URL sources require an explicit --name", Some("pass --name <STRING>".to_string()))
+    })?;
+    let kind = match args.kind.clone().unwrap_or(FileKind::Web) {
+        FileKind::Auto => FileKind::Web,
+        FileKind::Rss | FileKind::Web => args.kind.clone().unwrap_or(FileKind::Web),
+        FileKind::Pdf | FileKind::File => {
+            return Err(MfError::usage("cannot use --type pdf or --type file with a URL input", None));
+        }
+    };
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    Ok((
+        Source {
+            name: name.to_string(),
+            kind,
+            source_kind: args.source_kind.clone(),
+            url: Some(args.input.to_string()),
+            path: None,
+            tags: vec![],
+            added_at: now.clone(),
+            updated_at: now,
+        },
+        AddMode::Url,
+        None,
+    ))
+}
+
+fn add_local_source(
+    project_path: &Path,
+    cwd: &Path,
+    args: &AddArgs,
+    register_only: bool,
+    dry_run: bool,
+) -> Result<(Source, AddMode, Option<std::path::PathBuf>)> {
+    let source_path = cwd.join(args.input);
+    let source_canonical = source_path.canonicalize().map_err(MfError::Io)?;
+    if !std::fs::metadata(&source_canonical).map_err(MfError::Io)?.is_file() {
+        return Err(MfError::usage(format!("source path '{}' must be an existing regular file", args.input), None));
+    }
+    let layout = crate::service::config::effective_layout(project_path)?;
+    let sources_dir = project_path.join(&layout.sources);
+    let inside_sources = crate::service::util::canonicalize_within(&sources_dir, &source_canonical).is_ok();
+    if register_only && !inside_sources {
+        return Err(MfError::usage(
+            format!("--register-only path must be inside the project's {}/ directory", layout.sources),
+            None,
+        ));
+    }
+    if !register_only && inside_sources {
+        return Err(MfError::usage(
+            format!("source file is already inside the project's {}/ directory", layout.sources),
+            Some("pass --register-only to add the existing file to the source index".to_string()),
+        ));
+    }
+    let kind =
+        match args.kind.clone().unwrap_or_else(|| crate::service::source::infer_kind_from_path(&source_canonical)) {
+            FileKind::Auto => crate::service::source::infer_kind_from_path(&source_canonical),
+            FileKind::Pdf | FileKind::File => args.kind.clone().unwrap_or(FileKind::File),
+            FileKind::Rss | FileKind::Web => {
+                return Err(MfError::usage("cannot use --type rss or --type web with a local file input", None));
+            }
+        };
+    let name = args.name.map(str::to_string).unwrap_or(crate::service::source::derive_name_from_path(&source_path)?);
+    let destination = if register_only {
+        source_canonical.clone()
+    } else {
+        let basename =
+            source_canonical.file_name().ok_or_else(|| MfError::usage("cannot extract source filename", None))?;
+        sources_dir.join(kind.as_str()).join(basename)
+    };
+    let rel_path = crate::service::util::rel_posix_path(project_path, &destination)?;
+    let mut copied_file = None;
+    if !register_only && !dry_run {
+        if destination.exists() && !args.force {
+            return Err(MfError::file_exists(destination));
+        }
+        std::fs::create_dir_all(destination.parent().expect("destination parent")).map_err(MfError::Io)?;
+        if args.link {
+            crate::service::util::create_symlink(&source_canonical, &destination)?;
+        } else {
+            std::fs::copy(&source_canonical, &destination).map_err(MfError::Io)?;
+        }
+        copied_file = Some(destination);
+    }
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    Ok((
+        Source {
+            name,
+            kind,
+            source_kind: args.source_kind.clone(),
+            url: None,
+            path: Some(rel_path),
+            tags: vec![],
+            added_at: now.clone(),
+            updated_at: now,
+        },
+        if register_only {
+            AddMode::Register
+        } else if args.link {
+            AddMode::Link
+        } else {
+            AddMode::Copy
+        },
+        copied_file,
+    ))
+}
+
+fn project_identity(project_path: &Path) -> Result<String> {
+    let index = crate::service::index::load(project_path)?;
+    Ok(index
+        .extra
+        .as_ref()
+        .and_then(|extra| extra.get("project"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| project_path.file_name().and_then(|name| name.to_str()).unwrap_or("unknown").to_string()))
+}
+
+fn source_kind_name(kind: Option<&SourceKind>) -> Option<String> {
+    match kind {
+        Some(SourceKind::Yuque) => Some("yuque".to_string()),
+        Some(SourceKind::Meeting) => Some("meeting".to_string()),
+        Some(SourceKind::Misc) => Some("misc".to_string()),
+        None => None,
+    }
 }
 
 /// Rename a Lance-primary registration.  Local sources move their backing
@@ -529,5 +746,51 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].source_identity, "remote");
         assert!(!std::fs::read_to_string(project.join("mind-index.yaml")).unwrap().contains("name: missing"));
+    }
+
+    #[test]
+    fn add_writes_lance_primary_before_exporting_projection() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("projects/alpha");
+        let external = dir.path().join("outside.md");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(&external, "# imported").unwrap();
+        std::fs::write(project.join("mind-index.yaml"), "project: alpha\nsources: []\n").unwrap();
+        std::fs::write(dir.path().join("minds.yaml"), "schema_version: '1'\nprojects: []\n").unwrap();
+        let legacy = ResolvedSourceConfig {
+            backend: SourceBackend::Legacy,
+            is_lance_active: false,
+            is_marker_corrupt: false,
+            activation_snapshot_id: None,
+            storage_schema_version: None,
+            chunk_tokens: 384,
+            chunk_overlap: 48,
+            default_search_mode: SearchDefaultMode::Basic,
+        };
+        super::super::activation::activate(dir.path(), &legacy).unwrap();
+
+        let input = external.to_string_lossy().to_string();
+        let args = AddArgs {
+            input: &input,
+            name: Some("imported"),
+            kind: Some(FileKind::File),
+            source_kind: None,
+            link: false,
+            force: false,
+        };
+        let outcome = add_registration(dir.path(), &project, dir.path(), &args, false, false).unwrap();
+        assert_eq!(outcome.source.path.as_deref(), Some("sources/file/outside.md"));
+        assert!(project.join("sources/file/outside.md").exists());
+        let config = ResolvedSourceConfig::from_config(
+            crate::service::repo::load_manifest(&dir.path().join("minds.yaml")).unwrap().source.as_ref(),
+        )
+        .unwrap();
+        let store = sync::open_active_store(dir.path()).unwrap();
+        let catalog = SourceCatalog::discover(&config, dir.path()).unwrap();
+        let rows = catalog.registrations(Some(&store)).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].source_identity, "imported");
+        assert_eq!(rows[0].registered_location, "sources/file/outside.md");
+        assert!(std::fs::read_to_string(project.join("mind-index.yaml")).unwrap().contains("name: imported"));
     }
 }
