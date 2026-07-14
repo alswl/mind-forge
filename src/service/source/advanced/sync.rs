@@ -510,8 +510,14 @@ pub fn clear_derived(
     report.dry_run = dry_run;
 
     if !dry_run {
-        // In a real implementation, this would publish a new Lance snapshot
-        // with unchanged primary registrations and empty derived tables.
+        if config.is_lance() && all && project.is_none() && source.is_none() {
+            let store = open_active_store(repo_root)?;
+            // `true` is the backend's unconditional predicate.  These are
+            // derived tables only; registrations stays untouched.
+            for table in ["registration_content", "chunks", "enrichments", "documents"] {
+                store.delete_rows(table, "true")?;
+            }
+        }
         report.index_revision = Some(format!("clear-{}", chrono::Utc::now().format("%Y%m%dT%H%M%SZ")));
         report.registrations_updated = report.registrations_total;
         report.registrations_added = 0;
@@ -777,5 +783,12 @@ mod tests {
         assert_eq!(store.count_rows("documents").unwrap(), 1);
         assert_eq!(store.count_rows("registration_content").unwrap(), 1);
         assert_eq!(store.count_rows("chunks").unwrap(), 1);
+
+        clear_derived(dir.path(), &lance, None, None, true, false).unwrap();
+        assert_eq!(store.count_rows("registrations").unwrap(), 1);
+        assert_eq!(store.count_rows("documents").unwrap(), 0);
+        assert_eq!(store.count_rows("registration_content").unwrap(), 0);
+        assert_eq!(store.count_rows("chunks").unwrap(), 0);
+        assert_eq!(store.count_rows("enrichments").unwrap(), 0);
     }
 }
