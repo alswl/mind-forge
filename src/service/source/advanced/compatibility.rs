@@ -30,6 +30,31 @@ pub struct ProjectionComparison {
 
 /// Export Lance primary registrations for a project to its legacy YAML.
 pub fn export_project(repo_root: &Path, project_name: &str, dry_run: bool) -> Result<ProjectionComparison> {
+    if project_name == "all" {
+        let projects_dir = repo_root.join("projects");
+        let mut comparisons = Vec::new();
+        if projects_dir.exists() {
+            for entry in fs::read_dir(&projects_dir)? {
+                let entry = entry?;
+                if entry.file_type()?.is_dir() {
+                    comparisons.push(export_project(repo_root, &entry.file_name().to_string_lossy(), dry_run)?);
+                }
+            }
+        }
+        let primary_count = comparisons.iter().map(|comparison| comparison.primary_count).sum();
+        let legacy_count = comparisons.iter().map(|comparison| comparison.legacy_count).sum();
+        let drift_details = comparisons.into_iter().flat_map(|comparison| comparison.drift_details).collect::<Vec<_>>();
+        return Ok(ProjectionComparison {
+            project_key: "all".to_string(),
+            project_identity: "all".to_string(),
+            primary_count,
+            legacy_count,
+            state: if drift_details.is_empty() { ProjectionStatus::Current } else { ProjectionStatus::Drifted },
+            expected_fingerprint: None,
+            observed_fingerprint: None,
+            drift_details,
+        });
+    }
     let project_path = repo_root.join("projects").join(project_name);
     let index_path = project_path.join("mind-index.yaml");
 
