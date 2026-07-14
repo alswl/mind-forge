@@ -104,6 +104,14 @@ pub fn list_jobs(repo_root: &Path, state_filter: Option<&str>, limit: u32) -> Re
     let store = super::sync::open_active_store(repo_root)?;
     let chunks = store.scan_rows("chunks")?;
     let documents = store.scan_rows("documents")?;
+    let mut enrichment_states = std::collections::BTreeMap::<String, String>::new();
+    for batch in store.scan_rows("enrichments")? {
+        let keys = string_column(&batch, "document_key")?;
+        let states = string_column(&batch, "state")?;
+        for row in 0..batch.num_rows() {
+            enrichment_states.insert(keys.value(row).to_string(), states.value(row).to_string());
+        }
+    }
     let mut totals = std::collections::BTreeMap::<String, u32>::new();
     for batch in chunks {
         let keys = string_column(&batch, "document_key")?;
@@ -117,7 +125,7 @@ pub fn list_jobs(repo_root: &Path, state_filter: Option<&str>, limit: u32) -> Re
         let fps = string_column(&batch, "content_fingerprint")?;
         let revisions = int64_column(&batch, "content_revision")?;
         for row in 0..batch.num_rows() {
-            let state = "pending";
+            let state = enrichment_states.get(keys.value(row)).map(String::as_str).unwrap_or("pending");
             if state_filter.is_none_or(|filter| filter == state) {
                 jobs.push(EnrichmentJob {
                     document_key: keys.value(row).to_string(),

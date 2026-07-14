@@ -644,6 +644,15 @@ mod tests {
         .unwrap();
         assert_eq!(applied.state, "ready");
         assert_eq!(store.count_rows("enrichments").unwrap(), 1);
+        assert!(
+            crate::service::source::advanced::enrichment::list_jobs(dir.path(), Some("pending"), 10)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            crate::service::source::advanced::enrichment::list_jobs(dir.path(), Some("ready"), 10).unwrap().len(),
+            1
+        );
 
         let search = crate::service::source::advanced::retrieval::search_repository(
             dir.path(),
