@@ -70,6 +70,13 @@ pub fn embed_query_fallback(_query: &str) -> Result<Vec<f32>> {
     Ok(vec![0.0f32; EMBEDDING_DIMENSION])
 }
 
+/// Load the embedding model only when it has been explicitly installed, so
+/// neither sync nor search ever triggers an implicit download.
+pub fn load_if_installed(repo_root: &std::path::Path) -> Option<EmbeddingModel> {
+    let status = super::model_store::model_status(repo_root, None).ok()?;
+    (status.status == "ready").then(EmbeddingModel::new)
+}
+
 /// Cosine similarity.
 pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();

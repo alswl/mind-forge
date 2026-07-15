@@ -283,47 +283,60 @@ fn search_repository_with_store(
         }
     }
 
-    // Try LanceDB advanced search if store is available
+    // LanceDB advanced retrieval. When an embedding model is installed, fuse
+    // vector similarity with BM25 using native reciprocal-rank fusion;
+    // otherwise use BM25-only full-text search. Loading is gated on an explicit
+    // install so a read-only search never triggers a download.
     let lancedb_available = store.is_some();
     let mut advanced_results: Vec<SourceSearchResult> = Vec::new();
 
-    if lancedb_available
-        && let Some(s) = store
-        && let Ok(fts_batches) = s.fts_search("chunks", query, &["text"], limit as usize)
-    {
-        // Extract chunks and LanceDB's native BM25 `_score` from the FTS results.
-        for batch in &fts_batches {
-            let str_col = |name: &str| {
-                batch.column_by_name(name).and_then(|c| c.as_any().downcast_ref::<arrow_array::StringArray>())
-            };
-            let (Some(texts), Some(ids), Some(dks)) = (str_col("text"), str_col("chunk_id"), str_col("document_key"))
-            else {
-                continue;
-            };
-            let locators = str_col("locator_json");
-            let scores =
-                batch.column_by_name("_score").and_then(|c| c.as_any().downcast_ref::<arrow_array::Float32Array>());
-            for row in 0..batch.num_rows() {
-                let dk = dks.value(row).to_string();
-                let score = scores.map(|s| s.value(row)).unwrap_or(0.0);
-                advanced_results.push(SourceSearchResult {
-                    document_key: Some(dk.clone()),
-                    source_type: "file".to_string(),
-                    location: locators
-                        .map(|l| l.value(row).to_string())
-                        .unwrap_or_else(|| "indexed-content".to_string()),
-                    locator: Some(SourceLocator::Source),
-                    chunk_id: Some(ids.value(row).to_string()),
-                    snippet: texts.value(row).chars().take(200).collect(),
-                    registrations: registrations_for_document(&all_registrations, &document_bindings, &dk),
-                    retrieval_paths: vec!["advanced_keyword".to_string()],
-                    keyword_score: Some(score),
-                    semantic_score: None,
-                    combined_score: score as f64,
-                    freshness: Some("ready".to_string()),
-                    enrichment: None,
-                    deduplicated: false,
-                });
+    if let Some(s) = store {
+        let query_embedding =
+            super::embedding::load_if_installed(repo_root).and_then(|model| model.embed_query(query).ok());
+        let (batches, path_label, hybrid) = match &query_embedding {
+            Some(vector) => {
+                (s.hybrid_search("chunks", query, vector, "vector", limit as usize), "advanced_hybrid", true)
+            }
+            None => (s.fts_search("chunks", query, &["text"], limit as usize), "advanced_keyword", false),
+        };
+        if let Ok(batches) = batches {
+            for batch in &batches {
+                let str_col = |name: &str| {
+                    batch.column_by_name(name).and_then(|c| c.as_any().downcast_ref::<arrow_array::StringArray>())
+                };
+                let (Some(texts), Some(ids), Some(dks)) =
+                    (str_col("text"), str_col("chunk_id"), str_col("document_key"))
+                else {
+                    continue;
+                };
+                let locators = str_col("locator_json");
+                // Hybrid results carry `_relevance_score` (RRF); FTS carry `_score` (BM25).
+                let scores = batch
+                    .column_by_name("_relevance_score")
+                    .or_else(|| batch.column_by_name("_score"))
+                    .and_then(|c| c.as_any().downcast_ref::<arrow_array::Float32Array>());
+                for row in 0..batch.num_rows() {
+                    let dk = dks.value(row).to_string();
+                    let score = scores.map(|s| s.value(row)).unwrap_or(0.0);
+                    advanced_results.push(SourceSearchResult {
+                        document_key: Some(dk.clone()),
+                        source_type: "file".to_string(),
+                        location: locators
+                            .map(|l| l.value(row).to_string())
+                            .unwrap_or_else(|| "indexed-content".to_string()),
+                        locator: Some(SourceLocator::Source),
+                        chunk_id: Some(ids.value(row).to_string()),
+                        snippet: texts.value(row).chars().take(200).collect(),
+                        registrations: registrations_for_document(&all_registrations, &document_bindings, &dk),
+                        retrieval_paths: vec![path_label.to_string()],
+                        keyword_score: (!hybrid).then_some(score),
+                        semantic_score: None,
+                        combined_score: score as f64,
+                        freshness: Some("ready".to_string()),
+                        enrichment: None,
+                        deduplicated: false,
+                    });
+                }
             }
         }
     }

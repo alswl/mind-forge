@@ -182,13 +182,6 @@ pub fn sync_repository(
     })
 }
 
-/// Load the embedding model only when it has been explicitly installed, so
-/// sync never triggers an implicit download. Returns `None` when absent.
-fn load_installed_model(repo_root: &Path) -> Option<super::embedding::EmbeddingModel> {
-    let status = super::model_store::model_status(repo_root, None).ok()?;
-    (status.status == "ready").then(super::embedding::EmbeddingModel::new)
-}
-
 /// Reconcile the Lance-primary registration catalog.  Compatibility YAML is
 /// deliberately not inspected here: once activation succeeds it is an
 /// outbound projection, not an input that can resurrect or alter primary facts.
@@ -233,7 +226,7 @@ fn sync_lance_catalog(
 
     // Load the embedding model once per run, only if explicitly installed, so
     // sync never triggers an implicit download.
-    let model = (!dry_run).then(|| load_installed_model(repo_root)).flatten();
+    let model = (!dry_run).then(|| super::embedding::load_if_installed(repo_root)).flatten();
 
     for registration in registrations {
         let project_path = repo_root.join(&registration.project_path);
