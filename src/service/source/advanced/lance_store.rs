@@ -700,6 +700,38 @@ impl LanceStore {
             })
         })
     }
+
+    /// Native hybrid search: fuse vector KNN and full-text (BM25) candidates
+    /// with LanceDB's built-in reciprocal-rank-fusion reranker. Requires an FTS
+    /// index on `text` and per-row vectors on `column`.
+    pub fn hybrid_search(
+        &self,
+        table_name: &str,
+        query_text: &str,
+        query_vector: &[f32],
+        column: &str,
+        limit: usize,
+    ) -> Result<Vec<arrow_array::RecordBatch>> {
+        let table = self.open_table(table_name)?;
+        let q = query_vector.to_vec();
+        let col = column.to_string();
+        self.rt().block_on(async {
+            let stream = table
+                .query()
+                .nearest_to(q)
+                .map_err(|e| MfError::advanced_store(format!("hybrid search setup failed: {e}"), None))?
+                .column(&col)
+                .full_text_search(FullTextSearchQuery::new(query_text.to_owned()))
+                .rerank(Arc::new(lancedb::rerankers::rrf::RRFReranker::new(60.0)))
+                .limit(limit)
+                .execute()
+                .await
+                .map_err(|e| MfError::advanced_store(format!("hybrid search failed on '{table_name}': {e}"), None))?;
+            stream.try_collect::<Vec<_>>().await.map_err(|e| {
+                MfError::advanced_store(format!("failed to collect hybrid results from '{table_name}': {e}"), None)
+            })
+        })
+    }
 }
 
 #[cfg(test)]
@@ -804,6 +836,83 @@ mod tests {
             .next()
             .expect("at least one result");
         assert_eq!(first, "chunk-1", "the nearest stored embedding must rank first");
+    }
+
+    #[test]
+    fn hybrid_search_fuses_fts_and_vector_signals() {
+        use crate::model::source_advanced::{DocumentState, RelationState};
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = LanceStore::create(&dir.path().join("db")).unwrap();
+        store.ensure_tables().unwrap();
+
+        // chunk-0 is found only by the keyword; chunk-1 only by the vector.
+        let texts = ["photosynthesis chloroplast", "transformer attention model"];
+        let chunks: Vec<Chunk> = (0..2)
+            .map(|i| Chunk {
+                chunk_id: format!("chunk-{i}"),
+                document_key: "doc-1".to_string(),
+                content_revision: 1,
+                ordinal: i as u32,
+                locator_json: "{}".to_string(),
+                locator_sort_key: format!("{i:08}"),
+                text: texts[i].to_string(),
+                text_fingerprint: format!("fp-{i}"),
+                token_count: 3,
+            })
+            .collect();
+        let embeddings: Vec<Vec<f32>> = (0..2)
+            .map(|i| {
+                let mut v = vec![0.0f32; 384];
+                v[i] = 1.0;
+                v
+            })
+            .collect();
+
+        let document = SharedContentDocument {
+            document_key: "doc-1".to_string(),
+            acquisition_kind: "file".to_string(),
+            raw_fingerprint: "r".to_string(),
+            extracted_fingerprint: "e".to_string(),
+            content_fingerprint: "c".to_string(),
+            content_revision: 1,
+            state: DocumentState::Ready,
+            last_error_kind: None,
+            last_error: None,
+            fetched_at: None,
+            synced_at: None,
+            chunk_count: 2,
+        };
+        let relation = RegistrationContentRelation {
+            registration_key: "reg-1".to_string(),
+            document_key: Some("doc-1".to_string()),
+            content_revision: Some(1),
+            acquisition_key: "ak".to_string(),
+            acquired_location: "loc".to_string(),
+            registered_revision: "1".to_string(),
+            state: RelationState::Ready,
+            last_error_kind: None,
+            last_error: None,
+            attempted_at: None,
+            synced_at: None,
+        };
+        store.append_content(&document, &relation, &chunks, Some(&embeddings)).unwrap();
+        store.create_fts_index("chunks", &["text"]).unwrap();
+
+        // Query keyword targets chunk-0; query vector targets chunk-1. RRF must
+        // surface both signals in the fused result set.
+        let mut query_vec = vec![0.0f32; 384];
+        query_vec[1] = 1.0;
+        let batches = store.hybrid_search("chunks", "photosynthesis", &query_vec, "vector", 10).unwrap();
+        let ids: Vec<String> = batches
+            .iter()
+            .flat_map(|b| {
+                let ids = b.column_by_name("chunk_id").unwrap().as_any().downcast_ref::<StringArray>().unwrap();
+                (0..b.num_rows()).map(|r| ids.value(r).to_string()).collect::<Vec<_>>()
+            })
+            .collect();
+        assert!(ids.contains(&"chunk-0".to_string()), "keyword-only match must appear: {ids:?}");
+        assert!(ids.contains(&"chunk-1".to_string()), "vector-only match must appear: {ids:?}");
     }
 
     #[test]
