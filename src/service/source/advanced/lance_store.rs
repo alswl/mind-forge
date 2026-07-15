@@ -341,11 +341,17 @@ impl LanceStore {
     /// Persist one extracted document, its binding, and its searchable chunks.
     /// Vectors are intentionally zero-filled until the explicit local model
     /// pipeline supplies embeddings; FTS can still query the actual text.
+    /// Append a document, its registration binding, and chunks.
+    ///
+    /// `embeddings` supplies one 384-dim passage vector per chunk (same order);
+    /// when `None` or mismatched, vectors are zero-filled so keyword/FTS search
+    /// still works and semantic ranking simply degrades.
     pub fn append_content(
         &self,
         document: &SharedContentDocument,
         relation: &RegistrationContentRelation,
         chunks: &[Chunk],
+        embeddings: Option<&[Vec<f32>]>,
     ) -> Result<()> {
         // LanceDB does not enforce application keys. Replace the current
         // revision deterministically before appending so a retry cannot grow
@@ -397,10 +403,16 @@ impl LanceStore {
         if chunks.is_empty() {
             return Ok(());
         }
+        let flat: Vec<f32> = match embeddings {
+            Some(embs) if embs.len() == chunks.len() && embs.iter().all(|v| v.len() == 384) => {
+                embs.iter().flat_map(|v| v.iter().copied()).collect()
+            }
+            _ => vec![0.0; chunks.len() * 384],
+        };
         let vectors = FixedSizeListArray::try_new(
             Arc::new(Field::new("item", DataType::Float32, true)),
             384,
-            Arc::new(Float32Array::from(vec![0.0; chunks.len() * 384])),
+            Arc::new(Float32Array::from(flat)),
             None,
         )
         .map_err(|e| MfError::advanced_store(format!("failed to build chunk vectors: {e}"), None))?;
@@ -716,6 +728,82 @@ mod tests {
             vec_field.data_type(),
             &DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), 384)
         );
+    }
+
+    #[test]
+    fn vector_search_ranks_persisted_embeddings_by_similarity() {
+        use crate::model::source_advanced::{DocumentState, RelationState};
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = LanceStore::create(&dir.path().join("db")).unwrap();
+        store.ensure_tables().unwrap();
+
+        // Three chunks with distinct unit-basis 384-dim embeddings.
+        let chunks: Vec<Chunk> = (0..3)
+            .map(|i| Chunk {
+                chunk_id: format!("chunk-{i}"),
+                document_key: "doc-1".to_string(),
+                content_revision: 1,
+                ordinal: i as u32,
+                locator_json: "{}".to_string(),
+                locator_sort_key: format!("{i:08}"),
+                text: format!("chunk {i}"),
+                text_fingerprint: format!("fp-{i}"),
+                token_count: 2,
+            })
+            .collect();
+        let embeddings: Vec<Vec<f32>> = (0..3)
+            .map(|i| {
+                let mut v = vec![0.0f32; 384];
+                v[i] = 1.0;
+                v
+            })
+            .collect();
+
+        let document = SharedContentDocument {
+            document_key: "doc-1".to_string(),
+            acquisition_kind: "file".to_string(),
+            raw_fingerprint: "r".to_string(),
+            extracted_fingerprint: "e".to_string(),
+            content_fingerprint: "c".to_string(),
+            content_revision: 1,
+            state: DocumentState::Ready,
+            last_error_kind: None,
+            last_error: None,
+            fetched_at: None,
+            synced_at: None,
+            chunk_count: 3,
+        };
+        let relation = RegistrationContentRelation {
+            registration_key: "reg-1".to_string(),
+            document_key: Some("doc-1".to_string()),
+            content_revision: Some(1),
+            acquisition_key: "ak".to_string(),
+            acquired_location: "loc".to_string(),
+            registered_revision: "1".to_string(),
+            state: RelationState::Ready,
+            last_error_kind: None,
+            last_error: None,
+            attempted_at: None,
+            synced_at: None,
+        };
+        store.append_content(&document, &relation, &chunks, Some(&embeddings)).unwrap();
+
+        // Query nearest to basis vector 1 → chunk-1 must rank first (brute-force
+        // KNN, no vector index required). This proves the native vector path
+        // works on our schema once real embeddings are stored.
+        let mut query = vec![0.0f32; 384];
+        query[1] = 1.0;
+        let batches = store.vector_search("chunks", &query, "vector", 3).unwrap();
+        let first = batches
+            .iter()
+            .flat_map(|b| {
+                let ids = b.column_by_name("chunk_id").unwrap().as_any().downcast_ref::<StringArray>().unwrap();
+                (0..b.num_rows()).map(|r| ids.value(r).to_string()).collect::<Vec<_>>()
+            })
+            .next()
+            .expect("at least one result");
+        assert_eq!(first, "chunk-1", "the nearest stored embedding must rank first");
     }
 
     #[test]

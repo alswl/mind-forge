@@ -122,6 +122,7 @@ pub fn sync_repository(
                         dry_run,
                         offline,
                         store.as_ref(),
+                        None,
                     ) {
                         Ok(item) => {
                             match item.action.as_str() {
@@ -181,6 +182,13 @@ pub fn sync_repository(
     })
 }
 
+/// Load the embedding model only when it has been explicitly installed, so
+/// sync never triggers an implicit download. Returns `None` when absent.
+fn load_installed_model(repo_root: &Path) -> Option<super::embedding::EmbeddingModel> {
+    let status = super::model_store::model_status(repo_root, None).ok()?;
+    (status.status == "ready").then(super::embedding::EmbeddingModel::new)
+}
+
 /// Reconcile the Lance-primary registration catalog.  Compatibility YAML is
 /// deliberately not inspected here: once activation succeeds it is an
 /// outbound projection, not an input that can resurrect or alter primary facts.
@@ -223,6 +231,10 @@ fn sync_lance_catalog(
     let mut failed = 0u64;
     let mut projects = std::collections::BTreeMap::<String, bool>::new();
 
+    // Load the embedding model once per run, only if explicitly installed, so
+    // sync never triggers an implicit download.
+    let model = (!dry_run).then(|| load_installed_model(repo_root)).flatten();
+
     for registration in registrations {
         let project_path = repo_root.join(&registration.project_path);
         let outcome = sync_one_source(
@@ -235,6 +247,7 @@ fn sync_lance_catalog(
             dry_run,
             offline,
             (!dry_run).then_some(store),
+            model.as_ref(),
         );
         match outcome {
             Ok(mut item) => {
@@ -312,6 +325,7 @@ fn sync_one_source(
     dry_run: bool,
     offline: bool,
     store: Option<&LanceStore>,
+    model: Option<&super::embedding::EmbeddingModel>,
 ) -> Result<SyncItem> {
     // Check if remote and offline
     if acquisition::is_url(location) {
@@ -459,7 +473,15 @@ fn sync_one_source(
             attempted_at: Some(now.clone()),
             synced_at: Some(now),
         };
-        store.append_content(&document, &relation, &chunks)?;
+        // Generate passage embeddings when an installed model is available;
+        // otherwise persist zero vectors and let semantic ranking degrade.
+        let embeddings: Option<Vec<Vec<f32>>> = model
+            .map(|m| {
+                let texts: Vec<&str> = chunks.iter().map(|c| c.text.as_str()).collect();
+                m.embed_passages(&texts)
+            })
+            .transpose()?;
+        store.append_content(&document, &relation, &chunks, embeddings.as_deref())?;
     }
 
     Ok(SyncItem {
