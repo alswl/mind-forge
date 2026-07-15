@@ -612,8 +612,12 @@ impl LanceStore {
     pub fn create_fts_index(&self, table_name: &str, columns: &[&str]) -> Result<()> {
         let table = self.open_table(table_name)?;
         self.rt().block_on(async {
+            // ICU dictionary-based segmentation tokenizes both English and CJK.
+            // The default `simple` tokenizer splits on whitespace/punctuation, so
+            // Chinese text (which has no spaces) becomes unsearchable.
+            let params = lancedb::index::scalar::FtsIndexBuilder::default().base_tokenizer("icu".to_string());
             table
-                .create_index(columns, lancedb::index::Index::FTS(lancedb::index::scalar::FtsIndexBuilder::default()))
+                .create_index(columns, lancedb::index::Index::FTS(params))
                 .replace(true)
                 .execute()
                 .await

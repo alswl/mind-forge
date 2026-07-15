@@ -103,6 +103,39 @@ fn synced_repo() -> Dataset {
 }
 
 #[test]
+fn advanced_search_matches_chinese_via_icu_tokenizer() {
+    // Chinese has no word spaces, so the default `simple` FTS tokenizer cannot
+    // match it. The index is built with ICU segmentation so both CJK and
+    // English content are searchable. (CJK test data is the allowed exception.)
+    let ds = Dataset::empty().with_standard_project("alpha");
+    std::fs::write(ds.root().join("minds.yaml"), MANIFEST_ALPHA_BETA).expect("write manifest");
+    std::fs::create_dir_all(ds.root().join("projects/alpha/sources/file")).expect("source dir");
+    std::fs::write(
+        ds.root().join("projects/alpha/sources/file/zh.md"),
+        "# 光合作用\n\n叶绿体将光能转化为化学能。卡尔文循环利用光反应产生的 ATP 固定二氧化碳。\n",
+    )
+    .expect("write chinese source");
+    let (o, e, c) = run_in(ds.root(), &["source", "index", "--project", "alpha"]);
+    assert_eq!(c, 0, "index failed: {o}{e}");
+    let (o, e, c) = run_in(ds.root(), &["source", "advanced", "enable"]);
+    assert_eq!(c, 0, "enable failed: {o}{e}");
+    let (o, e, c) = run_in(ds.root(), &["source", "advanced", "sync", "--offline"]);
+    assert_eq!(c, 0, "sync failed: {o}{e}");
+
+    for term in ["光合作用", "叶绿体", "化学能"] {
+        let (stdout, stderr, code) =
+            run_in(ds.root(), &["--output", "json", "source", "search", term, "--mode", "advanced"]);
+        assert_eq!(code, 0, "search {term} failed\n{stdout}\n{stderr}");
+        let results = report(&stdout);
+        assert_eq!(
+            results["results"].as_array().map(|r| r.len()),
+            Some(1),
+            "Chinese term {term} should match the CJK document: {stdout}"
+        );
+    }
+}
+
+#[test]
 fn advanced_search_finds_content_from_another_projects_cwd() {
     let ds = synced_repo();
 
