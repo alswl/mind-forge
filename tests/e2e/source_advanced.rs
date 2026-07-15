@@ -128,6 +128,26 @@ fn advanced_search_finds_content_from_another_projects_cwd() {
 }
 
 #[test]
+fn advanced_search_ranks_non_adjacent_terms_via_bm25() {
+    let ds = synced_repo();
+
+    // "quantum" and "teleportation" both occur in alpha's document but are not
+    // adjacent ("Quantum entanglement enables teleportation..."). LanceDB's
+    // tokenized BM25 index matches on terms, so this returns a hit with a real
+    // relevance score — a plain substring scan of the phrase would find nothing.
+    let (stdout, stderr, code) =
+        run_in(ds.root(), &["--output", "json", "source", "search", "quantum teleportation", "--mode", "advanced"]);
+    assert_eq!(code, 0, "advanced search failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+
+    let data = report(&stdout);
+    let results = data["results"].as_array().expect("results array");
+    assert_eq!(results.len(), 1, "BM25 matches non-adjacent terms: {stdout}");
+    assert!(data["actual_paths"].as_array().expect("paths").iter().any(|p| p == "advanced_keyword"), "{stdout}");
+    let score = results[0]["keyword_score"].as_f64().expect("keyword_score present");
+    assert!(score > 0.0, "result carries a native BM25 score, not a placeholder: {stdout}");
+}
+
+#[test]
 fn basic_search_matches_metadata_not_content() {
     let ds = synced_repo();
 

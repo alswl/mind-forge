@@ -603,13 +603,24 @@ impl LanceStore {
         })
     }
 
-    /// Create a full-text search index on a text column using Auto index selection.
+    /// Create a tokenized full-text (BM25) index on a text column.
+    ///
+    /// `Index::Auto` would build a scalar BTree on a string column, which
+    /// `full_text_search` cannot use; the inverted `Index::FTS` index is
+    /// required. `replace(true)` refreshes the index to cover newly appended
+    /// chunks on each sync.
     pub fn create_fts_index(&self, table_name: &str, columns: &[&str]) -> Result<()> {
         let table = self.open_table(table_name)?;
         self.rt().block_on(async {
-            table.create_index(columns, lancedb::index::Index::Auto).execute().await.map(|_| ()).map_err(|e| {
-                MfError::advanced_store(format!("failed to create FTS index on '{table_name}': {e}"), None)
-            })
+            table
+                .create_index(columns, lancedb::index::Index::FTS(lancedb::index::scalar::FtsIndexBuilder::default()))
+                .replace(true)
+                .execute()
+                .await
+                .map(|_| ())
+                .map_err(|e| {
+                    MfError::advanced_store(format!("failed to create FTS index on '{table_name}': {e}"), None)
+                })
         })
     }
 

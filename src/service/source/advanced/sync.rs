@@ -268,6 +268,21 @@ fn sync_lance_catalog(
         }
     }
     let projects_failed = projects.values().filter(|failed| **failed).count() as u64;
+
+    // Build the tokenized BM25 index over all persisted chunk text so advanced
+    // search uses LanceDB's native full-text ranking rather than a substring
+    // scan. Index construction is an optimization, so a failure degrades to the
+    // fallback path rather than failing the sync.
+    // Only (re)build the index when new chunks were persisted this run, so an
+    // unchanged sync stays a true no-op and does not bump table versions.
+    let mut warnings = Vec::new();
+    if !dry_run
+        && added > 0
+        && let Err(e) = store.create_fts_index("chunks", &["text"])
+    {
+        warnings.push(format!("full-text index not built ({e}); advanced search will use the substring fallback"));
+    }
+
     Ok(SyncReport {
         scope: project_filter.map(|_| "project").unwrap_or("repository").to_string(),
         dry_run,
@@ -281,7 +296,7 @@ fn sync_lance_catalog(
         projects_failed,
         items,
         index_revision: (!dry_run).then(|| "sync-primary".to_string()),
-        warnings: vec![],
+        warnings,
     })
 }
 

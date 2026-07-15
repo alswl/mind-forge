@@ -291,44 +291,39 @@ fn search_repository_with_store(
         && let Some(s) = store
         && let Ok(fts_batches) = s.fts_search("chunks", query, &["text"], limit as usize)
     {
-        // Extract chunks from FTS results
+        // Extract chunks and LanceDB's native BM25 `_score` from the FTS results.
         for batch in &fts_batches {
-            let text_col = batch.column_by_name("text");
-            let chunk_id_col = batch.column_by_name("chunk_id");
-            let doc_key_col = batch.column_by_name("document_key");
-            if let (Some(texts), Some(ids), Some(dks)) = (text_col, chunk_id_col, doc_key_col) {
-                for row in 0..batch.num_rows() {
-                    let t = texts
-                        .as_any()
-                        .downcast_ref::<arrow_array::StringArray>()
-                        .and_then(|a| if row < a.len() { Some(a.value(row).to_string()) } else { None });
-                    let id = ids
-                        .as_any()
-                        .downcast_ref::<arrow_array::StringArray>()
-                        .and_then(|a| if row < a.len() { Some(a.value(row).to_string()) } else { None });
-                    let dk = dks
-                        .as_any()
-                        .downcast_ref::<arrow_array::StringArray>()
-                        .and_then(|a| if row < a.len() { Some(a.value(row).to_string()) } else { None });
-                    if let (Some(t), Some(id), Some(dk)) = (t, id, dk) {
-                        advanced_results.push(SourceSearchResult {
-                            document_key: Some(dk.clone()),
-                            source_type: "file".to_string(),
-                            location: "indexed-content".to_string(),
-                            locator: Some(SourceLocator::Source),
-                            chunk_id: Some(id),
-                            snippet: t.chars().take(200).collect(),
-                            registrations: registrations_for_document(&all_registrations, &document_bindings, &dk),
-                            retrieval_paths: vec!["advanced_keyword".to_string()],
-                            keyword_score: None,
-                            semantic_score: Some(0.5),
-                            combined_score: 0.5,
-                            freshness: Some("ready".to_string()),
-                            enrichment: None,
-                            deduplicated: false,
-                        });
-                    }
-                }
+            let str_col = |name: &str| {
+                batch.column_by_name(name).and_then(|c| c.as_any().downcast_ref::<arrow_array::StringArray>())
+            };
+            let (Some(texts), Some(ids), Some(dks)) = (str_col("text"), str_col("chunk_id"), str_col("document_key"))
+            else {
+                continue;
+            };
+            let locators = str_col("locator_json");
+            let scores =
+                batch.column_by_name("_score").and_then(|c| c.as_any().downcast_ref::<arrow_array::Float32Array>());
+            for row in 0..batch.num_rows() {
+                let dk = dks.value(row).to_string();
+                let score = scores.map(|s| s.value(row)).unwrap_or(0.0);
+                advanced_results.push(SourceSearchResult {
+                    document_key: Some(dk.clone()),
+                    source_type: "file".to_string(),
+                    location: locators
+                        .map(|l| l.value(row).to_string())
+                        .unwrap_or_else(|| "indexed-content".to_string()),
+                    locator: Some(SourceLocator::Source),
+                    chunk_id: Some(ids.value(row).to_string()),
+                    snippet: texts.value(row).chars().take(200).collect(),
+                    registrations: registrations_for_document(&all_registrations, &document_bindings, &dk),
+                    retrieval_paths: vec!["advanced_keyword".to_string()],
+                    keyword_score: Some(score),
+                    semantic_score: None,
+                    combined_score: score as f64,
+                    freshness: Some("ready".to_string()),
+                    enrichment: None,
+                    deduplicated: false,
+                });
             }
         }
     }
