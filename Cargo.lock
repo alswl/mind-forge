@@ -4338,6 +4338,7 @@ dependencies = [
  "feed-rs",
  "fs2",
  "futures",
+ "hf-hub",
  "insta",
  "jieba-rs 0.7.4",
  "lance-index",

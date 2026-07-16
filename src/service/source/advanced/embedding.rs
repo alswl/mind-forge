@@ -18,21 +18,53 @@ pub const PASSAGE_PREFIX: &str = "passage: ";
 /// A lazily-initialized, thread-safe embedding model handle.
 pub struct EmbeddingModel {
     inner: Mutex<Option<fastembed::TextEmbedding>>,
+    /// When set, load from an imported on-disk bundle via user-defined files
+    /// (no HuggingFace hub, no network). Otherwise use the managed download.
+    bundle_dir: Option<std::path::PathBuf>,
 }
 
 impl EmbeddingModel {
     pub fn new() -> Self {
-        Self { inner: Mutex::new(None) }
+        Self { inner: Mutex::new(None), bundle_dir: None }
+    }
+
+    /// Load from an imported bundle directory containing `onnx/model.onnx` and
+    /// the four tokenizer files. Fully offline — reads file bytes directly.
+    pub fn from_bundle(dir: std::path::PathBuf) -> Self {
+        Self { inner: Mutex::new(None), bundle_dir: Some(dir) }
     }
 
     fn ensure_loaded(&self) -> Result<()> {
         let mut guard =
             self.inner.lock().map_err(|_| MfError::advanced_store("embedding lock poisoned".to_string(), None))?;
         if guard.is_none() {
-            let model = fastembed::TextEmbedding::try_new(fastembed::InitOptions::new(
-                fastembed::EmbeddingModel::MultilingualE5Small,
-            ))
-            .map_err(|e| MfError::advanced_store(format!("failed to load embedding model: {e}"), None))?;
+            let model = match &self.bundle_dir {
+                Some(dir) => {
+                    let read = |name: &str| {
+                        std::fs::read(dir.join(name))
+                            .map_err(|e| MfError::advanced_store(format!("model bundle missing {name}: {e}"), None))
+                    };
+                    let user_model = fastembed::UserDefinedEmbeddingModel::new(
+                        read("onnx/model.onnx")?,
+                        fastembed::TokenizerFiles {
+                            tokenizer_file: read("tokenizer.json")?,
+                            config_file: read("config.json")?,
+                            special_tokens_map_file: read("special_tokens_map.json")?,
+                            tokenizer_config_file: read("tokenizer_config.json")?,
+                        },
+                    )
+                    .with_pooling(fastembed::Pooling::Mean);
+                    fastembed::TextEmbedding::try_new_from_user_defined(
+                        user_model,
+                        fastembed::InitOptionsUserDefined::default(),
+                    )
+                    .map_err(|e| MfError::advanced_store(format!("failed to load model bundle: {e}"), None))?
+                }
+                None => fastembed::TextEmbedding::try_new(fastembed::InitOptions::new(
+                    fastembed::EmbeddingModel::MultilingualE5Small,
+                ))
+                .map_err(|e| MfError::advanced_store(format!("failed to load embedding model: {e}"), None))?,
+            };
             *guard = Some(model);
         }
         Ok(())
@@ -72,9 +104,20 @@ pub fn embed_query_fallback(_query: &str) -> Result<Vec<f32>> {
 
 /// Load the embedding model only when it has been explicitly installed, so
 /// neither sync nor search ever triggers an implicit download.
+///
+/// An imported bundle (`.mind/models/<id>/onnx/model.onnx` present) loads
+/// offline via user-defined files; otherwise the managed cache is used.
 pub fn load_if_installed(repo_root: &std::path::Path) -> Option<EmbeddingModel> {
     let status = super::model_store::model_status(repo_root, None).ok()?;
-    (status.status == "ready").then(EmbeddingModel::new)
+    if status.status != "ready" {
+        return None;
+    }
+    let bundle_dir = std::path::Path::new(&status.path).to_path_buf();
+    if bundle_dir.join("onnx/model.onnx").is_file() {
+        Some(EmbeddingModel::from_bundle(bundle_dir))
+    } else {
+        Some(EmbeddingModel::new())
+    }
 }
 
 /// Cosine similarity.

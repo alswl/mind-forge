@@ -35,6 +35,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util
 # ORT is loaded from the verified repo-local runtime bundle.  Avoid native
 # downloads/linking so every release target can compile offline.
 fastembed = { version = "5.17.2", default-features = false, features = ["hf-hub-rustls-tls", "ort-load-dynamic"] }
+hf-hub = { version = "0.5", default-features = false, features = ["ureq", "rustls-tls"] }
 sha2 = "0.10"
 fs2 = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }

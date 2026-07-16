@@ -130,18 +130,47 @@ then inspect the planned activation before making any change:
 # From the Mind Repo root
 mf source advanced enable --dry-run
 mf source advanced enable
+mf source advanced sync --offline          # extract, chunk, and index content
 mf source advanced status
-mf source search "your query" --mode basic
+mf source search "your query" --mode advanced
 ```
 
-`basic` search is the usable local path today: it searches registered Source
-metadata across the repository without network access or index mutation.
-`advanced` and `both` are experimental interfaces, not yet a complete local
-RAG workflow: activation/sync/enrichment storage, vector retrieval, and hybrid
-ranking are still being completed. Do not rely on them for production search or
-expect `sync` to produce a persistent corpus yet. See the manual's
+`basic` search matches registered Source metadata across the repository.
+`advanced` search runs LanceDB's tokenized **BM25** full-text ranking over
+synced content and works fully offline — no embedding model required. When the
+embedding model is installed before `sync`, it additionally uses local vector
+retrieval and hybrid ranking. See the manual's
 [Advanced Source status](docs/manual.md#71-experimental-advanced-source-status)
 for the exact boundary and safe commands.
+
+### Embedding model (for semantic search)
+
+Semantic search uses a repo-local embedding model, `intfloat/multilingual-e5-small`
+(384-dim). It runs on **CPU via ONNX Runtime** — no GPU or VRAM, roughly a few
+hundred MB of RAM, so it runs comfortably on a laptop (including Apple Silicon
+MacBooks). `sync` and `search` never download it implicitly; install it once,
+explicitly:
+
+```bash
+mf source advanced model install           # downloads from HuggingFace (~120 MB)
+mf source advanced model status
+```
+
+Download notes:
+
+- The download honors the standard `http_proxy` / `https_proxy` environment
+  variables. For this environment, use `http://127.0.0.1:1235` for both.
+- Mirrors: you can point at a mirror with `HF_ENDPOINT`
+  (e.g. `export HF_ENDPOINT=https://hf-mirror.com`) before `model install`.
+  Note that some mirrors redirect large LFS files (`onnx/model.onnx`) back to
+  `huggingface.co`; if that host is blocked, the download still fails despite a
+  reachable mirror host.
+- Fully offline / restricted networks: obtain the model bundle on another
+  machine and import it without any network access:
+
+  ```bash
+  mf source advanced model import /path/to/e5-small-bundle
+  ```
 
 ## Core Concepts
 
