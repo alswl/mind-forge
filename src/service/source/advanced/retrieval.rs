@@ -291,8 +291,24 @@ fn search_repository_with_store(
     let mut advanced_results: Vec<SourceSearchResult> = Vec::new();
 
     if let Some(s) = store {
-        let query_embedding =
-            super::embedding::load_if_installed(repo_root).and_then(|model| model.embed_query(query).ok());
+        let query_embedding = match super::embedding::provider_for_repo(repo_root) {
+            Ok(Some(provider)) => match provider.embed_query(query) {
+                Ok(vector) => Some(vector),
+                Err(error) => {
+                    warnings.push(format!("embedding provider unavailable; semantic retrieval degraded: {error}"));
+                    None
+                }
+            },
+            Ok(None) => {
+                warnings.push("embedding provider is not configured; semantic retrieval degraded".to_string());
+                None
+            }
+            Err(error) => {
+                warnings
+                    .push(format!("embedding provider configuration is invalid; semantic retrieval degraded: {error}"));
+                None
+            }
+        };
         let (batches, path_label, hybrid) = match &query_embedding {
             Some(vector) => {
                 (s.hybrid_search("chunks", query, vector, "vector", limit as usize), "advanced_hybrid", true)

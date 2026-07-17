@@ -44,6 +44,17 @@ pub struct ModelStatusReport {
     pub path: String,
 }
 
+/// Read-only diagnostics for dependencies required by vector retrieval.
+#[derive(Debug, Serialize)]
+pub struct ModelDoctorReport {
+    pub model_status: String,
+    pub model_path: String,
+    pub runtime_path: Option<String>,
+    pub runtime_status: String,
+    pub ort_dylib_path: Option<String>,
+    pub ready: bool,
+}
+
 /// Install the default embedding model. Downloads from HuggingFace if not cached.
 pub fn install_model(
     repo_root: &Path,
@@ -165,6 +176,36 @@ pub fn model_status(repo_root: &Path, model_id: Option<&str>) -> Result<ModelSta
             path: model_dir.to_string_lossy().to_string(),
         })
     }
+}
+
+/// Detect model and ONNX Runtime availability without loading, downloading, or mutating.
+pub fn doctor_model(repo_root: &Path, model_id: Option<&str>) -> Result<ModelDoctorReport> {
+    let status = model_status(repo_root, model_id)?;
+    let dir = PathBuf::from(&status.path);
+    let runtime = runtime_library_path(&dir);
+    let env_runtime = std::env::var("ORT_DYLIB_PATH").ok().filter(|path| Path::new(path).is_file());
+    let runtime_path = runtime.or_else(|| env_runtime.clone());
+    let runtime_status = if runtime_path.is_some() { "ready" } else { "missing" }.to_string();
+    Ok(ModelDoctorReport {
+        ready: status.status == "ready" && runtime_path.is_some(),
+        model_status: status.status,
+        model_path: status.path,
+        runtime_path,
+        runtime_status,
+        ort_dylib_path: env_runtime,
+    })
+}
+
+fn runtime_library_path(model_dir: &Path) -> Option<String> {
+    let name = if cfg!(target_os = "windows") {
+        "onnxruntime.dll"
+    } else if cfg!(target_os = "macos") {
+        "libonnxruntime.dylib"
+    } else {
+        "libonnxruntime.so"
+    };
+    let path = model_dir.join("runtime").join(name);
+    path.is_file().then(|| path.to_string_lossy().to_string())
 }
 
 fn ensure_supported_model(model_id: &str) -> Result<()> {

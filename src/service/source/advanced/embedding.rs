@@ -1,123 +1,138 @@
-//! Local embedding generation using FastEmbed with ONNX Runtime.
-//!
-//! Uses intfloat/multilingual-e5-small (384-dim) with Mean pooling,
-//! L2 normalization, and E5 query/passage prefixes.
-//!
-//! The model loads lazily on first use from the FastEmbed cache directory.
-//! Sync/search never trigger implicit model downloads — the model must be
-//! installed explicitly via `mf source advanced model install`.
+//! OpenAI-compatible embedding provider integration for advanced Sources.
 
-use std::sync::Mutex;
+use std::time::Duration;
 
 use crate::error::{MfError, Result};
+use crate::model::manifest::AdvancedSourceConfig;
 
 pub const EMBEDDING_DIMENSION: usize = 384;
 pub const QUERY_PREFIX: &str = "query: ";
 pub const PASSAGE_PREFIX: &str = "passage: ";
 
-/// A lazily-initialized, thread-safe embedding model handle.
-pub struct EmbeddingModel {
-    inner: Mutex<Option<fastembed::TextEmbedding>>,
-    /// When set, load from an imported on-disk bundle via user-defined files
-    /// (no HuggingFace hub, no network). Otherwise use the managed download.
-    bundle_dir: Option<std::path::PathBuf>,
+/// Explicit OpenAI-compatible embedding client.  It owns no credentials on
+/// disk: the API key is read from the configured environment variable for each
+/// construction and only used in the Authorization header.
+#[derive(Debug)]
+pub struct EmbeddingProvider {
+    endpoint: String,
+    model: String,
+    api_key: Option<String>,
+    dimension: usize,
+    timeout: Duration,
 }
 
-impl EmbeddingModel {
-    pub fn new() -> Self {
-        Self { inner: Mutex::new(None), bundle_dir: None }
-    }
-
-    /// Load from an imported bundle directory containing `onnx/model.onnx` and
-    /// the four tokenizer files. Fully offline — reads file bytes directly.
-    pub fn from_bundle(dir: std::path::PathBuf) -> Self {
-        Self { inner: Mutex::new(None), bundle_dir: Some(dir) }
-    }
-
-    fn ensure_loaded(&self) -> Result<()> {
-        let mut guard =
-            self.inner.lock().map_err(|_| MfError::advanced_store("embedding lock poisoned".to_string(), None))?;
-        if guard.is_none() {
-            let model = match &self.bundle_dir {
-                Some(dir) => {
-                    let read = |name: &str| {
-                        std::fs::read(dir.join(name))
-                            .map_err(|e| MfError::advanced_store(format!("model bundle missing {name}: {e}"), None))
-                    };
-                    let user_model = fastembed::UserDefinedEmbeddingModel::new(
-                        read("onnx/model.onnx")?,
-                        fastembed::TokenizerFiles {
-                            tokenizer_file: read("tokenizer.json")?,
-                            config_file: read("config.json")?,
-                            special_tokens_map_file: read("special_tokens_map.json")?,
-                            tokenizer_config_file: read("tokenizer_config.json")?,
-                        },
-                    )
-                    .with_pooling(fastembed::Pooling::Mean);
-                    fastembed::TextEmbedding::try_new_from_user_defined(
-                        user_model,
-                        fastembed::InitOptionsUserDefined::default(),
-                    )
-                    .map_err(|e| MfError::advanced_store(format!("failed to load model bundle: {e}"), None))?
-                }
-                None => fastembed::TextEmbedding::try_new(fastembed::InitOptions::new(
-                    fastembed::EmbeddingModel::MultilingualE5Small,
-                ))
-                .map_err(|e| MfError::advanced_store(format!("failed to load embedding model: {e}"), None))?,
-            };
-            *guard = Some(model);
-        }
-        Ok(())
+impl EmbeddingProvider {
+    pub fn from_config(config: &AdvancedSourceConfig) -> Result<Option<Self>> {
+        let Some(endpoint) = config.embedding_endpoint.as_deref().filter(|value| !value.trim().is_empty()) else {
+            return Ok(None);
+        };
+        let model = config.embedding_model.as_deref().filter(|value| !value.trim().is_empty()).ok_or_else(|| {
+            MfError::usage(
+                "advanced.embedding_model is required when advanced.embedding_endpoint is configured".to_string(),
+                Some("set both embedding_endpoint and embedding_model in minds.yaml".to_string()),
+            )
+        })?;
+        let api_key = match config.embedding_api_key_env.as_deref() {
+            Some(name) => Some(std::env::var(name).map_err(|_| {
+                MfError::usage(
+                    format!("embedding credential environment variable '{name}' is not set"),
+                    Some("set the configured environment variable before sync or advanced search".to_string()),
+                )
+            })?),
+            None => None,
+        };
+        let endpoint = endpoint.trim_end_matches('/');
+        let endpoint = if endpoint.ends_with("/v1/embeddings") {
+            endpoint.to_string()
+        } else {
+            format!("{endpoint}/v1/embeddings")
+        };
+        Ok(Some(Self {
+            endpoint,
+            model: model.to_string(),
+            api_key,
+            dimension: config.embedding_dimension as usize,
+            timeout: Duration::from_secs(config.fetch_timeout_seconds as u64),
+        }))
     }
 
     pub fn embed_passages(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
-        self.ensure_loaded()?;
-        let mut guard =
-            self.inner.lock().map_err(|_| MfError::advanced_store("embedding lock poisoned".to_string(), None))?;
-        let model = guard.as_mut().unwrap();
-        let prefixed: Vec<String> = texts.iter().map(|t| format!("{PASSAGE_PREFIX}{t}")).collect();
-        let refs: Vec<&str> = prefixed.iter().map(|s| s.as_str()).collect();
-        model.embed(refs, None).map_err(|e| MfError::advanced_store(format!("embedding failed: {e}"), None))
+        self.request(texts)
     }
 
     pub fn embed_query(&self, query: &str) -> Result<Vec<f32>> {
-        self.ensure_loaded()?;
-        let mut guard =
-            self.inner.lock().map_err(|_| MfError::advanced_store("embedding lock poisoned".to_string(), None))?;
-        let model = guard.as_mut().unwrap();
-        let results = model
-            .embed(&[format!("{QUERY_PREFIX}{query}")], None)
-            .map_err(|e| MfError::advanced_store(format!("query embedding failed: {e}"), None))?;
-        results.into_iter().next().ok_or_else(|| MfError::advanced_store("no embedding returned".to_string(), None))
+        self.request(&[query])?
+            .into_iter()
+            .next()
+            .ok_or_else(|| MfError::advanced_store("embedding provider returned no vector".to_string(), None))
+    }
+
+    fn request(&self, inputs: &[&str]) -> Result<Vec<Vec<f32>>> {
+        if inputs.is_empty() {
+            return Ok(vec![]);
+        }
+        let client = reqwest::blocking::Client::builder().timeout(self.timeout).build().map_err(|e| {
+            MfError::advanced_store(format!("failed to initialize embedding provider client: {e}"), None)
+        })?;
+        let mut request = client.post(&self.endpoint).header(reqwest::header::CONTENT_TYPE, "application/json");
+        if let Some(api_key) = &self.api_key {
+            request = request.bearer_auth(api_key);
+        }
+        let body = serde_json::json!({"model": self.model, "input": inputs});
+        let response = request
+            .body(body.to_string())
+            .send()
+            .map_err(|e| MfError::advanced_store(format!("embedding provider request failed: {e}"), None))?;
+        let status = response.status();
+        let body = response
+            .text()
+            .map_err(|e| MfError::advanced_store(format!("failed to read embedding provider response: {e}"), None))?;
+        if !status.is_success() {
+            return Err(MfError::advanced_store(format!("embedding provider returned HTTP {status}"), None));
+        }
+        #[derive(serde::Deserialize)]
+        struct Response {
+            data: Vec<Item>,
+        }
+        #[derive(serde::Deserialize)]
+        struct Item {
+            index: usize,
+            embedding: Vec<f32>,
+        }
+        let mut data: Vec<Item> = serde_json::from_str::<Response>(&body)
+            .map_err(|_| MfError::advanced_store("embedding provider returned an invalid response".to_string(), None))?
+            .data;
+        data.sort_by_key(|item| item.index);
+        if data.len() != inputs.len() {
+            return Err(MfError::advanced_store(
+                "embedding provider returned an unexpected vector count".to_string(),
+                None,
+            ));
+        }
+        for item in &data {
+            if item.embedding.len() != self.dimension || item.embedding.iter().any(|value| !value.is_finite()) {
+                return Err(MfError::advanced_store(
+                    "embedding provider returned an invalid vector dimension or value".to_string(),
+                    None,
+                ));
+            }
+        }
+        Ok(data.into_iter().map(|item| item.embedding).collect())
     }
 }
 
-/// Fallback zero-vector embeddings for when no model is available.
-pub fn embed_passages_fallback(texts: &[&str]) -> Result<Vec<Vec<f32>>> {
-    Ok(texts.iter().map(|_| vec![0.0f32; EMBEDDING_DIMENSION]).collect())
-}
-
-/// Fallback zero-vector query embedding.
-pub fn embed_query_fallback(_query: &str) -> Result<Vec<f32>> {
-    Ok(vec![0.0f32; EMBEDDING_DIMENSION])
-}
-
-/// Load the embedding model only when it has been explicitly installed, so
-/// neither sync nor search ever triggers an implicit download.
-///
-/// An imported bundle (`.mind/models/<id>/onnx/model.onnx` present) loads
-/// offline via user-defined files; otherwise the managed cache is used.
-pub fn load_if_installed(repo_root: &std::path::Path) -> Option<EmbeddingModel> {
-    let status = super::model_store::model_status(repo_root, None).ok()?;
-    if status.status != "ready" {
-        return None;
+/// Resolve the configured provider without persisting credentials.  Absence is
+/// normal and callers should expose deterministic degraded behavior.
+pub fn provider_for_repo(repo_root: &std::path::Path) -> Result<Option<EmbeddingProvider>> {
+    let manifest_path = repo_root.join("minds.yaml");
+    if !manifest_path.exists() {
+        return Ok(None);
     }
-    let bundle_dir = std::path::Path::new(&status.path).to_path_buf();
-    if bundle_dir.join("onnx/model.onnx").is_file() {
-        Some(EmbeddingModel::from_bundle(bundle_dir))
-    } else {
-        Some(EmbeddingModel::new())
-    }
+    let manifest = crate::service::repo::load_manifest(&manifest_path)?;
+    let Some(advanced) = manifest.source.as_ref().and_then(|source| source.advanced.as_ref()) else {
+        return Ok(None);
+    };
+    EmbeddingProvider::from_config(advanced)
 }
 
 /// Cosine similarity.
@@ -133,13 +148,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fallback_returns_correct_dimension() {
-        let embeddings = embed_passages_fallback(&["hello", "world"]).unwrap();
-        assert_eq!(embeddings.len(), 2);
-        assert_eq!(embeddings[0].len(), EMBEDDING_DIMENSION);
-    }
-
-    #[test]
     fn cosine_similarity_identical_is_one() {
         let v = vec![1.0f32, 2.0, 3.0];
         assert!((cosine_similarity(&v, &v) - 1.0).abs() < 0.001);
@@ -148,5 +156,20 @@ mod tests {
     #[test]
     fn cosine_similarity_orthogonal_is_zero() {
         assert!((cosine_similarity(&[1.0, 0.0, 0.0], &[0.0, 1.0, 0.0]) - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn provider_requires_a_model_when_endpoint_is_configured() {
+        let config = AdvancedSourceConfig {
+            embedding_endpoint: Some("http://127.0.0.1:9999".to_string()),
+            ..Default::default()
+        };
+        let error = EmbeddingProvider::from_config(&config).unwrap_err();
+        assert!(error.to_string().contains("embedding_model"));
+    }
+
+    #[test]
+    fn provider_is_absent_without_an_explicit_endpoint() {
+        assert!(EmbeddingProvider::from_config(&AdvancedSourceConfig::default()).unwrap().is_none());
     }
 }

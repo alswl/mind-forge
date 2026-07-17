@@ -80,6 +80,20 @@ pub struct SourceSearchConfig {
 /// Advanced Source configuration (chunk/model/network).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdvancedSourceConfig {
+    /// Explicit OpenAI-compatible embedding endpoint.  When absent, semantic
+    /// indexing is unavailable; no implicit provider is selected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedding_endpoint: Option<String>,
+    /// Model name sent to the OpenAI-compatible `/v1/embeddings` endpoint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedding_model: Option<String>,
+    /// Name of the environment variable holding the provider API key.  The
+    /// value itself is deliberately never serialized into `minds.yaml`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedding_api_key_env: Option<String>,
+    /// Expected vector dimension returned by the provider.
+    #[serde(default = "default_embedding_dimension")]
+    pub embedding_dimension: u32,
     #[serde(default = "default_model_id")]
     pub model: String,
     #[serde(default = "default_model_revision")]
@@ -100,6 +114,9 @@ pub struct AdvancedSourceConfig {
 
 fn default_model_id() -> String {
     "intfloat/multilingual-e5-small".to_string()
+}
+fn default_embedding_dimension() -> u32 {
+    384
 }
 fn default_model_revision() -> String {
     "main".to_string()
@@ -123,6 +140,10 @@ fn default_fetch_max_redirects() -> u32 {
 impl Default for AdvancedSourceConfig {
     fn default() -> Self {
         Self {
+            embedding_endpoint: None,
+            embedding_model: None,
+            embedding_api_key_env: None,
+            embedding_dimension: default_embedding_dimension(),
             model: default_model_id(),
             model_revision: default_model_revision(),
             model_path: None,

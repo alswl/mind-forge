@@ -22,9 +22,6 @@ pub struct SourceAdvancedCmd {
 pub enum SourceAdvancedSubcommand {
     /// Activate LanceDB-backed Sources (imports all legacy registrations)
     Enable(AdvancedEnableArgs),
-    /// Manage the local embedding model bundle
-    #[command(subcommand)]
-    Model(ModelCmd),
     /// Reconcile content for all or selected Source registrations
     Sync(AdvancedSyncArgs),
     /// List, show, or apply Claude enrichment for shared Source content
@@ -62,45 +59,6 @@ pub struct AdvancedEnableArgs {
     pub model_path: Option<String>,
     #[command(flatten)]
     pub dry_run: DryRunFlag,
-}
-
-// ── model ──────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Subcommand)]
-pub enum ModelCmd {
-    /// Download and install the embedding model (requires network)
-    Install(ModelInstallArgs),
-    /// Import a local model bundle (network-free)
-    Import(ModelImportArgs),
-    /// Report model installation status (read-only)
-    Status(ModelStatusArgs),
-}
-
-#[derive(Debug, Clone, Args)]
-pub struct ModelInstallArgs {
-    /// Model ID
-    #[arg(long)]
-    pub model: Option<String>,
-    /// Model revision
-    #[arg(long)]
-    pub model_revision: Option<String>,
-    #[command(flatten)]
-    pub dry_run: DryRunFlag,
-}
-
-#[derive(Debug, Clone, Args)]
-pub struct ModelImportArgs {
-    /// Path to the local model bundle directory
-    pub bundle_dir: String,
-    #[command(flatten)]
-    pub dry_run: DryRunFlag,
-}
-
-#[derive(Debug, Clone, Args)]
-pub struct ModelStatusArgs {
-    /// Model ID to check
-    #[arg(long)]
-    pub model: Option<String>,
 }
 
 // ── sync ───────────────────────────────────────────────────────────────────
@@ -266,7 +224,6 @@ pub struct AdvancedDisableArgs {
 pub fn dispatch(cmd: SourceAdvancedCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     match cmd.command {
         SourceAdvancedSubcommand::Enable(args) => handle_enable(args, ctx),
-        SourceAdvancedSubcommand::Model(args) => handle_model(args, ctx),
         SourceAdvancedSubcommand::Sync(args) => handle_sync(args, ctx),
         SourceAdvancedSubcommand::Enrich(args) => handle_enrich(args, ctx),
         SourceAdvancedSubcommand::SkillInstall(args) => handle_skill_install(args, ctx),
@@ -300,45 +257,6 @@ fn handle_enable(args: AdvancedEnableArgs, ctx: &mut CommandCtx) -> Result<Comma
         vec![],
         None,
     ))
-}
-
-fn handle_model(cmd: ModelCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
-    let repo = ctx.require_repo_path()?;
-    match cmd {
-        ModelCmd::Install(args) => {
-            let result = svc::source::advanced::model_store::install_model(
-                repo,
-                args.model.as_deref(),
-                args.model_revision.as_deref(),
-                args.dry_run.dry_run,
-            )?;
-            let json = serde_json::to_value(&result).unwrap_or_default();
-            Ok(CommandOutcome::Success(
-                serde_json::json!({"status": "ok", "command": "source.advanced.model.install", "data": json}),
-                vec![],
-                None,
-            ))
-        }
-        ModelCmd::Import(args) => {
-            let result =
-                svc::source::advanced::model_store::import_model(repo, &args.bundle_dir, args.dry_run.dry_run)?;
-            let json = serde_json::to_value(&result).unwrap_or_default();
-            Ok(CommandOutcome::Success(
-                serde_json::json!({"status": "ok", "command": "source.advanced.model.import", "data": json}),
-                vec![],
-                None,
-            ))
-        }
-        ModelCmd::Status(args) => {
-            let result = svc::source::advanced::model_store::model_status(repo, args.model.as_deref())?;
-            let json = serde_json::to_value(&result).unwrap_or_default();
-            Ok(CommandOutcome::Success(
-                serde_json::json!({"status": "ok", "command": "source.advanced.model.status", "data": json}),
-                vec![],
-                None,
-            ))
-        }
-    }
 }
 
 fn handle_sync(args: AdvancedSyncArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {

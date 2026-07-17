@@ -224,9 +224,9 @@ fn sync_lance_catalog(
     let mut failed = 0u64;
     let mut projects = std::collections::BTreeMap::<String, bool>::new();
 
-    // Load the embedding model once per run, only if explicitly installed, so
-    // sync never triggers an implicit download.
-    let model = (!dry_run).then(|| super::embedding::load_if_installed(repo_root)).flatten();
+    // Resolve the explicit remote provider once per mutation. No provider is
+    // selected implicitly and credentials remain environment-only.
+    let provider = if dry_run { None } else { super::embedding::provider_for_repo(repo_root)? };
 
     for registration in registrations {
         let project_path = repo_root.join(&registration.project_path);
@@ -240,7 +240,7 @@ fn sync_lance_catalog(
             dry_run,
             offline,
             (!dry_run).then_some(store),
-            model.as_ref(),
+            provider.as_ref(),
         );
         match outcome {
             Ok(mut item) => {
@@ -318,10 +318,9 @@ fn sync_one_source(
     dry_run: bool,
     offline: bool,
     store: Option<&LanceStore>,
-    model: Option<&super::embedding::EmbeddingModel>,
+    provider: Option<&super::embedding::EmbeddingProvider>,
 ) -> Result<SyncItem> {
-    // Check if remote and offline
-    if acquisition::is_url(location) {
+    let content = match if acquisition::is_url(location) {
         if offline {
             return Ok(SyncItem {
                 project_identity: String::new(),
@@ -335,35 +334,10 @@ fn sync_one_source(
                 error: Some("offline mode: web/RSS sources require network".to_string()),
             });
         }
-        if dry_run {
-            return Ok(SyncItem {
-                project_identity: String::new(),
-                registration_key: registration_key.to_string(),
-                source_identity: name.to_string(),
-                action: "skipped".to_string(),
-                before_state: None,
-                after_state: RelationState::Pending,
-                detected_format: Some(kind.to_string()),
-                affected_chunks: 0,
-                error: None,
-            });
-        }
-        // Web/RSS acquisition not yet implemented
-        return Ok(SyncItem {
-            project_identity: String::new(),
-            registration_key: registration_key.to_string(),
-            source_identity: name.to_string(),
-            action: "skipped".to_string(),
-            before_state: None,
-            after_state: RelationState::Pending,
-            detected_format: Some(kind.to_string()),
-            affected_chunks: 0,
-            error: Some("HTTP acquisition not yet implemented".to_string()),
-        });
-    }
-
-    // Local file: acquire, extract, chunk
-    let content = match acquisition::acquire_local(project_path, location) {
+        acquisition::acquire_http(location, 64 * 1024 * 1024, 30, 5)
+    } else {
+        acquisition::acquire_local(project_path, location)
+    } {
         Ok(c) => c,
         Err(e) => {
             return Ok(SyncItem {
@@ -468,7 +442,7 @@ fn sync_one_source(
         };
         // Generate passage embeddings when an installed model is available;
         // otherwise persist zero vectors and let semantic ranking degrade.
-        let embeddings: Option<Vec<Vec<f32>>> = model
+        let embeddings: Option<Vec<Vec<f32>>> = provider
             .map(|m| {
                 let texts: Vec<&str> = chunks.iter().map(|c| c.text.as_str()).collect();
                 m.embed_passages(&texts)
