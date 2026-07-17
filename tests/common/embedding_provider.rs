@@ -173,7 +173,9 @@ impl MockProvider {
     }
 }
 
-fn read_request(stream: &mut TcpStream) -> Option<(String, String)> {
+/// Read one HTTP request from the stream, returning (headers, body). Shared
+/// with the mock content site in the ingestion tests.
+pub fn read_request(stream: &mut TcpStream) -> Option<(String, String)> {
     let mut buffer = Vec::new();
     let mut chunk = [0_u8; 4096];
     let header_end = loop {
