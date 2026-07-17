@@ -225,8 +225,10 @@ fn sync_lance_catalog(
     let mut projects = std::collections::BTreeMap::<String, bool>::new();
 
     // Resolve the explicit remote provider once per mutation. No provider is
-    // selected implicitly and credentials remain environment-only.
-    let provider = if dry_run { None } else { super::embedding::provider_for_repo(repo_root)? };
+    // selected implicitly and credentials remain environment-only. Offline
+    // forbids all network, so the provider is skipped and chunks keep zero
+    // vectors until a later online sync.
+    let provider = if dry_run || offline { None } else { super::embedding::provider_for_repo(repo_root)? };
 
     for registration in registrations {
         let project_path = repo_root.join(&registration.project_path);
