@@ -465,6 +465,15 @@ fn search_repository_with_store(
         }
     }
 
+    // Locators must never expose URL credentials, however the source was
+    // registered.
+    for result in &mut results {
+        result.location = super::acquisition::redact_locator(&result.location);
+        for registration in &mut result.registrations {
+            registration.registered_location = super::acquisition::redact_locator(&registration.registered_location);
+        }
+    }
+
     // Derive the report from the paths actually present in returned results,
     // rather than from the requested mode. This keeps degradation observable.
     let mut actual_paths: Vec<String> =

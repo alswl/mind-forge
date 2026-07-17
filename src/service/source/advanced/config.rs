@@ -34,6 +34,12 @@ pub struct ResolvedSourceConfig {
     pub chunk_tokens: u32,
     /// Chunk overlap from advanced config (default 48).
     pub chunk_overlap: u32,
+    /// HTTP acquisition byte limit from advanced config (default 64 MiB).
+    pub fetch_max_bytes: u64,
+    /// HTTP acquisition timeout from advanced config (default 30 s).
+    pub fetch_timeout_seconds: u32,
+    /// HTTP acquisition redirect limit from advanced config (default 5).
+    pub fetch_max_redirects: u32,
     /// Search mode used when the CLI does not provide an explicit override.
     pub default_search_mode: SearchDefaultMode,
 }
@@ -70,6 +76,9 @@ impl ResolvedSourceConfig {
             storage_schema_version: cfg.storage_schema_version.clone(),
             chunk_tokens: adv.map(|a| a.chunk_tokens).unwrap_or(384),
             chunk_overlap: adv.map(|a| a.chunk_overlap).unwrap_or(48),
+            fetch_max_bytes: adv.map(|a| a.fetch_max_bytes).unwrap_or(64 * 1024 * 1024),
+            fetch_timeout_seconds: adv.map(|a| a.fetch_timeout_seconds).unwrap_or(30),
+            fetch_max_redirects: adv.map(|a| a.fetch_max_redirects).unwrap_or(5),
             default_search_mode: if cfg.is_lance_active() {
                 cfg.search.as_ref().map(|search| search.default_mode).unwrap_or_default()
             } else {

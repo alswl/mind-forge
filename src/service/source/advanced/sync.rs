@@ -118,6 +118,7 @@ pub fn sync_repository(
                         kind,
                         location,
                         &rk,
+                        config,
                         &chunk_config,
                         dry_run,
                         offline,
@@ -238,6 +239,7 @@ fn sync_lance_catalog(
             &registration.source_type,
             &registration.registered_location,
             &registration.registration_key,
+            config,
             &chunk_config,
             dry_run,
             offline,
@@ -316,6 +318,7 @@ fn sync_one_source(
     kind: &str,
     location: &str,
     registration_key: &str,
+    config: &ResolvedSourceConfig,
     chunk_config: &ChunkConfig,
     dry_run: bool,
     offline: bool,
@@ -336,7 +339,12 @@ fn sync_one_source(
                 error: Some("offline mode: web/RSS sources require network".to_string()),
             });
         }
-        acquisition::acquire_http(location, 64 * 1024 * 1024, 30, 5)
+        acquisition::acquire_http(
+            location,
+            config.fetch_max_bytes,
+            config.fetch_timeout_seconds,
+            config.fetch_max_redirects,
+        )
     } else {
         acquisition::acquire_local(project_path, location)
     } {

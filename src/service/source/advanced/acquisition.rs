@@ -81,6 +81,18 @@ pub fn acquire_http(
     })
 }
 
+/// Redact credentials/fragments from URL locators; non-URL locators (local
+/// paths) pass through unchanged.
+pub fn redact_locator(location: &str) -> String {
+    if is_url(location)
+        && let Ok(url) = reqwest::Url::parse(location)
+    {
+        redact_url(&url)
+    } else {
+        location.to_string()
+    }
+}
+
 /// Removes userinfo and fragments before a locator reaches reports or storage.
 pub fn redact_url(url: &reqwest::Url) -> String {
     let mut safe = url.clone();
