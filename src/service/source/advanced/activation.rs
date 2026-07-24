@@ -352,6 +352,9 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            fetch_max_bytes: 64 * 1024 * 1024,
+            fetch_timeout_seconds: 30,
+            fetch_max_redirects: 5,
             default_search_mode: SearchDefaultMode::Basic,
         };
         let preview = preview_activation(dir.path(), &config).unwrap();
@@ -384,6 +387,9 @@ sources:
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            fetch_max_bytes: 64 * 1024 * 1024,
+            fetch_timeout_seconds: 30,
+            fetch_max_redirects: 5,
             default_search_mode: SearchDefaultMode::Basic,
         };
         let preview = preview_activation(dir.path(), &config).unwrap();
@@ -419,6 +425,9 @@ sources:
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            fetch_max_bytes: 64 * 1024 * 1024,
+            fetch_timeout_seconds: 30,
+            fetch_max_redirects: 5,
             default_search_mode: SearchDefaultMode::Basic,
         };
         let preview = preview_activation(dir.path(), &config).unwrap();
@@ -461,6 +470,9 @@ sources:
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            fetch_max_bytes: 64 * 1024 * 1024,
+            fetch_timeout_seconds: 30,
+            fetch_max_redirects: 5,
             default_search_mode: SearchDefaultMode::Basic,
         };
         let result = activate(dir.path(), &config).unwrap();

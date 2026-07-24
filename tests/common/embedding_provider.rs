@@ -115,6 +115,10 @@ pub enum Behavior {
     NonFinite(usize),
     /// Read the request, then stall for the given seconds without replying.
     Hang(u64),
+    /// Deterministic concept embedding: related text lands nearby, unrelated
+    /// text is orthogonal. Lets a search test prove the provider-backed vector
+    /// path end to end without a real model.
+    Semantic(usize),
 }
 
 pub struct RecordedRequest {
@@ -139,10 +143,15 @@ impl MockProvider {
             for stream in listener.incoming() {
                 let Ok(mut stream) = stream else { break };
                 let Some((headers, body)) = read_request(&mut stream) else { continue };
-                let input_count = serde_json::from_str::<Value>(&body)
+                let inputs: Vec<String> = serde_json::from_str::<Value>(&body)
                     .ok()
-                    .and_then(|request| request["input"].as_array().map(|inputs| inputs.len()))
-                    .unwrap_or(0);
+                    .and_then(|request| {
+                        request["input"].as_array().map(|inputs| {
+                            inputs.iter().filter_map(|value| value.as_str().map(str::to_string)).collect()
+                        })
+                    })
+                    .unwrap_or_default();
+                let input_count = inputs.len();
                 recorded.lock().expect("mock lock").push(RecordedRequest { headers, body });
                 match behavior {
                     Behavior::Vectors(dimension) => {
@@ -151,6 +160,7 @@ impl MockProvider {
                     Behavior::NonFinite(dimension) => {
                         respond(&mut stream, 200, &vectors_body(input_count, dimension, true))
                     }
+                    Behavior::Semantic(dimension) => respond(&mut stream, 200, &semantic_body(&inputs, dimension)),
                     Behavior::HttpError(status) => respond(&mut stream, status, "{}"),
                     Behavior::Hang(seconds) => std::thread::sleep(std::time::Duration::from_secs(seconds)),
                 }
@@ -228,4 +238,116 @@ fn vectors_body(count: usize, dimension: usize, non_finite: bool) -> String {
         .collect::<Vec<_>>()
         .join(",");
     format!("{{\"object\":\"list\",\"data\":[{items}]}}")
+}
+
+fn semantic_body(inputs: &[String], dimension: usize) -> String {
+    let items = inputs
+        .iter()
+        .enumerate()
+        .map(|(index, text)| {
+            let vector =
+                semantic_vector(text, dimension).iter().map(|value| value.to_string()).collect::<Vec<_>>().join(",");
+            format!("{{\"object\":\"embedding\",\"index\":{index},\"embedding\":[{vector}]}}")
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("{{\"object\":\"list\",\"data\":[{items}]}}")
+}
+
+/// Deterministic concept embedding. A small synonym→concept dictionary maps
+/// related surface terms (even with no shared tokens) onto the same basis
+/// dimension, so a paraphrased query is cosine-close to the intended passage
+/// and orthogonal to unrelated content. Real paraphrase semantics are faked —
+/// this exists only to exercise the provider-backed vector path deterministically.
+fn semantic_vector(text: &str, dimension: usize) -> Vec<f32> {
+    let mut vector = vec![0_f32; dimension];
+    for token in text.to_lowercase().split(|c: char| !c.is_alphanumeric()) {
+        if let Some(concept) = concept_dimension(token) {
+            vector[concept] += 1.0;
+        }
+    }
+    let norm = vector.iter().map(|value| value * value).sum::<f32>().sqrt();
+    if norm > 0.0 {
+        for value in &mut vector {
+            *value /= norm;
+        }
+    } else {
+        // Orthogonal to every concept so unrelated text scores ~0, never NaN.
+        vector[dimension - 1] = 1.0;
+    }
+    vector
+}
+
+fn concept_dimension(token: &str) -> Option<usize> {
+    const QUANTUM: &[&str] = &[
+        "quantum",
+        "entanglement",
+        "entangled",
+        "teleportation",
+        "teleport",
+        "spooky",
+        "nonlocal",
+        "superposition",
+        "qubit",
+    ];
+    const BIOLOGY: &[&str] =
+        &["photosynthesis", "chloroplast", "chlorophyll", "sunlight", "leaf", "plant", "solar", "calvin"];
+    if QUANTUM.contains(&token) {
+        Some(0)
+    } else if BIOLOGY.contains(&token) {
+        Some(1)
+    } else {
+        None
+    }
+}
+
+/// Minimal loopback HTTP site serving one HTML route, for registering a Web
+/// Source in provider-backed search tests. Records how many requests it served.
+pub struct MockContentSite {
+    base: String,
+    path: String,
+    requests: Arc<Mutex<usize>>,
+}
+
+impl MockContentSite {
+    pub fn start(path: &str, content_type: &'static str, body: &str) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock site");
+        let base = format!("http://{}", listener.local_addr().expect("mock site address"));
+        let route = path.to_string();
+        let body = body.to_string();
+        let requests = Arc::new(Mutex::new(0_usize));
+        let counter = Arc::clone(&requests);
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                let Some((headers, _body)) = read_request(&mut stream) else { continue };
+                *counter.lock().expect("site lock") += 1;
+                let request_path = headers.split_whitespace().nth(1).unwrap_or("/");
+                if request_path == route {
+                    respond_content(&mut stream, 200, content_type, body.as_bytes());
+                } else {
+                    respond_content(&mut stream, 404, "text/plain", b"not found");
+                }
+            }
+        });
+        Self { base, path: path.to_string(), requests }
+    }
+
+    /// The absolute URL of the served route.
+    pub fn url(&self) -> String {
+        format!("{}{}", self.base, self.path)
+    }
+
+    pub fn request_count(&self) -> usize {
+        *self.requests.lock().expect("site lock")
+    }
+}
+
+fn respond_content(stream: &mut TcpStream, status: u16, content_type: &str, body: &[u8]) {
+    let head = format!(
+        "HTTP/1.1 {status} Mock\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(body);
 }

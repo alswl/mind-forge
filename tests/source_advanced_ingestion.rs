@@ -105,7 +105,7 @@ fn https_failure_is_a_clean_item_error() {
     assert_eq!(code, 0, "sync run failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let item = item(&report(&stdout), "webpage");
     assert_eq!(item["action"], "failed", "{stdout}");
-    assert!(item["error"].as_str().unwrap_or("").len() > 0, "{stdout}");
+    assert!(!item["error"].as_str().unwrap_or("").is_empty(), "{stdout}");
 }
 
 #[test]

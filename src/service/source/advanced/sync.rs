@@ -749,6 +749,9 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            fetch_max_bytes: 64 * 1024 * 1024,
+            fetch_timeout_seconds: 30,
+            fetch_max_redirects: 5,
             default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
         };
         let report = rebuild_repository(dir.path(), &config, true, false).unwrap();
@@ -766,6 +769,9 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            fetch_max_bytes: 64 * 1024 * 1024,
+            fetch_timeout_seconds: 30,
+            fetch_max_redirects: 5,
             default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
         };
         let report = clear_derived(dir.path(), &config, None, None, false, true).unwrap();
@@ -824,6 +830,9 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            fetch_max_bytes: 64 * 1024 * 1024,
+            fetch_timeout_seconds: 30,
+            fetch_max_redirects: 5,
             default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
         };
         let report = sync_repository(dir.path(), &config, None, None, false, false).unwrap();
@@ -852,6 +861,9 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            fetch_max_bytes: 64 * 1024 * 1024,
+            fetch_timeout_seconds: 30,
+            fetch_max_redirects: 5,
             default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
         };
 
@@ -884,6 +896,9 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            fetch_max_bytes: 64 * 1024 * 1024,
+            fetch_timeout_seconds: 30,
+            fetch_max_redirects: 5,
             default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
         };
         let report = sync_repository(dir.path(), &config, None, Some("two"), false, false).unwrap();
@@ -912,6 +927,9 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            fetch_max_bytes: 64 * 1024 * 1024,
+            fetch_timeout_seconds: 30,
+            fetch_max_redirects: 5,
             default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
         };
         crate::service::source::advanced::activation::activate(dir.path(), &legacy).unwrap();
@@ -1027,6 +1045,9 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            fetch_max_bytes: 64 * 1024 * 1024,
+            fetch_timeout_seconds: 30,
+            fetch_max_redirects: 5,
             default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
         };
         crate::service::source::advanced::activation::activate(dir.path(), &legacy).unwrap();
@@ -1066,6 +1087,9 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            fetch_max_bytes: 64 * 1024 * 1024,
+            fetch_timeout_seconds: 30,
+            fetch_max_redirects: 5,
             default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
         };
         crate::service::source::advanced::activation::activate(dir.path(), &legacy).unwrap();
@@ -1103,6 +1127,9 @@ mod tests {
             storage_schema_version: None,
             chunk_tokens: 384,
             chunk_overlap: 48,
+            fetch_max_bytes: 64 * 1024 * 1024,
+            fetch_timeout_seconds: 30,
+            fetch_max_redirects: 5,
             default_search_mode: crate::model::manifest::SearchDefaultMode::Basic,
         };
         crate::service::source::advanced::activation::activate(dir.path(), &legacy).unwrap();
