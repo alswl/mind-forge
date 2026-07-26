@@ -64,7 +64,7 @@ pub fn build_profile() -> TerminalCapabilityProfile {
 
 fn detect_truecolor(term: &Option<String>, colorterm: &Option<String>) -> (bool, Option<DetectionSource>) {
     // COLORTERM=truecolor or COLORTERM=24bit
-    if let Some(ref ct) = colorterm {
+    if let Some(ct) = colorterm {
         let ct_lower = ct.to_lowercase();
         if ct_lower == "truecolor" || ct_lower == "24bit" {
             return (true, Some(DetectionSource::TerminalIdentity));
@@ -72,7 +72,7 @@ fn detect_truecolor(term: &Option<String>, colorterm: &Option<String>) -> (bool,
     }
 
     // Terminfo-style capabilities via TERM
-    if let Some(ref t) = term {
+    if let Some(t) = term {
         // Ghostty and other modern terminals that advertise direct color
         if t.contains("ghostty") || t.contains("kitty") {
             return (true, Some(DetectionSource::TerminalIdentity));
@@ -146,13 +146,13 @@ fn detect_hyperlinks(term: &Option<String>, term_program: &Option<String>) -> bo
         "foot",
     ];
 
-    if let Some(ref tp) = term_program {
+    if let Some(tp) = term_program {
         let tp_lower = tp.to_lowercase();
         if known.iter().any(|k| tp_lower.contains(k)) {
             return true;
         }
     }
-    if let Some(ref t) = term {
+    if let Some(t) = term {
         let t_lower = t.to_lowercase();
         if known.iter().any(|k| t_lower.contains(k)) {
             return true;
@@ -165,17 +165,17 @@ fn detect_hyperlinks(term: &Option<String>, term_program: &Option<String>) -> bo
     // "tmux" or "screen", first try to detect the outer terminal via
     // TERM_PROGRAM; if that fails, default to true — tmux 3.3+ is widely
     // deployed. Opt-out via MF_NO_HYPERLINKS is still available.
-    if let Some(ref t) = term {
-        if t.starts_with("tmux") || t.starts_with("screen") {
-            let outside_term = std::env::var("TERM_PROGRAM").ok();
-            if let Some(ref ot) = outside_term {
-                let ot_lower = ot.to_lowercase();
-                if known.iter().any(|k| ot_lower.contains(k)) {
-                    return true;
-                }
+    if let Some(t) = term
+        && (t.starts_with("tmux") || t.starts_with("screen"))
+    {
+        let outside_term = std::env::var("TERM_PROGRAM").ok();
+        if let Some(ref ot) = outside_term {
+            let ot_lower = ot.to_lowercase();
+            if known.iter().any(|k| ot_lower.contains(k)) {
+                return true;
             }
-            return true;
         }
+        return true;
     }
 
     false
@@ -200,10 +200,10 @@ fn classify(
     tc_source: Option<DetectionSource>,
 ) -> (ColorMode, DetectionSource, Option<String>) {
     let source = tc_source.unwrap_or_else(|| {
-        if let Some(ref t) = term {
-            if t == "dumb" || t.is_empty() {
-                return DetectionSource::Fallback;
-            }
+        if let Some(t) = term
+            && (t == "dumb" || t.is_empty())
+        {
+            return DetectionSource::Fallback;
         }
         DetectionSource::TerminalIdentity
     });

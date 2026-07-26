@@ -35,11 +35,7 @@ impl AppContext {
             tracing::debug!("repo root via --root: {}", canonical.display());
             Some(canonical)
         } else if let Some(ref cfg) = global.config {
-            if cfg.exists() {
-                repo::detect_repo_root_with_config(cfg)
-            } else {
-                None
-            }
+            if cfg.exists() { repo::detect_repo_root_with_config(cfg) } else { None }
         } else {
             repo::detect_repo_root(&cwd, crate::defaults::MAX_REPO_SEARCH_DEPTH)
         };
@@ -71,11 +67,7 @@ impl AppContext {
 
     /// Returns the project name; only valid when a repo_root is present.
     pub fn project(&self) -> Option<&str> {
-        if self.repo_root.is_some() {
-            self.project.as_deref()
-        } else {
-            None
-        }
+        if self.repo_root.is_some() { self.project.as_deref() } else { None }
     }
 
     pub fn color(&self) -> bool {

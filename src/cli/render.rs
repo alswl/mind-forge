@@ -5,11 +5,11 @@ use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
 use crate::error::{MfError, Result};
 use crate::model::render::{HtmlForm, RenderRequest, RenderScope};
-use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
-use crate::output::show::{
-    json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowOpts, ShowSection, ShowValue,
-};
 use crate::output::Format;
+use crate::output::list::{ListCell, ListOpts, ListRow, ListView, json_collection, render_text};
+use crate::output::show::{
+    ShowBlock, ShowField, ShowOpts, ShowSection, ShowValue, json_envelope, render_text as render_show_text,
+};
 use crate::service::config as config_svc;
 use crate::service::render as render_svc;
 use crate::service::util as svc_util;

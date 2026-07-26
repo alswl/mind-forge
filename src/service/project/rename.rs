@@ -98,17 +98,17 @@ pub fn rename_project(repo_root: &Path, old_name: &str, new_name: &str) -> Resul
 
     // Update mind-index.yaml: rename the project field in every article
     let index_path = new_path.join("mind-index.yaml");
-    if index_path.exists() {
-        if let Ok(mut index) = crate::service::index::load(&new_path) {
-            let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-            if let Some(ref mut articles) = index.articles {
-                for article in articles.iter_mut() {
-                    article.project = new_name.to_string();
-                    article.updated_at = now.clone();
-                }
+    if index_path.exists()
+        && let Ok(mut index) = crate::service::index::load(&new_path)
+    {
+        let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        if let Some(ref mut articles) = index.articles {
+            for article in articles.iter_mut() {
+                article.project = new_name.to_string();
+                article.updated_at = now.clone();
             }
-            let _ = crate::service::index::save(&new_path, &index);
         }
+        let _ = crate::service::index::save(&new_path, &index);
     }
 
     Ok(ProjectRenameReport {

@@ -11,7 +11,7 @@ use chrono::Utc;
 use serde::Serialize;
 
 use crate::error::{MfError, Result};
-use crate::model::manifest::{default_projects_dir, MindsManifest, ProjectEntry};
+use crate::model::manifest::{MindsManifest, ProjectEntry, default_projects_dir};
 use crate::runtime::repo::detect_repo_root;
 use crate::service::util;
 
@@ -21,11 +21,7 @@ use crate::service::util;
 /// `./<projects_dir>/<name>`. Trailing/leading slashes on `projects_dir` are tolerated.
 pub fn project_relpath(projects_dir: &str, name: &str) -> String {
     let trimmed = projects_dir.trim_matches('/');
-    if trimmed.is_empty() || trimmed == "." {
-        format!("./{name}")
-    } else {
-        format!("./{trimmed}/{name}")
-    }
+    if trimmed.is_empty() || trimmed == "." { format!("./{name}") } else { format!("./{trimmed}/{name}") }
 }
 
 /// Read `projects_dir` from `<repo_root>/minds.yaml`, falling back to default
@@ -63,6 +59,13 @@ pub fn load_manifest(path: &Path) -> Result<MindsManifest> {
     })?;
     util::validate_schema_version(&manifest.schema_version, path)?;
 
+    // Resolve `${name}` secret references against the optional gitignored
+    // `minds-secrets.yaml` key/value store. Resolved values live in memory only
+    // (`skip`) so a secret never leaks back into `minds.yaml`.
+    if let Some(dir) = path.parent() {
+        resolve_secret_references(&mut manifest, &dir.join("minds-secrets.yaml"))?;
+    }
+
     // Resolve path-string project entries. Bare names stay compatible with the
     // legacy projects_dir default; path strings remain repo-relative paths.
     let pd = &manifest.projects_dir;
@@ -79,6 +82,55 @@ pub fn load_manifest(path: &Path) -> Result<MindsManifest> {
     }
 
     Ok(manifest)
+}
+
+/// Resolve `${name}` secret references in the manifest against the optional
+/// `minds-secrets.yaml` key/value store.
+///
+/// The store is a gitignored flat `name: value` map. A field such as
+/// `source.advanced.embedding_api_key: ${siliconflow_api_key}` is resolved into
+/// the in-memory `embedding_api_key_resolved`; a literal (no `${...}`) value is
+/// used as-is. A `${name}` reference with no matching entry is an error. A
+/// missing store is fine unless a reference needs it.
+fn resolve_secret_references(manifest: &mut MindsManifest, secrets_path: &Path) -> Result<()> {
+    let Some(advanced) = manifest.source.as_mut().and_then(|s| s.advanced.as_mut()) else {
+        return Ok(());
+    };
+    let Some(raw) = advanced.embedding_api_key.as_deref().map(str::trim).filter(|v| !v.is_empty()) else {
+        return Ok(());
+    };
+
+    // Literal value: use directly, no store needed.
+    let Some(name) = raw.strip_prefix("${").and_then(|v| v.strip_suffix('}')).map(str::trim) else {
+        advanced.embedding_api_key_resolved = Some(raw.to_string());
+        return Ok(());
+    };
+
+    let store = load_secret_store(secrets_path)?;
+    let value = store.get(name).filter(|v| !v.trim().is_empty()).ok_or_else(|| {
+        MfError::usage(
+            format!("secret '{name}' referenced by minds.yaml is not defined in minds-secrets.yaml"),
+            Some(format!("add `{name}: <value>` to minds-secrets.yaml next to minds.yaml")),
+        )
+    })?;
+    advanced.embedding_api_key_resolved = Some(value.clone());
+    Ok(())
+}
+
+/// Load the flat `name: value` secret store, or an empty map when absent.
+fn load_secret_store(secrets_path: &Path) -> Result<std::collections::HashMap<String, String>> {
+    if !secrets_path.exists() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let content = fs::read_to_string(secrets_path).map_err(MfError::Io)?;
+    if content.trim().is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    serde_yaml::from_str(&content).map_err(|e| MfError::ParseError {
+        kind: "yaml".to_string(),
+        path: secrets_path.to_path_buf(),
+        detail: e.to_string(),
+    })
 }
 
 /// Atomically write `MindsManifest` to a file (write-then-rename).
@@ -132,11 +184,7 @@ fn strip_dot_prefix(path: &str) -> &str {
 
 fn project_path_for_mind_manifest(path: &str) -> String {
     let stripped = strip_dot_prefix(path);
-    if path.starts_with("./") && !stripped.contains('/') {
-        path.to_string()
-    } else {
-        stripped.to_string()
-    }
+    if path.starts_with("./") && !stripped.contains('/') { path.to_string() } else { stripped.to_string() }
 }
 
 fn project_name_from_relpath(path: &str) -> String {
@@ -389,11 +437,7 @@ pub fn classify_repo_target(target: &Path) -> Result<RepoTargetKind> {
 /// bare leaf paths like `Path::new("foo")` whose parent is the empty path.
 fn parent_or_cwd(path: &Path) -> &Path {
     let parent = path.parent().unwrap_or(Path::new("."));
-    if parent.as_os_str().is_empty() {
-        Path::new(".")
-    } else {
-        parent
-    }
+    if parent.as_os_str().is_empty() { Path::new(".") } else { parent }
 }
 
 fn is_directory_empty(path: &Path) -> Result<bool> {
@@ -503,6 +547,45 @@ mod tests {
     }
 
     #[test]
+    fn resolves_secret_reference_from_sidecar() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("minds.yaml");
+        fs::write(
+            &path,
+            "schema: '1'\nprojects: []\nsource:\n  advanced:\n    embedding_endpoint: http://x/v1/embeddings\n    embedding_model: m\n    embedding_api_key: ${my_key}\n",
+        )
+        .unwrap();
+        fs::write(dir.path().join("minds-secrets.yaml"), "my_key: sk-secret-123\n").unwrap();
+        let manifest = load_manifest(&path).unwrap();
+        let advanced = manifest.source.unwrap().advanced.unwrap();
+        // The reference round-trips untouched; the resolved value stays in memory.
+        assert_eq!(advanced.embedding_api_key.as_deref(), Some("${my_key}"));
+        assert_eq!(advanced.embedding_api_key_resolved.as_deref(), Some("sk-secret-123"));
+    }
+
+    #[test]
+    fn literal_api_key_is_used_without_a_sidecar() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("minds.yaml");
+        fs::write(&path, "schema: '1'\nprojects: []\nsource:\n  advanced:\n    embedding_api_key: sk-literal\n")
+            .unwrap();
+        let manifest = load_manifest(&path).unwrap();
+        let advanced = manifest.source.unwrap().advanced.unwrap();
+        assert_eq!(advanced.embedding_api_key_resolved.as_deref(), Some("sk-literal"));
+    }
+
+    #[test]
+    fn unresolved_secret_reference_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("minds.yaml");
+        fs::write(&path, "schema: '1'\nprojects: []\nsource:\n  advanced:\n    embedding_api_key: ${missing}\n")
+            .unwrap();
+        // No sidecar defines `missing`.
+        let err = load_manifest(&path).unwrap_err();
+        assert!(err.to_string().contains("missing"), "expected a helpful error, got: {err}");
+    }
+
+    #[test]
     fn test_load_manifest_incompatible_schema() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("minds.yaml");
@@ -522,6 +605,7 @@ mod tests {
         let manifest = MindsManifest {
             schema_version: "1".to_string(),
             projects_dir: default_projects_dir(),
+            source: None,
             projects: vec![ProjectEntry {
                 name: "test".to_string(),
                 path: "./test".to_string(),
@@ -677,6 +761,7 @@ projects:
         let manifest = MindsManifest {
             schema_version: "1".to_string(),
             projects_dir: default_projects_dir(),
+            source: None,
             projects: vec![ProjectEntry {
                 name: "old-project".to_string(),
                 path: "./old-project".to_string(),
@@ -697,6 +782,7 @@ projects:
         let manifest = MindsManifest {
             schema_version: "1".to_string(),
             projects_dir: default_projects_dir(),
+            source: None,
             projects: vec![
                 ProjectEntry {
                     name: "keep".to_string(),

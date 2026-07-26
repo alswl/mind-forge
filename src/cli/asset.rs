@@ -3,23 +3,23 @@ use std::path::{Path, PathBuf};
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
+use crate::cli::CommandCtx;
+use crate::cli::CommandOutcome;
 use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::shared_flags::YesFlag;
-use crate::cli::CommandCtx;
-use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
-use crate::model::asset::AssetKind;
 use crate::model::Resource;
-use crate::output::confirm::{require_confirmation, ConfirmArgs};
-use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
-use crate::output::show::{
-    json_envelope as show_json, render_text as render_show_text, ShowBlock, ShowField, ShowOpts, ShowValue,
-};
-use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, Verb, VerbOpts, VerbResult};
+use crate::model::asset::AssetKind;
 use crate::output::Format;
+use crate::output::confirm::{ConfirmArgs, require_confirmation};
+use crate::output::list::{ListCell, ListOpts, ListRow, ListView, json_collection, render_text};
+use crate::output::show::{
+    ShowBlock, ShowField, ShowOpts, ShowValue, json_envelope as show_json, render_text as render_show_text,
+};
+use crate::output::verb::{Verb, VerbOpts, VerbResult, json_envelope as verb_json, render_text as verb_text};
 use crate::service::{asset as asset_svc, identity, util as svc_util};
 
 #[derive(Debug, Clone, Args)]

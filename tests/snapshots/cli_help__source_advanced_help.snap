@@ -1,0 +1,31 @@
+---
+source: tests/cli_help.rs
+expression: stdout
+---
+Manage advanced LanceDB-backed Sources (enable, sync, enrich, model, skill)
+
+Usage: mf source advanced [OPTIONS] <COMMAND>
+
+Commands:
+  enable         Activate LanceDB-backed Sources (imports all legacy registrations)
+  sync           Reconcile content for all or selected Source registrations
+  enrich         List, show, or apply Claude enrichment for shared Source content
+  skill-install  Install the /mf-source Claude Code Skill into this repo
+  status         Report aggregate status of the advanced Source index
+  rebuild        Rebuild the entire LanceDB index from all live registrations
+  clear          Clear derived content (documents, chunks, enrichments)
+  recover        Recover the LanceDB pointer from a retained snapshot
+  legacy         Manage legacy compatibility projections
+  disable        Disable Lance backend and switch to legacy mode
+
+Options:
+      --root <PATH>      Mind Repo root directory
+      --config <PATH>    Config file path
+  -v, --verbose...       Verbose output
+  -q, --quiet            Silence non-error output
+  -o, --output <FORMAT>  Output format [default: text] [possible values: text, json]
+      --json             Shorthand for --output json
+      --no-color         Disable colored output
+  -p, --project <NAME>   Project name for project-scoped operations
+  -h, --help             Print help
+  -V, --version          Print version

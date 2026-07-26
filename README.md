@@ -3,8 +3,10 @@
 **A local-first, AI-native CLI for card-based writing.**
 
 `mf` treats your knowledge base as a codebase. Articles are assembled from
-composable Blocks, every piece of state lives in plain files on disk, and the
-CLI is shaped so both humans and Agents can drive it.
+composable Blocks, authored content and configuration live in plain files on
+disk, and the CLI is shaped so both humans and Agents can drive it. Features
+may use explicitly specified repo-local embedded stores for advanced indexing
+and retrieval without introducing a cloud dependency.
 
 ## Philosophy
 
@@ -59,12 +61,13 @@ This is an independent philosophy, not a subset of DaC: AI Native CLI
 rejects interactive prompts, colored output designed for human eyes, and
 inconsistent exit codes. The tool is a reliable API for an LLM to call.
 
-Local-first underpins all three: no cloud, no lock-in, plain markdown and
-YAML you can edit in any editor.
+Local-first underpins all three: no required cloud service, plain Markdown and
+YAML for authored content and configuration, plus portable migration paths for
+any repo-local embedded stores.
 
 ## Install
 
-Requires Rust 1.75+.
+Requires Rust 1.91+.
 
 ```bash
 git clone https://github.com/alswl/mind-forge.git
@@ -115,6 +118,70 @@ See [docs/manual.md](docs/manual.md) for the full user manual, including repo
 layout, shared CLI contracts, scripting patterns, and end-to-end workflows for
 projects, articles, sources, assets, terms, builds, publishing, templates, and
 configuration.
+
+## Experimental: repository-wide Source RAG
+
+`mf source advanced` is the experimental, repo-wide Source backend. Its data
+directory is `.mind-forge/cache/source/advanced/`; it is local, rebuildable
+runtime state, gitignored via `.mind-forge/.gitignore`. Claude enrichments are
+the exception: they are committed to `.mind-forge/enrichments/*.json` as durable
+authority so they survive cache rebuilds — note these files contain
+content-derived summaries/keywords, so review them before pushing. Start from
+ordinary per-project Sources,
+then inspect the planned activation before making any change:
+
+```bash
+# From the Mind Repo root
+mf source advanced enable --dry-run
+mf source advanced enable
+mf source advanced sync --offline          # extract, chunk, and index content
+mf source advanced status
+mf source search "your query" --mode advanced
+```
+
+**Search modes:**
+- `basic` — matches registered Source metadata (identity, kind, location).
+- `advanced` — LanceDB **BM25** full-text ranking over synced content.
+  Degrades gracefully to keyword-only when no embedding provider is configured.
+- `both` — fuses basic + advanced with reciprocal-rank fusion (RRF k=60),
+  deduplicated by `(document_key, locator)`.
+- `--revision N` — search a specific content revision. Accepts integers, ISO
+  dates (`2026-07-25`), or relative dates (`yesterday`, `7 days ago`).
+- Default output is a text table; use `-o json` for machine-readable results.
+
+**Management commands:**
+- `mf source advanced status` — backend health, retained snapshots, pending intents
+- `mf source advanced rebuild` — rebuild the entire LanceDB index
+- `mf source advanced clear --yes` — clear derived content
+- `mf source advanced recover --snapshot ID --yes` — recover from a retained snapshot
+- `mf source advanced legacy export|import` — compatibility projection management
+- `mf source advanced disable` — safely switch back to legacy backend
+
+### Embedding provider (for semantic search)
+
+Semantic search uses an OpenAI-compatible `/v1/embeddings` endpoint. Configure
+it in `minds.yaml` under `source.advanced`:
+
+```yaml
+source:
+  backend: lance
+  advanced:
+    embedding_endpoint: "https://api.siliconflow.cn/v1"
+    embedding_model: "BAAI/bge-m3"
+    embedding_dimension: 1024
+    embedding_api_key: "${SF_API_KEY}"   # resolved from minds-secrets.yaml
+```
+
+Credentials are resolved from env vars or a gitignored `minds-secrets.yaml` and
+are never persisted in `minds.yaml`. Provider calls only happen during `sync`,
+`rebuild`, and `advanced`/`both` search; `basic` and `status` are fully offline.
+
+### Claude enrichment
+
+`mf source advanced enrich list|show|apply` and the installable `/mf-source` Skill
+(`mf source advanced skill-install`) let Claude extract summaries, topics, and
+keywords from synced content. Enrichments are committed as durable authority under
+`.mind-forge/enrichments/`.
 
 ## Core Concepts
 
@@ -268,6 +335,23 @@ default `projects/` container). Defaults to the current directory.
 | `remove <NAME_OR_PATH>` (rm) | Remove a source. `--keep-file` |
 | `index` | Index sources (mf extension) |
 | `clean` | Clean stale index entries |
+| `search <QUERY>` | Search sources across all projects. `--mode basic\|advanced\|both`, `-p, --project <NAME>`, `--file-kind <KIND>`, `--source <NAME>`, `--limit <N>` |
+| `advanced enable` | Activate LanceDB-backed repository Sources (imports all legacy registrations). `--dry-run` |
+| `advanced sync` | Reconcile content for Source registrations. `-p, --project <NAME>`, `--offline`, `--dry-run` |
+| `advanced model install` | Download and install the embedding model (requires network). `--model <ID>`, `--dry-run` |
+| `advanced model import <DIR>` | Import a local model bundle (network-free). `--dry-run` |
+| `advanced model status` | Report model installation status (read-only) |
+| `advanced enrich list` | List pending/stale enrichment jobs for Claude Skill workflow |
+| `advanced enrich show <KEY>` | Show bounded chunk batch for a document (for `/mf-source` Skill) |
+| `advanced enrich apply <KEY> --input <FILE>` | Apply validated enrichment JSON to a document |
+| `advanced skill install` | Install the `/mf-source` Claude Code Skill into this repo |
+| `advanced status` | Report aggregate status of the advanced Source index |
+| `advanced rebuild` | Rebuild the entire LanceDB index. `--offline`, `--dry-run` |
+| `advanced clear` | Clear derived content. `--all`, `-p, --project <NAME>`, `--yes`, `--dry-run` |
+| `advanced recover --snapshot <ID>` | Recover from a retained snapshot. `--yes`, `--dry-run` |
+| `advanced legacy status` | Check legacy projection health |
+| `advanced legacy export` | Export Lance registrations to legacy YAML projections. `--dry-run` |
+| `advanced disable` | Switch back to legacy backend (requires all projections current). `--dry-run` |
 
 ### `mf asset` — Manage project assets
 
@@ -364,7 +448,7 @@ the same Cargo version remain distinguishable. JSON includes `version`,
 
 ## Features
 
-- **Repo bootstrap** — `mf init [PATH]` creates `minds.yaml` and `.mind/`
+- **Repo bootstrap** — `mf init [PATH]` creates `minds.yaml`
 - **Project lifecycle** — `mf project new | list | show | update | rename | remove | archive | lint | index | import`; path-based identity supports Unicode, emoji, dates, spaces
 - **Project auto-detection** — running inside a project directory auto-injects `--project`; `mf article list` without `--project` outside a project dir auto-matches all projects, sorted by most recently modified; cwd-relative paths normalized to repo-relative canonical identity
 - **Article management** — `mf article new | list | show | update | rename | remove | lint | index`; directory articles by default, `--file` for single-file shape; `--template blank|arch|prd|blog` or custom project-local template path

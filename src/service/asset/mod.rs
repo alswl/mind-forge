@@ -1,6 +1,6 @@
 use crate::model::asset::AssetKind;
 
-pub use self::add::{add, AddArgs};
+pub use self::add::{AddArgs, add};
 pub use self::clean::clean;
 pub use self::index::reconcile;
 pub use self::list::list;

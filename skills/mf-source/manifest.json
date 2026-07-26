@@ -1,0 +1,13 @@
+{
+  "name": "mf-source",
+  "version": "1.0.0",
+  "description": "Advanced Source enrichment for mind-forge repositories",
+  "prompt_version": "1",
+  "schema_version": "1",
+  "files": [
+    "SKILL.md",
+    "manifest.json",
+    "references/enrichment-schema.md"
+  ],
+  "sha256": "<placeholder — replaced at release build time>"
+}

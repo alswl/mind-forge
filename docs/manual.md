@@ -7,7 +7,7 @@ agents.
 
 ## 1. Install
 
-Requires Rust 1.75+.
+Requires Rust 1.91+.
 
 ```bash
 git clone https://github.com/alswl/mind-forge.git
@@ -204,6 +204,80 @@ available for compatibility.
 `sources/` directory without copying or moving its bytes. It is idempotent —
 re-registering the same path is a no-op — and cannot be combined with `--link`
 or `--force`.
+
+### 7.1 Advanced Source (LanceDB RAG)
+
+`mf source advanced` is the repository-wide LanceDB backend for Sources. Its
+data lives at `.mind-forge/cache/source/advanced/`, is local and rebuildable
+(gitignored via `.mind-forge/.gitignore`), and uses a five-table LanceDB store
+(registrations, documents, registration_content, chunks, enrichments) with
+atomic snapshot publication and retained-snapshot recovery.
+
+#### Quick start
+
+```bash
+# From the Mind Repo root
+mf source advanced enable --dry-run
+mf source advanced enable
+mf source advanced sync --offline
+mf source advanced status
+mf source search "your query" --mode advanced
+```
+
+#### Search
+
+```bash
+mf source search <QUERY> [--mode basic|advanced|both] [-o text|json]
+                        [--project NAME] [--source NAME] [--limit N]
+                        [--revision N|DATE]
+```
+
+- **basic** — metadata search across registered Source identities
+- **advanced** — LanceDB BM25 full-text + vector hybrid search (requires synced content)
+- **both** — fused results with RRF k=60, deduplicated by document
+- **--revision** — integer revision number, ISO date, or relative date
+
+Default output is a text table; `-o json` for machine-readable envelopes.
+
+#### Management
+
+```bash
+mf source advanced status                 # backend health, snapshots, intents
+mf source advanced rebuild [--dry-run]    # rebuild all derived content
+mf source advanced clear --yes            # clear derived content, keep registrations
+mf source advanced recover --snapshot ID --yes   # recover from a retained snapshot
+mf source advanced legacy export|import   # YAML compatibility projections
+mf source advanced disable                # switch back to legacy backend (projections must be current)
+```
+
+#### Embedding provider
+
+Configure an OpenAI-compatible `/v1/embeddings` endpoint in `minds.yaml`:
+
+```yaml
+source:
+  backend: lance
+  advanced:
+    embedding_endpoint: "https://api.siliconflow.cn/v1"
+    embedding_model: "BAAI/bge-m3"
+    embedding_dimension: 1024
+    embedding_api_key: "${SF_API_KEY}"
+```
+
+Credentials resolve from a gitignored `minds-secrets.yaml` (`SF_API_KEY: sk-...`)
+or the `MF_EMBEDDING_API_KEY` env var; they are never serialized.
+
+#### Claude enrichment
+
+`mf source advanced enrich list|show|apply` and the installable `/mf-source` Skill
+let Claude extract summaries, topics, and keywords from synced content:
+
+```bash
+mf source advanced skill-install --dry-run
+mf source advanced skill-install
+```
+
+Enrichments are committed under `.mind-forge/enrichments/` as durable authority.
 
 ## 8. Assets
 

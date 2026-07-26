@@ -1,0 +1,31 @@
+---
+source: tests/cli_help.rs
+expression: stdout
+---
+Search sources across the repository
+
+Usage: mf source search [OPTIONS] <QUERY>
+
+Arguments:
+  <QUERY>  Search query
+
+Options:
+      --mode <MODE>            Search mode: basic (metadata), advanced (content), or both (fused)
+                               [possible values: basic, advanced, both]
+      --root <PATH>            Mind Repo root directory
+      --config <PATH>          Config file path
+  -p, --project <PROJECT>      Limit search to a specific project
+      --file-kind <FILE_KIND>  Filter by file kind
+  -v, --verbose...             Verbose output
+  -q, --quiet                  Silence non-error output
+      --source <SOURCE>        Filter by source identity
+      --label <KEY=VALUE>      Filter by label, `key=value` (repeatable; all must match)
+  -o, --output <FORMAT>        Output format [default: text] [possible values: text, json]
+      --json                   Shorthand for --output json
+      --revision <REV>         Search a specific content revision instead of the current version.
+                               Accepts an integer revision number, a date (2026-07-25), or a
+                               relative date (yesterday, "7 days ago")
+      --limit <LIMIT>          Maximum results to return [default: 20]
+      --no-color               Disable colored output
+  -h, --help                   Print help
+  -V, --version                Print version

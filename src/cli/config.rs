@@ -7,8 +7,8 @@ use crate::cli::CommandCtx;
 use crate::cli::CommandOutcome;
 use crate::error::Result;
 use crate::model::terminal::{CapabilityDiagnosticReport, DiagnosticCheck, OutputFormat};
-use crate::output::capability::{build_environment_summary, build_policy, build_profile};
 use crate::output::Format;
+use crate::output::capability::{build_environment_summary, build_policy, build_profile};
 use crate::service;
 
 #[derive(Debug, Clone, Args)]

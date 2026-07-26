@@ -88,11 +88,7 @@ pub fn lint_repo(
     let projects_dir = crate::service::repo::projects_dir_for(repo_root)?;
     let scan_root = {
         let trimmed = projects_dir.trim_matches('/');
-        if trimmed.is_empty() || trimmed == "." {
-            repo_root.to_path_buf()
-        } else {
-            repo_root.join(trimmed)
-        }
+        if trimmed.is_empty() || trimmed == "." { repo_root.to_path_buf() } else { repo_root.join(trimmed) }
     };
 
     let mut project_names: Vec<String> = Vec::new();
@@ -231,7 +227,7 @@ fn check_stale_index_entry(
         let all_sources: Vec<crate::model::source::Source> = index.sources.unwrap_or_default();
         let filtered_sources = all_sources
             .into_iter()
-            .filter(|s| s.path.as_ref().map_or(true, |p| !stale_entries.contains(p)))
+            .filter(|s| s.path.as_ref().is_none_or(|p| !stale_entries.contains(p)))
             .collect::<Vec<_>>();
 
         let terms = index.terms;

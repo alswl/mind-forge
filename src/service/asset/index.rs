@@ -26,10 +26,10 @@ fn scan_assets_dir(assets_dir: &Path) -> Result<Vec<PathBuf>> {
             Err(_) => continue,
         };
 
-        if let Some(name) = entry.file_name().to_str() {
-            if name.starts_with('.') || name == "Thumbs.db" {
-                continue;
-            }
+        if let Some(name) = entry.file_name().to_str()
+            && (name.starts_with('.') || name == "Thumbs.db")
+        {
+            continue;
         }
 
         if entry.file_type().is_file() {
@@ -104,11 +104,7 @@ pub fn reconcile(project_path: &Path, dry_run: bool, refresh_metadata: bool) -> 
 
     let refreshed = if refresh_metadata {
         let results = update_all(project_path)?;
-        if results.is_empty() {
-            None
-        } else {
-            Some(results)
-        }
+        if results.is_empty() { None } else { Some(results) }
     } else {
         None
     };

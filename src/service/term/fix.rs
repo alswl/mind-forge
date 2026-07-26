@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use super::{parse_correction_attr, sort_terms_by_name, TermUpdate};
+use super::{TermUpdate, parse_correction_attr, sort_terms_by_name};
 use crate::error::{MfError, Result};
-use crate::model::term::{validate_corrections, Boundary, Correction, FixKind, MatchKind, Term};
+use crate::model::term::{Boundary, Correction, FixKind, MatchKind, Term, validate_corrections};
 use crate::service::index;
 
 /// Modify an existing term's definition, aliases, tags, description, confidence,

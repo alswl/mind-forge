@@ -38,13 +38,14 @@ pub fn update(project_path: &Path, args: &UpdateArgs) -> Result<Source> {
         )
     })?;
 
-    if let Some(new_name) = args.rename {
-        if new_name != args.name && sources.iter().any(|s| s.name == new_name) {
-            return Err(MfError::usage(
-                format!("a source named '{new_name}' already exists"),
-                Some("use a different --rename value".to_string()),
-            ));
-        }
+    if let Some(new_name) = args.rename
+        && new_name != args.name
+        && sources.iter().any(|s| s.name == new_name)
+    {
+        return Err(MfError::usage(
+            format!("a source named '{new_name}' already exists"),
+            Some("use a different --rename value".to_string()),
+        ));
     }
 
     if let Some(u) = args.url {

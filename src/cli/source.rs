@@ -1,22 +1,22 @@
 use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 
+use crate::cli::CommandCtx;
+use crate::cli::CommandOutcome;
 use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::shared_flags::YesFlag;
-use crate::cli::CommandCtx;
-use crate::cli::CommandOutcome;
 use crate::defaults;
 use crate::error::{MfError, Result};
-use crate::model::source::{FileKind, SourceKind};
 use crate::model::Resource;
-use crate::output::confirm::{require_confirmation, ConfirmArgs};
-use crate::output::list::{json_collection, render_text, ListCell, ListOpts, ListRow, ListView};
-use crate::output::show::{json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowOpts, ShowValue};
-use crate::output::verb::{json_envelope as verb_json, render_text as verb_text, Verb, VerbOpts, VerbResult};
+use crate::model::source::{FileKind, SourceKind};
 use crate::output::Format;
+use crate::output::confirm::{ConfirmArgs, require_confirmation};
+use crate::output::list::{ListCell, ListOpts, ListRow, ListView, json_collection, render_text};
+use crate::output::show::{ShowBlock, ShowField, ShowOpts, ShowValue, json_envelope, render_text as render_show_text};
+use crate::output::verb::{Verb, VerbOpts, VerbResult, json_envelope as verb_json, render_text as verb_text};
 use crate::service::source::InputForm;
 use crate::service::{identity, source as svc_source, util as svc_util};
 
@@ -44,6 +44,10 @@ pub enum SourceSubcommand {
     Clean(SourceCleanArgs),
     #[command(about = "Show source details")]
     Show(SourceShowArgs),
+    #[command(about = "Search sources across the repository")]
+    Search(SourceSearchArgs),
+    #[command(about = "Manage advanced LanceDB-backed Sources (enable, sync, enrich, model, skill)")]
+    Advanced(crate::cli::source_advanced::SourceAdvancedCmd),
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +219,42 @@ pub struct SourceShowArgs {
     pub path: String,
 }
 
+#[derive(Debug, Clone, Args)]
+pub struct SourceSearchArgs {
+    /// Search query
+    pub query: String,
+    /// Search mode: basic (metadata), advanced (content), or both (fused)
+    #[arg(long, value_enum)]
+    pub mode: Option<SearchModeArg>,
+    /// Limit search to a specific project
+    #[arg(short = 'p', long)]
+    pub project: Option<String>,
+    /// Filter by file kind
+    #[arg(long)]
+    pub file_kind: Option<String>,
+    /// Filter by source identity
+    #[arg(long)]
+    pub source: Option<String>,
+    /// Filter by label, `key=value` (repeatable; all must match)
+    #[arg(long = "label", value_name = "KEY=VALUE")]
+    pub labels: Vec<String>,
+    /// Search a specific content revision instead of the current version.
+    /// Accepts an integer revision number, a date (2026-07-25), or a relative
+    /// date (yesterday, "7 days ago").
+    #[arg(long, value_name = "REV")]
+    pub revision: Option<String>,
+    /// Maximum results to return
+    #[arg(long, default_value = "20")]
+    pub limit: u32,
+}
+
+#[derive(Debug, Clone, clap::ValueEnum)]
+pub enum SearchModeArg {
+    Basic,
+    Advanced,
+    Both,
+}
+
 // ---------------------------------------------------------------------------
 // T017: Dispatch — replaced by user story tasks
 // ---------------------------------------------------------------------------
@@ -230,11 +270,14 @@ pub fn dispatch(command: SourceCmd, ctx: &mut CommandCtx) -> Result<CommandOutco
         Some(SourceSubcommand::Rename(args)) => handle_rename(args, ctx),
         Some(SourceSubcommand::Clean(args)) => handle_clean(args, ctx),
         Some(SourceSubcommand::Show(args)) => handle_source_show(args, ctx),
+        Some(SourceSubcommand::Search(args)) => handle_search(args, ctx),
+        Some(SourceSubcommand::Advanced(args)) => crate::cli::source_advanced::dispatch(args, ctx),
     }
 }
 
 fn handle_list(args: SourceListArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
+    let repo_root = ctx.require_repo_path()?;
+    let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
 
     // Resolve type filter (CliSourceKind → model FileKind; Auto is rejected)
     let type_filter = match args.kind {
@@ -251,7 +294,51 @@ fn handle_list(args: SourceListArgs, ctx: &CommandCtx) -> Result<CommandOutcome>
         None => None,
     };
 
-    let sources = svc_source::list(&project_path, args.filter.as_deref(), type_filter)?;
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    let sources = if config.is_lance() {
+        let store = svc_source::advanced::sync::open_active_store(repo_root)?;
+        let catalog = svc_source::advanced::catalog::SourceCatalog::discover(&config, repo_root)?;
+        let project_path_rel =
+            project_path.strip_prefix(repo_root).unwrap_or(&project_path).to_string_lossy().replace('\\', "/");
+        catalog
+            .registrations(Some(&store))?
+            .into_iter()
+            .filter(|registration| registration.project_path == project_path_rel)
+            .filter_map(|registration| {
+                let kind = match registration.source_type.as_str() {
+                    "pdf" => FileKind::Pdf,
+                    "rss" => FileKind::Rss,
+                    "web" => FileKind::Web,
+                    "file" => FileKind::File,
+                    _ => return None,
+                };
+                let is_url = registration.registered_location.starts_with("http://")
+                    || registration.registered_location.starts_with("https://");
+                let source_kind = match registration.source_kind.as_deref() {
+                    Some("yuque") => Some(SourceKind::Yuque),
+                    Some("meeting") => Some(SourceKind::Meeting),
+                    Some("misc") => Some(SourceKind::Misc),
+                    _ => None,
+                };
+                Some(crate::model::source::Source {
+                    name: registration.source_identity,
+                    kind,
+                    source_kind,
+                    url: is_url.then(|| registration.registered_location.clone()),
+                    path: (!is_url).then_some(registration.registered_location),
+                    tags: serde_json::from_str(&registration.tags_json).unwrap_or_default(),
+                    added_at: String::new(),
+                    updated_at: String::new(),
+                })
+            })
+            .filter(|source| {
+                args.filter.as_ref().is_none_or(|filter| source.name.to_lowercase().contains(&filter.to_lowercase()))
+            })
+            .filter(|source| type_filter.as_ref().is_none_or(|kind| source.kind == *kind))
+            .collect()
+    } else {
+        svc_source::list(&project_path, args.filter.as_deref(), type_filter)?
+    };
 
     let opts = ListOpts::from_flags(args.no_headers.no_headers, args.no_trunc.no_trunc)
         .with_repo_root(Some(project_path.to_path_buf()));
@@ -289,7 +376,8 @@ fn handle_list(args: SourceListArgs, ctx: &CommandCtx) -> Result<CommandOutcome>
 }
 
 fn handle_update(args: SourceUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
+    let repo_root = ctx.require_repo_path()?;
+    let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
     identity::validate_entity_path(&project_path, &args.path)?;
 
     if args.dry_run.dry_run {
@@ -324,7 +412,18 @@ fn handle_update(args: SourceUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutc
     let update_args =
         svc_source::UpdateArgs { name: &args.path, rename: args.rename.as_deref(), url: args.url.as_deref() };
 
-    let source = svc_source::update(&project_path, &update_args)?;
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    let source = if config.is_lance() {
+        svc_source::advanced::primary::update_registration(
+            repo_root,
+            &project_path,
+            &args.path,
+            args.rename.as_deref(),
+            args.url.as_deref(),
+        )?
+    } else {
+        svc_source::update(&project_path, &update_args)?
+    };
 
     let mut changes = serde_json::Map::new();
     if let Some(ref rename) = args.rename {
@@ -356,9 +455,49 @@ fn handle_update(args: SourceUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutc
 }
 
 fn handle_index(args: SourceIndexArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
-
-    let report = svc_source::reconcile(&project_path, args.dry_run.dry_run)?;
+    let repo_root = ctx.require_repo_path()?;
+    let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    let report = if config.is_lance() {
+        // The compatibility YAML is not an input after activation.  Indexing
+        // in Lance mode therefore means reconciling the selected primary
+        // registrations' derived content, never rebuilding YAML from disk.
+        let project = project_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| MfError::usage("cannot determine the selected project identity".to_string(), None))?;
+        let sync = svc_source::advanced::sync::sync_repository(
+            repo_root,
+            &config,
+            Some(project),
+            None,
+            args.dry_run.dry_run,
+            false,
+        )?;
+        let kind = |name: &str| match name {
+            "pdf" => FileKind::Pdf,
+            "rss" => FileKind::Rss,
+            "web" => FileKind::Web,
+            _ => FileKind::File,
+        };
+        crate::model::source::SourceIndexReport {
+            added: sync
+                .items
+                .iter()
+                .filter(|item| item.action == "added")
+                .map(|item| crate::model::source::SourceIndexEntry {
+                    name: item.source_identity.clone(),
+                    kind: kind(item.detected_format.as_deref().unwrap_or("file")),
+                    path: String::new(),
+                })
+                .collect(),
+            removed: vec![],
+            kept_count: sync.registrations_skipped,
+            dry_run: args.dry_run.dry_run,
+        }
+    } else {
+        svc_source::reconcile(&project_path, args.dry_run.dry_run)?
+    };
 
     let scanned_count = report.added.len() + report.removed.len() + report.kept_count as usize;
 
@@ -415,13 +554,26 @@ fn handle_remove(args: SourceRemoveArgs, ctx: &mut CommandCtx) -> Result<Command
         force: args.force.force,
     })?;
 
-    let report = svc_source::remove_source(
-        &project_path,
-        &args.name_or_path,
-        args.keep_file,
-        args.force.force,
-        args.dry_run.dry_run,
-    )?;
+    let repo_root = ctx.require_repo_path()?;
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    let report = if config.is_lance() {
+        svc_source::advanced::primary::remove_registration(
+            repo_root,
+            &project_path,
+            &args.name_or_path,
+            args.keep_file,
+            args.force.force,
+            args.dry_run.dry_run,
+        )?
+    } else {
+        svc_source::remove_source(
+            &project_path,
+            &args.name_or_path,
+            args.keep_file,
+            args.force.force,
+            args.dry_run.dry_run,
+        )?
+    };
 
     let result = VerbResult {
         verb: Verb::Remove,
@@ -443,9 +595,15 @@ fn handle_remove(args: SourceRemoveArgs, ctx: &mut CommandCtx) -> Result<Command
 }
 
 fn handle_clean(args: SourceCleanArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
+    let repo_root = ctx.require_repo_path()?;
+    let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
 
-    let report = svc_source::clean(&project_path, args.dry_run.dry_run)?;
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    let report = if config.is_lance() {
+        svc_source::advanced::primary::clean_registrations(repo_root, &project_path, args.dry_run.dry_run)?
+    } else {
+        svc_source::clean(&project_path, args.dry_run.dry_run)?
+    };
 
     match ctx.format() {
         Format::Json => {
@@ -478,9 +636,39 @@ fn handle_clean(args: SourceCleanArgs, ctx: &CommandCtx) -> Result<CommandOutcom
 // ── Handle: mf source rename ────────────────────────────────────────────────
 
 fn handle_rename(args: SourceRenameArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
+    let repo_root = ctx.require_repo_path()?;
+    let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
     identity::validate_entity_path(&project_path, &args.old_path)?;
     identity::validate_entity_path(&project_path, &args.new_path)?;
+
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    if config.is_lance() {
+        let report = svc_source::advanced::primary::rename_registration(
+            repo_root,
+            &project_path,
+            &args.old_path,
+            &args.new_path,
+            args.force.force,
+            args.dry_run.dry_run,
+        )?;
+        let result = VerbResult {
+            verb: Verb::Rename,
+            kind: "source",
+            identity: report.after.name.clone(),
+            old_identity: Some(report.before.name.clone()),
+            path: report.after.path.clone(),
+            dry_run: report.dry_run,
+            details: serde_json::json!({}),
+        };
+        return match ctx.format() {
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
+            Format::Text => Ok(CommandOutcome::Success(
+                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
+                Vec::new(),
+                None,
+            )),
+        };
+    }
 
     if args.dry_run.dry_run {
         let result = VerbResult {
@@ -528,9 +716,50 @@ fn handle_rename(args: SourceRenameArgs, ctx: &CommandCtx) -> Result<CommandOutc
 // ---------------------------------------------------------------------------
 
 fn handle_source_show(args: SourceShowArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
+    let repo_root = ctx.require_repo_path()?;
+    let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
     identity::validate_entity_path(&project_path, &args.path)?;
-    let sources = svc_source::list(&project_path, None, None)?;
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    let sources = if config.is_lance() {
+        let store = svc_source::advanced::sync::open_active_store(repo_root)?;
+        let catalog = svc_source::advanced::catalog::SourceCatalog::discover(&config, repo_root)?;
+        let project_path_rel =
+            project_path.strip_prefix(repo_root).unwrap_or(&project_path).to_string_lossy().replace('\\', "/");
+        catalog
+            .registrations(Some(&store))?
+            .into_iter()
+            .filter(|registration| registration.project_path == project_path_rel)
+            .filter_map(|registration| {
+                let kind = match registration.source_type.as_str() {
+                    "pdf" => FileKind::Pdf,
+                    "rss" => FileKind::Rss,
+                    "web" => FileKind::Web,
+                    "file" => FileKind::File,
+                    _ => return None,
+                };
+                let is_url = registration.registered_location.starts_with("http://")
+                    || registration.registered_location.starts_with("https://");
+                let source_kind = match registration.source_kind.as_deref() {
+                    Some("yuque") => Some(SourceKind::Yuque),
+                    Some("meeting") => Some(SourceKind::Meeting),
+                    Some("misc") => Some(SourceKind::Misc),
+                    _ => None,
+                };
+                Some(crate::model::source::Source {
+                    name: registration.source_identity,
+                    kind,
+                    source_kind,
+                    url: is_url.then(|| registration.registered_location.clone()),
+                    path: (!is_url).then_some(registration.registered_location),
+                    tags: serde_json::from_str(&registration.tags_json).unwrap_or_default(),
+                    added_at: String::new(),
+                    updated_at: String::new(),
+                })
+            })
+            .collect()
+    } else {
+        svc_source::list(&project_path, None, None)?
+    };
 
     let resolved = sources
         .iter()
@@ -580,7 +809,8 @@ fn handle_source_show(args: SourceShowArgs, ctx: &CommandCtx) -> Result<CommandO
 // ---------------------------------------------------------------------------
 
 fn handle_add(args: SourceAddArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(ctx.require_repo_path()?, ctx.project(), ctx.cwd())?;
+    let repo_root = ctx.require_repo_path()?;
+    let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
 
     let input_form = svc_source::classify_input(&args.input);
 
@@ -609,6 +839,19 @@ fn handle_add(args: SourceAddArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
         link: args.link,
         force: args.force.force,
     };
+
+    let config = svc_source::advanced::config::load_repository_config(repo_root)?;
+    if config.is_lance() {
+        let outcome = svc_source::advanced::primary::add_registration(
+            repo_root,
+            &project_path,
+            ctx.cwd(),
+            &add_args,
+            args.register_only,
+            args.dry_run.dry_run,
+        )?;
+        return source_add_outcome(outcome, args.dry_run.dry_run, &project_path, ctx);
+    }
 
     if args.register_only {
         let outcome = svc_source::register_only(&project_path, ctx.cwd(), &add_args, args.dry_run.dry_run)?;
@@ -650,6 +893,32 @@ fn source_add_outcome(
     project_path: &std::path::Path,
     ctx: &CommandCtx,
 ) -> Result<CommandOutcome> {
+    let mut details = serde_json::json!({
+        "name": outcome.source.name,
+        "type": outcome.source.kind.as_str(),
+        "url": outcome.source.url,
+        "path": outcome.source.path,
+        "added_at": outcome.source.added_at,
+        "updated_at": outcome.source.updated_at,
+        "mode": match outcome.mode {
+            svc_source::AddMode::Copy => "copy",
+            svc_source::AddMode::Link => "link",
+            svc_source::AddMode::Url => "url",
+            svc_source::AddMode::Register => "register",
+        },
+        "replaced": outcome.replaced,
+    });
+    if let Some(ref key) = outcome.registration_key {
+        details["registration_key"] = serde_json::Value::String(key.clone());
+    }
+
+    let mut warnings = Vec::new();
+    if outcome.projection_degraded {
+        warnings.push(
+            "compatibility projection has drift — run `mf source advanced legacy export` to reconcile".to_string(),
+        );
+    }
+
     let result = VerbResult {
         verb: Verb::Add,
         kind: "source",
@@ -657,28 +926,99 @@ fn source_add_outcome(
         old_identity: None,
         path: outcome.source.path.clone(),
         dry_run,
-        details: serde_json::json!({
-            "name": outcome.source.name,
-            "type": outcome.source.kind.as_str(),
-            "url": outcome.source.url,
-            "path": outcome.source.path,
-            "added_at": outcome.source.added_at,
-            "updated_at": outcome.source.updated_at,
-            "mode": match outcome.mode {
-                svc_source::AddMode::Copy => "copy",
-                svc_source::AddMode::Link => "link",
-                svc_source::AddMode::Url => "url",
-                svc_source::AddMode::Register => "register",
-            },
-            "replaced": outcome.replaced,
-        }),
+        details,
     };
     match ctx.format() {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path)))),
-            Vec::new(),
+            warnings,
             None,
         )),
+    }
+}
+
+fn handle_search(args: SourceSearchArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+    let repo = ctx.require_repo_path()?;
+    let source_config = crate::service::source::advanced::config::load_repository_config(repo)?;
+
+    let mode = match args.mode {
+        Some(SearchModeArg::Basic) => crate::model::source_search::SearchMode::Basic,
+        Some(SearchModeArg::Advanced) => crate::model::source_search::SearchMode::Advanced,
+        Some(SearchModeArg::Both) => crate::model::source_search::SearchMode::Both,
+        None => match source_config.default_search_mode {
+            crate::model::manifest::SearchDefaultMode::Basic => crate::model::source_search::SearchMode::Basic,
+            crate::model::manifest::SearchDefaultMode::Advanced => crate::model::source_search::SearchMode::Advanced,
+            crate::model::manifest::SearchDefaultMode::Both => crate::model::source_search::SearchMode::Both,
+        },
+    };
+
+    // Parse `--label key=value` selectors; a bare key means "any value present".
+    let label_filter: Vec<(String, String)> = args
+        .labels
+        .iter()
+        .filter_map(|entry| entry.split_once('=').map(|(k, v)| (k.trim().to_string(), v.trim().to_string())))
+        .collect();
+
+    let report = crate::service::source::advanced::retrieval::search_repository(
+        repo,
+        &args.query,
+        mode,
+        args.project.as_deref(),
+        args.file_kind.as_deref(),
+        args.source.as_deref(),
+        &label_filter,
+        args.revision.as_deref(),
+        args.limit,
+    )?;
+
+    let warnings = report.warnings.clone();
+    match ctx.format() {
+        Format::Json => {
+            let inner = serde_json::to_value(&report)?;
+            Ok(CommandOutcome::Success(
+                serde_json::json!({"status": "ok", "command": "source.search", "data": inner}),
+                warnings,
+                None,
+            ))
+        }
+        Format::Text => {
+            let opts = ListOpts::from_flags(false, false).with_repo_root(Some(repo.to_path_buf()));
+            let mut rows: Vec<ListRow> = Vec::new();
+            for (i, r) in report.results.iter().enumerate() {
+                let source_label = if !r.registrations.is_empty() {
+                    format!("{}:{}", r.registrations[0].project_identity, r.registrations[0].source_identity)
+                } else {
+                    String::new()
+                };
+                let snippet: String = r
+                    .snippet
+                    .chars()
+                    .take(80)
+                    .collect::<String>()
+                    .replace('\n', " ")
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                rows.push(ListRow {
+                    cells: vec![
+                        ListCell::Number((i + 1).to_string()),
+                        ListCell::Number(format!("{:.2}", r.combined_score)),
+                        ListCell::Text(r.source_type.clone()),
+                        ListCell::Text(source_label),
+                        ListCell::Text(snippet),
+                    ],
+                });
+            }
+            let view = ListView { headers: &["#", "SCORE", "TYPE", "SOURCE", "SNIPPET"], rows, plural_noun: "results" };
+            let header = format!(
+                "query: {}  mode: {}{}  results: {}\n",
+                report.query,
+                report.resolved_mode,
+                if report.degraded { " (degraded)" } else { "" },
+                report.results.len(),
+            );
+            Ok(CommandOutcome::Raw(header + &render_text(&view, &opts), None))
+        }
     }
 }

@@ -1,5 +1,6 @@
 ---
 source: tests/cli_help.rs
+assertion_line: 24
 expression: stdout
 ---
 Manage content sources
@@ -7,14 +8,16 @@ Manage content sources
 Usage: mf source [OPTIONS] [COMMAND]
 
 Commands:
-  list    List sources [aliases: ls]
-  new     Create a source
-  update  Update a source
-  index   Index sources
-  remove  Remove a source [aliases: rm]
-  rename  Rename a source
-  clean   Clean source index
-  show    Show source details
+  list      List sources [aliases: ls]
+  new       Create a source
+  update    Update a source
+  index     Index sources
+  remove    Remove a source [aliases: rm]
+  rename    Rename a source
+  clean     Clean source index
+  show      Show source details
+  search    Search sources across the repository
+  advanced  Manage advanced LanceDB-backed Sources (enable, sync, enrich, model, skill)
 
 Options:
       --root <PATH>      Mind Repo root directory

@@ -25,6 +25,10 @@ pub struct AddOutcome {
     pub source: Source,
     pub mode: AddMode,
     pub replaced: bool,
+    /// Lance-primary registration key (set only when Lance backend is active).
+    pub registration_key: Option<String>,
+    /// Whether the compatibility projection export degraded (set when Lance active).
+    pub projection_degraded: bool,
 }
 
 /// Parameters for `add()`.
@@ -63,7 +67,7 @@ pub fn register_only(project_path: &Path, cwd: &Path, args: &AddArgs, dry_run: b
         Some(FileKind::Auto) | None => infer_kind_from_path(&source_canonical),
         Some(kind @ (FileKind::Pdf | FileKind::File)) => kind,
         Some(FileKind::Rss | FileKind::Web) => {
-            return Err(MfError::usage("cannot use --file-kind rss or --file-kind web with a local file", None))
+            return Err(MfError::usage("cannot use --file-kind rss or --file-kind web with a local file", None));
         }
     };
     let name = args.name.map(str::to_string).unwrap_or(derive_name_from_path(&source_path)?);
@@ -79,7 +83,13 @@ pub fn register_only(project_path: &Path, cwd: &Path, args: &AddArgs, dry_run: b
                 Some("use the existing source name or update it explicitly".to_string()),
             ));
         }
-        return Ok(AddOutcome { source: existing.clone(), mode: AddMode::Register, replaced: false });
+        return Ok(AddOutcome {
+            source: existing.clone(),
+            mode: AddMode::Register,
+            replaced: false,
+            registration_key: None,
+            projection_degraded: false,
+        });
     }
     if sources.iter().any(|source| source.name == name) {
         return Err(MfError::file_exists(project_path.join("mind-index.yaml")));
@@ -101,7 +111,13 @@ pub fn register_only(project_path: &Path, cwd: &Path, args: &AddArgs, dry_run: b
         sources.sort_by(|left, right| left.name.cmp(&right.name));
         index::save(project_path, &index)?;
     }
-    Ok(AddOutcome { source, mode: AddMode::Register, replaced: false })
+    Ok(AddOutcome {
+        source,
+        mode: AddMode::Register,
+        replaced: false,
+        registration_key: None,
+        projection_degraded: false,
+    })
 }
 
 /// Internal enum for classifying `mf source add` input.
@@ -111,11 +127,7 @@ pub(crate) enum InputForm {
 }
 
 pub(crate) fn classify_input(input: &str) -> InputForm {
-    if input.starts_with("http://") || input.starts_with("https://") {
-        InputForm::Url
-    } else {
-        InputForm::Path
-    }
+    if input.starts_with("http://") || input.starts_with("https://") { InputForm::Url } else { InputForm::Path }
 }
 
 enum UpsertSlot<'a> {
@@ -163,13 +175,13 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
                 return Err(MfError::usage(
                     "cannot use --type pdf with a URL input",
                     Some("download the file first, then add the local path".to_string()),
-                ))
+                ));
             }
             FileKind::File => {
                 return Err(MfError::usage(
                     "cannot use --type file with a URL input",
                     Some("download the file first, then add the local path".to_string()),
-                ))
+                ));
             }
         },
         None => FileKind::Web,
@@ -214,7 +226,7 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
     };
 
     index::save(project_path, &index)?;
-    Ok(AddOutcome { source, mode, replaced })
+    Ok(AddOutcome { source, mode, replaced, registration_key: None, projection_degraded: false })
 }
 
 fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcome> {
@@ -246,7 +258,7 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
                 return Err(MfError::usage(
                     "cannot use --type rss or --type web with a local file input",
                     Some("pass an http(s):// URL".to_string()),
-                ))
+                ));
             }
         },
         None => infer_kind_from_path(&source_canonical),
@@ -290,10 +302,10 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
 
             write_file()?;
 
-            if let Some(ref old) = old_path {
-                if *old != rel_path {
-                    let _ = std::fs::remove_file(project_path.join(old));
-                }
+            if let Some(ref old) = old_path
+                && *old != rel_path
+            {
+                let _ = std::fs::remove_file(project_path.join(old));
             }
 
             let source = Source {
@@ -334,7 +346,7 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
 
     index::save(project_path, &index)?;
 
-    Ok(AddOutcome { source, mode, replaced })
+    Ok(AddOutcome { source, mode, replaced, registration_key: None, projection_degraded: false })
 }
 
 #[cfg(test)]

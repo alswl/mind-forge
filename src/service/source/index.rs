@@ -191,10 +191,10 @@ pub fn reconcile(project_path: &Path, dry_run: bool) -> Result<SourceIndexReport
         let by_name: std::collections::HashMap<&str, &Source> =
             index_sources.iter().map(|s| (s.name.as_str(), s)).collect();
         for (name, ip, _kind) in &indexed_files {
-            if kept_file_paths.contains(ip) {
-                if let Some(orig) = by_name.get(name.as_str()) {
-                    new_sources.push((*orig).clone());
-                }
+            if kept_file_paths.contains(ip)
+                && let Some(orig) = by_name.get(name.as_str())
+            {
+                new_sources.push((*orig).clone());
             }
         }
 

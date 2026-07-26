@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::model::term::{Boundary, FindingSelection, FixKind, MatchKind, TermFinding};
 
-use super::scan::{byte_offset_to_line_col, context_excerpt, is_cjk_ideograph, CorrectionRef, InternalFinding};
+use super::scan::{CorrectionRef, InternalFinding, byte_offset_to_line_col, context_excerpt, is_cjk_ideograph};
 
 /// Convert CJK characters in `s` to pinyin (first reading, no tone), joined by hyphens.
 /// Non-CJK characters are skipped. Returns an empty string if no CJK chars found.

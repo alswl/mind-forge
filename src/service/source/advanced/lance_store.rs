@@ -1,0 +1,1050 @@
+//! LanceDB store adapter for the five-table repository Source catalog.
+//!
+//! Manages schema definitions, database open/create, and exact-version
+//! table access. All mutation goes through the publication module;
+//! this module provides the raw store primitives.
+
+use std::collections::BTreeSet;
+use std::path::Path;
+use std::sync::Arc;
+
+use arrow_array::{
+    Array, ArrayRef, FixedSizeListArray, Float32Array, Int64Array, RecordBatch, StringArray, UInt32Array, UInt64Array,
+};
+use arrow_schema::{DataType, Field, Schema, SchemaRef};
+use futures::TryStreamExt;
+use lance_index::scalar::FullTextSearchQuery;
+use lancedb::connect;
+use lancedb::query::{ExecutableQuery, QueryBase};
+use lancedb::table::Table;
+
+use crate::error::{MfError, Result};
+use crate::model::source_advanced::{
+    RegistrationContentRelation, SharedContentDocument, SourceEnrichment, SourceRegistration,
+};
+
+use super::chunk::Chunk;
+
+// ── Table names ────────────────────────────────────────────────────────────
+
+pub const TABLE_REGISTRATIONS: &str = "registrations";
+pub const TABLE_DOCUMENTS: &str = "documents";
+pub const TABLE_REGISTRATION_CONTENT: &str = "registration_content";
+pub const TABLE_CHUNKS: &str = "chunks";
+pub const TABLE_ENRICHMENTS: &str = "enrichments";
+
+pub const ALL_TABLES: &[&str] =
+    &[TABLE_REGISTRATIONS, TABLE_DOCUMENTS, TABLE_REGISTRATION_CONTENT, TABLE_CHUNKS, TABLE_ENRICHMENTS];
+
+// ── Arrow schemas ──────────────────────────────────────────────────────────
+
+fn utf8_field(name: &str, nullable: bool) -> Field {
+    if nullable { Field::new(name, DataType::Utf8, true) } else { Field::new(name, DataType::Utf8, false) }
+}
+
+fn int64_field(name: &str, nullable: bool) -> Field {
+    if nullable { Field::new(name, DataType::Int64, true) } else { Field::new(name, DataType::Int64, false) }
+}
+
+fn uint32_field(name: &str, nullable: bool) -> Field {
+    if nullable { Field::new(name, DataType::UInt32, true) } else { Field::new(name, DataType::UInt32, false) }
+}
+
+fn uint64_field(name: &str, nullable: bool) -> Field {
+    if nullable { Field::new(name, DataType::UInt64, true) } else { Field::new(name, DataType::UInt64, false) }
+}
+
+fn float32_field(name: &str, nullable: bool) -> Field {
+    if nullable { Field::new(name, DataType::Float32, true) } else { Field::new(name, DataType::Float32, false) }
+}
+
+/// Arrow schema for the `registrations` table.
+pub fn registrations_schema() -> SchemaRef {
+    Arc::new(Schema::new(vec![
+        utf8_field("registration_key", false),
+        utf8_field("project_key", false),
+        utf8_field("project_identity", false),
+        utf8_field("project_path", false),
+        utf8_field("source_identity", false),
+        utf8_field("source_type", false),
+        utf8_field("source_kind", true),
+        utf8_field("registered_location", false),
+        utf8_field("tags_json", false),
+        utf8_field("labels_json", false),
+        utf8_field("annotations_json", false),
+        utf8_field("fact_fingerprint", false),
+        int64_field("registration_revision", false),
+        utf8_field("state", false),
+    ]))
+}
+
+/// Arrow schema for the `documents` table.
+pub fn documents_schema() -> SchemaRef {
+    Arc::new(Schema::new(vec![
+        utf8_field("document_key", false),
+        utf8_field("acquisition_kind", false),
+        utf8_field("raw_fingerprint", false),
+        utf8_field("extracted_fingerprint", false),
+        utf8_field("content_fingerprint", false),
+        int64_field("content_revision", false),
+        utf8_field("state", false),
+        utf8_field("last_error_kind", true),
+        utf8_field("last_error", true),
+        utf8_field("fetched_at", true),
+        utf8_field("synced_at", true),
+        uint64_field("chunk_count", false),
+    ]))
+}
+
+/// Arrow schema for the `registration_content` table.
+pub fn registration_content_schema() -> SchemaRef {
+    Arc::new(Schema::new(vec![
+        utf8_field("registration_key", false),
+        utf8_field("document_key", true),
+        int64_field("content_revision", true),
+        utf8_field("acquisition_key", false),
+        utf8_field("acquired_location", false),
+        utf8_field("registered_revision", false),
+        utf8_field("state", false),
+        utf8_field("last_error_kind", true),
+        utf8_field("last_error", true),
+        utf8_field("attempted_at", true),
+        utf8_field("synced_at", true),
+    ]))
+}
+
+/// Default embedding vector dimension (matches `intfloat/multilingual-e5-small`).
+pub const DEFAULT_VECTOR_DIMENSION: usize = 384;
+
+/// Arrow schema for the `chunks` table with a `dimension`-wide vector column.
+pub fn chunks_schema(dimension: usize) -> SchemaRef {
+    Arc::new(Schema::new(vec![
+        utf8_field("chunk_id", false),
+        utf8_field("document_key", false),
+        int64_field("content_revision", false),
+        uint32_field("ordinal", false),
+        utf8_field("locator_json", false),
+        utf8_field("locator_sort_key", false),
+        utf8_field("text", false),
+        utf8_field("text_fingerprint", false),
+        uint32_field("token_count", false),
+        Field::new(
+            "vector",
+            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dimension as i32),
+            false,
+        ),
+    ]))
+}
+
+/// Arrow schema for the `enrichments` table.
+pub fn enrichments_schema() -> SchemaRef {
+    Arc::new(Schema::new(vec![
+        utf8_field("enrichment_key", false),
+        utf8_field("document_key", false),
+        int64_field("content_revision", false),
+        utf8_field("schema_version", false),
+        utf8_field("prompt_version", false),
+        utf8_field("summary", false),
+        utf8_field("language", false),
+        utf8_field("document_type", false),
+        utf8_field("topics_json", false),
+        utf8_field("keywords_json", false),
+        utf8_field("entities_json", false),
+        float32_field("confidence", false),
+        utf8_field("warnings_json", false),
+        uint32_field("processed_chunks", false),
+        uint32_field("total_chunks", false),
+        utf8_field("coverage", false),
+        utf8_field("state", false),
+        utf8_field("generated_at", false),
+        utf8_field("applied_at", false),
+    ]))
+}
+
+/// Get the schema for a named table. `dimension` sizes the chunk vector column.
+pub fn schema_for_table(name: &str, dimension: usize) -> Option<SchemaRef> {
+    match name {
+        TABLE_REGISTRATIONS => Some(registrations_schema()),
+        TABLE_DOCUMENTS => Some(documents_schema()),
+        TABLE_REGISTRATION_CONTENT => Some(registration_content_schema()),
+        TABLE_CHUNKS => Some(chunks_schema(dimension)),
+        TABLE_ENRICHMENTS => Some(enrichments_schema()),
+        _ => None,
+    }
+}
+
+// ── Store handle ───────────────────────────────────────────────────────────
+
+/// A handle to an open LanceDB database.
+pub struct LanceStore {
+    db: lancedb::connection::Connection,
+    _rt: tokio::runtime::Runtime,
+    /// Vector column dimension used when creating tables and appending chunks.
+    dimension: usize,
+}
+
+impl LanceStore {
+    /// Open an existing LanceDB database at `db_path` (a directory on disk).
+    pub fn open(db_path: &Path) -> Result<Self> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| MfError::advanced_store(format!("failed to create async runtime: {e}"), None))?;
+
+        let db = rt.block_on(async {
+            connect(
+                db_path
+                    .to_str()
+                    .ok_or_else(|| MfError::advanced_store("invalid database path (non-UTF-8)".to_string(), None))?,
+            )
+            .execute()
+            .await
+            .map_err(|e| MfError::advanced_store(format!("failed to open LanceDB: {e}"), None))
+        })?;
+
+        Ok(Self { db, _rt: rt, dimension: DEFAULT_VECTOR_DIMENSION })
+    }
+
+    /// Create a new LanceDB database at `db_path`. The directory must not already
+    /// contain a database (though it may not exist yet).
+    pub fn create(db_path: &Path) -> Result<Self> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| MfError::advanced_store(format!("failed to create async runtime: {e}"), None))?;
+
+        let db = rt.block_on(async {
+            connect(
+                db_path
+                    .to_str()
+                    .ok_or_else(|| MfError::advanced_store("invalid database path (non-UTF-8)".to_string(), None))?,
+            )
+            .execute()
+            .await
+            .map_err(|e| MfError::advanced_store(format!("failed to create LanceDB: {e}"), None))
+        })?;
+
+        Ok(Self { db, _rt: rt, dimension: DEFAULT_VECTOR_DIMENSION })
+    }
+
+    /// Open or create a LanceDB database. If the directory exists and contains
+    /// a database, it is opened. Otherwise a new one is created.
+    pub fn open_or_create(db_path: &Path) -> Result<Self> {
+        // LanceDB creates directories as needed; attempt create first.
+        Self::create(db_path)
+    }
+
+    /// Set the vector column dimension for table creation and chunk appends.
+    /// Callers resolve this from `minds.yaml`'s `embedding_dimension`.
+    pub fn with_dimension(mut self, dimension: usize) -> Self {
+        self.dimension = dimension;
+        self
+    }
+
+    /// Return a reference to the inner LanceDB connection.
+    pub fn db(&self) -> &lancedb::connection::Connection {
+        &self.db
+    }
+
+    /// Access the tokio runtime for async operations.
+    pub fn rt(&self) -> &tokio::runtime::Runtime {
+        &self._rt
+    }
+
+    /// Open a table by name.
+    pub fn open_table(&self, name: &str) -> Result<Table> {
+        self.rt().block_on(async {
+            self.db
+                .open_table(name)
+                .execute()
+                .await
+                .map_err(|e| MfError::advanced_store(format!("failed to open table '{name}': {e}"), None))
+        })
+    }
+
+    /// Create an empty table with the given schema. If it already exists the
+    /// operation succeeds but the existing schema is not modified.
+    pub fn create_table(&self, name: &str, schema: SchemaRef) -> Result<Table> {
+        self.rt().block_on(async {
+            self.db
+                .create_empty_table(name, schema)
+                .execute()
+                .await
+                .map_err(|e| MfError::advanced_store(format!("failed to create table '{name}': {e}"), None))
+        })
+    }
+
+    /// Create all five standard tables if they don't exist.
+    pub fn ensure_tables(&self) -> Result<()> {
+        for name in ALL_TABLES {
+            if let Some(schema) = schema_for_table(name, self.dimension) {
+                match self.create_table(name, schema) {
+                    Ok(_) => {}
+                    Err(_) => {
+                        // table may already exist — try opening it
+                        let _ = self.open_table(name)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Add rows to a table. The RecordBatch schema must match the table.
+    pub fn append_rows(&self, table_name: &str, batch: arrow_array::RecordBatch) -> Result<()> {
+        let table = self.open_table(table_name)?;
+        self.rt().block_on(async {
+            table
+                .add(batch)
+                .execute()
+                .await
+                .map(|_| ())
+                .map_err(|e| MfError::advanced_store(format!("failed to append to '{table_name}': {e}"), None))
+        })
+    }
+
+    /// Append primary registration facts during activation.  Keeping this
+    /// conversion in the storage adapter makes the Arrow boundary explicit and
+    /// prevents activation from publishing a marker for an empty catalog.
+    pub fn append_registrations(&self, registrations: &[SourceRegistration]) -> Result<()> {
+        if registrations.is_empty() {
+            return Ok(());
+        }
+
+        let batch = RecordBatch::try_new(
+            registrations_schema(),
+            vec![
+                Arc::new(StringArray::from(
+                    registrations.iter().map(|r| r.registration_key.as_str()).collect::<Vec<_>>(),
+                )) as ArrayRef,
+                Arc::new(StringArray::from(registrations.iter().map(|r| r.project_key.as_str()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(
+                    registrations.iter().map(|r| r.project_identity.as_str()).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(registrations.iter().map(|r| r.project_path.as_str()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(
+                    registrations.iter().map(|r| r.source_identity.as_str()).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(registrations.iter().map(|r| r.source_type.as_str()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(registrations.iter().map(|r| r.source_kind.as_deref()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(
+                    registrations.iter().map(|r| r.registered_location.as_str()).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(registrations.iter().map(|r| r.tags_json.as_str()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(registrations.iter().map(|r| r.labels_json.as_str()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(
+                    registrations.iter().map(|r| r.annotations_json.as_str()).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    registrations.iter().map(|r| r.fact_fingerprint.as_str()).collect::<Vec<_>>(),
+                )),
+                Arc::new(Int64Array::from(registrations.iter().map(|r| r.registration_revision).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(
+                    registrations
+                        .iter()
+                        .map(|r| match r.state {
+                            crate::model::source_advanced::RegistrationState::Live => "live",
+                            crate::model::source_advanced::RegistrationState::Pending => "pending",
+                            crate::model::source_advanced::RegistrationState::Failed => "failed",
+                            crate::model::source_advanced::RegistrationState::Orphaned => "orphaned",
+                        })
+                        .collect::<Vec<_>>(),
+                )),
+            ],
+        )
+        .map_err(|e| MfError::advanced_store(format!("failed to build registrations batch: {e}"), None))?;
+        self.append_rows(TABLE_REGISTRATIONS, batch)
+    }
+
+    /// Persist one extracted document, its binding, and its searchable chunks.
+    /// Vectors are intentionally zero-filled until the explicit local model
+    /// pipeline supplies embeddings; FTS can still query the actual text.
+    /// Append a document, its registration binding, and chunks.
+    ///
+    /// `embeddings` supplies one 384-dim passage vector per chunk (same order);
+    /// when `None` or mismatched, vectors are zero-filled so keyword/FTS search
+    /// still works and semantic ranking simply degrades.
+    pub fn append_content(
+        &self,
+        document: &SharedContentDocument,
+        relation: &RegistrationContentRelation,
+        chunks: &[Chunk],
+        embeddings: Option<&[Vec<f32>]>,
+    ) -> Result<()> {
+        // LanceDB does not enforce application keys. Replace only this exact
+        // revision before appending so a retry cannot grow duplicates, while
+        // prior revisions of the same registration are retained as history.
+        // Document/chunk rows are content-addressed, so replacing by
+        // `document_key` never disturbs a different revision's content.
+        self.delete_rows(
+            TABLE_REGISTRATION_CONTENT,
+            &format!(
+                "registration_key = '{}' AND content_revision = {}",
+                relation.registration_key,
+                relation.content_revision.unwrap_or(1)
+            ),
+        )?;
+        self.delete_rows(TABLE_CHUNKS, &format!("document_key = '{}'", document.document_key))?;
+        self.delete_rows(TABLE_DOCUMENTS, &format!("document_key = '{}'", document.document_key))?;
+
+        let document_batch = RecordBatch::try_new(
+            documents_schema(),
+            vec![
+                Arc::new(StringArray::from(vec![document.document_key.as_str()])) as ArrayRef,
+                Arc::new(StringArray::from(vec![document.acquisition_kind.as_str()])),
+                Arc::new(StringArray::from(vec![document.raw_fingerprint.as_str()])),
+                Arc::new(StringArray::from(vec![document.extracted_fingerprint.as_str()])),
+                Arc::new(StringArray::from(vec![document.content_fingerprint.as_str()])),
+                Arc::new(Int64Array::from(vec![document.content_revision])),
+                Arc::new(StringArray::from(vec!["ready"])),
+                Arc::new(StringArray::from(vec![document.last_error_kind.as_deref()])),
+                Arc::new(StringArray::from(vec![document.last_error.as_deref()])),
+                Arc::new(StringArray::from(vec![document.fetched_at.as_deref()])),
+                Arc::new(StringArray::from(vec![document.synced_at.as_deref()])),
+                Arc::new(UInt64Array::from(vec![document.chunk_count])),
+            ],
+        )
+        .map_err(|e| MfError::advanced_store(format!("failed to build documents batch: {e}"), None))?;
+        self.append_rows(TABLE_DOCUMENTS, document_batch)?;
+
+        let relation_batch = RecordBatch::try_new(
+            registration_content_schema(),
+            vec![
+                Arc::new(StringArray::from(vec![relation.registration_key.as_str()])) as ArrayRef,
+                Arc::new(StringArray::from(vec![relation.document_key.as_deref()])),
+                Arc::new(Int64Array::from(vec![relation.content_revision])),
+                Arc::new(StringArray::from(vec![relation.acquisition_key.as_str()])),
+                Arc::new(StringArray::from(vec![relation.acquired_location.as_str()])),
+                Arc::new(StringArray::from(vec![relation.registered_revision.as_str()])),
+                Arc::new(StringArray::from(vec!["ready"])),
+                Arc::new(StringArray::from(vec![relation.last_error_kind.as_deref()])),
+                Arc::new(StringArray::from(vec![relation.last_error.as_deref()])),
+                Arc::new(StringArray::from(vec![relation.attempted_at.as_deref()])),
+                Arc::new(StringArray::from(vec![relation.synced_at.as_deref()])),
+            ],
+        )
+        .map_err(|e| MfError::advanced_store(format!("failed to build registration-content batch: {e}"), None))?;
+        self.append_rows(TABLE_REGISTRATION_CONTENT, relation_batch)?;
+
+        if chunks.is_empty() {
+            return Ok(());
+        }
+        let dim = self.dimension;
+        let flat: Vec<f32> = match embeddings {
+            Some(embs) => {
+                if embs.len() != chunks.len() {
+                    return Err(MfError::advanced_store(
+                        format!("embedding count {} does not match chunk count {}", embs.len(), chunks.len()),
+                        None,
+                    ));
+                }
+                if let Some(bad) = embs.iter().find(|v| v.len() != dim) {
+                    return Err(MfError::advanced_store(
+                        format!("embedding dimension {} does not match the index dimension {dim}", bad.len()),
+                        Some("set minds.yaml source.advanced.embedding_dimension to match the provider model, then rebuild".to_string()),
+                    ));
+                }
+                embs.iter().flat_map(|v| v.iter().copied()).collect()
+            }
+            // No embeddings (e.g. offline sync): zero vectors so keyword/FTS still works.
+            None => vec![0.0; chunks.len() * dim],
+        };
+        let vectors = FixedSizeListArray::try_new(
+            Arc::new(Field::new("item", DataType::Float32, true)),
+            dim as i32,
+            Arc::new(Float32Array::from(flat)),
+            None,
+        )
+        .map_err(|e| MfError::advanced_store(format!("failed to build chunk vectors: {e}"), None))?;
+        let chunk_batch = RecordBatch::try_new(
+            chunks_schema(self.dimension),
+            vec![
+                Arc::new(StringArray::from(chunks.iter().map(|c| c.chunk_id.as_str()).collect::<Vec<_>>())) as ArrayRef,
+                Arc::new(StringArray::from(chunks.iter().map(|c| c.document_key.as_str()).collect::<Vec<_>>())),
+                Arc::new(Int64Array::from(chunks.iter().map(|c| c.content_revision).collect::<Vec<_>>())),
+                Arc::new(UInt32Array::from(chunks.iter().map(|c| c.ordinal).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(chunks.iter().map(|c| c.locator_json.as_str()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(chunks.iter().map(|c| c.locator_sort_key.as_str()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(chunks.iter().map(|c| c.text.as_str()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(chunks.iter().map(|c| c.text_fingerprint.as_str()).collect::<Vec<_>>())),
+                Arc::new(UInt32Array::from(chunks.iter().map(|c| c.token_count).collect::<Vec<_>>())),
+                Arc::new(vectors),
+            ],
+        )
+        .map_err(|e| MfError::advanced_store(format!("failed to build chunks batch: {e}"), None))?;
+        self.append_rows(TABLE_CHUNKS, chunk_batch)
+    }
+
+    /// Whether a registration already points at this exact ready document.
+    ///
+    /// This deliberately reads the binding rather than relying on file mtimes:
+    /// an unchanged second sync must not rewrite rows (or invalidate an
+    /// enrichment) merely because it was run again.
+    pub fn has_ready_content_binding(&self, registration_key: &str, document_key: &str) -> Result<bool> {
+        for batch in self.scan_rows(TABLE_REGISTRATION_CONTENT)? {
+            let keys = batch
+                .column_by_name("registration_key")
+                .and_then(|column| column.as_any().downcast_ref::<StringArray>())
+                .ok_or_else(|| {
+                    MfError::advanced_store("registration_content table missing 'registration_key'".to_string(), None)
+                })?;
+            let documents = batch
+                .column_by_name("document_key")
+                .and_then(|column| column.as_any().downcast_ref::<StringArray>())
+                .ok_or_else(|| {
+                    MfError::advanced_store("registration_content table missing 'document_key'".to_string(), None)
+                })?;
+            let states = batch
+                .column_by_name("state")
+                .and_then(|column| column.as_any().downcast_ref::<StringArray>())
+                .ok_or_else(|| {
+                    MfError::advanced_store("registration_content table missing 'state'".to_string(), None)
+                })?;
+            for row in 0..batch.num_rows() {
+                if keys.value(row) == registration_key
+                    && !documents.is_null(row)
+                    && documents.value(row) == document_key
+                    && states.value(row) == "ready"
+                {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    /// Remove selected registration-to-content bindings and return the shared
+    /// documents which became unreferenced. Primary registrations are never
+    /// touched. This is the only destructive primitive used by scoped clear.
+    pub fn clear_content_bindings(&self, registration_keys: &BTreeSet<String>) -> Result<usize> {
+        if registration_keys.is_empty() {
+            return Ok(0);
+        }
+        let affected = self.document_keys_for_bindings(Some(registration_keys))?;
+        for key in registration_keys {
+            self.delete_rows(TABLE_REGISTRATION_CONTENT, &format!("registration_key = '{key}'"))?;
+        }
+        let still_bound = self.document_keys_for_bindings(None)?;
+        for document_key in affected.difference(&still_bound) {
+            self.delete_rows(TABLE_CHUNKS, &format!("document_key = '{document_key}'"))?;
+            self.delete_rows(TABLE_ENRICHMENTS, &format!("document_key = '{document_key}'"))?;
+            self.delete_rows(TABLE_DOCUMENTS, &format!("document_key = '{document_key}'"))?;
+        }
+        Ok(affected.len())
+    }
+
+    fn document_keys_for_bindings(&self, keys: Option<&BTreeSet<String>>) -> Result<BTreeSet<String>> {
+        let mut documents = BTreeSet::new();
+        for batch in self.scan_rows(TABLE_REGISTRATION_CONTENT)? {
+            let registrations = batch
+                .column_by_name("registration_key")
+                .and_then(|column| column.as_any().downcast_ref::<StringArray>())
+                .ok_or_else(|| {
+                    MfError::advanced_store("registration_content table missing 'registration_key'".to_string(), None)
+                })?;
+            let document_keys = batch
+                .column_by_name("document_key")
+                .and_then(|column| column.as_any().downcast_ref::<StringArray>())
+                .ok_or_else(|| {
+                    MfError::advanced_store("registration_content table missing 'document_key'".to_string(), None)
+                })?;
+            for row in 0..batch.num_rows() {
+                if keys.is_none_or(|selected| selected.contains(registrations.value(row)))
+                    && !document_keys.is_null(row)
+                {
+                    documents.insert(document_keys.value(row).to_string());
+                }
+            }
+        }
+        Ok(documents)
+    }
+
+    /// Replace the enrichment for one document revision.  The caller has
+    /// already validated that the revision is current; this method keeps the
+    /// table's application key unique across retries.
+    pub fn replace_enrichment(&self, enrichment: &SourceEnrichment) -> Result<()> {
+        self.delete_rows(TABLE_ENRICHMENTS, &format!("document_key = '{}'", enrichment.document_key))?;
+        let batch = RecordBatch::try_new(
+            enrichments_schema(),
+            vec![
+                Arc::new(StringArray::from(vec![enrichment.enrichment_key.as_str()])) as ArrayRef,
+                Arc::new(StringArray::from(vec![enrichment.document_key.as_str()])),
+                Arc::new(Int64Array::from(vec![enrichment.content_revision])),
+                Arc::new(StringArray::from(vec![enrichment.schema_version.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.prompt_version.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.summary.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.language.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.document_type.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.topics_json.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.keywords_json.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.entities_json.as_str()])),
+                Arc::new(Float32Array::from(vec![enrichment.confidence])),
+                Arc::new(StringArray::from(vec![enrichment.warnings_json.as_str()])),
+                Arc::new(UInt32Array::from(vec![enrichment.processed_chunks])),
+                Arc::new(UInt32Array::from(vec![enrichment.total_chunks])),
+                Arc::new(StringArray::from(vec![match enrichment.coverage {
+                    crate::model::source_advanced::EnrichmentCoverage::Complete => "complete",
+                    crate::model::source_advanced::EnrichmentCoverage::Partial => "partial",
+                }])),
+                Arc::new(StringArray::from(vec![match enrichment.state {
+                    crate::model::source_advanced::EnrichmentState::Pending => "pending",
+                    crate::model::source_advanced::EnrichmentState::Ready => "ready",
+                    crate::model::source_advanced::EnrichmentState::Stale => "stale",
+                    crate::model::source_advanced::EnrichmentState::Failed => "failed",
+                    crate::model::source_advanced::EnrichmentState::Skipped => "skipped",
+                }])),
+                Arc::new(StringArray::from(vec![enrichment.generated_at.as_str()])),
+                Arc::new(StringArray::from(vec![enrichment.applied_at.as_str()])),
+            ],
+        )
+        .map_err(|e| MfError::advanced_store(format!("failed to build enrichment batch: {e}"), None))?;
+        self.append_rows(TABLE_ENRICHMENTS, batch)
+    }
+
+    /// The current (highest-revision) content relation for a registration, as
+    /// `(content_revision, document_key)`. Used to decide the next revision on
+    /// sync and to select the current version for retrieval.
+    pub fn current_relation(&self, registration_key: &str) -> Result<Option<(i64, String)>> {
+        let mut best: Option<(i64, String)> = None;
+        for batch in self.scan_rows(TABLE_REGISTRATION_CONTENT)? {
+            let regs = batch.column_by_name("registration_key").and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let docs = batch.column_by_name("document_key").and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let revs = batch.column_by_name("content_revision").and_then(|c| c.as_any().downcast_ref::<Int64Array>());
+            let (Some(regs), Some(docs)) = (regs, docs) else { continue };
+            for row in 0..batch.num_rows() {
+                if regs.value(row) != registration_key || docs.is_null(row) {
+                    continue;
+                }
+                let rev = revs.filter(|r| !r.is_null(row)).map(|r| r.value(row)).unwrap_or(1);
+                if best.as_ref().is_none_or(|(current, _)| rev > *current) {
+                    best = Some((rev, docs.value(row).to_string()));
+                }
+            }
+        }
+        Ok(best)
+    }
+
+    /// Count rows in a table. Returns 0 if the table is empty or missing.
+    pub fn count_rows(&self, table_name: &str) -> Result<usize> {
+        let table = match self.open_table(table_name) {
+            Ok(t) => t,
+            Err(_) => return Ok(0),
+        };
+        self.rt().block_on(async {
+            table
+                .count_rows(None)
+                .await
+                .map_err(|e| MfError::advanced_store(format!("failed to count '{table_name}': {e}"), None))
+        })
+    }
+
+    /// Read rows for deterministic service-side filtering.  Callers use this
+    /// only for bounded control-plane data such as enrichment jobs; it never
+    /// creates indexes or mutates the table.
+    pub fn scan_rows(&self, table_name: &str) -> Result<Vec<RecordBatch>> {
+        let table = self.open_table(table_name)?;
+        self.rt().block_on(async {
+            table
+                .query()
+                .execute()
+                .await
+                .map_err(|e| MfError::advanced_store(format!("scan failed on '{table_name}': {e}"), None))?
+                .try_collect::<Vec<_>>()
+                .await
+                .map_err(|e| MfError::advanced_store(format!("failed to collect rows from '{table_name}': {e}"), None))
+        })
+    }
+
+    /// Delete rows from a table matching a predicate string.
+    pub fn delete_rows(&self, table_name: &str, predicate: &str) -> Result<()> {
+        let table = self.open_table(table_name)?;
+        self.rt().block_on(async {
+            table
+                .delete(predicate)
+                .await
+                .map(|_| ())
+                .map_err(|e| MfError::advanced_store(format!("failed to delete from '{table_name}': {e}"), None))
+        })
+    }
+
+    /// Get the current version of a table.
+    pub fn table_version(&self, table_name: &str) -> Result<u64> {
+        let table = self.open_table(table_name)?;
+        self.rt().block_on(async {
+            table
+                .version()
+                .await
+                .map_err(|e| MfError::advanced_store(format!("failed to get version of '{table_name}': {e}"), None))
+        })
+    }
+
+    /// Create a tokenized full-text (BM25) index on a text column.
+    ///
+    /// `Index::Auto` would build a scalar BTree on a string column, which
+    /// `full_text_search` cannot use; the inverted `Index::FTS` index is
+    /// required. `replace(true)` refreshes the index to cover newly appended
+    /// chunks on each sync.
+    pub fn create_fts_index(&self, table_name: &str, columns: &[&str]) -> Result<()> {
+        let table = self.open_table(table_name)?;
+        self.rt().block_on(async {
+            // ICU dictionary-based segmentation tokenizes both English and CJK.
+            // The default `simple` tokenizer splits on whitespace/punctuation, so
+            // Chinese text (which has no spaces) becomes unsearchable.
+            let params = lancedb::index::scalar::FtsIndexBuilder::default().base_tokenizer("icu".to_string());
+            table
+                .create_index(columns, lancedb::index::Index::FTS(params))
+                .replace(true)
+                .execute()
+                .await
+                .map(|_| ())
+                .map_err(|e| {
+                    MfError::advanced_store(format!("failed to create FTS index on '{table_name}': {e}"), None)
+                })
+        })
+    }
+
+    /// Execute a full-text search query on a table.
+    /// Returns RecordBatches from the query result stream.
+    pub fn fts_search(
+        &self,
+        table_name: &str,
+        query_text: &str,
+        _columns: &[&str],
+        limit: usize,
+    ) -> Result<Vec<arrow_array::RecordBatch>> {
+        let table = self.open_table(table_name)?;
+        self.rt().block_on(async {
+            let stream = table
+                .query()
+                .full_text_search(FullTextSearchQuery::new(query_text.to_owned()))
+                .limit(limit)
+                .execute()
+                .await
+                .map_err(|e| MfError::advanced_store(format!("query failed on '{table_name}': {e}"), None))?;
+            stream.try_collect::<Vec<_>>().await.map_err(|e| {
+                MfError::advanced_store(format!("failed to collect results from '{table_name}': {e}"), None)
+            })
+        })
+    }
+
+    /// Create a vector index for approximate nearest neighbor search using Auto index selection.
+    pub fn create_vector_index(&self, table_name: &str, column: &str) -> Result<()> {
+        let table = self.open_table(table_name)?;
+        self.rt().block_on(async {
+            table.create_index(&[column], lancedb::index::Index::Auto).execute().await.map(|_| ()).map_err(|e| {
+                MfError::advanced_store(format!("failed to create vector index on '{table_name}.{column}': {e}"), None)
+            })
+        })
+    }
+
+    /// Execute a vector similarity search on a table.
+    pub fn vector_search(
+        &self,
+        table_name: &str,
+        vector: &[f32],
+        column: &str,
+        limit: usize,
+    ) -> Result<Vec<arrow_array::RecordBatch>> {
+        let table = self.open_table(table_name)?;
+        let q = vector.to_vec();
+        let col = column.to_string();
+        self.rt().block_on(async {
+            let stream = table
+                .query()
+                .nearest_to(q)
+                .map_err(|e| MfError::advanced_store(format!("vector search setup failed: {e}"), None))?
+                .column(&col)
+                .limit(limit)
+                .execute()
+                .await
+                .map_err(|e| MfError::advanced_store(format!("vector search failed on '{table_name}': {e}"), None))?;
+            stream.try_collect::<Vec<_>>().await.map_err(|e| {
+                MfError::advanced_store(format!("failed to collect results from '{table_name}': {e}"), None)
+            })
+        })
+    }
+
+    /// Native hybrid search: fuse vector KNN and full-text (BM25) candidates
+    /// with LanceDB's built-in reciprocal-rank-fusion reranker. Requires an FTS
+    /// index on `text` and per-row vectors on `column`.
+    pub fn hybrid_search(
+        &self,
+        table_name: &str,
+        query_text: &str,
+        query_vector: &[f32],
+        column: &str,
+        limit: usize,
+    ) -> Result<Vec<arrow_array::RecordBatch>> {
+        let table = self.open_table(table_name)?;
+        let q = query_vector.to_vec();
+        let col = column.to_string();
+        self.rt().block_on(async {
+            let stream = table
+                .query()
+                .nearest_to(q)
+                .map_err(|e| MfError::advanced_store(format!("hybrid search setup failed: {e}"), None))?
+                .column(&col)
+                .full_text_search(FullTextSearchQuery::new(query_text.to_owned()))
+                .rerank(Arc::new(lancedb::rerankers::rrf::RRFReranker::new(60.0)))
+                .limit(limit)
+                .execute()
+                .await
+                .map_err(|e| MfError::advanced_store(format!("hybrid search failed on '{table_name}': {e}"), None))?;
+            stream.try_collect::<Vec<_>>().await.map_err(|e| {
+                MfError::advanced_store(format!("failed to collect hybrid results from '{table_name}': {e}"), None)
+            })
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_tables_have_schemas() {
+        for name in ALL_TABLES {
+            assert!(schema_for_table(name, DEFAULT_VECTOR_DIMENSION).is_some(), "missing schema for table: {name}");
+        }
+    }
+
+    #[test]
+    fn registration_schema_has_no_nullable_pk() {
+        let schema = registrations_schema();
+        let pk = schema.field_with_name("registration_key").unwrap();
+        assert!(!pk.is_nullable());
+    }
+
+    #[test]
+    fn chunks_schema_has_vector_field() {
+        let schema = chunks_schema(DEFAULT_VECTOR_DIMENSION);
+        let vec_field = schema.field_with_name("vector").unwrap();
+        assert_eq!(
+            vec_field.data_type(),
+            &DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), 384)
+        );
+    }
+
+    #[test]
+    fn vector_search_ranks_persisted_embeddings_by_similarity() {
+        use crate::model::source_advanced::{DocumentState, RelationState};
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = LanceStore::create(&dir.path().join("db")).unwrap();
+        store.ensure_tables().unwrap();
+
+        // Three chunks with distinct unit-basis 384-dim embeddings.
+        let chunks: Vec<Chunk> = (0..3)
+            .map(|i| Chunk {
+                chunk_id: format!("chunk-{i}"),
+                document_key: "doc-1".to_string(),
+                content_revision: 1,
+                ordinal: i as u32,
+                locator_json: "{}".to_string(),
+                locator_sort_key: format!("{i:08}"),
+                text: format!("chunk {i}"),
+                text_fingerprint: format!("fp-{i}"),
+                token_count: 2,
+            })
+            .collect();
+        let embeddings: Vec<Vec<f32>> = (0..3)
+            .map(|i| {
+                let mut v = vec![0.0f32; 384];
+                v[i] = 1.0;
+                v
+            })
+            .collect();
+
+        let document = SharedContentDocument {
+            document_key: "doc-1".to_string(),
+            acquisition_kind: "file".to_string(),
+            raw_fingerprint: "r".to_string(),
+            extracted_fingerprint: "e".to_string(),
+            content_fingerprint: "c".to_string(),
+            content_revision: 1,
+            state: DocumentState::Ready,
+            last_error_kind: None,
+            last_error: None,
+            fetched_at: None,
+            synced_at: None,
+            chunk_count: 3,
+        };
+        let relation = RegistrationContentRelation {
+            registration_key: "reg-1".to_string(),
+            document_key: Some("doc-1".to_string()),
+            content_revision: Some(1),
+            acquisition_key: "ak".to_string(),
+            acquired_location: "loc".to_string(),
+            registered_revision: "1".to_string(),
+            state: RelationState::Ready,
+            last_error_kind: None,
+            last_error: None,
+            attempted_at: None,
+            synced_at: None,
+        };
+        store.append_content(&document, &relation, &chunks, Some(&embeddings)).unwrap();
+
+        // Query nearest to basis vector 1 → chunk-1 must rank first (brute-force
+        // KNN, no vector index required). This proves the native vector path
+        // works on our schema once real embeddings are stored.
+        let mut query = vec![0.0f32; 384];
+        query[1] = 1.0;
+        let batches = store.vector_search("chunks", &query, "vector", 3).unwrap();
+        let first = batches
+            .iter()
+            .flat_map(|b| {
+                let ids = b.column_by_name("chunk_id").unwrap().as_any().downcast_ref::<StringArray>().unwrap();
+                (0..b.num_rows()).map(|r| ids.value(r).to_string()).collect::<Vec<_>>()
+            })
+            .next()
+            .expect("at least one result");
+        assert_eq!(first, "chunk-1", "the nearest stored embedding must rank first");
+    }
+
+    #[test]
+    fn chunks_schema_honors_configured_dimension() {
+        let schema = chunks_schema(1024);
+        let field = schema.field_with_name("vector").unwrap();
+        assert_eq!(
+            field.data_type(),
+            &DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), 1024)
+        );
+    }
+
+    #[test]
+    fn append_content_rejects_mismatched_embedding_dimension() {
+        use crate::model::source_advanced::{DocumentState, RelationState};
+
+        let dir = tempfile::tempdir().unwrap();
+        // Index built for 1024-dim vectors.
+        let store = LanceStore::create(&dir.path().join("db")).unwrap().with_dimension(1024);
+        store.ensure_tables().unwrap();
+
+        let chunks = vec![Chunk {
+            chunk_id: "chunk-0".to_string(),
+            document_key: "doc-1".to_string(),
+            content_revision: 1,
+            ordinal: 0,
+            locator_json: "{}".to_string(),
+            locator_sort_key: "00000000".to_string(),
+            text: "hello".to_string(),
+            text_fingerprint: "fp-0".to_string(),
+            token_count: 1,
+        }];
+        // A 384-dim embedding must be rejected, not silently zero-filled.
+        let embeddings = vec![vec![0.0f32; 384]];
+        let document = SharedContentDocument {
+            document_key: "doc-1".to_string(),
+            acquisition_kind: "file".to_string(),
+            raw_fingerprint: "r".to_string(),
+            extracted_fingerprint: "e".to_string(),
+            content_fingerprint: "c".to_string(),
+            content_revision: 1,
+            state: DocumentState::Ready,
+            last_error_kind: None,
+            last_error: None,
+            fetched_at: None,
+            synced_at: None,
+            chunk_count: 1,
+        };
+        let relation = RegistrationContentRelation {
+            registration_key: "reg-1".to_string(),
+            document_key: Some("doc-1".to_string()),
+            content_revision: Some(1),
+            acquisition_key: "ak".to_string(),
+            acquired_location: "loc".to_string(),
+            registered_revision: "1".to_string(),
+            state: RelationState::Ready,
+            last_error_kind: None,
+            last_error: None,
+            attempted_at: None,
+            synced_at: None,
+        };
+        let err = store.append_content(&document, &relation, &chunks, Some(&embeddings)).unwrap_err();
+        assert!(err.to_string().contains("dimension"), "expected a dimension error, got: {err}");
+    }
+
+    #[test]
+    fn hybrid_search_fuses_fts_and_vector_signals() {
+        use crate::model::source_advanced::{DocumentState, RelationState};
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = LanceStore::create(&dir.path().join("db")).unwrap();
+        store.ensure_tables().unwrap();
+
+        // chunk-0 is found only by the keyword; chunk-1 only by the vector.
+        let texts = ["photosynthesis chloroplast", "transformer attention model"];
+        let chunks: Vec<Chunk> = (0..2)
+            .map(|i| Chunk {
+                chunk_id: format!("chunk-{i}"),
+                document_key: "doc-1".to_string(),
+                content_revision: 1,
+                ordinal: i as u32,
+                locator_json: "{}".to_string(),
+                locator_sort_key: format!("{i:08}"),
+                text: texts[i].to_string(),
+                text_fingerprint: format!("fp-{i}"),
+                token_count: 3,
+            })
+            .collect();
+        let embeddings: Vec<Vec<f32>> = (0..2)
+            .map(|i| {
+                let mut v = vec![0.0f32; 384];
+                v[i] = 1.0;
+                v
+            })
+            .collect();
+
+        let document = SharedContentDocument {
+            document_key: "doc-1".to_string(),
+            acquisition_kind: "file".to_string(),
+            raw_fingerprint: "r".to_string(),
+            extracted_fingerprint: "e".to_string(),
+            content_fingerprint: "c".to_string(),
+            content_revision: 1,
+            state: DocumentState::Ready,
+            last_error_kind: None,
+            last_error: None,
+            fetched_at: None,
+            synced_at: None,
+            chunk_count: 2,
+        };
+        let relation = RegistrationContentRelation {
+            registration_key: "reg-1".to_string(),
+            document_key: Some("doc-1".to_string()),
+            content_revision: Some(1),
+            acquisition_key: "ak".to_string(),
+            acquired_location: "loc".to_string(),
+            registered_revision: "1".to_string(),
+            state: RelationState::Ready,
+            last_error_kind: None,
+            last_error: None,
+            attempted_at: None,
+            synced_at: None,
+        };
+        store.append_content(&document, &relation, &chunks, Some(&embeddings)).unwrap();
+        store.create_fts_index("chunks", &["text"]).unwrap();
+
+        // Query keyword targets chunk-0; query vector targets chunk-1. RRF must
+        // surface both signals in the fused result set.
+        let mut query_vec = vec![0.0f32; 384];
+        query_vec[1] = 1.0;
+        let batches = store.hybrid_search("chunks", "photosynthesis", &query_vec, "vector", 10).unwrap();
+        let ids: Vec<String> = batches
+            .iter()
+            .flat_map(|b| {
+                let ids = b.column_by_name("chunk_id").unwrap().as_any().downcast_ref::<StringArray>().unwrap();
+                (0..b.num_rows()).map(|r| ids.value(r).to_string()).collect::<Vec<_>>()
+            })
+            .collect();
+        assert!(ids.contains(&"chunk-0".to_string()), "keyword-only match must appear: {ids:?}");
+        assert!(ids.contains(&"chunk-1".to_string()), "vector-only match must appear: {ids:?}");
+    }
+
+    #[test]
+    fn enrichments_schema_has_confidence_field() {
+        let schema = enrichments_schema();
+        let conf = schema.field_with_name("confidence").unwrap();
+        assert_eq!(conf.data_type(), &DataType::Float32);
+    }
+}

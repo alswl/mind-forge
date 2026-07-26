@@ -30,13 +30,8 @@ pub fn detect_repo_root(start_dir: &Path, max_depth: usize) -> Option<PathBuf> {
         if depth >= max_depth {
             return None;
         }
-        match current.parent() {
-            Some(parent) => {
-                current = parent.to_path_buf();
-                depth += 1;
-            }
-            None => return None,
-        }
+        current = current.parent()?.to_path_buf();
+        depth += 1;
     }
 }
 
@@ -46,11 +41,7 @@ pub fn detect_repo_root_with_config(config_path: &Path) -> Option<PathBuf> {
         return None;
     }
     let path = if config_path.is_dir() { config_path.to_path_buf() } else { config_path.parent()?.to_path_buf() };
-    if path.join("minds.yaml").exists() {
-        Some(path)
-    } else {
-        None
-    }
+    if path.join("minds.yaml").exists() { Some(path) } else { None }
 }
 
 // ---------------------------------------------------------------------------

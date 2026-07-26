@@ -38,18 +38,17 @@ pub fn scan_references(
             // For assets only: body-scan article files (matching asset remove precedent)
             if matches!(target_kind, ObjectKind::Asset) {
                 let abs_path = project_path.join(&article.article_path);
-                if abs_path.exists() {
-                    if let Ok(content) = std::fs::read_to_string(&abs_path) {
-                        if content.contains(target_id) {
-                            refs.push(Reference {
-                                from_kind: ObjectKind::Article,
-                                from_id,
-                                from_path,
-                                line: None,
-                                kind: ReferenceKind::Mention,
-                            });
-                        }
-                    }
+                if abs_path.exists()
+                    && let Ok(content) = std::fs::read_to_string(&abs_path)
+                    && content.contains(target_id)
+                {
+                    refs.push(Reference {
+                        from_kind: ObjectKind::Article,
+                        from_id,
+                        from_path,
+                        line: None,
+                        kind: ReferenceKind::Mention,
+                    });
                 }
             }
         }
@@ -112,11 +111,7 @@ pub fn planned_rename_file(path: &str, old: &str, new: &str) -> PlannedChange {
 /// plan, then call this guard.
 #[allow(dead_code)] // consumed by US3 move
 pub fn dry_run_guard(dry_run: bool, planned: Vec<PlannedChange>) -> Result<Option<Vec<PlannedChange>>> {
-    if dry_run {
-        Ok(Some(planned))
-    } else {
-        Ok(None)
-    }
+    if dry_run { Ok(Some(planned)) } else { Ok(None) }
 }
 
 /// Resolve the scope for an operation based on project path and global flag.

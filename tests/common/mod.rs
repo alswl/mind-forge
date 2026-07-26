@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 
 pub use tempfile::TempDir;
 
+pub mod embedding_provider;
+
 /// 创建一个临时 Mind Repo（扁平 layout：projects_dir: "."）
 #[allow(dead_code)]
 pub fn setup_repo() -> TempDir {

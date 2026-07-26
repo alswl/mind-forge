@@ -1,21 +1,21 @@
 use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 
+use crate::cli::CommandCtx;
+use crate::cli::CommandOutcome;
 use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::NoHeadersFlag;
 use crate::cli::shared_flags::NoTruncFlag;
-use crate::cli::CommandCtx;
-use crate::cli::CommandOutcome;
 use crate::error::{MfError, Result};
+use crate::model::Resource;
 use crate::model::index::PublishStatus;
 use crate::model::publish::{LocalRunOutcome, PublishRunOutcome, PublishUpdateOutcome, UpdateAction};
 use crate::model::publisher::PublishersOutcome;
-use crate::model::Resource;
-use crate::output::list::{render_text, ListCell, ListOpts, ListRow, ListView};
-use crate::output::show::{json_envelope, render_text as render_show_text, ShowBlock, ShowField, ShowOpts, ShowValue};
-use crate::output::warning::emit_warning;
 use crate::output::Format;
+use crate::output::list::{ListCell, ListOpts, ListRow, ListView, render_text};
+use crate::output::show::{ShowBlock, ShowField, ShowOpts, ShowValue, json_envelope, render_text as render_show_text};
+use crate::output::warning::emit_warning;
 use crate::service::publish as publish_svc;
 use crate::service::publisher as publisher_svc;
 

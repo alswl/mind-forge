@@ -1,0 +1,37 @@
+---
+source: tests/cli_help.rs
+expression: stdout
+---
+Activate LanceDB-backed Sources (imports all legacy registrations)
+
+Usage: mf source advanced enable [OPTIONS]
+
+Options:
+      --model <MODEL>
+          Model ID for embeddings (default: intfloat/multilingual-e5-small)
+      --root <PATH>
+          Mind Repo root directory
+      --config <PATH>
+          Config file path
+      --model-revision <MODEL_REVISION>
+          Model revision (default: main)
+      --model-path <MODEL_PATH>
+          Path to a pre-installed model bundle
+  -v, --verbose...
+          Verbose output
+      --dry-run
+          Preview changes without writing
+  -q, --quiet
+          Silence non-error output
+  -o, --output <FORMAT>
+          Output format [default: text] [possible values: text, json]
+      --json
+          Shorthand for --output json
+      --no-color
+          Disable colored output
+  -p, --project <NAME>
+          Project name for project-scoped operations
+  -h, --help
+          Print help
+  -V, --version
+          Print version

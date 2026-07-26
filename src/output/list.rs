@@ -211,11 +211,7 @@ trait CellContent {
         self.raw_text()
     }
     fn render(&self, opts: &ListOpts) -> String {
-        if opts.color_enabled {
-            self.colored_text()
-        } else {
-            self.raw_text()
-        }
+        if opts.color_enabled { self.colored_text() } else { self.raw_text() }
     }
 }
 
@@ -257,11 +253,7 @@ impl CellContent for ListCell {
         if let ListCell::Path(s) = self {
             return super::link::render_path_link(s, opts.repo_root.as_deref(), opts.emit_hyperlinks);
         }
-        if opts.color_enabled {
-            self.colored_text()
-        } else {
-            self.raw_text()
-        }
+        if opts.color_enabled { self.colored_text() } else { self.raw_text() }
     }
 }
 

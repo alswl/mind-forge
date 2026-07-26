@@ -7,6 +7,8 @@ pub mod project;
 pub mod prompt;
 pub mod publish;
 pub mod source;
+pub mod source_advanced;
+pub mod source_search;
 pub mod term;
 pub mod terminal;
 pub mod thinking;

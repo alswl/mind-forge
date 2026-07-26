@@ -886,13 +886,13 @@ fn list_discovers_generated_articles() {
     assert_eq!(parsed["status"], "ok");
 
     let articles = parsed["data"]["articles"].as_array().unwrap();
-    let gen = articles.iter().find(|a| a["title"] == "daily_report/2026-05-15");
-    assert!(gen.is_some(), "should find generated article: {stdout}");
+    let generated = articles.iter().find(|a| a["title"] == "daily_report/2026-05-15");
+    assert!(generated.is_some(), "should find generated article: {stdout}");
 
-    let gen = gen.unwrap();
-    assert_eq!(gen["article_path"], "outputs/2026-05/2026-05-15.md");
-    assert_eq!(gen["template_origin"]["template_name"], "daily_report");
-    assert_eq!(gen["template_origin"]["slot_value"], "2026-05-15");
+    let generated = generated.unwrap();
+    assert_eq!(generated["article_path"], "outputs/2026-05/2026-05-15.md");
+    assert_eq!(generated["template_origin"]["template_name"], "daily_report");
+    assert_eq!(generated["template_origin"]["slot_value"], "2026-05-15");
 }
 
 #[test]

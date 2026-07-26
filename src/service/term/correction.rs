@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use crate::error::{MfError, Result};
-use crate::model::term::{validate_corrections, Boundary, Correction, FixKind, MatchKind};
+use crate::model::term::{Boundary, Correction, FixKind, MatchKind, validate_corrections};
 use crate::service::index;
 use crate::service::term::{find_correction_index, sort_terms_by_name};
 

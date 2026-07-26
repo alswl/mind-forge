@@ -1,0 +1,22 @@
+---
+source: tests/cli_help.rs
+expression: stdout
+---
+Recover the LanceDB pointer from a retained snapshot
+
+Usage: mf source advanced recover [OPTIONS] --snapshot <SNAPSHOT>
+
+Options:
+      --root <PATH>          Mind Repo root directory
+      --snapshot <SNAPSHOT>  
+      --config <PATH>        Config file path
+      --dry-run              Preview changes without writing
+  -v, --verbose...           Verbose output
+  -y, --yes                  Skip interactive confirmation prompt
+  -q, --quiet                Silence non-error output
+  -o, --output <FORMAT>      Output format [default: text] [possible values: text, json]
+      --json                 Shorthand for --output json
+      --no-color             Disable colored output
+  -p, --project <NAME>       Project name for project-scoped operations
+  -h, --help                 Print help
+  -V, --version              Print version

@@ -6,12 +6,12 @@
 use std::path::Path;
 
 use super::fix::apply_update;
-use super::{dedup_preserve_first, sort_terms_by_name, TermInput, TermUpdate};
+use super::{TermInput, TermUpdate, dedup_preserve_first, sort_terms_by_name};
 use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::index::IndexFile;
 use crate::model::lifecycle::{PlannedChange, ScopeRef};
-use crate::model::term::{validate_corrections, Correction, FixSelection, Term, TermLintReport};
+use crate::model::term::{Correction, FixSelection, Term, TermLintReport, validate_corrections};
 use crate::service::lifecycle;
 use crate::service::term::lint;
 use crate::service::term::new::append_to_existing_term;

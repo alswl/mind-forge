@@ -169,12 +169,13 @@ pub fn json_envelope(result: &VerbResult) -> serde_json::Value {
         map.insert("details".to_string(), result.details.clone());
     }
 
-    if matches!(&result.verb, Verb::Index | Verb::Lint) && !result.details.is_null() {
-        if let Some(obj) = result.details.as_object() {
-            for (k, v) in obj {
-                if !map.contains_key(k) {
-                    map.insert(k.clone(), v.clone());
-                }
+    if matches!(&result.verb, Verb::Index | Verb::Lint)
+        && !result.details.is_null()
+        && let Some(obj) = result.details.as_object()
+    {
+        for (k, v) in obj {
+            if !map.contains_key(k) {
+                map.insert(k.clone(), v.clone());
             }
         }
     }

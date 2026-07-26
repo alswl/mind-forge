@@ -23,10 +23,8 @@ fn update_prompt_title(content: &str, new_title: &str) -> String {
                 break;
             }
         }
-        if in_frontmatter {
-            if let Some(_rest) = line.strip_prefix("title:") {
-                *line = format!("title: {}", new_title);
-            }
+        if in_frontmatter && let Some(_rest) = line.strip_prefix("title:") {
+            *line = format!("title: {}", new_title);
         }
     }
     lines.join("\n") + if content.ends_with('\n') { "\n" } else { "" }
@@ -84,11 +82,11 @@ pub fn update_article(project_path: &Path, update: ArticleUpdate<'_>) -> Result<
             // Update title in associated prompt frontmatter if it exists
             let key = crate::service::index::article_output_stem(&article.article_path);
             let prompt_path = project_path.join("prompts").join(format!("{key}.md"));
-            if prompt_path.exists() {
-                if let Ok(content) = fs::read_to_string(&prompt_path) {
-                    let updated = update_prompt_title(&content, trimmed);
-                    let _ = fs::write(&prompt_path, updated);
-                }
+            if prompt_path.exists()
+                && let Ok(content) = fs::read_to_string(&prompt_path)
+            {
+                let updated = update_prompt_title(&content, trimmed);
+                let _ = fs::write(&prompt_path, updated);
             }
         }
     }

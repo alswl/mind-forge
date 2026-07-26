@@ -4,7 +4,7 @@ use chrono::Utc;
 
 use crate::defaults;
 use crate::error::{MfError, Result};
-use crate::model::article::{skip_reason, ArticleShape, ConversionDirection, ConversionResult, ConversionStatus};
+use crate::model::article::{ArticleShape, ConversionDirection, ConversionResult, ConversionStatus, skip_reason};
 use crate::service::index;
 use crate::service::util;
 use crate::service::util::markdown;
@@ -33,11 +33,7 @@ pub fn derive_opening_section_path(target_dir: &str) -> String {
 /// Classify the on-disk shape of an article.
 pub fn classify_article_shape(project_root: &Path, article_path: &str) -> ArticleShape {
     let full = project_root.join(article_path);
-    if full.is_dir() {
-        ArticleShape::Directory
-    } else {
-        ArticleShape::SingleFile
-    }
+    if full.is_dir() { ArticleShape::Directory } else { ArticleShape::SingleFile }
 }
 
 /// List markdown section files in a directory article, sorted by name.
@@ -48,10 +44,10 @@ pub fn list_section_files(project_root: &Path, article_path: &str) -> Result<Vec
     for entry in std::fs::read_dir(&dir).map_err(MfError::Io)? {
         let entry = entry.map_err(MfError::Io)?;
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some(defaults::MARKDOWN_EXTENSION) {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                files.push(format!("{}/{}", article_path, name));
-            }
+        if path.extension().and_then(|e| e.to_str()) == Some(defaults::MARKDOWN_EXTENSION)
+            && let Some(name) = path.file_name().and_then(|n| n.to_str())
+        {
+            files.push(format!("{}/{}", article_path, name));
         }
     }
     files.sort();

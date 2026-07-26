@@ -6,12 +6,12 @@ mod model;
 mod output;
 mod runtime;
 mod service;
-use clap::{error::ErrorKind, CommandFactory, Parser};
+use clap::{CommandFactory, Parser, error::ErrorKind};
 use cli::deprecation::DeprecationContext;
 use cli::{CommandCtx, CommandOutcome, RepoRequirement, RootCli};
 use error::{MfError, Result};
 use exit::ExitCode;
-use output::{render, Payload};
+use output::{Payload, render};
 use runtime::AppContext;
 use std::{
     ffi::OsString,
@@ -44,11 +44,11 @@ fn run(args: Vec<OsString>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> R
         }
     };
     tracing::debug!(config_path = %context.config_path().display(), "resolved config path");
-    if cli.requires_repo() == RepoRequirement::Required {
-        if let Err(err) = context.require_repo() {
-            render(stderr, context.format(), context.color(), Payload::Error(&err))?;
-            return Ok(err.exit_code());
-        }
+    if cli.requires_repo() == RepoRequirement::Required
+        && let Err(err) = context.require_repo()
+    {
+        render(stderr, context.format(), context.color(), Payload::Error(&err))?;
+        return Ok(err.exit_code());
     }
     let mut deprecation = DeprecationContext::new(stderr, !context.color());
 
@@ -145,10 +145,10 @@ fn render_outcome(
 }
 /// Inject collected warnings into the JSON data payload when non-empty.
 fn inject_warnings(mut data: serde_json::Value, warnings: &[String]) -> serde_json::Value {
-    if !warnings.is_empty() {
-        if let serde_json::Value::Object(ref mut map) = data {
-            map.insert("warnings".to_string(), serde_json::json!(warnings));
-        }
+    if !warnings.is_empty()
+        && let serde_json::Value::Object(ref mut map) = data
+    {
+        map.insert("warnings".to_string(), serde_json::json!(warnings));
     }
     data
 }

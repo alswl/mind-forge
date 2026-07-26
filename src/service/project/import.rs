@@ -119,25 +119,23 @@ pub fn import_project(
     let projects_dir = repo::projects_dir_for(repo_root)?;
     // Only register if the imported dir is inside the projects dir
     let is_inside_repo = canonical_dir.strip_prefix(repo_root).is_ok();
-    if is_inside_repo {
-        if let Ok(rel) = canonical_dir.strip_prefix(repo_root) {
-            let entry_path = if projects_dir.trim_matches('/').is_empty() || projects_dir.trim_matches('/') == "." {
-                rel.to_string_lossy().to_string()
-            } else {
-                format!("./{}", rel.display())
-            };
-            let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-            let entry = crate::model::manifest::ProjectEntry {
-                name: project_name.clone(),
-                path: entry_path,
-                created_at: now,
-                archived_at: None,
-            };
-            if !manifest.projects.iter().any(|p| p.name == project_name) {
-                manifest.projects.push(entry);
-            }
-            repo::save_manifest(&manifest, &minds_path)?;
+    if is_inside_repo && let Ok(rel) = canonical_dir.strip_prefix(repo_root) {
+        let entry_path = if projects_dir.trim_matches('/').is_empty() || projects_dir.trim_matches('/') == "." {
+            rel.to_string_lossy().to_string()
+        } else {
+            format!("./{}", rel.display())
+        };
+        let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let entry = crate::model::manifest::ProjectEntry {
+            name: project_name.clone(),
+            path: entry_path,
+            created_at: now,
+            archived_at: None,
+        };
+        if !manifest.projects.iter().any(|p| p.name == project_name) {
+            manifest.projects.push(entry);
         }
+        repo::save_manifest(&manifest, &minds_path)?;
     }
 
     Ok(ProjectImportReport {

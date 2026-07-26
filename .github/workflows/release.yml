@@ -33,6 +33,8 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: ${{ matrix.target }}
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Install zig and cargo-zigbuild
         run: |
           curl -fsSL https://ziglang.org/download/0.14.0/zig-linux-x86_64-0.14.0.tar.xz | tar xJ -C /tmp
@@ -47,13 +49,23 @@ jobs:
   build-macos:
     needs: [validate-tag]
     runs-on: macos-latest
+    strategy:
+      matrix:
+        target:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
     steps:
       - uses: actions/checkout@v5
-      - run: cargo build --release --locked
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: ${{ matrix.target }}
+      - name: Install protobuf compiler
+        run: brew install protobuf
+      - run: cargo build --release --locked --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v6
         with:
-          name: mf-aarch64-apple-darwin
-          path: target/release/mf
+          name: mf-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/mf
 
   create-release:
     needs: [build-linux, build-macos]
