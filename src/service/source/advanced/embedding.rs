@@ -62,6 +62,12 @@ impl EmbeddingProvider {
         }))
     }
 
+    /// The resolved embedding endpoint URL. Used by `--offline` gating so a
+    /// loopback endpoint is not treated as external network access (#27).
+    pub fn endpoint(&self) -> &str {
+        &self.endpoint
+    }
+
     pub fn embed_passages(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
         self.request(texts)
     }

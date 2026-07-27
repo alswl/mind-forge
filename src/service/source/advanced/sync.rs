@@ -260,10 +260,9 @@ fn sync_lance_catalog(
     let mut projects = std::collections::BTreeMap::<String, bool>::new();
 
     // Resolve the explicit remote provider once per mutation. No provider is
-    // selected implicitly and credentials remain environment-only. Offline
-    // forbids all network, so the provider is skipped and chunks keep zero
-    // vectors until a later online sync.
-    let provider = if dry_run || offline { None } else { super::embedding::provider_for_repo(repo_root)? };
+    // selected implicitly and credentials remain environment-only.
+    let mut warnings = Vec::new();
+    let provider = select_offline_aware_provider(repo_root, offline, dry_run, &mut warnings)?;
 
     for registration in registrations {
         let project_path = repo_root.join(&registration.project_path);
@@ -319,7 +318,6 @@ fn sync_lance_catalog(
     // fallback path rather than failing the sync.
     // Only (re)build the index when new chunks were persisted this run, so an
     // unchanged sync stays a true no-op and does not bump table versions.
-    let mut warnings = Vec::new();
     if !dry_run
         && added > 0
         && let Err(e) = store.create_fts_index("chunks", &["text"])
@@ -348,6 +346,75 @@ fn sync_lance_catalog(
         index_revision: (!dry_run).then(|| "sync-primary".to_string()),
         warnings,
     })
+}
+
+/// Select the embedding provider for a mutation, honoring `--offline`: a
+/// loopback endpoint (e.g. a local Ollama) is not network access and keeps
+/// working; an external endpoint under offline is skipped with a warning
+/// appended to `warnings` rather than silently dropping vectors (spec 069 #27).
+fn select_offline_aware_provider(
+    repo_root: &Path,
+    offline: bool,
+    dry_run: bool,
+    warnings: &mut Vec<String>,
+) -> Result<Option<super::embedding::EmbeddingProvider>> {
+    if dry_run {
+        return Ok(None);
+    }
+    if !offline {
+        return super::embedding::provider_for_repo(repo_root);
+    }
+    match super::embedding::provider_for_repo(repo_root)? {
+        Some(p) if !crate::service::util::net::is_external_url(p.endpoint()) => Ok(Some(p)),
+        Some(p) => {
+            warnings.push(format!(
+                "embedding skipped: offline mode blocks endpoint {}; search will degrade to keyword matching",
+                p.endpoint()
+            ));
+            Ok(None)
+        }
+        None => Ok(None),
+    }
+}
+
+/// Index a single registration into the RAG store right after it is registered,
+/// reusing the idempotent per-source sync path so `source new` can add + index
+/// in one step (spec 069 #28). Returns the per-source [`SyncItem`] plus any
+/// offline embedding-skip warning. `store` is the caller's already-open handle.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn sync_registration(
+    repo_root: &Path,
+    project_path: &Path,
+    store: &LanceStore,
+    config: &ResolvedSourceConfig,
+    name: &str,
+    kind: &str,
+    location: &str,
+    registration_key: &str,
+    offline: bool,
+    dry_run: bool,
+) -> Result<(SyncItem, Vec<String>)> {
+    let chunk_config = ChunkConfig {
+        target_tokens: config.chunk_tokens,
+        overlap_tokens: config.chunk_overlap,
+        policy_version: "v1".to_string(),
+    };
+    let mut warnings = Vec::new();
+    let provider = select_offline_aware_provider(repo_root, offline, dry_run, &mut warnings)?;
+    let item = sync_one_source(
+        project_path,
+        name,
+        kind,
+        location,
+        registration_key,
+        config,
+        &chunk_config,
+        dry_run,
+        offline,
+        (!dry_run).then_some(store),
+        provider.as_ref(),
+    )?;
+    Ok((item, warnings))
 }
 
 /// Sync a single Source registration.

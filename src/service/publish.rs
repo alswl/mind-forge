@@ -445,7 +445,17 @@ fn run_yuque_prompt(
 
     let raw_content = fs::read_to_string(&artifact_path).map_err(MfError::Io)?;
     let artifact_dir = artifact_path.parent().unwrap_or(Path::new("."));
-    let (content, transforms) = apply_svg_to_png_transform(&raw_content, artifact_dir);
+    let (mut content, mut transforms) = apply_svg_to_png_transform(&raw_content, artifact_dir);
+
+    // #21: inject a configured banner into the published payload only — the
+    // on-disk build artifact is never modified, so the banner survives every
+    // `mf build` regeneration without hand-patching.
+    if let Some(banner) = resolve_publish_banner(target, project_path)?
+        && !content.starts_with(banner.trim_end())
+    {
+        content = format!("{}\n\n{}", banner.trim_end(), content);
+        transforms.banner_injected = true;
+    }
 
     let envelope = target.config.clone().unwrap_or_else(|| serde_json::json!({}));
 
@@ -484,6 +494,32 @@ After publishing, run:\n\
 /// disk is never modified — this operates on an in-memory copy of the
 /// artifact content only. Absolute paths, URLs, and non-`.svg` references are
 /// left untouched.
+/// Resolve a publish banner from the target config: `banner_markdown` (inline
+/// string) takes precedence over `banner_file` (a project-relative path whose
+/// contents are read). Returns `None` when neither is configured (#21).
+fn resolve_publish_banner(target: &PublishTarget, project_path: &Path) -> Result<Option<String>> {
+    let Some(config) = target.config.as_ref() else {
+        return Ok(None);
+    };
+    if let Some(markdown) = config.get("banner_markdown").and_then(|v| v.as_str())
+        && !markdown.trim().is_empty()
+    {
+        return Ok(Some(markdown.to_string()));
+    }
+    if let Some(rel) = config.get("banner_file").and_then(|v| v.as_str())
+        && !rel.trim().is_empty()
+    {
+        let banner = fs::read_to_string(project_path.join(rel)).map_err(|e| {
+            MfError::usage(
+                format!("banner_file '{rel}' could not be read: {e}"),
+                Some("check publish.targets[].config.banner_file path (project-relative)".to_string()),
+            )
+        })?;
+        return Ok(Some(banner));
+    }
+    Ok(None)
+}
+
 fn apply_svg_to_png_transform(content: &str, artifact_dir: &Path) -> (String, PayloadTransforms) {
     let mut replaced = Vec::new();
     let mut missing = Vec::new();
@@ -502,7 +538,7 @@ fn apply_svg_to_png_transform(content: &str, artifact_dir: &Path) -> (String, Pa
         }
     });
 
-    (new_content, PayloadTransforms { svg_png_replaced: replaced, svg_png_missing: missing })
+    (new_content, PayloadTransforms { svg_png_replaced: replaced, svg_png_missing: missing, banner_injected: false })
 }
 
 fn target_type_kebab(t: &PublishTargetType) -> &'static str {

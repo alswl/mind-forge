@@ -391,6 +391,10 @@ pub struct AdvancedSourceStatusReport {
     pub documents_count: u64,
     pub relations_count: u64,
     pub chunks_count: u64,
+    /// Chunks with a non-zero embedding vector. `<= chunks_count`. Distinguishes
+    /// "vectors present" from "text indexed" so `index_status: ready` cannot
+    /// mask missing vectors after an offline/keyword-only sync (#27).
+    pub chunks_embedded_count: u64,
     pub enrichments_ready: u64,
     pub enrichments_pending: u64,
     pub enrichments_failed: u64,

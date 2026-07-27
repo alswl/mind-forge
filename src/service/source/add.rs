@@ -20,6 +20,18 @@ pub enum AddMode {
     Register,
 }
 
+/// Result of indexing a freshly added source into RAG (spec 069 #28).
+pub struct IndexingSummary {
+    /// Whether the source's content was indexed with chunks/embeddings.
+    pub indexed: bool,
+    /// Chunks persisted for the source this add (0 when skipped/degraded).
+    pub chunks: u64,
+    /// Set when indexing was skipped or degraded; carries a retry hint.
+    pub warning: Option<String>,
+    /// Backend that handled (or declined) indexing: "lance" or "legacy".
+    pub backend: &'static str,
+}
+
 /// Outcome returned by the `add()` function.
 pub struct AddOutcome {
     pub source: Source,
@@ -29,6 +41,8 @@ pub struct AddOutcome {
     pub registration_key: Option<String>,
     /// Whether the compatibility projection export degraded (set when Lance active).
     pub projection_degraded: bool,
+    /// RAG indexing result (set only when the Lance backend indexes on add).
+    pub indexing: Option<IndexingSummary>,
 }
 
 /// Parameters for `add()`.
@@ -41,7 +55,13 @@ pub struct AddArgs<'a> {
     pub force: bool,
 }
 
-pub fn register_only(project_path: &Path, cwd: &Path, args: &AddArgs, dry_run: bool) -> Result<AddOutcome> {
+pub fn register_only(
+    repo_root: &Path,
+    project_path: &Path,
+    cwd: &Path,
+    args: &AddArgs,
+    dry_run: bool,
+) -> Result<AddOutcome> {
     if args.link {
         return Err(MfError::usage("--register-only cannot be combined with --link", None));
     }
@@ -52,13 +72,15 @@ pub fn register_only(project_path: &Path, cwd: &Path, args: &AddArgs, dry_run: b
         return Err(MfError::usage("--register-only requires a local file path", None));
     }
 
-    let source_path = cwd.join(args.input);
+    let layout = config_svc::effective_layout(project_path)?;
+    let sources_dir = project_path.join(&layout.sources);
+    // Resolve project/sources/repo-relative or absolute inputs to an existing
+    // file; a miss is a usage error (exit 2), never an internal Io error (#23).
+    let source_path = util::path::resolve_source_input(args.input, project_path, &sources_dir, cwd, repo_root)?;
     let source_canonical = source_path.canonicalize().map_err(MfError::Io)?;
     if !std::fs::metadata(&source_canonical).map_err(MfError::Io)?.is_file() {
         return Err(MfError::usage(format!("source path '{}' must be an existing regular file", args.input), None));
     }
-    let layout = config_svc::effective_layout(project_path)?;
-    let sources_dir = project_path.join(&layout.sources);
     util::canonicalize_within(&sources_dir, &source_canonical).map_err(|_| {
         MfError::usage(format!("--register-only path must be inside the project's {}/ directory", layout.sources), None)
     })?;
@@ -89,6 +111,7 @@ pub fn register_only(project_path: &Path, cwd: &Path, args: &AddArgs, dry_run: b
             replaced: false,
             registration_key: None,
             projection_degraded: false,
+            indexing: None,
         });
     }
     if sources.iter().any(|source| source.name == name) {
@@ -117,6 +140,7 @@ pub fn register_only(project_path: &Path, cwd: &Path, args: &AddArgs, dry_run: b
         replaced: false,
         registration_key: None,
         projection_degraded: false,
+        indexing: None,
     })
 }
 
@@ -151,11 +175,11 @@ fn replace_in_sources(sources: &mut Vec<Source>, idx: usize, source: Source) {
 }
 
 /// Add a source — dispatches to Path or URL branch based on input.
-pub fn add(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcome> {
+pub fn add(repo_root: &Path, project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcome> {
     let form = classify_input(args.input);
     match form {
         InputForm::Url => add_url(project_path, args),
-        InputForm::Path => add_path(project_path, cwd, args),
+        InputForm::Path => add_path(repo_root, project_path, cwd, args),
     }
 }
 
@@ -290,11 +314,15 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
     };
 
     index::save(project_path, &index)?;
-    Ok(AddOutcome { source, mode, replaced, registration_key: None, projection_degraded: false })
+    Ok(AddOutcome { source, mode, replaced, registration_key: None, projection_degraded: false, indexing: None })
 }
 
-fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcome> {
-    let source_path = cwd.join(args.input);
+fn add_path(repo_root: &Path, project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcome> {
+    let layout = config_svc::effective_layout(project_path)?;
+    let sources_dir = project_path.join(&layout.sources);
+    // Resolve project/sources/repo-relative or absolute inputs to an existing
+    // file; a miss is a usage error (exit 2), never an internal Io error (#23).
+    let source_path = util::path::resolve_source_input(args.input, project_path, &sources_dir, cwd, repo_root)?;
     let source_canonical = source_path.canonicalize().map_err(MfError::Io)?;
 
     let metadata = std::fs::metadata(&source_canonical).map_err(MfError::Io)?;
@@ -305,8 +333,6 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
         ));
     }
 
-    let layout = config_svc::effective_layout(project_path)?;
-    let sources_dir = project_path.join(&layout.sources);
     if util::canonicalize_within(&sources_dir, &source_canonical).is_ok() {
         return Err(MfError::usage(
             format!("source file is already inside the project's {}/ directory", layout.sources),
@@ -344,6 +370,18 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
 
     let mut index = index::load(project_path)?;
     let sources = index.sources.get_or_insert_with(Vec::new);
+
+    // #25: refuse before any write if the computed destination already belongs
+    // to a DIFFERENT source identity — otherwise a same-basename add silently
+    // overwrites another source's file and misreports `replaced: false`.
+    let dest_rel = util::rel_posix_path(project_path, &dest)?;
+    if let Some(existing) = sources.iter().find(|s| s.path.as_deref() == Some(dest_rel.as_str()) && s.name != name) {
+        return Err(MfError::usage(
+            format!("destination '{dest_rel}' already holds source '{}'", existing.name),
+            Some("choose a unique --name (or remove/rename the existing source first)".to_string()),
+        ));
+    }
+
     let slot = locate_slot(sources, &name, args.force, dest.clone())?;
 
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
@@ -410,7 +448,7 @@ fn add_path(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcom
 
     index::save(project_path, &index)?;
 
-    Ok(AddOutcome { source, mode, replaced, registration_key: None, projection_degraded: false })
+    Ok(AddOutcome { source, mode, replaced, registration_key: None, projection_degraded: false, indexing: None })
 }
 
 #[cfg(test)]
@@ -430,6 +468,7 @@ mod tests {
 
         let input = file.to_string_lossy().to_string();
         let outcome = register_only(
+            dir.path(),
             &project,
             dir.path(),
             &AddArgs { input: &input, name: None, kind: None, source_kind: None, link: false, force: false },
@@ -445,6 +484,7 @@ mod tests {
         assert_eq!(sources[0].path.as_deref(), Some("sources/file/synthetic.md"));
 
         let repeated = register_only(
+            dir.path(),
             &project,
             dir.path(),
             &AddArgs { input: &input, name: None, kind: None, source_kind: None, link: false, force: false },

@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.
 - Clarify `--filter`/`--alias`/`--tag` help text for `term list`
 
 ### Features
+- `mf source new` now indexes a new source into RAG (chunks + embeddings) in the same step on Lance-backed repos, so it is searchable without a separate `mf source sync`; pass `--no-index` to register only. Indexing is best-effort — an embedding/acquisition failure keeps the file and registration and warns to retry via `mf source sync`, never rolling back the registration. The result is reported in an additive `indexing` field (spec 069 #28)
+- `mf publish run` on `yuque-prompt` targets now injects a configured banner (`config.banner_markdown`, or `config.banner_file` read project-relative) at the top of the published payload, reported in an additive `transforms.banner_injected`; the on-disk build artifact is never modified, so the banner survives every `mf build` (spec 069 #21)
+- `mf source status` reports an additive `chunks_embedded_count` distinguishing "vectors present" from "text indexed", so `index_status: ready` no longer masks missing vectors after a keyword-only sync (spec 069 #27)
 - Add `mf article block rm` to remove a single block from a directory article (refuses to remove the last remaining block); add `mf article convert --to-single-file --merge` to collapse multi-block directory articles into a single file, re-depthing asset references and rebinding any bound prompt (spec 064)
 - `mf publish run` on `yuque-prompt` targets substitutes relative `.svg` image references with a sibling `.png` when one exists, reporting the result in an additive `transforms` field; the build artifact on disk is never modified (spec 064)
 - Complete term CLI lifecycle (spec 051)
@@ -23,6 +26,10 @@ All notable changes to this project will be documented in this file.
 - Align CLI internals with rust-cli.md guide (spec 049)
 
 ### Bug Fixes
+- `mf source new` now resolves a relative `<INPUT>` against the project root, the project's `sources/` dir, the repo root, and the process cwd (in that order) on both backends, so registering an in-tree file from a git worktree works; a path that resolves to nothing is a usage error (exit 2) naming the anchors tried, not an internal error (exit 1) advising a bug report (spec 069 #23)
+- `mf source new` refuses (exit 2, before any write) when a copy/link destination would overwrite a file owned by a different source identity — no more silent same-basename overwrite — and reports `replaced` truthfully (spec 069 #25)
+- `mf source sync --offline` no longer blocks loopback embedding endpoints: `--offline` forbids only external network, and loopback (`127.0.0.0/8`, `::1`, `localhost`) is never network access, applied through one shared predicate; an external endpoint under `--offline` is skipped with an explicit warning instead of silently dropping vectors (spec 069 #27)
+- `mf term lint`/`fix` now warn when a `substring`+`loose` correction match is adjacent to a continuous CJK/alphanumeric character (it may be part of a larger word, e.g. `阿卡`→`ARCA` over `阿卡索`); surfaced as `substring_adjacent_word` in JSON and a warning in text — the default `word`+`standalone` path was already safe (spec 069 #24)
 - `mf build` no longer emits malformed image/link paths (mixing a relative prefix with an absolute path) when a canonicalized `@`-path is combined with a relative `--out`, including from git worktrees or symlinked checkouts; also now rewrites HTML `<img src>` references, not just Markdown; an unresolvable reference is kept as-is and reported as a warning instead of written malformed (spec 064)
 - `article rm` resolves the target by title, `article_path`, or index key (with or without `.md`) and persists the index removal for every form; no more false success leaving a dangling entry (spec 062)
 - `project index` also reconciles each project's article index, pruning stale entries whose target file is absent on disk; declared/template-origin articles with existing files are never removed; per-project reconcile failures surface as warnings instead of silent skips (spec 062)

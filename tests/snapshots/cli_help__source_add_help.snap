@@ -23,11 +23,14 @@ Options:
   -o, --output <FORMAT>            Output format [default: text] [possible values: text, json]
       --register-only              Register a file already inside the project's sources directory
                                    without copying it
+      --json                       Shorthand for --output json
+      --no-index                   Register only, without indexing the source into RAG (Lance
+                                   backend). By default a new source is chunked and embedded so it
+                                   is searchable at once
   -f, --force                      Proceed despite safety checks: overwrite an existing target, or
                                    remove an entity referenced by others
-      --json                       Shorthand for --output json
-      --dry-run                    Preview changes without writing
       --no-color                   Disable colored output
+      --dry-run                    Preview changes without writing
   -p, --project <NAME>             Project name for project-scoped operations
   -h, --help                       Print help
   -V, --version                    Print version

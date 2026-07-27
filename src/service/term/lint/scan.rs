@@ -48,7 +48,12 @@ pub(crate) fn is_cjk_ideograph(c: char) -> bool {
     )
 }
 
-#[allow(dead_code)]
+/// A character that would continue a word/token if adjacent to a match: a CJK
+/// ideograph or an ASCII alphanumeric. Used for the #24 substring-tail warning.
+fn is_word_continuation(c: char) -> bool {
+    is_cjk_ideograph(c) || c.is_ascii_alphanumeric()
+}
+
 fn char_before(content: &str, byte_offset: usize) -> Option<char> {
     if byte_offset == 0 {
         return None;
@@ -267,6 +272,13 @@ pub(crate) fn scan_file_for_corrections(
 
             let (line, col) = byte_offset_to_line_col(content, abs_offset);
 
+            // #24: a loose substring match whose neighbour is a continuous
+            // CJK/alnum char likely swallowed part of a larger word (e.g.
+            // `阿卡`→`ARCA` over `阿卡索` yields `ARCA索`). Flag it so lint/fix warn.
+            let substring_adjacent_word = matches!(check, WordCheck::SubstringLoose)
+                && (char_before(content, abs_offset).is_some_and(is_word_continuation)
+                    || char_after(content, abs_offset + orig_bytes.len()).is_some_and(is_word_continuation));
+
             findings.push(TermFinding {
                 path: rel_path.to_string(),
                 line,
@@ -283,6 +295,7 @@ pub(crate) fn scan_file_for_corrections(
                 fix_kind: c.fix_kind,
                 boundary: c.boundary,
                 boundary_mode: check.boundary_mode(),
+                substring_adjacent_word,
                 selection: if is_ambiguous { FindingSelection::Ambiguous } else { FindingSelection::Selected },
                 context: context_excerpt(content, abs_offset, orig_bytes.len()),
             });

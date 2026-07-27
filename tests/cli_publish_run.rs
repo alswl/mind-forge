@@ -532,6 +532,48 @@ fn yuque_prompt_target_yaml(name: &str, with_config: bool) -> String {
     }
 }
 
+// #21: banner injection at publish time (spec 069 US5)
+
+fn yuque_banner_target_yaml(name: &str, banner: &str) -> String {
+    format!(
+        "    - name: {name}\n      type: yuque-prompt\n      enabled: true\n      config:\n        banner_markdown: \"{banner}\"\n",
+    )
+}
+
+/// A configured banner is prepended to the published payload; the on-disk build
+/// artifact is left byte-identical.
+#[test]
+fn yuque_prompt_injects_configured_banner() {
+    let banner = "BANNER-TOP managed by mind-forge";
+    let repo = setup_repo_with_targets(&yuque_banner_target_yaml("yuque-draft", banner));
+    let artifact = repo.path().join("my-project/_build/my-article.md");
+    let artifact_before = fs::read(&artifact).unwrap();
+
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let content = v["data"]["content"].as_str().unwrap();
+    assert!(content.starts_with(banner), "banner must be prepended:\n{content}");
+    assert_eq!(v["data"]["transforms"]["banner_injected"], serde_json::json!(true), "{}", v["data"]["transforms"]);
+
+    assert_eq!(fs::read(&artifact).unwrap(), artifact_before, "publish must not modify the build artifact");
+}
+
+/// With no banner configured, content and the build artifact are unchanged.
+#[test]
+fn yuque_prompt_without_banner_is_a_noop_transform() {
+    let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
+    let artifact = repo.path().join("my-project/_build/my-article.md");
+    let artifact_before = fs::read(&artifact).unwrap();
+
+    let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"]["transforms"]["banner_injected"], serde_json::json!(false));
+    assert_eq!(v["data"]["content"].as_str().unwrap().as_bytes(), ARTICLE_BODY);
+    assert_eq!(fs::read(&artifact).unwrap(), artifact_before);
+}
+
 #[test]
 fn yuque_prompt_text_two_section_layout() {
     let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));

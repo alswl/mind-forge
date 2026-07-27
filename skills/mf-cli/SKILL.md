@@ -188,6 +188,16 @@ silently downgraded to a legacy-only registration; projection problems are
 reported as degraded warnings. Repositories without an active corpus remain
 legacy-only until the first `mf source sync`.
 
+By default `mf source new` also indexes the new Source into RAG (chunks +
+embeddings) in the same step, so it is searchable without a separate
+`mf source sync`; the result is reported in an additive `indexing` field. Pass
+`--no-index` to register only. Indexing is best-effort: if the embedding
+endpoint is unreachable, the file and registration are still written and a
+warning suggests retrying with `mf source sync` — the registration is never
+rolled back. A relative `<INPUT>` is resolved against the project root, its
+`sources/` dir, the repo root, and the cwd (in that order); a path that resolves
+to nothing is a usage error, not an internal error.
+
 Use the canonical global search and synchronization commands:
 
 ```bash
@@ -198,6 +208,12 @@ mf source status --output json           # inspect corpus health
 
 `mf source sync` discovers Sources, Prompt files, Thinking files, and Article
 prose by default. It is local-first and does not fetch URL sources during sync.
+`--offline` forbids only *external* network access; a loopback embedding
+endpoint (`127.0.0.1`/`localhost`, e.g. a local Ollama) is not network access
+and keeps working. If `--offline` blocks an external endpoint, sync warns
+explicitly and text-indexes only rather than silently dropping vectors; check
+`mf source status`'s `chunks_embedded_count` (vs `chunks_count`) to confirm
+vectors are present.
 Use `mf search` for content retrieval; it has no `--mode` switch and returns
 the repository-wide RAG result set. A Prompt or Thinking hit supplies intent
 or reasoning context, not factual evidence by itself; verify factual claims
@@ -217,7 +233,8 @@ Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (a
 `--source-kind <yuque|meeting|misc>` — Source channel type (mind primary)
 `-t`, `--type <KIND>` — Deprecated: use `--file-kind` or `--source-kind` instead
 `--link` — Symlink instead of copy (local files)
-`--register-only` — Index a file that already lives inside the project's `sources/` directory without copying its bytes. Idempotent (re-registering the same path is a no-op). Rejects paths outside `sources/`, URLs, and combination with `--link` or `--force`.
+`--register-only` — Index a file that already lives inside the project's `sources/` directory without copying its bytes. Idempotent (re-registering the same path is a no-op). Accepts project-, sources-, and repo-relative paths as well as absolute. Rejects paths outside `sources/`, URLs, and combination with `--link` or `--force`.
+`--no-index` — Register only, without indexing the source into RAG (Lance backend). By default a new source is chunked and embedded so it is searchable at once.
 
 **`mf source list`** (alias `ls`)
 `--filter <PATTERN>` — Filter by name

@@ -638,6 +638,47 @@ impl LanceStore {
         })
     }
 
+    /// Count chunks whose stored embedding vector is non-zero. Offline/keyword
+    /// sync persists zero-filled vectors so full-text search still works, so a
+    /// non-zero vector is the signal that a chunk is genuinely embedded. This
+    /// distinguishes "vectors present" from "text indexed" (#27). Returns 0 when
+    /// the table is absent. Read-only.
+    pub fn count_embedded_chunks(&self) -> Result<u64> {
+        let table = match self.open_table("chunks") {
+            Ok(t) => t,
+            Err(_) => return Ok(0),
+        };
+        let batches = self.rt().block_on(async {
+            table
+                .query()
+                .execute()
+                .await
+                .map_err(|e| MfError::advanced_store(format!("scan failed on 'chunks': {e}"), None))?
+                .try_collect::<Vec<_>>()
+                .await
+                .map_err(|e| MfError::advanced_store(format!("failed to collect rows from 'chunks': {e}"), None))
+        })?;
+        let mut embedded = 0u64;
+        for batch in batches {
+            let Some(list) =
+                batch.column_by_name("vector").and_then(|col| col.as_any().downcast_ref::<FixedSizeListArray>())
+            else {
+                continue;
+            };
+            for row in 0..list.len() {
+                if list.is_null(row) {
+                    continue;
+                }
+                if let Some(floats) = list.value(row).as_any().downcast_ref::<Float32Array>()
+                    && (0..floats.len()).any(|i| floats.value(i) != 0.0)
+                {
+                    embedded += 1;
+                }
+            }
+        }
+        Ok(embedded)
+    }
+
     /// Read rows for deterministic service-side filtering.  Callers use this
     /// only for bounded control-plane data such as enrichment jobs; it never
     /// creates indexes or mutates the table.

@@ -50,6 +50,7 @@ pub fn build_status(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<A
     let mut total_docs = 0u64;
     let mut total_rels = 0u64;
     let mut total_chunks = 0u64;
+    let mut total_chunks_embedded = 0u64;
     let mut enrichments_ready = 0u64;
     let mut enrichments_pending = 0u64;
     let mut enrichments_failed = 0u64;
@@ -63,6 +64,7 @@ pub fn build_status(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<A
         total_docs = store.count_rows("documents")? as u64;
         total_rels = store.count_rows("registration_content")? as u64;
         total_chunks = store.count_rows("chunks")? as u64;
+        total_chunks_embedded = store.count_embedded_chunks()?;
         for batch in store.scan_rows("enrichments")? {
             if let Some(states) = batch
                 .column_by_name("state")
@@ -136,6 +138,7 @@ pub fn build_status(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<A
         documents_count: total_docs,
         relations_count: total_rels,
         chunks_count: total_chunks,
+        chunks_embedded_count: total_chunks_embedded,
         enrichments_ready,
         enrichments_pending,
         enrichments_failed,

@@ -3,6 +3,7 @@
 pub mod filename_date;
 pub mod hash;
 pub mod markdown;
+pub mod net;
 pub mod path;
 pub mod path_template;
 

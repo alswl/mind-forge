@@ -143,6 +143,13 @@ pub struct TermFinding {
     pub fix_kind: FixKind,
     pub boundary: Boundary,
     pub boundary_mode: &'static str,
+    /// True when a `substring`+`loose` match is immediately adjacent to a
+    /// continuous CJK ideograph or ASCII alphanumeric character — a sign the
+    /// `original` is only part of a larger word and the replacement may leave an
+    /// illegal tail (spec 069 #24). Drives a lint/fix warning. Omitted from JSON
+    /// when false to keep the common-case output stable.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub substring_adjacent_word: bool,
     pub selection: FindingSelection,
     pub context: String,
 }

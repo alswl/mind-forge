@@ -57,6 +57,8 @@ pub struct PayloadTransforms {
     pub svg_png_replaced: Vec<String>,
     /// Relative `.svg` references kept as-is because no sibling `.png` exists.
     pub svg_png_missing: Vec<String>,
+    /// Whether a configured banner was prepended to the published payload (#21).
+    pub banner_injected: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

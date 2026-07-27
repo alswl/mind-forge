@@ -196,7 +196,10 @@ fn requests_are_bounded_at_source_add_time() {
 /// Register a URL Source in project alpha; `kind` of `Some("rss")` registers
 /// a feed, `None` a web page.
 fn register(repo: &TempDir, url: &str, name: &str, kind: Option<&str>) {
-    let mut args = vec!["source", "new", url, "--project", "alpha", "--name", name];
+    // `--no-index` keeps `source new` a pure fetch+register here so these tests
+    // exercise the explicit `source sync` ingestion path (Bug B, network-free).
+    // Add-time indexing (spec 069 #28) is covered by source_advanced_add_index.
+    let mut args = vec!["source", "new", url, "--project", "alpha", "--name", name, "--no-index"];
     if let Some(kind) = kind {
         args.extend(["--file-kind", kind]);
     }

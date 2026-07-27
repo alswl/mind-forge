@@ -32,6 +32,86 @@ fn lint_findings(repo: &common::TempDir) -> Vec<serde_json::Value> {
     v["data"]["findings"].as_array().cloned().unwrap_or_default()
 }
 
+// ── #24: substring-loose adjacency warning (spec 069 US4) ────────────────────
+
+const ARCA_SUBSTRING_LOOSE: &str = r#"schema_version: '1'
+terms:
+  - term: ARCA
+    corrections:
+      - original: 阿卡
+        correct: ARCA
+        match: substring
+        boundary: loose
+"#;
+
+/// A loose substring match adjacent to a continuing CJK char is flagged.
+#[test]
+fn substring_loose_adjacent_cjk_is_flagged() {
+    let repo = common::setup_repo();
+    seed(&repo, ARCA_SUBSTRING_LOOSE, "阿卡索平台技术方案\n");
+    let findings = lint_findings(&repo);
+    assert!(!findings.is_empty(), "expected a finding for 阿卡");
+    assert!(
+        findings.iter().any(|f| f["substring_adjacent_word"] == serde_json::json!(true)),
+        "expected substring_adjacent_word=true for 阿卡 before 索\n{findings:#?}"
+    );
+}
+
+/// A standalone loose substring match (isolated by spaces) is NOT flagged.
+#[test]
+fn substring_loose_standalone_match_is_not_flagged() {
+    let repo = common::setup_repo();
+    seed(&repo, ARCA_SUBSTRING_LOOSE, "看 阿卡 平台\n");
+    let findings = lint_findings(&repo);
+    assert!(
+        findings.iter().all(|f| f["substring_adjacent_word"] != serde_json::json!(true)),
+        "isolated 阿卡 must not be flagged\n{findings:#?}"
+    );
+}
+
+/// Default `word`+`standalone` corrections never set the substring flag.
+#[test]
+fn default_word_standalone_never_flags_substring_adjacency() {
+    let repo = common::setup_repo();
+    seed(
+        &repo,
+        r#"schema_version: '1'
+terms:
+  - term: Mind Repo
+    corrections:
+      - original: mindrepo
+        correct: Mind Repo
+"#,
+        "the mindrepo is here\n",
+    );
+    let findings = lint_findings(&repo);
+    assert!(!findings.is_empty(), "expected a finding");
+    assert!(
+        findings.iter().all(|f| f["substring_adjacent_word"] != serde_json::json!(true)),
+        "word/standalone corrections must never set substring_adjacent_word\n{findings:#?}"
+    );
+}
+
+/// `term fix` still applies a loose substring correction but is no longer
+/// silent about the risky tail — it emits a warning.
+#[test]
+fn substring_loose_fix_applies_but_warns() {
+    let repo = common::setup_repo();
+    seed(&repo, ARCA_SUBSTRING_LOOSE, "阿卡索平台\n");
+    let note = repo.path().join("alpha/docs/note.md");
+
+    let out = mf(&repo).args(["term", "lint", "--project", "alpha", "--fix", "--yes"]).output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+
+    let doc = fs::read_to_string(&note).unwrap();
+    assert!(doc.contains("ARCA索"), "fix should apply the loose replacement, got: {doc}");
+    assert!(
+        stdout.contains("adjacent") || stderr.contains("adjacent"),
+        "fix must warn about the risky substring\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+}
+
 #[test]
 fn finding_includes_boundary_mode_field() {
     let repo = common::setup_repo();

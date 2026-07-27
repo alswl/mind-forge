@@ -1,7 +1,91 @@
 use assert_cmd::Command;
+use predicates::prelude::*;
 use tempfile::TempDir;
 
 mod common;
+
+// ── #23: relative-path resolution for `source new` (spec 069 US1) ────────────
+
+/// register-only resolves project-relative and sources-relative inputs even
+/// when the process cwd is unrelated (the git-worktree failure mode), and an
+/// already-registered file is rejected identically across input forms.
+#[test]
+fn register_only_resolves_relative_inputs_independent_of_cwd() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    let sdir = project.join("sources/self-eval");
+    std::fs::create_dir_all(&sdir).unwrap();
+    std::fs::write(sdir.join("x.md"), b"eval\n").unwrap();
+
+    // Run from an unrelated cwd (cwd != file's dir), like a worktree root.
+    let elsewhere = TempDir::new().unwrap();
+
+    // project-relative form registers successfully.
+    Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(elsewhere.path())
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "new",
+            "sources/self-eval/x.md",
+            "--project",
+            "alpha",
+            "--register-only",
+            "--name",
+            "a",
+        ])
+        .assert()
+        .success();
+
+    // sources-relative form, different name, same file → business rejection
+    // (exit 2), NOT an internal error.
+    Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(elsewhere.path())
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "new",
+            "self-eval/x.md",
+            "--project",
+            "alpha",
+            "--register-only",
+            "--name",
+            "b",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("already registered"));
+}
+
+/// A relative input that resolves to no file is a usage error (exit 2) that
+/// names the miss — never an internal error (exit 1) telling the user to report.
+#[test]
+fn missing_relative_input_is_usage_error_not_internal() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+
+    Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "new",
+            "nope/missing.md",
+            "--project",
+            "alpha",
+            "--register-only",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("file not found"))
+        .stderr(predicate::str::contains("this is an internal error").not());
+}
 
 /// Helper: create a Mind Repo + project named "alpha".
 /// Returns (repo, source_dir, project_path, source_file_path).
@@ -14,6 +98,160 @@ fn setup() -> (TempDir, TempDir, std::path::PathBuf, std::path::PathBuf) {
     let source_file = source_dir.path().join("paper.pdf");
     std::fs::write(&source_file, b"fake pdf content").unwrap();
     (repo, source_dir, project, source_file)
+}
+
+// ── #25: basename-collision protection for `source new` (spec 069 US2) ───────
+
+/// Two different source names whose local files share a basename must NOT
+/// silently overwrite one another; the second is refused before any write.
+#[test]
+fn same_basename_different_name_is_refused_without_overwrite() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    let d1 = TempDir::new().unwrap();
+    let d2 = TempDir::new().unwrap();
+    let f1 = d1.path().join("01-opening.md");
+    let f2 = d2.path().join("01-opening.md");
+    std::fs::write(&f1, b"AAA-w20").unwrap();
+    std::fs::write(&f2, b"BBB-w22").unwrap();
+
+    Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "new",
+            f1.to_str().unwrap(),
+            "--project",
+            "alpha",
+            "--name",
+            "w20",
+        ])
+        .assert()
+        .success();
+
+    let dest = project.join("sources/file/01-opening.md");
+    assert_eq!(std::fs::read(&dest).unwrap(), b"AAA-w20");
+    let index_before = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+
+    Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "new",
+            f2.to_str().unwrap(),
+            "--project",
+            "alpha",
+            "--name",
+            "w22",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("already holds source 'w20'"));
+
+    // The first file and the index are untouched (fail before mutation).
+    assert_eq!(std::fs::read(&dest).unwrap(), b"AAA-w20");
+    assert_eq!(std::fs::read_to_string(project.join("mind-index.yaml")).unwrap(), index_before);
+}
+
+/// `replaced` is reported truthfully: false on a fresh add, true when a
+/// same-named source is actually overwritten with `--force`.
+#[test]
+fn replaced_is_true_only_on_actual_overwrite() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let d = TempDir::new().unwrap();
+    let f = d.path().join("doc.md");
+    std::fs::write(&f, b"v1").unwrap();
+
+    Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "--json",
+            "source",
+            "new",
+            f.to_str().unwrap(),
+            "--project",
+            "alpha",
+            "--name",
+            "doc",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"replaced\":false"));
+
+    std::fs::write(&f, b"v2").unwrap();
+    Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "--json",
+            "source",
+            "new",
+            f.to_str().unwrap(),
+            "--project",
+            "alpha",
+            "--name",
+            "doc",
+            "--force",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"replaced\":true"));
+}
+
+/// `--link` mode gets the same cross-identity destination protection as copy.
+#[test]
+fn link_mode_same_basename_is_refused() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let d1 = TempDir::new().unwrap();
+    let d2 = TempDir::new().unwrap();
+    let f1 = d1.path().join("note.md");
+    let f2 = d2.path().join("note.md");
+    std::fs::write(&f1, b"first").unwrap();
+    std::fs::write(&f2, b"second").unwrap();
+
+    Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "new",
+            f1.to_str().unwrap(),
+            "--project",
+            "alpha",
+            "--name",
+            "first",
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "new",
+            f2.to_str().unwrap(),
+            "--project",
+            "alpha",
+            "--name",
+            "second",
+            "--link",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("already holds source 'first'"));
 }
 
 #[test]

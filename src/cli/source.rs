@@ -147,6 +147,10 @@ pub struct SourceAddArgs {
     /// Register a file already inside the project's sources directory without copying it
     #[arg(long = "register-only")]
     pub register_only: bool,
+    /// Register only, without indexing the source into RAG (Lance backend). By
+    /// default a new source is chunked and embedded so it is searchable at once.
+    #[arg(long = "no-index")]
+    pub no_index: bool,
     #[command(flatten)]
     pub force: ForceFlag,
     #[command(flatten)]
@@ -912,12 +916,13 @@ fn handle_add(args: SourceAddArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
             &add_args,
             args.register_only,
             args.dry_run.dry_run,
+            !args.no_index,
         )?;
         return source_add_outcome(outcome, args.dry_run.dry_run, &project_path, ctx);
     }
 
     if args.register_only {
-        let outcome = svc_source::register_only(&project_path, ctx.cwd(), &add_args, args.dry_run.dry_run)?;
+        let outcome = svc_source::register_only(repo_root, &project_path, ctx.cwd(), &add_args, args.dry_run.dry_run)?;
         return source_add_outcome(outcome, args.dry_run.dry_run, &project_path, ctx);
     }
 
@@ -945,7 +950,7 @@ fn handle_add(args: SourceAddArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
         };
     }
 
-    let outcome = svc_source::add(&project_path, ctx.cwd(), &add_args)?;
+    let outcome = svc_source::add(repo_root, &project_path, ctx.cwd(), &add_args)?;
 
     source_add_outcome(outcome, false, &project_path, ctx)
 }
@@ -978,6 +983,17 @@ fn source_add_outcome(
     let mut warnings = Vec::new();
     if outcome.projection_degraded {
         warnings.push("compatibility projection has drift — run `mf source sync` to reconcile".to_string());
+    }
+    if let Some(ref idx) = outcome.indexing {
+        details["indexing"] = serde_json::json!({
+            "indexed": idx.indexed,
+            "chunks": idx.chunks,
+            "backend": idx.backend,
+            "warning": idx.warning,
+        });
+        if let Some(ref w) = idx.warning {
+            warnings.push(w.clone());
+        }
     }
 
     let result = VerbResult {

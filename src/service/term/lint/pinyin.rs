@@ -93,6 +93,7 @@ pub(crate) fn scan_for_pinyin(
                     fix_kind: FixKind::Suggested, // FR-404: pinyin is always suggested
                     boundary: Boundary::Loose,    // pinyin never opts into standalone
                     boundary_mode: "loose",
+                    substring_adjacent_word: false, // #24 warning applies to substring corrections only
                     selection: if entry.cref.is_ambiguous {
                         FindingSelection::Ambiguous
                     } else {

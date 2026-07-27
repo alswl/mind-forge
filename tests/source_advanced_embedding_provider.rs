@@ -64,6 +64,61 @@ fn registration_location(result: &serde_json::Value, needle: &str) -> bool {
         .unwrap_or(false)
 }
 
+// ── #27: `--offline` permits loopback embedding; external is warned, not silent
+
+/// A loopback embedding endpoint is not "network access" — `sync --offline`
+/// still embeds through it, and status shows every chunk embedded.
+#[test]
+fn offline_sync_embeds_via_loopback_endpoint() {
+    let mock = MockProvider::start(Behavior::Vectors(384));
+    let repo = provider_repo_for_embedding();
+    configure_provider(repo.path(), &mock.endpoint); // binds 127.0.0.1:0
+
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[(KEY_ENV, SECRET)]);
+    assert_eq!(code, 0, "offline loopback sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+    assert!(mock.request_count() > 0, "offline sync must still embed through a loopback endpoint");
+
+    let (sout, serr, scode) = run(&repo, &["source", "status"], &[]);
+    assert_eq!(scode, 0, "status failed\n{serr}");
+    let status = report(&sout);
+    let chunks = status["chunks_count"].as_u64().unwrap_or(0);
+    assert!(chunks > 0, "expected indexed chunks\n{sout}");
+    assert_eq!(
+        status["chunks_embedded_count"].as_u64().unwrap_or(0),
+        chunks,
+        "loopback sync must embed all chunks\n{sout}"
+    );
+}
+
+/// An external endpoint under `--offline` is blocked, but the skip is explicit:
+/// a warning is emitted and status exposes zero embedded chunks instead of
+/// `ready` masking missing vectors.
+#[test]
+fn offline_external_endpoint_warns_and_degrades_to_text() {
+    let repo = provider_repo_for_embedding();
+    // 203.0.113.0/24 is TEST-NET-3: external and unroutable.
+    configure_provider(repo.path(), "http://203.0.113.9:9/v1/embeddings");
+
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[(KEY_ENV, SECRET)]);
+    assert_eq!(code, 0, "offline external sync should still text-index\nstdout:\n{stdout}\nstderr:\n{stderr}");
+    let r = report(&stdout);
+    let warnings = r["warnings"].as_array().cloned().unwrap_or_default();
+    assert!(
+        warnings.iter().any(|w| w.as_str().unwrap_or_default().contains("embedding skipped")),
+        "expected an explicit embedding-skip warning\n{stdout}"
+    );
+
+    let (sout, serr, scode) = run(&repo, &["source", "status"], &[]);
+    assert_eq!(scode, 0, "status failed\n{serr}");
+    let status = report(&sout);
+    assert!(status["chunks_count"].as_u64().unwrap_or(0) > 0, "expected text chunks\n{sout}");
+    assert_eq!(
+        status["chunks_embedded_count"].as_u64().unwrap_or(999),
+        0,
+        "external-offline sync must leave zero vectors\n{sout}"
+    );
+}
+
 #[test]
 fn sync_embeds_chunks_through_the_configured_provider() {
     let mock = MockProvider::start(Behavior::Vectors(384));

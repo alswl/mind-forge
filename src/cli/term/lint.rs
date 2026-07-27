@@ -34,7 +34,6 @@ pub(super) fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<Comman
     let effective_fix = args.lint.fix;
     let effective_dry_run = args.lint.fix && args.lint.dry_run;
     let selection = build_fix_selection(&args)?;
-    let warnings: Vec<String> = Vec::new();
 
     // US1: confirmation gate for --fix (non-dry-run)
     if effective_fix && !effective_dry_run && !args.yes.yes {
@@ -136,6 +135,20 @@ pub(super) fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<Comman
         term_svc::global::lint_terms_selection(root, effective_fix, effective_dry_run, &selection)?
     };
 
+    // #24: warn when a loose substring correction match sits next to a
+    // continuous word character (its replacement may leave an illegal tail).
+    let warnings: Vec<String> = report
+        .findings
+        .iter()
+        .filter(|f| f.substring_adjacent_word)
+        .map(|f| {
+            format!(
+                "{}:{}:{}: substring match '{}' is adjacent to a continuous word character; it may be part of a larger word — consider registering the full variant",
+                f.path, f.line, f.column, f.original
+            )
+        })
+        .collect();
+
     // Determine exit code
     let base_exit = compute_lint_exit_code(&report, effective_fix, effective_dry_run);
     let warnings_count = report.findings.len() as i32;
@@ -164,7 +177,12 @@ pub(super) fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<Comman
             Ok(CommandOutcome::Success(serde_json::Value::Object(data), warnings, exit_code))
         }
         Format::Text => {
-            let output = format_lint_text_with_target(&report, effective_fix, effective_dry_run, Some(target_type));
+            let mut output = format_lint_text_with_target(&report, effective_fix, effective_dry_run, Some(target_type));
+            // Text mode uses Raw output (no warning channel), so fold the #24
+            // substring-adjacency warnings into the rendered text.
+            for w in &warnings {
+                output.push_str(&format!("\nwarning: {w}"));
+            }
             if args.term.is_empty() {
                 Ok(CommandOutcome::Raw(output, exit_code))
             } else {
@@ -338,6 +356,7 @@ mod tests {
                 fix_kind: FixKind::Suggested,
                 boundary: Boundary::Standalone,
                 boundary_mode: "standalone",
+                substring_adjacent_word: false,
                 selection: FindingSelection::Selected,
                 context: "context with old token".into(),
             }],

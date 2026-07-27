@@ -116,6 +116,7 @@ pub fn update_registration(
 /// Add a Source by writing the Lance primary catalog first.  File placement
 /// keeps the established copy/link/register-only behaviour; `mind-index.yaml`
 /// is exported only after the durable registration has been written.
+#[allow(clippy::too_many_arguments)]
 pub fn add_registration(
     repo_root: &Path,
     project_path: &Path,
@@ -123,6 +124,7 @@ pub fn add_registration(
     args: &AddArgs,
     register_only: bool,
     dry_run: bool,
+    index: bool,
 ) -> Result<AddOutcome> {
     if register_only && args.link {
         return Err(MfError::usage("--register-only cannot be combined with --link", None));
@@ -142,10 +144,17 @@ pub fn add_registration(
     let project_key = identity::project_key(&project_rel);
     let project_identity = project_identity(project_path)?;
     let rows = catalog.registrations(Some(&store))?;
+    let existing_locations: Vec<(&str, &str)> = rows
+        .iter()
+        .filter(|row| row.project_path == project_rel)
+        .map(|row| (row.source_identity.as_str(), row.registered_location.as_str()))
+        .collect();
 
     let (source, mode, copied_file) = match crate::service::source::classify_input(args.input) {
         InputForm::Url => add_url_source(project_path, repo_root, args)?,
-        InputForm::Path => add_local_source(project_path, cwd, args, register_only, dry_run)?,
+        InputForm::Path => {
+            add_local_source(repo_root, project_path, cwd, args, register_only, dry_run, &existing_locations)?
+        }
     };
     let location = source.path.as_ref().or(source.url.as_ref()).expect("source has location");
     let existing_by_name =
@@ -168,6 +177,7 @@ pub fn add_registration(
             replaced: existing_by_name.is_some(),
             registration_key: None,
             projection_degraded: false,
+            indexing: None,
         });
     }
     let registration_key = identity::registration_key(&project_key, source.kind.as_str(), location);
@@ -209,13 +219,55 @@ pub fn add_registration(
             return Err(error);
         }
     };
-    Ok(AddOutcome {
-        source,
-        mode,
-        replaced: existing_by_name.is_some(),
-        registration_key: Some(registration_key),
-        projection_degraded,
-    })
+
+    // #28: index the newly registered source into RAG in the same step (unless
+    // --no-index). Best-effort: the file and registration are already durably
+    // written, so an embedding/acquisition failure only warns and defers vectors
+    // to a later `mf source sync` — it never rolls back the registration.
+    let replaced = existing_by_name.is_some();
+    let indexing = if index {
+        match super::sync::sync_registration(
+            repo_root,
+            project_path,
+            &store,
+            &config,
+            source.name.as_str(),
+            source.kind.as_str(),
+            location.as_str(),
+            &registration_key,
+            false,
+            false,
+        ) {
+            Ok((item, mut warns)) => {
+                let failed = item.error.is_some() || item.action == "failed";
+                if let Some(err) = &item.error {
+                    warns.push(format!("RAG indexing skipped: {err}; run `mf source sync` to retry"));
+                }
+                let warning = (!warns.is_empty()).then(|| warns.join("; "));
+                Some(crate::service::source::add::IndexingSummary {
+                    indexed: !failed,
+                    chunks: item.affected_chunks,
+                    warning,
+                    backend: "lance",
+                })
+            }
+            Err(e) => Some(crate::service::source::add::IndexingSummary {
+                indexed: false,
+                chunks: 0,
+                warning: Some(format!("RAG indexing failed: {e}; run `mf source sync` to retry")),
+                backend: "lance",
+            }),
+        }
+    } else {
+        Some(crate::service::source::add::IndexingSummary {
+            indexed: false,
+            chunks: 0,
+            warning: None,
+            backend: "lance",
+        })
+    };
+
+    Ok(AddOutcome { source, mode, replaced, registration_key: Some(registration_key), projection_degraded, indexing })
 }
 
 fn add_url_source(
@@ -268,19 +320,24 @@ fn add_url_source(
 }
 
 fn add_local_source(
+    repo_root: &Path,
     project_path: &Path,
     cwd: &Path,
     args: &AddArgs,
     register_only: bool,
     dry_run: bool,
+    existing_locations: &[(&str, &str)],
 ) -> Result<(Source, AddMode, Option<std::path::PathBuf>)> {
-    let source_path = cwd.join(args.input);
+    let layout = crate::service::config::effective_layout(project_path)?;
+    let sources_dir = project_path.join(&layout.sources);
+    // Resolve project/sources/repo-relative or absolute inputs to an existing
+    // file; a miss is a usage error (exit 2), never an internal Io error (#23).
+    let source_path =
+        crate::service::util::path::resolve_source_input(args.input, project_path, &sources_dir, cwd, repo_root)?;
     let source_canonical = source_path.canonicalize().map_err(MfError::Io)?;
     if !std::fs::metadata(&source_canonical).map_err(MfError::Io)?.is_file() {
         return Err(MfError::usage(format!("source path '{}' must be an existing regular file", args.input), None));
     }
-    let layout = crate::service::config::effective_layout(project_path)?;
-    let sources_dir = project_path.join(&layout.sources);
     let inside_sources = crate::service::util::canonicalize_within(&sources_dir, &source_canonical).is_ok();
     if register_only && !inside_sources {
         return Err(MfError::usage(
@@ -311,6 +368,17 @@ fn add_local_source(
         sources_dir.join(kind.as_str()).join(basename)
     };
     let rel_path = crate::service::util::rel_posix_path(project_path, &destination)?;
+    // #25: refuse before any copy if the destination already belongs to a
+    // DIFFERENT source identity — even under --force, which means "replace the
+    // same-named source", never "overwrite another identity's file".
+    if !register_only
+        && let Some((other, _)) = existing_locations.iter().find(|(id, loc)| *loc == rel_path && *id != name)
+    {
+        return Err(MfError::usage(
+            format!("destination '{rel_path}' already holds source '{other}'"),
+            Some("choose a unique --name (or remove/rename the existing source first)".to_string()),
+        ));
+    }
     let mut copied_file = None;
     if !register_only && !dry_run {
         if destination.exists() && !args.force {
@@ -832,7 +900,7 @@ mod tests {
             link: false,
             force: false,
         };
-        let outcome = add_registration(dir.path(), &project, dir.path(), &args, false, false).unwrap();
+        let outcome = add_registration(dir.path(), &project, dir.path(), &args, false, false, false).unwrap();
         assert_eq!(outcome.source.path.as_deref(), Some("sources/file/outside.md"));
         assert!(project.join("sources/file/outside.md").exists());
         let config = ResolvedSourceConfig::from_config(
