@@ -1,10 +1,82 @@
 # mind-forge
 
-**A local-first, AI-native CLI for a personal knowledge base.**
+**A local-first, AI-native CLI for card-based writing and personal knowledge.**
 
 `mf` manages Markdown articles, Sources, assets, terms, builds, publishing,
 and a repository-wide local RAG corpus. Authored files stay plain and
 Git-reviewable; the RAG index is rebuildable derived state.
+
+`mind-forge` treats a knowledge base like a codebase: capture evidence once,
+compose it into different articles, and ship it through repeatable workflows.
+The CLI is designed to be driven equally well by a person, a script, or an AI
+Agent.
+
+## Philosophy
+
+Four ideas shape the product.
+
+### Diffusion
+
+Knowledge should move instead of being copied. A Source, term, or reusable
+Block can contribute to several articles; an article can then flow to several
+publishers. The repository preserves the connections so the same idea can
+evolve without creating disconnected copies.
+
+```mermaid
+flowchart LR
+  subgraph Capture
+    S[Source]
+    B((Block))
+    T[Term]
+  end
+  subgraph Compose
+    R[RAG retrieval]
+    A1[Article: Report]
+    A2[Article: Essay]
+  end
+  subgraph Ship
+    P1[Local]
+    P2[Yuque]
+  end
+  S --> R
+  B --> R
+  T --> A2
+  R --> A1
+  R --> A2
+  A1 --> P1
+  A1 --> P2
+```
+
+RAG is part of this diffusion path: it helps find existing knowledge and its
+provenance before new prose is written.
+
+### Document as Code
+
+Writing deserves the same engineering discipline as software:
+
+- Markdown and YAML are the durable interfaces;
+- schemas and lint rules make structure explicit;
+- deterministic builds turn sources into outputs;
+- Git records the history of both content and decisions.
+
+If a code change can be reviewed as a diff, a chapter should be reviewable the
+same way. Derived indexes and build products must never replace authored files.
+
+### AI Native CLI
+
+An Agent should not need to scrape colorful terminal prose or guess whether a
+command succeeded. `mf` exposes stable JSON envelopes, predictable exit codes,
+canonical identities, dry-run support, and explicit confirmation boundaries.
+
+This is more than “CLI automation.” The command surface is an API for reasoning
+systems: deterministic enough to compose, inspect, retry, and audit.
+
+### Local first
+
+The repository remains useful without a required cloud service. Authored
+content stays in ordinary files, secrets stay outside committed configuration,
+and the embedded RAG corpus can be rebuilt locally. Optional external services
+extend the workflow; they do not own it.
 
 ## Install
 
