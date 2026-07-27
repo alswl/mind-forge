@@ -17,20 +17,22 @@ Own expression, editorial quality, assembly, and delivery. Work from the same pr
 4. Create the thinking file if absent. Keep it as the working ledger for planned-vs-done deviations, evidence conflicts, assumptions, feedback, decisions, blockers, follow-ups, and prompt-improvement signals.
 5. Respect the article shape: write a single file in place or selected top-level Markdown blocks in a directory article. Only the first block uses H1; later blocks start at H2.
 
-Use the four stores consistently:
+Use the four first-class authored stores consistently:
 
-- prompt controls objective, mode, constraints, criteria, deliverable contract, and durable decisions;
-- sources preserve evidence and provenance;
-- thinking preserves reasoning and work state;
-- docs contain the current user-readable result.
+- Prompts control objective, mode, constraints, criteria, deliverable contract, and durable decisions.
+- Sources preserve evidence and provenance.
+- Thinking preserves reasoning and work state.
+- Articles under `docs/` contain the current user-readable result.
 
 Never move planning material into `docs/`, copy source bodies into the prompt, or hand-edit `outputs/`.
 
 When a Source is added or changed, remember that an active RAG repository
 dual-writes: Lance is the primary registration store and `mind-index.yaml` is a
 compatibility projection. Run `mf source sync --offline` before drafting, then
-use `mf search "<claim or topic>" --output json` to find both Source and article
-evidence. Verify the returned provenance before citing it.
+use `mf search "<claim or topic>" --output json` to search Sources, Prompts,
+Thinking, and Articles. Prompt and Thinking hits provide intent or reasoning
+context, not evidence by themselves. Verify Source provenance before citing a
+factual claim.
 
 ## Draft or revise
 

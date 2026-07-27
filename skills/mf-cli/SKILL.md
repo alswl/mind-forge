@@ -1,18 +1,23 @@
 ---
 name: mf-cli
-description: Use the mf Rust CLI to manage mind 0.3.0-compatible local knowledge repositories, including projects, articles, sources, assets, glossary terms, builds, publishing, render templates, configuration, JSON contracts, and exact command flags. Use for CLI operations, command lookup, automation safety, or structured output reference; use mf-plan or mf-write for article workflows.
+description: Use the mf Rust CLI to manage mind 0.3.0-compatible local knowledge repositories, including first-class Sources, Prompts, Thinking, and Articles, repository-wide RAG, assets, glossary terms, builds, publishing, render templates, configuration, JSON contracts, and exact command flags. Use for CLI operations, command lookup, automation safety, or structured output reference; use mf-plan or mf-write for article workflows.
 ---
 
 # mf-cli — Knowledge Repo CLI
 
 ## Overview
 
-`mf` manages local mind-format knowledge repos: content sources, assets, articles (file or directory), glossary terms, builds, publishing, publish targets, render templates, configuration, and a repository-wide RAG corpus.
+`mf` manages local mind-format knowledge repos. Sources preserve evidence,
+Prompts define intent, Thinking records working reasoning, and Articles carry
+the user-readable synthesis. The repository-wide RAG corpus makes all four
+stores retrievable without erasing their different roles.
 
 **Key concepts:**
 - **Mind Repo**: A directory rooted at `minds.yaml`. Most commands require running inside one.
-- **Project**: A subdirectory with `docs/`, `sources/`, `assets/`, and `mind.yaml`. Some repositories also use `prompts/` for writing intent. Project identity is a repo-relative path.
-- **Index**: `mind-index.yaml` per project — source of truth for articles, sources, assets, terms, and publish records.
+- **Project**: A subdirectory with `docs/`, `sources/`, `assets/`, and `mind.yaml`. Article workflows add first-class authored `prompts/` and `thinking/` stores. Project identity is a repo-relative path.
+- **Prompt**: The authored control plane for objective, constraints, criteria, and durable decisions.
+- **Thinking**: The authored working ledger for reasoning, conflicts, feedback, blockers, and next steps.
+- **Index**: `mind-index.yaml` per project — authoritative metadata for indexed resources. Its `prompts:` and `thinking:` entries are derived projections of the Markdown files, not their source of truth.
 - **Output**: Text by default, JSON with `--json` or `--output json` (`-o json`).
 
 ## YAML Format
@@ -156,7 +161,21 @@ Without a direction flag in a TTY, the CLI infers the unique reasonable directio
 
 #### Prompt/thinking binding
 
-`prompts/` (control plane: objective, mode, constraints, decisions) and `thinking/` (working ledger) are derived-projection schema, reconciled by `mf article index` and surfaced through `mf article list`/`show` above — there is no standalone `mf prompt`/`mf thinking` command group. `prompts/<key>.md` is the source of truth (frontmatter `article:` and optional `mode:` of `editorial`/`research`/`decision-research`); `thinking/<key>.md` associates with an article purely by key alignment (its own filename stem matching the article's), carries no frontmatter, and has no `duplicate` state. Binding status (`bound`/`orphan`/`duplicate`) is computed at query time against the current `articles` set and is never persisted. Cross-article anomalies (an orphaned prompt, two prompts bound to one article) have no single article row to attach to — they surface only through `mf project lint`'s `orphan_prompt`/`duplicate_binding`/`missing_thinking` rules (see below).
+`prompts/` (control plane: objective, mode, constraints, decisions) and
+`thinking/` (working ledger) are first-class authored Markdown stores. Only
+their `mind-index.yaml` entries are derived projections, reconciled by
+`mf article index` and surfaced through `mf article list`/`show` above. The
+absence of standalone `mf prompt`/`mf thinking` command groups is a CLI design
+choice, not a data-ownership hierarchy. `prompts/<key>.md` is the source of
+truth (frontmatter `article:` and optional `mode:` of `editorial`/`research`/
+`decision-research`); `thinking/<key>.md` associates with an article purely by
+key alignment (its own filename stem matching the article's), carries no
+frontmatter, and has no `duplicate` state. Binding status
+(`bound`/`orphan`/`duplicate`) is computed at query time against the current
+`articles` set and is never persisted. Cross-article anomalies (an orphaned
+prompt, two prompts bound to one article) have no single article row to attach
+to — they surface only through `mf project lint`'s
+`orphan_prompt`/`duplicate_binding`/`missing_thinking` rules (see below).
 
 ### `mf source` — Manage content sources
 
@@ -173,15 +192,17 @@ Use the canonical global search and synchronization commands:
 
 ```bash
 mf source sync --offline                 # initialize/refresh the local RAG corpus
-mf search "<query>" --output json       # search Sources and article content together
+mf search "<query>" --output json       # search Sources, Prompts, Thinking, and Articles
 mf source status --output json           # inspect corpus health
 ```
 
-`mf source sync` also discovers article prose, prompts, and thinking files by
-default. It is local-first and does not fetch URL sources during sync. Use
-`mf search` for content retrieval; it has no `--mode` switch and returns the
-repository-wide RAG result set. `mf source search --mode ...` is only a temporary
-compatibility path for existing scripts.
+`mf source sync` discovers Sources, Prompt files, Thinking files, and Article
+prose by default. It is local-first and does not fetch URL sources during sync.
+Use `mf search` for content retrieval; it has no `--mode` switch and returns
+the repository-wide RAG result set. A Prompt or Thinking hit supplies intent
+or reasoning context, not factual evidence by itself; verify factual claims
+against a Source and its provenance. `mf source search --mode ...` is only a
+temporary compatibility path for existing scripts.
 
 Low-frequency maintenance uses `mf source admin rebuild|clear|recover`; bundle
 and provenance operations use `mf source export|import|trace`. The former
@@ -460,7 +481,7 @@ mf publish target show local
 mf render template list
 mf render template show arch
 
-# Prompts & thinking (writing-workflow bindings) — surfaced via `mf article`
+# First-class Prompt & Thinking stores — surfaced via `mf article`
 mf article index --project my-project                  # reconciles articles + prompts: + thinking: in one run
 mf article list --project my-project                   # PROMPT/THINKING columns per article
 mf article show my-first-post --project my-project      # bound/orphan/duplicate status + thinking presence

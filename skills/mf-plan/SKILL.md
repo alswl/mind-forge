@@ -15,16 +15,17 @@ Own problem framing, evidence gathering, comparison, and judgment. Planning and 
 4. Read `prompts/constitution.md` when present. Use [constitution.md](assets/constitution.md) only when the user asks to establish project writing rules.
 5. If the prompt is absent for an existing article, use [prompt.md](assets/prompt.md). Create it only when the user has asked to plan, research, or maintain that article. If an article is absent but a bound prompt exists, report the orphan and ask before rebinding.
 
-Treat these four stores as one workspace:
+Treat these four first-class authored stores as one workspace:
 
 - `prompts/`: control plane for objective, mode, constraints, evaluation criteria, deliverable contract, outline, open loops, and durable decisions.
 - `sources/`: evidence and provenance. Register material through `mf source new ... --json`; keep access dates and volatile-data context in the source material.
 - Source registrations are dual-written when the repository RAG corpus is
   active: Lance is primary and `mind-index.yaml` is the compatibility
   projection. After adding or changing sources, run `mf source sync --offline`
-  and use `mf search "..." --output json` to retrieve evidence across Sources,
-  article prose, prompts, and thinking. Do not treat a successful YAML-only
-  write as proof that the RAG corpus is current.
+  and use `mf search "..." --output json` to retrieve knowledge context across
+  Sources, Prompts, Thinking, and Articles. Prompt and Thinking hits provide
+  intent or reasoning context, not factual evidence by themselves. Do not
+  treat a successful YAML-only write as proof that the RAG corpus is current.
 - `thinking/`: working ledger for comparisons, contradictions, assumptions, feedback, decisions, blockers, and next investigations. Use `<project>/thinking/<article-key>.md`; create it when work begins and it is absent.
 - `docs/`: the current user-readable deliverable, never a deferred final dump. `outputs/` remains generated and must not be edited.
 

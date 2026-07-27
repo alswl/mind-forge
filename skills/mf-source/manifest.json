@@ -1,8 +1,8 @@
 {
   "name": "mf-source",
-  "version": "1.0.0",
-  "description": "Repository-wide Source RAG search and synchronization for mind-forge repositories",
-  "prompt_version": "1",
+  "version": "1.1.0",
+  "description": "Repository-wide RAG search and synchronization across Sources, Prompts, Thinking, and Articles",
+  "prompt_version": "2",
   "schema_version": "1",
   "files": [
     "SKILL.md",
