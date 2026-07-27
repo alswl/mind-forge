@@ -144,7 +144,7 @@ pub fn add_registration(
     let rows = catalog.registrations(Some(&store))?;
 
     let (source, mode, copied_file) = match crate::service::source::classify_input(args.input) {
-        InputForm::Url => add_url_source(args)?,
+        InputForm::Url => add_url_source(project_path, repo_root, args)?,
         InputForm::Path => add_local_source(project_path, cwd, args, register_only, dry_run)?,
     };
     let location = source.path.as_ref().or(source.url.as_ref()).expect("source has location");
@@ -218,7 +218,11 @@ pub fn add_registration(
     })
 }
 
-fn add_url_source(args: &AddArgs) -> Result<(Source, AddMode, Option<std::path::PathBuf>)> {
+fn add_url_source(
+    project_path: &Path,
+    repo_root: &Path,
+    args: &AddArgs,
+) -> Result<(Source, AddMode, Option<std::path::PathBuf>)> {
     crate::service::source::validate_url(args.input)?;
     let name = args.name.ok_or_else(|| {
         MfError::usage("URL sources require an explicit --name", Some("pass --name <STRING>".to_string()))
@@ -230,6 +234,22 @@ fn add_url_source(args: &AddArgs) -> Result<(Source, AddMode, Option<std::path::
             return Err(MfError::usage("cannot use --type pdf or --type file with a URL input", None));
         }
     };
+    let kind_str = kind.as_str();
+
+    let config = super::config::load_repository_config(repo_root)?;
+    // Fetch the URL and persist as a local file (Bug B: all sources become
+    // local files — `sync` no longer fetches URLs).
+    let (rel_path, _raw_bytes) = crate::service::source::add::fetch_url_to_local_file(
+        args.input,
+        name,
+        kind_str,
+        project_path,
+        config.fetch_max_bytes,
+        config.fetch_timeout_seconds,
+        config.fetch_max_redirects,
+    )?;
+
+    let dest = project_path.join(&rel_path);
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     Ok((
         Source {
@@ -237,13 +257,13 @@ fn add_url_source(args: &AddArgs) -> Result<(Source, AddMode, Option<std::path::
             kind,
             source_kind: args.source_kind.clone(),
             url: Some(args.input.to_string()),
-            path: None,
+            path: Some(rel_path),
             tags: vec![],
             added_at: now.clone(),
             updated_at: now,
         },
         AddMode::Url,
-        None,
+        Some(dest),
     ))
 }
 

@@ -159,6 +159,50 @@ pub fn add(project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcome
     }
 }
 
+/// Fetch a URL and persist it as a local source file under `sources/<kind>/`.
+///
+/// Returns the repo-relative local path and the raw bytes. The file is written
+/// atomically (temp → rename) so a failure never leaves a half-written file.
+pub(crate) fn fetch_url_to_local_file(
+    url: &str,
+    name: &str,
+    kind: &str,
+    project_path: &Path,
+    max_bytes: u64,
+    timeout_seconds: u32,
+    max_redirects: u32,
+) -> Result<(String, Vec<u8>)> {
+    use crate::service::source::advanced::acquisition;
+
+    let content = acquisition::acquire_http(url, max_bytes, timeout_seconds, max_redirects)?;
+    let ext = file_extension_for_url(url, kind);
+    let kind_dir = project_path.join("sources").join(kind);
+    std::fs::create_dir_all(&kind_dir).map_err(MfError::Io)?;
+    let dest = kind_dir.join(format!("{name}.{ext}"));
+    let tmp = kind_dir.join(format!(".{name}.tmp"));
+    // Write to a temp file then rename so a crash never leaves a half-written file.
+    std::fs::write(&tmp, &content.raw_bytes).map_err(MfError::Io)?;
+    std::fs::rename(&tmp, &dest).map_err(MfError::Io)?;
+    let rel_path = util::rel_posix_path(project_path, &dest)?;
+    Ok((rel_path, content.raw_bytes))
+}
+
+/// Derive a file extension from a URL path. Falls back to `html` for web and
+/// `xml` for RSS when the path has no recognised extension.
+fn file_extension_for_url<'a>(url: &'a str, kind: &str) -> &'a str {
+    // Strip query and fragment before extracting the path suffix.
+    let path_only = url.split('?').next().unwrap_or(url).split('#').next().unwrap_or(url);
+    if let Some(ext) =
+        std::path::Path::new(path_only).extension().and_then(|e| e.to_str()).filter(|e| !e.is_empty() && e.len() <= 10)
+    {
+        ext
+    } else if kind == "rss" {
+        "xml"
+    } else {
+        "html"
+    }
+}
+
 fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
     validate_url(args.input)?;
 
@@ -187,6 +231,20 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
         None => FileKind::Web,
     };
 
+    let kind_str = model_kind.as_str();
+
+    // Fetch the URL and persist as a local file (Bug B: all sources become
+    // local files — `sync` no longer fetches URLs).
+    let (rel_path, _raw_bytes) = fetch_url_to_local_file(
+        args.input,
+        &name,
+        kind_str,
+        project_path,
+        64 * 1024 * 1024, // 64 MiB default
+        30,               // 30 s timeout
+        5,                // 5 redirects
+    )?;
+
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     let mut index = index::load(project_path)?;
@@ -195,12 +253,18 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
 
     let (mode, source, replaced) = match slot {
         UpsertSlot::Replace { idx, prior } => {
+            // Clean up the previous local file if it differs.
+            if let Some(ref old_path) = prior.path
+                && *old_path != rel_path
+            {
+                let _ = std::fs::remove_file(project_path.join(old_path));
+            }
             let source = Source {
                 name: name.clone(),
                 kind: model_kind,
                 source_kind: args.source_kind.clone(),
                 url: Some(args.input.to_string()),
-                path: None,
+                path: Some(rel_path),
                 tags: prior.tags.clone(),
                 added_at: prior.added_at.clone(),
                 updated_at: now,
@@ -214,7 +278,7 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
                 kind: model_kind,
                 source_kind: args.source_kind.clone(),
                 url: Some(args.input.to_string()),
-                path: None,
+                path: Some(rel_path),
                 tags: vec![],
                 added_at: now.clone(),
                 updated_at: now,

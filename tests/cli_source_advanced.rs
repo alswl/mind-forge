@@ -12,7 +12,7 @@ fn sync_requires_embedding_model_when_endpoint_is_configured() {
     let repo = provider_repo();
     configure_embedding(repo.path(), &[("embedding_endpoint", "http://127.0.0.1:9".into())]);
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync"], &[]);
     assert_eq!(code, 2, "endpoint without model must be a usage error\nstdout:\n{stdout}\nstderr:\n{stderr}");
     assert!(
         format!("{stdout}{stderr}").contains("embedding_model"),
@@ -23,7 +23,7 @@ fn sync_requires_embedding_model_when_endpoint_is_configured() {
 #[test]
 fn advanced_search_degrades_deterministically_without_a_provider() {
     let repo = provider_repo();
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync", "--offline"], &[]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "offline sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
 
     let (stdout, stderr, code) = run(&repo, &["source", "search", "entanglement", "--mode", "advanced"], &[]);
@@ -42,7 +42,7 @@ fn advanced_search_degrades_deterministically_without_a_provider() {
 #[test]
 fn advanced_search_with_invalid_provider_config_degrades_with_warning() {
     let repo = provider_repo();
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync", "--offline"], &[]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "offline sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     configure_embedding(repo.path(), &[("embedding_endpoint", "http://127.0.0.1:9".into())]);
 
@@ -60,7 +60,7 @@ fn advanced_search_with_invalid_provider_config_degrades_with_warning() {
 #[test]
 fn advanced_search_with_missing_credential_degrades_not_fails() {
     let repo = provider_repo();
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync", "--offline"], &[]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "offline sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     configure_provider(repo.path(), "http://127.0.0.1:9");
 
@@ -77,7 +77,7 @@ fn offline_sync_makes_no_provider_requests() {
     let repo = provider_repo();
     configure_provider(repo.path(), &mock.endpoint);
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync", "--offline"], &[(KEY_ENV, SECRET)]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[(KEY_ENV, SECRET)]);
     assert_eq!(code, 0, "offline sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     assert_eq!(
         mock.request_count(),

@@ -11,7 +11,9 @@ Own expression, editorial quality, assembly, and delivery. Work from the same pr
 
 1. Locate the Mind Repo and resolve the project and article through `mf article list/show --json`; preserve the returned canonical identity.
 2. Resolve exactly one prompt by frontmatter `article`, using `prompts/<article-key>.md` only as its canonical discovery convention. If none or several match, stop and recommend `$mf-plan`; do not guess.
-3. Read in order: the prompt and `prompts/constitution.md`, registered sources and terms, `<project>/thinking/<article-key>.md`, current article source, then all `<!-- mf-feedback ... -->` annotations.
+3. Read in order: the prompt and `prompts/constitution.md`, relevant RAG hits
+   from `mf search`, registered sources and terms, `<project>/thinking/<article-key>.md`,
+   current article source, then all `<!-- mf-feedback ... -->` annotations.
 4. Create the thinking file if absent. Keep it as the working ledger for planned-vs-done deviations, evidence conflicts, assumptions, feedback, decisions, blockers, follow-ups, and prompt-improvement signals.
 5. Respect the article shape: write a single file in place or selected top-level Markdown blocks in a directory article. Only the first block uses H1; later blocks start at H2.
 
@@ -23,6 +25,12 @@ Use the four stores consistently:
 - docs contain the current user-readable result.
 
 Never move planning material into `docs/`, copy source bodies into the prompt, or hand-edit `outputs/`.
+
+When a Source is added or changed, remember that an active RAG repository
+dual-writes: Lance is the primary registration store and `mind-index.yaml` is a
+compatibility projection. Run `mf source sync --offline` before drafting, then
+use `mf search "<claim or topic>" --output json` to find both Source and article
+evidence. Verify the returned provenance before citing it.
 
 ## Draft or revise
 

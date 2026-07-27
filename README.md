@@ -1,69 +1,10 @@
 # mind-forge
 
-**A local-first, AI-native CLI for card-based writing.**
+**A local-first, AI-native CLI for a personal knowledge base.**
 
-`mf` treats your knowledge base as a codebase. Articles are assembled from
-composable Blocks, authored content and configuration live in plain files on
-disk, and the CLI is shaped so both humans and Agents can drive it. Features
-may use explicitly specified repo-local embedded stores for advanced indexing
-and retrieval without introducing a cloud dependency.
-
-## Philosophy
-
-Three ideas guide every decision in `mf`:
-
-### Diffusion
-
-Knowledge is meant to spread. Capture it once as a Block, then let it
-diffuse — through articles, glossary terms, builds, and downstream
-publishers like Yuque or static sites. The same atomic unit can land in a
-report today and a paper tomorrow, without copy-paste drift.
-
-```mermaid
-flowchart LR
-  subgraph Capture
-    B((Block))
-    S[Source]
-    T[Term]
-  end
-  subgraph Compose
-    A1[Article: Report]
-    A2[Article: Paper]
-  end
-  subgraph Ship
-    P1[Publisher: Yuque]
-    P2[Publisher: Local]
-  end
-  B --> A1
-  B --> A2
-  S --> A1
-  T --> A2
-  A1 --> P1
-  A1 --> P2
-```
-
-### DaC — Document as Code
-
-Your writing follows the same discipline as your infrastructure:
-
-declarative YAML configs (`minds.yaml`, `mind.yaml`, `mind-index.yaml`),
-schema validation, deterministic builds, and full git auditability.
-If you can review a PR, you can review a chapter.
-
-### AI Native CLI
-
-`mf` is designed first for AI Agents, not for human terminal sessions.
-Every command speaks a JSON envelope (`{ status, command, data }`), exits
-with stable codes, and produces deterministic output contracts.
-Build a pipeline with shell, Make, or an LLM — the contract is the same.
-
-This is an independent philosophy, not a subset of DaC: AI Native CLI
-rejects interactive prompts, colored output designed for human eyes, and
-inconsistent exit codes. The tool is a reliable API for an LLM to call.
-
-Local-first underpins all three: no required cloud service, plain Markdown and
-YAML for authored content and configuration, plus portable migration paths for
-any repo-local embedded stores.
+`mf` manages Markdown articles, Sources, assets, terms, builds, publishing,
+and a repository-wide local RAG corpus. Authored files stay plain and
+Git-reviewable; the RAG index is rebuildable derived state.
 
 ## Install
 
@@ -75,420 +16,146 @@ cd mind-forge
 cargo install --path .
 ```
 
-Or run from source while iterating:
+## Quick start
 
 ```bash
-cargo run -- --help
-```
-
-Shell completion:
-
-```bash
-mf completion zsh   # or bash | fish | powershell | elvish
-```
-
-## Quick Start
-
-```bash
-# 1. Create a Mind Repo
 mkdir my-repo && cd my-repo
-mf init                                # creates minds.yaml + projects/
+mf init
+mf project new notes
+mf article new "First Note" --project notes
+mf source new ./reference.pdf --file-kind pdf --project notes
 
-# 2. Create a project (path-based identity, Unicode/emoji/dates supported)
-mf project new blog
-mf project new workspaces/team/projects/2026-W21
+# Build and query the repository-wide RAG corpus
+mf source sync --offline
+mf search "what I am investigating" --output json
 
-# 3. Create an article
-mf article new "First Post" --project blog
-
-# 4. Add sources, assets, and terms
-mf source new https://example.com/ref --file-kind web --project blog
-mf asset new diagram.png --project blog
-mf term new "Zettelkasten" --definition "A note-taking method" --project blog
-
-# 5. Index, build, and publish
-mf article index --project blog
-mf build "First Post" --project blog
-mf publish run "First Post" --target local --project blog
+mf article index --project notes
+mf build "First Note" --project notes
 ```
 
-## Manual
+See [docs/manual.md](docs/manual.md) for the full manual.
 
-See [docs/manual.md](docs/manual.md) for the full user manual, including repo
-layout, shared CLI contracts, scripting patterns, and end-to-end workflows for
-projects, articles, sources, assets, terms, builds, publishing, templates, and
-configuration.
+## Core workflow
 
-## Experimental: repository-wide Source RAG
+```text
+capture → sync RAG → search evidence → write article → build → publish
+```
 
-`mf source advanced` is the experimental, repo-wide Source backend. Its data
-directory is `.mind-forge/cache/source/advanced/`; it is local, rebuildable
-runtime state, gitignored via `.mind-forge/.gitignore`. Claude enrichments are
-the exception: they are committed to `.mind-forge/enrichments/*.json` as durable
-authority so they survive cache rebuilds — note these files contain
-content-derived summaries/keywords, so review them before pushing. Start from
-ordinary per-project Sources,
-then inspect the planned activation before making any change:
+- `mf source new` records a Source.
+- `mf source sync --offline` initializes or refreshes the local corpus.
+- `mf search <QUERY>` searches Sources and article context together.
+- `mf article`, `mf build`, and `mf publish` manage the writing pipeline.
+
+## Source RAG
+
+### Canonical search
 
 ```bash
-# From the Mind Repo root
-mf source advanced enable --dry-run
-mf source advanced enable
-mf source advanced sync --offline          # extract, chunk, and index content
-mf source advanced status
-mf source search "your query" --mode advanced
+mf source sync --offline
+mf search "topic or claim" --output json --limit 20
+mf search "topic" --project notes --source reference
+mf source status --output json
 ```
 
-**Search modes:**
-- `basic` — matches registered Source metadata (identity, kind, location).
-- `advanced` — LanceDB **BM25** full-text ranking over synced content.
-  Degrades gracefully to keyword-only when no embedding provider is configured.
-- `both` — fuses basic + advanced with reciprocal-rank fusion (RRF k=60),
-  deduplicated by `(document_key, locator)`.
-- `--revision N` — search a specific content revision. Accepts integers, ISO
-  dates (`2026-07-25`), or relative dates (`yesterday`, `7 days ago`).
-- Default output is a text table; use `-o json` for machine-readable results.
+`mf search` is the canonical global retrieval command. It has no `--mode`
+flag and searches registered Sources, article prose, prompts, and thinking.
+Results include provenance; verify the returned project, Source identity, and
+location before citing a result.
 
-**Management commands:**
-- `mf source advanced status` — backend health, retained snapshots, pending intents
-- `mf source advanced rebuild` — rebuild the entire LanceDB index
-- `mf source advanced clear --yes` — clear derived content
-- `mf source advanced recover --snapshot ID --yes` — recover from a retained snapshot
-- `mf source advanced legacy export|import` — compatibility projection management
-- `mf source advanced disable` — safely switch back to legacy backend
+`mf source search --mode ...` is retained only for old scripts. New workflows
+should use `mf search`.
 
-### Embedding provider (for semantic search)
+### Source dual-write
 
-Semantic search uses an OpenAI-compatible `/v1/embeddings` endpoint. Configure
-it in `minds.yaml` under `source.advanced`:
+When RAG is active, `mf source new` performs a deliberate dual write:
 
-```yaml
-source:
-  backend: lance
-  advanced:
-    embedding_endpoint: "https://api.siliconflow.cn/v1"
-    embedding_model: "BAAI/bge-m3"
-    embedding_dimension: 1024
-    embedding_api_key: "${SF_API_KEY}"   # resolved from minds-secrets.yaml
+1. Lance receives the authoritative Source registration first.
+2. The project's `mind-index.yaml` receives a compatibility projection.
+
+A projection warning does not mean the primary Source was lost. Run
+`mf source sync` to reconcile it. Repositories without RAG remain legacy-only
+until their first successful sync.
+
+Sync is local-first and non-destructive. It reads saved local Source files and
+discovers article prose, `prompts/`, and `thinking/` by default. Unchanged
+content is synchronized idempotently.
+
+### Maintenance and bundles
+
+```bash
+mf source admin rebuild --offline
+mf source admin clear --dry-run
+mf source admin recover --snapshot <ID> --dry-run
+mf source export --output-dir ./backup.mfbundle
+mf source import ./backup.mfbundle --dry-run
+mf source trace
 ```
 
-Credentials are resolved from env vars or a gitignored `minds-secrets.yaml` and
-are never persisted in `minds.yaml`. Provider calls only happen during `sync`,
-`rebuild`, and `advanced`/`both` search; `basic` and `status` are fully offline.
+The old `source advanced` command tree and terminal enrichment workflow are
+removed. Existing enrichment data is not deleted by sync or maintenance.
 
-### Claude enrichment
+Optional semantic embeddings use an OpenAI-compatible `/v1/embeddings`
+provider. Credentials belong in environment variables or the gitignored
+`minds-secrets.yaml`, never in committed configuration.
 
-`mf source advanced enrich list|show|apply` and the installable `/mf-source` Skill
-(`mf source advanced skill-install`) let Claude extract summaries, topics, and
-keywords from synced content. Enrichments are committed as durable authority under
-`.mind-forge/enrichments/`.
+## Repository layout
 
-## Core Concepts
-
-| Concept          | What it is                                                                 |
-| ---------------- | -------------------------------------------------------------------------- |
-| **Mind Repo**    | A directory rooted at `minds.yaml`. The outermost unit of organization.    |
-| **Project**      | A subdirectory with `mind.yaml`. Default layout: `docs/`, `sources/`, `assets/`, `outputs/`. |
-| **Article**      | A document — either a single Markdown file or a directory of ordered files. |
-| **Block**        | An atomic, reusable unit of content composed into articles.                |
-| **Source**       | An external reference (web page, PDF, RSS feed, file) tracked per project. |
-| **Asset**        | A binary or non-text resource attached to a project.                       |
-| **Index**        | `mind-index.yaml` per project — the source of truth for everything above.  |
-| **Publisher**    | A target (e.g. `local`, `yuque-prompt`) that ships built output somewhere. |
-
-All on-disk YAML follows the mind 0.3.0 format (`schema: "1"`), so repos move
-freely between `mf` and other mind-compatible tools.
-
-How the pieces fit on disk:
-
-```mermaid
-flowchart TD
-  Repo[Mind Repo<br/><code>minds.yaml</code>]
-  Repo --> P1[Project: blog<br/><code>mind.yaml</code>]
-  Repo --> P2[Project: papers<br/><code>mind.yaml</code>]
-  P1 --> Docs[docs/]
-  P1 --> Sources[sources/]
-  P1 --> Assets[assets/]
-  P1 --> Outputs[outputs/]
-  P1 --> Idx[<code>mind-index.yaml</code>]
-  Docs --> A1[essay.md<br/>file article]
-  Docs --> A2[2026-review/<br/>directory article]
-  A2 --> A2a[01-intro.md]
-  A2 --> A2b[02-details.md]
+```text
+my-repo/
+├── minds.yaml
+├── projects/
+│   └── notes/
+│       ├── mind.yaml
+│       ├── mind-index.yaml
+│       ├── docs/
+│       ├── sources/
+│       ├── prompts/
+│       ├── thinking/
+│       └── outputs/
+└── .mind-forge/cache/source/advanced/  # rebuildable RAG state
 ```
 
-## Workflow
+`minds.yaml` describes the repository; `mind.yaml` describes a project;
+`mind-index.yaml` is the project compatibility/index projection.
 
-A typical loop:
+## Command groups
 
-```mermaid
-flowchart LR
-  C[Capture<br/><code>mf source</code><br/><code>mf asset</code><br/><code>mf term</code>]
-  D[Draft<br/><code>mf article new</code>]
-  I[Index<br/><code>mf … index</code><br/><code>mf project lint --fix</code>]
-  B[Build<br/><code>mf build</code>]
-  P[Publish<br/><code>mf publish run</code>]
-  C --> D --> I --> B --> P
-  P -. new insights .-> C
+```text
+mf init
+mf project new|list|show|update|rename|remove|archive|lint|index|import
+mf article new|list|show|update|rename|remove|lint|convert|index
+mf source new|list|show|update|rename|remove|index|clean
+mf source sync|status|export|import|trace
+mf source admin rebuild|clear|recover
+mf search <QUERY>
+mf asset ...     mf term ...     mf build ...
+mf publish ...   mf render ...   mf config ...
 ```
 
-1. **Capture** — `mf source new` and `mf asset new` pull raw material into a
-   project. `mf term new` records vocabulary.
-2. **Draft** — `mf article new <TYPE> <TITLE> [--template <S>] [--file]`
-   scaffolds a directory article (default) or single file (`--file`) under
-   `docs/`. The default template is `blank`; `--template arch|prd|blog`
-   selects another built-in scaffold, and `--template <path>` reads a
-   project-local Markdown template. New articles automatically get Typora
-   front matter (`typora-copy-images-to`) pointing to the project assets
-   directory (disable with `plugins.typora-front-matter.enabled: false` in
-   `mind.yaml`). Edit in any Markdown editor.
-3. **Index** — `mf source index`, `mf article index`, and
-   `mf project lint --fix` reconcile `mind-index.yaml` with the filesystem.
-4. **Build** — `mf build <article>` assembles output (directory articles
-   merge their files in filename order) into `outputs/<article>.md`.
-5. **Ship** — `mf publish run … --target <publisher>` pushes to a configured
-   target.
+Use `mf <command> --help` for current flags. Most commands support
+`--project`, `--output text|json`, `--json`, and `--dry-run` where applicable.
 
-Every step is idempotent and pipe-friendly. Pass `--json` to any command to
-get a machine-readable envelope.
+## Output and safety
 
-## Command Reference
+JSON commands use `{ "status", "command", "data" }` envelopes. Exit codes are:
 
-### Flags
+- `0` success;
+- `1` runtime/storage failure;
+- `2` invalid input or rejected operation.
 
-These flags are available on most commands:
+Read-only retrieval does not modify authored files. Destructive operations
+require explicit confirmation; use `--dry-run` before changing unfamiliar data.
 
-| Flag | Description |
-|------|-------------|
-| `--root <PATH>` | Mind Repo root directory |
-| `--config <PATH>` | Config file path |
-| `-p`, `--project <PROJECT>` | Project selector for project-scoped commands |
-| `-v`, `--verbose...` | Verbose output (repeatable) |
-| `-q`, `--quiet` | Silence non-error output |
-| `-o`, `--output <text\|json>` | Output format (default: `text`) |
-| `--json` | Shorthand for `--output json` |
-| `--no-color` | Disable colored output |
-| `-h`, `--help` | Show help |
-| `-V`, `--version` | Show version |
+## Development
 
-Shared flag families (uniform across all commands they apply to):
+```bash
+cargo fmt --check
+cargo clippy -- -D warnings
+cargo test
+```
 
-| Flag family | Applies to | Description |
-|------|------|------|
-| `--dry-run` | every mutating command (`new`, `rename`, `remove`, `archive`, `update`, `index`, lint `--fix`) | Preview without writing |
-| `-f`, `--force` | every `new`/`rename`/`remove`/`archive` | Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others |
-| `-y`, `--yes` | every `remove` and `archive` | Confirm destructive action non-interactively |
-| `--no-headers`, `--no-trunc` | every `list` | Suppress table header / disable column truncation |
-| `--fix`, `--rule <RULE>`, `--severity <LEVEL>`, `--max-warnings <N>` | every `lint` | Auto-fix, restrict rule, filter severity, fail on warnings > N |
-
-`--project` is available on project-scoped commands (`article`, `asset`,
-`source`, `term`, `build`, `publish run`, etc.) and accepts repo-relative
-paths or project names. When running inside a project directory,
-`--project` can be omitted — the CLI auto-detects the current project.
-When run outside a project directory without `--project`, `mf article list`
-automatically matches all projects and sorts articles by most recently
-modified.
-
-### `mf init [PATH]` — Initialize a Mind Repo
-
-Bootstrap a directory as a Mind Repo (creates `minds.yaml` and the
-default `projects/` container). Defaults to the current directory.
-
-### `mf project` — Manage projects
-
-| Subcommand | Description |
-|-----------|-------------|
-| `new <PATH>` | Create a project. Accepts cwd-relative or repo-relative paths with Unicode, emoji, dates, spaces. `--template <TEMPLATE>` |
-| `list` (ls) | List projects |
-| `show <PATH>` | Show project details |
-| `update <PATH>` | Update project metadata. `--description <TEXT>`, `--clear-description` |
-| `rename <OLD_PATH> <NEW_PATH>` | Rename a project |
-| `remove <PATH>` (rm) | Remove a project (interactive confirmation in TTY) |
-| `archive <NAME_OR_PATH>` | Archive a project to `_archived/` (interactive confirmation in TTY) |
-| `lint` | Lint project(s). Rules: `missing_directory`, `stale_index_entry`, `name_convention`, `missing_manifest`, `duplicate_key`, `orphan_prompt`, `duplicate_binding`, `missing_thinking`. Requires `-p, --project <PROJECT>` |
-| `index` | Index projects (mf extension). Also reconciles each project's article index: prunes stale entries whose target file no longer exists on disk (entries with existing files — including declared/template articles — are never removed); per-project reconcile failures surface as warnings instead of being skipped silently |
-| `import <DIRECTORY>` | Import a directory as a project. `--type <TYPE>`, `--source <DIR>`, `--assets <DIR>`, `-y, --yes` |
-
-### `mf article` — Manage articles
-
-| Subcommand | Description |
-|-----------|-------------|
-| `new <TITLE>` | Create an article. `-t, --template blank\|arch\|prd\|blog\|<path>`, `--file`, `--tag <TAG>`, `--draft` |
-| `list` (ls) | List articles. Omitting `--project` outside a project dir lists all articles across all projects, sorted by most recently modified. In single-project mode each row also carries a `PROMPT` column (bound prompt's mode, `duplicate` on conflict, `-` if none) and a `THINKING` column (`yes`/`-`) |
-| `show <PATH>` | Show article details, including bound prompt (path, mode, binding status, updated) and thinking ledger (path, updated) when present |
-| `update <PATH>` | Update article metadata. `--status draft\|published` |
-| `rename <OLD_PATH> <NEW_PATH>` | Rename an article |
-| `remove <PATH>` (rm) | Remove an article (interactive confirmation in TTY). Accepts the title, the `article_path`, or the index key — with or without a trailing `.md`; all forms resolve to the same entry |
-| `lint` | Lint articles |
-| `convert` | Convert article shape between directory and single-file. `--to-single-file`, `--to-directory`, `--dry-run` |
-| `index` | Index articles (mf extension). Also reconciles the `prompts:`/`thinking:` projections against `prompts/*.md`/`thinking/*.md` on disk in the same run (added/removed/kept counts per store in JSON). `--dry-run` previews without writing |
-
-### `mf source` — Manage content sources
-
-| Subcommand | Description |
-|-----------|-------------|
-| `new <INPUT>` | Add a source. `-n, --name <NAME>`, `--file-kind auto\|pdf\|file\|rss\|web`, `--source-kind yuque\|meeting\|misc`, `--link`, `--register-only` (index a file already inside the project's sources directory without copying it; idempotent; not combinable with `--link`/`--force`) |
-| `list` (ls) | List sources. `--filter <PATTERN>`, `-t, --type <KIND>` |
-| `show <PATH>` | Show source details |
-| `update <PATH>` | Update a source (mf extension). `--url <URL>`, `--rename <NAME>` |
-| `rename <OLD_PATH> <NEW_PATH>` | Rename a source |
-| `remove <NAME_OR_PATH>` (rm) | Remove a source. `--keep-file` |
-| `index` | Index sources (mf extension) |
-| `clean` | Clean stale index entries |
-| `search <QUERY>` | Search sources across all projects. `--mode basic\|advanced\|both`, `-p, --project <NAME>`, `--file-kind <KIND>`, `--source <NAME>`, `--limit <N>` |
-| `advanced enable` | Activate LanceDB-backed repository Sources (imports all legacy registrations). `--dry-run` |
-| `advanced sync` | Reconcile content for Source registrations. `-p, --project <NAME>`, `--offline`, `--dry-run` |
-| `advanced model install` | Download and install the embedding model (requires network). `--model <ID>`, `--dry-run` |
-| `advanced model import <DIR>` | Import a local model bundle (network-free). `--dry-run` |
-| `advanced model status` | Report model installation status (read-only) |
-| `advanced enrich list` | List pending/stale enrichment jobs for Claude Skill workflow |
-| `advanced enrich show <KEY>` | Show bounded chunk batch for a document (for `/mf-source` Skill) |
-| `advanced enrich apply <KEY> --input <FILE>` | Apply validated enrichment JSON to a document |
-| `advanced skill install` | Install the `/mf-source` Claude Code Skill into this repo |
-| `advanced status` | Report aggregate status of the advanced Source index |
-| `advanced rebuild` | Rebuild the entire LanceDB index. `--offline`, `--dry-run` |
-| `advanced clear` | Clear derived content. `--all`, `-p, --project <NAME>`, `--yes`, `--dry-run` |
-| `advanced recover --snapshot <ID>` | Recover from a retained snapshot. `--yes`, `--dry-run` |
-| `advanced legacy status` | Check legacy projection health |
-| `advanced legacy export` | Export Lance registrations to legacy YAML projections. `--dry-run` |
-| `advanced disable` | Switch back to legacy backend (requires all projections current). `--dry-run` |
-
-### `mf asset` — Manage project assets
-
-| Subcommand | Description |
-|-----------|-------------|
-| `new <PATH>` | Add an asset. `--name <NAME>`, `--tag <TAG>`, `--copy`/`--link` |
-| `list` (ls) | List assets. `--filter <PATTERN>`, `--type image\|video\|audio\|other` |
-| `show <PATH>` | Show asset details |
-| `update [PATH]` | Update assets. `--set-url <URL>`, `--channel <CHANNEL>`, `--all` |
-| `rename <OLD_PATH> <NEW_PATH>` | Rename an asset |
-| `remove <PATH>` (rm) | Remove an asset |
-| `index` | Index assets (mf extension). `--refresh-metadata` |
-| `clean` | Clean stale index entries |
-
-### `mf term` (alias: `mf terms`) — Manage terminology
-
-| Subcommand | Description |
-|-----------|-------------|
-| `new <TERM>` | Create a term (mf extension). `--definition <TEXT>`, `--description <TEXT>`, `--confidence <N>`, `--alias <TEXT>`, `--tag <TAG>`, `--misrecognition <TEXT>` |
-| `list` (ls) | List terms. `--filter <PATTERN>` matches term name (substring); `--tag <TAG>` / `--alias <ALIAS>` match their respective fields. `--has-correction`, `--scope project\|global\|all` (AND semantics; default merges project + global fallback) |
-| `show <TERM>` | Show term details |
-| `update <TERM>` | Update term metadata and corrections. `--correction-match <ORIGINAL:KIND>` accepts `word`, `substring`, or `pinyin`; substring defaults to the safe `standalone` boundary. Targeted updates/removals are not blocked by sibling substring corrections. |
-| `correction <SUBCOMMAND>` | Manage corrections as a first-class subresource: `add <TERM> <ORIGINAL> <CORRECT>` (idempotent; `--match word\|substring\|pinyin`, `--fix`, `--boundary loose\|standalone`, `--pinyin`), `list`, `show`, `update`, and `remove` (`--dry-run`) |
-| `move <TERM>` (mv) | Move a term between scopes. `--to-global`, `--to-project <PROJECT>`, `--from-global`, `--force` (overwrite destination; source preserved on rejection), `--dry-run` |
-| `rename <OLD_TERM> <NEW_TERM>` | Rename a term. `--keep-alias` keeps the old name as an alias |
-| `remove <TERM>` (rm) | Remove a term (interactive confirmation in TTY) |
-| `lint [PATH]` | Lint term consistency in project docs. `substring + loose` performs embedded literal matching; `substring + standalone` (default boundary) suppresses ASCII identifier/path internals and requires CJK token alignment. `word` and `pinyin` retain their existing behavior. Supports `--fix`, term/pair selectors, exclusions, suggested/confidence filters, and article/path targeting. |
-| `fix [PATH]` | First-class alias for `term lint --fix`. Same selectors as `lint`: `--term`/`--exclude-term`/`--exclude-original`, `--include-suggested` + `--min-confidence`. `--term` takes exact canonical names (case-sensitive) or `NAME:ORIGINAL` pairs; unknown → exit 2. |
-
-Global terms (created without `--project`) are stored in `minds-terms.yaml` at
-the repo root. Project-scoped terms live in each project's `mind-index.yaml`.
-
-Corrections follow two paths. `mf term lint`/`fix` deterministically applies the
-**declared glossary corrections** — the closed-set, recurring domain terms — to
-project docs under guardrails (no edit inside a protected term occurrence,
-declared-correction precedence, non-overlapping edits, atomic write after
-diff/confirm). **Open-domain** ASR errors that no fixed list can enumerate are
-corrected by the driving agent, then persisted via `mf term correction add` once
-they recur. `mf` owns the deterministic guardrails; the agent owns the
-open-domain judgment.
-
-### `mf build <ARTICLE>` — Build articles
-
-`-o, --output <PATH>`, `--dry-run`. `ARTICLE` may be an indexed name/slug or
-a repo-relative path prefixed with `@` (e.g. `@projects/blog/docs/2026-03-review/`).
-Directory articles are built by merging Markdown files in filename order. Relative
-image/link/reference paths (Markdown `![]()`/`[]()`/reference definitions and HTML
-`<img src>`) are automatically rewritten to resolve from the output directory,
-regardless of checkout location (main repo, git worktree, symlinked path); paths
-inside fenced code blocks, absolute paths, and URLs are left unchanged. A
-reference that cannot be safely rewritten is kept as-is and reported as a warning
-rather than written as a malformed path.
-
-A management banner can be injected into every build via `build.banner` in
-`mind.yaml` (`text`, optional `level: note|tip|warning|danger`) — it survives
-rebuilds since it is generated from config each time, not hand-edited into
-`outputs/`.
-
-### `mf publish` — Publish articles & manage targets
-
-| Subcommand | Description |
-|-----------|-------------|
-| `run <ARTICLE>` | Publish to a target (supported: `local`, `yuque-prompt`). `--target <TARGET>` (optional when `publish.default_target` is configured). File-based publishers discovered for both explicit and default targets. Local publishers honor `config.prefix`. For `yuque-prompt` targets, relative `.svg` image references in the payload are substituted with a sibling `.png` when one exists next to the build artifact (kept as-is with a warning otherwise); the result is reported in an additive `transforms: { svg_png_replaced, svg_png_missing }` field. This only affects the in-memory payload — the build artifact on disk is never modified. |
-| `update <ARTICLE>` | Update a publish record. `--target <TARGET>` (required), `--status draft\|published\|archived`, `--target-url <URL>`, `--set <KEY=VALUE>` |
-| `target list` | List publish targets and diagnostics |
-| `target show <NAME>` | Show publish target details |
-
-### `mf render template` — Render templates
-
-| Subcommand | Description |
-|-----------|-------------|
-| `list` | List built-in and project-local render templates |
-| `show <NAME>` | Show template details + preview |
-
-### `mf config` — Manage configuration
-
-| Subcommand | Description |
-|-----------|-------------|
-| `schema` | Show config JSON schema. `--output-format json\|yaml` (default: `json`) |
-| `show` | Show effective config (canonical JSON envelope). `--output-format json\|yaml` (default: `yaml`) |
-| `generate` | Generate effective config file. `--output-format json\|yaml` (default: `yaml`), `-o, --output <PATH>` |
-| `default` | Show default config values. `--output-format json\|yaml` (default: `yaml`) |
-| `terminal` | Show terminal capability diagnostics (hyperlink support, color depth, terminfo probing). Respects `TERM`, `COLORTERM`, `TERM_PROGRAM`, `NO_COLOR`, `MF_FORCE_HYPERLINKS`, `MF_NO_HYPERLINKS`. |
-
-### `mf completion <SHELL>` — Generate shell completion
-
-Supported shells: `bash`, `zsh`, `fish`, `powershell`, `elvish`
-
-### `mf version` — Show version information
-
-`mf --version` and text output use `<base>-dev+<short-commit>`, so builds with
-the same Cargo version remain distinguishable. JSON includes `version`,
-`base_version`, `channel`, `commit`, `build_date`, `rustc`, and `target_triple`.
-
-## Features
-
-- **Repo bootstrap** — `mf init [PATH]` creates `minds.yaml`
-- **Project lifecycle** — `mf project new | list | show | update | rename | remove | archive | lint | index | import`; path-based identity supports Unicode, emoji, dates, spaces
-- **Project auto-detection** — running inside a project directory auto-injects `--project`; `mf article list` without `--project` outside a project dir auto-matches all projects, sorted by most recently modified; cwd-relative paths normalized to repo-relative canonical identity
-- **Article management** — `mf article new | list | show | update | rename | remove | lint | index`; directory articles by default, `--file` for single-file shape; `--template blank|arch|prd|blog` or custom project-local template path
-- **Prompt/thinking binding** — `prompts/<key>.md` (objective, mode, constraints) and `thinking/<key>.md` (working ledger) bind to articles by key; `mf article index` reconciles both projections, `mf article list | show` surface binding status, and `mf project lint` flags `orphan_prompt` / `duplicate_binding` / `missing_thinking`
-- **Sources** — `mf source new | list | show | update | rename | remove | index | clean`; `--file-kind auto|pdf|file|rss|web`, `--source-kind yuque|meeting|misc`, `--register-only` to index an in-tree file without copying
-- **Assets** — `mf asset new | list | show | update | rename | remove | index | clean`; `--copy`/`--link` for copy vs symlink
-- **Glossary** — `mf term new | list | show | update | correction | move | rename | remove | lint`; global terms in `minds-terms.yaml`, project-scoped in `mind-index.yaml`
-- **Build** — config-driven assembly, directory-article merging, `--dry-run`, `--output`, and `@path/`-style article addressing
-- **Publish** — `mf publish run | update | target list | target show` against per-target publishers (`local`, `yuque-prompt`); project-level local targets resolve relative paths from project root
-- **Render templates** — `mf render template list | show` covers built-in and project-local templates
-- **Config** — `mf config schema | show | generate | default`; centralized defaults for `docs/`, `sources/`, `assets/`, `_archived/`, and `outputs/`
-- **Plugins** — `mind.yaml` supports a `plugins` block for forward-compatible plugin configuration; the `typora-front-matter` plugin is enabled by default and injects `typora-copy-images-to` front matter into new articles
-- **Compatibility** — reads and writes mind 0.3.0 YAML; tolerates older `schema_version` and list-based shapes on read
-- **Shell completion** — `mf completion <SHELL>` for bash, zsh, fish, powershell, elvish
-- **Version** — `mf version` includes commit / build_date / rustc / target_triple
-- **Terminal intelligence** — `mf config terminal` for capability diagnostics; automatic OSC 8 hyperlink rendering in list/show/verb outputs when supported; broad terminal emulator detection (iTerm2, Ghostty, Kitty, VS Code, Warp, Terminal.app, tmux, WezTerm, etc.) plus `MF_FORCE_HYPERLINKS`/`MF_NO_HYPERLINKS` overrides; file:// URI encoding for paths with spaces or Unicode
-- **Output contracts** — `text` by default, `--json` for `{ status, command, data }` envelopes; canonical per-verb shapes; identity round-trip between list and show; remove/archive use a TTY confirmation protocol; stable exit codes
-
-## Output Contracts
-
-Every `mf` command adheres to shared text-layout and JSON-envelope contracts. These are documented in the feature specification:
-
-| Contract | Description |
-|----------|-------------|
-| [List layout](specs/039-list-output-redesign/contracts/list-layout.md) | Unified table format for all `mf <noun> list` commands |
-| [Show layout](specs/039-list-output-redesign/contracts/show-layout.md) | Unified key-value block format for all `mf <noun> show` commands |
-| [Verb envelopes](specs/039-list-output-redesign/contracts/verb-envelopes.md) | Per-verb JSON shapes (create, rename, remove, update, index, lint) |
-| [Flag conventions](specs/039-list-output-redesign/contracts/flag-conventions.md) | Required flags every command must accept |
-| [Confirmation protocol](specs/039-list-output-redesign/contracts/confirmation-protocol.md) | TTY-only interactive prompt for destructive verbs |
-
-Key rules:
-- `data` is always a JSON object — no bare arrays, strings, or `null`
-- Text output adapts to TTY (headers + ANSI) vs pipe (no headers, no ANSI, same row shape)
-- Every resource carries an `identity` field that round-trips between list and show
-- `--dry-run` is available on every mutating command
-- Remove and archive require confirmation in TTY; non-TTY exits 1 without `--yes`/`--force`
-
-## Project Status
-
-See [specs/](specs/) for detailed specifications and the feature evolution plan.
+Feature specifications live under `specs/`. Commits use conventional commit
+messages.
 
 ## License
 

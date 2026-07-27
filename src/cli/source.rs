@@ -46,8 +46,26 @@ pub enum SourceSubcommand {
     Show(SourceShowArgs),
     #[command(about = "Search sources across the repository")]
     Search(SourceSearchArgs),
-    #[command(about = "Manage advanced LanceDB-backed Sources (enable, sync, enrich, model, skill)")]
-    Advanced(crate::cli::source_advanced::SourceAdvancedCmd),
+    #[command(about = "Synchronize sources and article content")]
+    Sync(crate::cli::source_rag::AdvancedSyncArgs),
+    #[command(about = "Report source corpus status")]
+    Status(crate::cli::source_rag::AdvancedStatusArgs),
+    #[command(about = "Export the source corpus")]
+    Export(crate::cli::source_rag::AdvancedExportArgs),
+    #[command(about = "Import a source corpus bundle")]
+    Import(crate::cli::source_rag::AdvancedImportArgs),
+    #[command(about = "Trace source locations as Markdown links")]
+    Trace(crate::cli::source_rag::AdvancedTraceArgs),
+    #[command(about = "Maintain the source corpus")]
+    #[command(subcommand)]
+    Admin(SourceAdminCmd),
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum SourceAdminCmd {
+    Rebuild(crate::cli::source_rag::AdvancedRebuildArgs),
+    Clear(crate::cli::source_rag::AdvancedClearArgs),
+    Recover(crate::cli::source_rag::AdvancedRecoverArgs),
 }
 
 // ---------------------------------------------------------------------------
@@ -248,6 +266,40 @@ pub struct SourceSearchArgs {
     pub limit: u32,
 }
 
+/// Canonical global RAG search surface. Retrieval mode is intentionally not a
+/// user choice here; the active corpus determines the global search path.
+#[derive(Debug, Clone, Args)]
+pub struct GlobalSearchArgs {
+    pub query: String,
+    #[arg(short = 'p', long)]
+    pub project: Option<String>,
+    #[arg(long)]
+    pub file_kind: Option<String>,
+    #[arg(long)]
+    pub source: Option<String>,
+    #[arg(long = "label", value_name = "KEY=VALUE")]
+    pub labels: Vec<String>,
+    #[arg(long, value_name = "REV")]
+    pub revision: Option<String>,
+    #[arg(long, default_value = "20")]
+    pub limit: u32,
+}
+
+impl From<GlobalSearchArgs> for SourceSearchArgs {
+    fn from(args: GlobalSearchArgs) -> Self {
+        Self {
+            query: args.query,
+            mode: None,
+            project: args.project,
+            file_kind: args.file_kind,
+            source: args.source,
+            labels: args.labels,
+            revision: args.revision,
+            limit: args.limit,
+        }
+    }
+}
+
 #[derive(Debug, Clone, clap::ValueEnum)]
 pub enum SearchModeArg {
     Basic,
@@ -270,8 +322,19 @@ pub fn dispatch(command: SourceCmd, ctx: &mut CommandCtx) -> Result<CommandOutco
         Some(SourceSubcommand::Rename(args)) => handle_rename(args, ctx),
         Some(SourceSubcommand::Clean(args)) => handle_clean(args, ctx),
         Some(SourceSubcommand::Show(args)) => handle_source_show(args, ctx),
-        Some(SourceSubcommand::Search(args)) => handle_search(args, ctx),
-        Some(SourceSubcommand::Advanced(args)) => crate::cli::source_advanced::dispatch(args, ctx),
+        Some(SourceSubcommand::Search(args)) => handle_search(args, ctx, false),
+        Some(SourceSubcommand::Sync(args)) => crate::cli::source_rag::handle_sync(args, ctx),
+        Some(SourceSubcommand::Status(args)) => crate::cli::source_rag::handle_status(args, ctx),
+        Some(SourceSubcommand::Export(args)) => crate::cli::source_rag::handle_export(args, ctx),
+        Some(SourceSubcommand::Import(args)) => crate::cli::source_rag::handle_import(args, ctx),
+        Some(SourceSubcommand::Trace(args)) => crate::cli::source_rag::handle_trace(args, ctx),
+        Some(SourceSubcommand::Admin(SourceAdminCmd::Rebuild(args))) => {
+            crate::cli::source_rag::handle_rebuild(args, ctx)
+        }
+        Some(SourceSubcommand::Admin(SourceAdminCmd::Clear(args))) => crate::cli::source_rag::handle_clear(args, ctx),
+        Some(SourceSubcommand::Admin(SourceAdminCmd::Recover(args))) => {
+            crate::cli::source_rag::handle_recover(args, ctx)
+        }
     }
 }
 
@@ -914,9 +977,7 @@ fn source_add_outcome(
 
     let mut warnings = Vec::new();
     if outcome.projection_degraded {
-        warnings.push(
-            "compatibility projection has drift — run `mf source advanced legacy export` to reconcile".to_string(),
-        );
+        warnings.push("compatibility projection has drift — run `mf source sync` to reconcile".to_string());
     }
 
     let result = VerbResult {
@@ -938,7 +999,11 @@ fn source_add_outcome(
     }
 }
 
-fn handle_search(args: SourceSearchArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+pub fn dispatch_global_search(args: GlobalSearchArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+    handle_search(args.into(), ctx, true)
+}
+
+fn handle_search(args: SourceSearchArgs, ctx: &mut CommandCtx, canonical: bool) -> Result<CommandOutcome> {
     let repo = ctx.require_repo_path()?;
     let source_config = crate::service::source::advanced::config::load_repository_config(repo)?;
 
@@ -977,7 +1042,7 @@ fn handle_search(args: SourceSearchArgs, ctx: &mut CommandCtx) -> Result<Command
         Format::Json => {
             let inner = serde_json::to_value(&report)?;
             Ok(CommandOutcome::Success(
-                serde_json::json!({"status": "ok", "command": "source.search", "data": inner}),
+                serde_json::json!({"status": "ok", "command": if canonical { "search" } else { "source.search" }, "data": inner}),
                 warnings,
                 None,
             ))

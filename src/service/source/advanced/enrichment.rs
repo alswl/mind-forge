@@ -90,6 +90,28 @@ pub struct EnrichmentEntityInput {
     pub description: Option<String>,
 }
 
+/// Parse an enrichment submission supplied by the user.
+///
+/// A malformed submission is a rejected enrichment, rather than an internal
+/// JSON failure.  Keeping this conversion at the input boundary means genuine
+/// serialization failures elsewhere still retain their internal-error class.
+pub fn parse_enrichment_input(input_data: &str) -> Result<EnrichmentInput> {
+    serde_json::from_str(input_data).map_err(|error| {
+        let detail = error.to_string();
+        if detail.contains("missing field `content_fingerprint`") {
+            MfError::enrichment_rejected(
+                "missing required field 'content_fingerprint'".to_string(),
+                Some("copy content_fingerprint from the matching enrich list job and retry".to_string()),
+            )
+        } else {
+            MfError::enrichment_rejected(
+                format!("invalid enrichment JSON: {detail}"),
+                Some("check the input against `references/enrichment-schema.md` and retry".to_string()),
+            )
+        }
+    })
+}
+
 /// Result of enrichment application.
 #[derive(Debug, Serialize)]
 pub struct EnrichmentApplyResult {
@@ -238,7 +260,7 @@ pub fn apply_enrichment(input: &EnrichmentInput, repo_root: &Path, dry_run: bool
     if revision != input.content_revision || fingerprint != input.content_fingerprint {
         return Err(MfError::enrichment_rejected(
             "document revision or content fingerprint is stale".to_string(),
-            Some("run `mf source advanced enrich list` and regenerate the submission".to_string()),
+            Some("inspect the matching enrich list job and regenerate the submission".to_string()),
         ));
     }
 
@@ -619,6 +641,41 @@ mod tests {
             total_chunks: 5,
             coverage: "complete".into(),
         }
+    }
+
+    #[test]
+    fn missing_content_fingerprint_is_a_rejected_submission() {
+        let json = r#"{
+            "schema_version": "1",
+            "prompt_version": "1",
+            "document_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "content_revision": 1,
+            "summary": "A test summary.",
+            "language": "en",
+            "document_type": "reference",
+            "topics": ["test"],
+            "keywords": ["keyword"],
+            "entities": [],
+            "confidence": 0.8,
+            "warnings": [],
+            "processed_chunks": 1,
+            "total_chunks": 1,
+            "coverage": "complete"
+        }"#;
+
+        let error = parse_enrichment_input(json).unwrap_err();
+        assert_eq!(error.kind(), "enrichment_rejected");
+        assert_eq!(error.exit_code(), crate::exit::ExitCode::UsageError);
+        assert!(error.message().contains("content_fingerprint"));
+        assert!(error.hint().unwrap_or_default().contains("enrich list"));
+    }
+
+    #[test]
+    fn malformed_enrichment_json_is_a_rejected_submission() {
+        let error = parse_enrichment_input("{").unwrap_err();
+        assert_eq!(error.kind(), "enrichment_rejected");
+        assert_eq!(error.exit_code(), crate::exit::ExitCode::UsageError);
+        assert!(error.message().starts_with("invalid enrichment JSON:"));
     }
 
     #[test]

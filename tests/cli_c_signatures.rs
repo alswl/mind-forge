@@ -137,6 +137,11 @@ fn publish_update_status_target_url_deprecated() {
 fn source_add_source_kind_no_warning() {
     let dir = common::setup_repo();
     common::create_project(&dir, "alpha");
+    // Create a local file inside sources/ for --register-only (Bug B: URL sources
+    // now fetch, so use a local file to avoid network dependency in this test).
+    let sources_file = dir.path().join("alpha/sources/file/test-source.md");
+    std::fs::create_dir_all(sources_file.parent().unwrap()).unwrap();
+    std::fs::write(&sources_file, "# test\n").unwrap();
 
     let (stdout, stderr, code) = run(&[
         "--root",
@@ -149,9 +154,10 @@ fn source_add_source_kind_no_warning() {
         "test-source",
         "--source-kind",
         "yuque",
-        "https://example.com/doc",
+        &sources_file.to_string_lossy(),
         "--project",
         "alpha",
+        "--register-only",
     ]);
     assert_eq!(code, 0, "should succeed, stderr: {stderr:?}");
     assert!(!stderr.contains("[deprecated]"), "stderr should have NO deprecation: {stderr:?}");

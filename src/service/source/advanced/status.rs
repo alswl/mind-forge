@@ -141,10 +141,7 @@ pub fn build_status(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<A
         enrichments_failed,
         projects,
         warnings: if config.is_lance() && index_status == IndexStatus::Missing {
-            vec![
-                "Lance backend is active but no index pointer found — run `mf source advanced enable` first"
-                    .to_string(),
-            ]
+            vec!["Lance backend is active but no index pointer found — run `mf source sync` first".to_string()]
         } else {
             vec![]
         },

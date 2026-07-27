@@ -1,6 +1,7 @@
 # Enrichment JSON Schema (v1)
 
-The `mf source advanced enrich apply` command accepts this exact shape.
+This document records the historical enrichment payload shape. The terminal
+enrichment command is no longer exposed in the unified RAG surface.
 
 ```json
 {
@@ -8,6 +9,7 @@ The `mf source advanced enrich apply` command accepts this exact shape.
   "prompt_version": "<canonical skill version fingerprint>",
   "document_key": "<SHA-256 hex>",
   "content_revision": 1,
+  "content_fingerprint": "<SHA-256 hex from the matching enrich list job>",
   "summary": "One to three sentence factual summary of the document.",
   "language": "en",
   "document_type": "reference",
@@ -49,6 +51,7 @@ The `mf source advanced enrich apply` command accepts this exact shape.
 | `prompt_version` | string | Skill version fingerprint, ≤100 chars |
 | `document_key` | string | SHA-256 hex, 64 chars |
 | `content_revision` | integer | Must equal current document revision |
+| `content_fingerprint` | string | SHA-256 hex from the matching enrichment job; must equal the current document content fingerprint |
 | `summary` | string | ≤2000 chars, non-empty |
 | `language` | string | ISO 639-1 two-letter code |
 | `document_type` | string | See allowed values below |
@@ -79,7 +82,7 @@ The `mf source advanced enrich apply` command accepts this exact shape.
 ## Validation rules
 
 1. All required fields must be present
-2. `document_key` and `content_revision` must match the target document
+2. `document_key`, `content_revision`, and `content_fingerprint` must match the target document. Copy the fingerprint from the matching job; it prevents an enrichment generated for stale content from being applied.
 3. Schema `"1"` is the only accepted version
 4. Unknown fields are rejected (no forward-compatible passthrough)
 5. Field sizes are strictly enforced; oversized fields are rejected

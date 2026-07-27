@@ -3,12 +3,13 @@
 
 use std::fs;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 use crate::error::{MfError, Result};
 
 /// Acquired content ready for extraction.
+#[derive(Debug)]
 pub struct AcquiredContent {
     /// Raw bytes as read/retrieved.
     pub raw_bytes: Vec<u8>,
@@ -22,7 +23,7 @@ pub struct AcquiredContent {
 
 /// Acquire content from a local file.
 pub fn acquire_local(project_path: &Path, source_path: &str) -> Result<AcquiredContent> {
-    let abs_path = project_path.join(source_path);
+    let abs_path = resolve_local_source(project_path, source_path)?;
     let raw_bytes = fs::read(&abs_path)
         .map_err(|e| MfError::advanced_store(format!("cannot read source file {}: {e}", abs_path.display()), None))?;
 
@@ -32,6 +33,38 @@ pub fn acquire_local(project_path: &Path, source_path: &str) -> Result<AcquiredC
         canonical_locator: source_path.to_string(),
         registered_location: source_path.to_string(),
     })
+}
+
+/// Resolve a registered local Source without allowing it to escape its project.
+///
+/// Registrations are persisted data and may have been hand-edited, so both
+/// lexical traversal and symlink traversal are rejected before reading bytes.
+fn resolve_local_source(project_path: &Path, source_path: &str) -> Result<PathBuf> {
+    let relative = Path::new(source_path);
+    if source_path.is_empty()
+        || relative.is_absolute()
+        || relative.components().any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(MfError::advanced_store(
+            format!("local Source path must be a non-empty relative path without traversal: {source_path:?}"),
+            None,
+        ));
+    }
+
+    let project = project_path.canonicalize().map_err(|e| {
+        MfError::advanced_store(format!("cannot resolve project path {}: {e}", project_path.display()), None)
+    })?;
+    let candidate = project.join(relative);
+    let resolved = candidate.canonicalize().map_err(|e| {
+        MfError::advanced_store(format!("cannot resolve source file {}: {e}", candidate.display()), None)
+    })?;
+    if !resolved.starts_with(&project) {
+        return Err(MfError::advanced_store(
+            format!("local Source path escapes project directory: {source_path:?}"),
+            None,
+        ));
+    }
+    Ok(resolved)
 }
 
 /// Acquire a mind-forge article (`blog` Source) as assembled Markdown.
@@ -172,6 +205,31 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let result = acquire_local(dir.path(), "nonexistent.md");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn acquire_local_rejects_path_traversal() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("project");
+        fs::create_dir(&project).unwrap();
+        fs::write(root.path().join("outside.md"), "outside").unwrap();
+
+        let error = acquire_local(&project, "../outside.md").unwrap_err();
+        assert!(error.to_string().contains("without traversal"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn acquire_local_rejects_symlink_escape() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("project");
+        fs::create_dir(&project).unwrap();
+        let outside = root.path().join("outside.md");
+        fs::write(&outside, "outside").unwrap();
+        std::os::unix::fs::symlink(&outside, project.join("escape.md")).unwrap();
+
+        let error = acquire_local(&project, "escape.md").unwrap_err();
+        assert!(error.to_string().contains("escapes project directory"));
     }
 
     #[test]

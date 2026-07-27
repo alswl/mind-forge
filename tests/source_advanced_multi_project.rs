@@ -6,7 +6,7 @@ use common::embedding_provider::{provider_repo, run};
 
 fn synced_repo() -> tempfile::TempDir {
     let repo = provider_repo();
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync", "--offline"], &[]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     repo
 }

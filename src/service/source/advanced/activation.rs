@@ -142,43 +142,6 @@ pub fn preview_activation(repo_root: &Path, _config: &ResolvedSourceConfig) -> R
                         annotations_json: "{}".to_string(),
                     });
                 }
-
-                // The project's own articles are indexed too, as a distinct
-                // `article` Source type. Their content is the assembled Markdown
-                // at `article_path`; identity is the article title.
-                if let Some(serde_yaml::Value::Mapping(articles)) = index.get("articles") {
-                    for article in articles.values() {
-                        let Some(article_path) = article.get("article_path").and_then(|v| v.as_str()) else {
-                            continue;
-                        };
-                        let title = article
-                            .get("title")
-                            .and_then(|v| v.as_str())
-                            .filter(|title| !title.trim().is_empty())
-                            .unwrap_or(article_path);
-                        // Labels are selectable metadata (status → `--label`);
-                        // annotations are free-form (title) surfaced with results.
-                        let mut labels = serde_json::Map::new();
-                        labels.insert("origin".to_string(), "article".into());
-                        if let Some(status) = article.get("status").and_then(|v| v.as_str()) {
-                            labels.insert("status".to_string(), status.into());
-                        }
-                        let mut annotations = serde_json::Map::new();
-                        annotations.insert("title".to_string(), title.into());
-                        items.push(ActivationItem {
-                            project_identity: project_identity.clone(),
-                            project_path: project_path_rel.clone(),
-                            source_identity: title.to_string(),
-                            source_type: "article".to_string(),
-                            source_kind: None,
-                            tags: vec![],
-                            registered_location: article_path.to_string(),
-                            registration_key: identity::registration_key(&pk, "article", article_path),
-                            labels_json: serde_json::Value::Object(labels).to_string(),
-                            annotations_json: serde_json::Value::Object(annotations).to_string(),
-                        });
-                    }
-                }
             }
         }
     }
@@ -193,7 +156,7 @@ pub fn activate(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<Activ
     if config.is_lance() {
         return Err(MfError::usage(
             "Lance-backed Sources are already enabled".to_string(),
-            Some("use `mf source advanced status` to inspect the active index".to_string()),
+            Some("use `mf source status` to inspect the active index".to_string()),
         ));
     }
 
@@ -402,7 +365,7 @@ mod tests {
     use crate::model::manifest::{SearchDefaultMode, SourceBackend};
 
     #[test]
-    fn preview_imports_articles_as_article_type() {
+    fn preview_excludes_articles_from_source_catalog() {
         let dir = tempfile::tempdir().unwrap();
         let proj = dir.path().join("projects/alpha");
         fs::create_dir_all(&proj).unwrap();
@@ -425,12 +388,9 @@ mod tests {
             default_search_mode: SearchDefaultMode::Basic,
         };
         let preview = preview_activation(dir.path(), &config).unwrap();
-        // The file Source and the article are both imported; the article is a
-        // distinct `article` type located at its article path.
-        assert_eq!(preview.items.len(), 2);
-        let article = preview.items.iter().find(|i| i.source_type == "article").expect("article imported");
-        assert_eq!(article.source_identity, "My Article");
-        assert_eq!(article.registered_location, "docs/my-article");
+        assert_eq!(preview.items.len(), 1);
+        assert_eq!(preview.items[0].source_identity, "s1");
+        assert!(preview.items.iter().all(|item| item.source_type != "article"));
     }
 
     #[test]

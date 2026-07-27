@@ -8,16 +8,21 @@ Manage content sources
 Usage: mf source [OPTIONS] [COMMAND]
 
 Commands:
-  list      List sources [aliases: ls]
-  new       Create a source
-  update    Update a source
-  index     Index sources
-  remove    Remove a source [aliases: rm]
-  rename    Rename a source
-  clean     Clean source index
-  show      Show source details
-  search    Search sources across the repository
-  advanced  Manage advanced LanceDB-backed Sources (enable, sync, enrich, model, skill)
+  list    List sources [aliases: ls]
+  new     Create a source
+  update  Update a source
+  index   Index sources
+  remove  Remove a source [aliases: rm]
+  rename  Rename a source
+  clean   Clean source index
+  show    Show source details
+  search  Search sources across the repository
+  sync    Synchronize sources and article content
+  status  Report source corpus status
+  export  Export the source corpus
+  import  Import a source corpus bundle
+  trace   Trace source locations as Markdown links
+  admin   Maintain the source corpus
 
 Options:
       --root <PATH>      Mind Repo root directory

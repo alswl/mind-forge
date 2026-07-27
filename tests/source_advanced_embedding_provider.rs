@@ -11,7 +11,7 @@ use serde_json::Value;
 mod common;
 use common::embedding_provider::{
     Behavior, KEY_ENV, MODEL, MockContentSite, MockProvider, SECRET, configure_embedding, configure_provider,
-    provider_repo, report, run,
+    provider_repo_for_embedding, report, run,
 };
 use tempfile::TempDir;
 
@@ -44,8 +44,10 @@ fn semantic_two_project_repo(embeddings_endpoint: &str, web_url: &str) -> TempDi
 
     let (out, err, code) = run(&repo, &["source", "index", "--project", "alpha"], &[]);
     assert_eq!(code, 0, "index alpha failed\nstdout:\n{out}\nstderr:\n{err}");
-    let (out, err, code) = run(&repo, &["source", "advanced", "enable"], &[]);
-    assert_eq!(code, 0, "enable failed\nstdout:\n{out}\nstderr:\n{err}");
+    let (out, err, code) = run(&repo, &["source", "sync", "--offline"], &[]);
+    assert_eq!(code, 0, "sync failed\nstdout:\n{out}\nstderr:\n{err}");
+    let (out, err, code) = run(&repo, &["source", "admin", "clear", "--all", "--yes"], &[]);
+    assert_eq!(code, 0, "clear derived data failed\nstdout:\n{out}\nstderr:\n{err}");
     configure_provider(repo.path(), embeddings_endpoint);
     // Register beta's Web Source after activation so the URL is stored in the
     // Lance primary catalog (matches the proven Lance-mode `source new` path).
@@ -65,10 +67,10 @@ fn registration_location(result: &serde_json::Value, needle: &str) -> bool {
 #[test]
 fn sync_embeds_chunks_through_the_configured_provider() {
     let mock = MockProvider::start(Behavior::Vectors(384));
-    let repo = provider_repo();
+    let repo = provider_repo_for_embedding();
     configure_provider(repo.path(), &mock.endpoint);
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[(KEY_ENV, SECRET)]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync"], &[(KEY_ENV, SECRET)]);
     assert_eq!(code, 0, "sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let report = report(&stdout);
     assert_eq!(report["registrations_failed"], 0, "{stdout}");
@@ -90,10 +92,10 @@ fn sync_embeds_chunks_through_the_configured_provider() {
 #[test]
 fn credentials_never_reach_disk_or_diagnostics() {
     let mock = MockProvider::start(Behavior::Vectors(384));
-    let repo = provider_repo();
+    let repo = provider_repo_for_embedding();
     configure_provider(repo.path(), &mock.endpoint);
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[(KEY_ENV, SECRET)]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync"], &[(KEY_ENV, SECRET)]);
     assert_eq!(code, 0, "sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     assert!(!stdout.contains(SECRET) && !stderr.contains(SECRET), "credential leaked into command output");
 
@@ -107,10 +109,10 @@ fn credentials_never_reach_disk_or_diagnostics() {
 #[test]
 fn missing_credential_env_var_is_a_usage_error_before_any_request() {
     let mock = MockProvider::start(Behavior::Vectors(384));
-    let repo = provider_repo();
+    let repo = provider_repo_for_embedding();
     configure_provider(repo.path(), &mock.endpoint);
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync"], &[]);
     assert_eq!(code, 2, "missing credential must be a usage error\nstdout:\n{stdout}\nstderr:\n{stderr}");
     assert!(
         format!("{stdout}{stderr}").contains(KEY_ENV),
@@ -122,10 +124,10 @@ fn missing_credential_env_var_is_a_usage_error_before_any_request() {
 #[test]
 fn provider_http_errors_are_reported_without_leaking_the_credential() {
     let mock = MockProvider::start(Behavior::HttpError(500));
-    let repo = provider_repo();
+    let repo = provider_repo_for_embedding();
     configure_provider(repo.path(), &mock.endpoint);
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[(KEY_ENV, SECRET)]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync"], &[(KEY_ENV, SECRET)]);
     assert_eq!(code, 0, "per-item provider failures must not abort sync\nstdout:\n{stdout}\nstderr:\n{stderr}");
     assert!(!format!("{stdout}{stderr}").contains(SECRET), "credential leaked into diagnostics");
     let report = report(&stdout);
@@ -136,10 +138,10 @@ fn provider_http_errors_are_reported_without_leaking_the_credential() {
 #[test]
 fn wrong_dimension_vectors_are_rejected() {
     let mock = MockProvider::start(Behavior::Vectors(3));
-    let repo = provider_repo();
+    let repo = provider_repo_for_embedding();
     configure_provider(repo.path(), &mock.endpoint);
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[(KEY_ENV, SECRET)]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync"], &[(KEY_ENV, SECRET)]);
     assert_eq!(code, 0, "sync run failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let report = report(&stdout);
     assert!(report["registrations_failed"].as_u64().unwrap_or(0) >= 1, "wrong dimension must fail the item\n{stdout}");
@@ -149,10 +151,10 @@ fn wrong_dimension_vectors_are_rejected() {
 #[test]
 fn non_finite_vectors_are_rejected() {
     let mock = MockProvider::start(Behavior::NonFinite(384));
-    let repo = provider_repo();
+    let repo = provider_repo_for_embedding();
     configure_provider(repo.path(), &mock.endpoint);
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[(KEY_ENV, SECRET)]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync"], &[(KEY_ENV, SECRET)]);
     assert_eq!(code, 0, "sync run failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let report = report(&stdout);
     assert!(
@@ -165,12 +167,12 @@ fn non_finite_vectors_are_rejected() {
 #[test]
 fn provider_requests_are_bounded_by_the_configured_timeout() {
     let mock = MockProvider::start(Behavior::Hang(30));
-    let repo = provider_repo();
+    let repo = provider_repo_for_embedding();
     configure_provider(repo.path(), &mock.endpoint);
     configure_embedding(repo.path(), &[("fetch_timeout_seconds", serde_yaml::Value::from(1_u64))]);
 
     let started = Instant::now();
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[(KEY_ENV, SECRET)]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync"], &[(KEY_ENV, SECRET)]);
     let elapsed = started.elapsed();
     assert!(elapsed < Duration::from_secs(20), "sync must respect the configured timeout; took {elapsed:?}");
     assert_eq!(code, 0, "sync run failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
@@ -186,7 +188,7 @@ fn advanced_semantic_hits_local_and_http_sources_across_projects() {
     let site = MockContentSite::start("/bio.html", "text/html", BIO_HTML);
     let repo = semantic_two_project_repo(&embeddings.endpoint, &site.url());
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[(KEY_ENV, SECRET)]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync"], &[(KEY_ENV, SECRET)]);
     assert_eq!(code, 0, "provider-backed sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let sync = report(&stdout);
     assert_eq!(sync["registrations_failed"], 0, "no registration may fail\n{stdout}");
@@ -233,7 +235,7 @@ fn both_mode_fuses_provider_results_with_provenance() {
     let embeddings = MockProvider::start(Behavior::Semantic(384));
     let site = MockContentSite::start("/bio.html", "text/html", BIO_HTML);
     let repo = semantic_two_project_repo(&embeddings.endpoint, &site.url());
-    let (out, err, code) = run(&repo, &["source", "advanced", "sync"], &[(KEY_ENV, SECRET)]);
+    let (out, err, code) = run(&repo, &["source", "sync"], &[(KEY_ENV, SECRET)]);
     assert_eq!(code, 0, "sync failed\nstdout:\n{out}\nstderr:\n{err}");
 
     let (stdout, stderr, code) = run(&repo, &["source", "search", "quantum", "--mode", "both"], &[(KEY_ENV, SECRET)]);
@@ -254,7 +256,7 @@ fn advanced_degrades_when_the_provider_is_unreachable_but_still_returns_keyword_
     let embeddings = MockProvider::start(Behavior::Semantic(384));
     let site = MockContentSite::start("/bio.html", "text/html", BIO_HTML);
     let repo = semantic_two_project_repo(&embeddings.endpoint, &site.url());
-    let (out, err, code) = run(&repo, &["source", "advanced", "sync"], &[(KEY_ENV, SECRET)]);
+    let (out, err, code) = run(&repo, &["source", "sync"], &[(KEY_ENV, SECRET)]);
     assert_eq!(code, 0, "sync failed\nstdout:\n{out}\nstderr:\n{err}");
 
     // Point the query-time provider at a closed port; sync already persisted vectors.
@@ -280,7 +282,7 @@ fn basic_and_status_make_no_provider_or_network_calls() {
     let embeddings = MockProvider::start(Behavior::Semantic(384));
     let site = MockContentSite::start("/bio.html", "text/html", BIO_HTML);
     let repo = semantic_two_project_repo(&embeddings.endpoint, &site.url());
-    let (out, err, code) = run(&repo, &["source", "advanced", "sync"], &[(KEY_ENV, SECRET)]);
+    let (out, err, code) = run(&repo, &["source", "sync"], &[(KEY_ENV, SECRET)]);
     assert_eq!(code, 0, "sync failed\nstdout:\n{out}\nstderr:\n{err}");
 
     let embedding_calls = embeddings.request_count();
@@ -289,7 +291,7 @@ fn basic_and_status_make_no_provider_or_network_calls() {
     // Basic search runs without the credential and must not embed or fetch.
     let (stdout, _, code) = run(&repo, &["source", "search", "bio-web", "--mode", "basic"], &[]);
     assert_eq!(code, 0, "basic search failed\n{stdout}");
-    let (stdout, _, code) = run(&repo, &["source", "advanced", "status"], &[]);
+    let (stdout, _, code) = run(&repo, &["source", "status"], &[]);
     assert_eq!(code, 0, "status failed\n{stdout}");
 
     assert_eq!(embeddings.request_count(), embedding_calls, "basic/status must not call the embedding provider");

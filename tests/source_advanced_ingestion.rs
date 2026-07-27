@@ -1,6 +1,8 @@
-//! Explicit HTTP acquisition contract tests (T090): Web/HTML and RSS
-//! ingestion, HTTPS policy, configured redirect/byte/timeout limits, URL
-//! credential redaction, `--offline` enforcement, and error-page rejection.
+//! Source ingestion contract tests (Bug B): after Bug B, `source new <url>`
+//! fetches and stores a local file; `sync` only reads local content and never
+//! touches the network.  HTTP acquisition behaviour (bounded fetch, error
+//! rejection, credential redaction, timeout, redirect/byte limits) is tested at
+//! `source new` time.  Offline sync is always network-free.
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -23,7 +25,7 @@ fn web_html_is_ingested_via_explicit_sync() {
     let repo = provider_repo();
     register(&repo, &format!("{}/page.html", site.base), "webpage", None);
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync"], &[]);
     assert_eq!(code, 0, "sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let item = item(&report(&stdout), "webpage");
     assert_eq!(item["action"], "added", "{stdout}");
@@ -44,7 +46,7 @@ fn rss_feeds_are_ingested_via_explicit_sync() {
     let repo = provider_repo();
     register(&repo, &format!("{}/feed.xml", site.base), "feed", Some("rss"));
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync"], &[]);
     assert_eq!(code, 0, "sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let item = item(&report(&stdout), "feed");
     assert_eq!(item["action"], "added", "{stdout}");
@@ -58,54 +60,63 @@ fn rss_feeds_are_ingested_via_explicit_sync() {
     );
 }
 
+// ── Bug B: sync is always network-free ──
+
 #[test]
-fn offline_sync_skips_url_sources_without_any_request() {
+fn offline_sync_processes_web_sources_from_local_file_without_network() {
     let site = MockSite::start(HashMap::from([("/page.html".to_string(), SiteResponse::ok("text/html", PAGE_HTML))]));
     let repo = provider_repo();
+    // `source new` fetches the URL and stores a local file.
     register(&repo, &format!("{}/page.html", site.base), "webpage", None);
+    let fetch_count = site.request_count();
+    assert_eq!(fetch_count, 1, "`source new` must issue exactly one HTTP request; got {fetch_count}");
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync", "--offline"], &[]);
+    // `sync --offline` reads the local file; it MUST NOT issue any network
+    // request because the content was already captured by `source new`.
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "offline sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
-    let item = item(&report(&stdout), "webpage");
-    assert_eq!(item["action"], "skipped", "{stdout}");
-    assert!(item["error"].as_str().unwrap_or("").contains("offline"), "{stdout}");
-    assert_eq!(site.request_count(), 0, "--offline must not touch the network");
+    let sync = report(&stdout);
+    assert_eq!(sync["registrations_failed"], 0, "no item may fail\n{stdout}");
+    // The web source was already registered and its local file is available, so
+    // sync should process it (action "added"), not skip it.
+    let webpage = item(&sync, "webpage");
+    assert_eq!(webpage["action"], "added", "web source must be added from local file\n{sync}");
+    // After `source new`, no further network request was made.
+    assert_eq!(site.request_count(), 1, "sync must not issue any network request (Bug B)");
 }
 
+// ── Bug B: HTTP acquisition errors surface at `source new` time ──
+
 #[test]
-fn error_pages_are_rejected_not_ingested() {
+fn error_pages_are_rejected_at_source_add_time() {
     let site =
         MockSite::start(HashMap::from([("/page.html".to_string(), SiteResponse::status(404, "text/html", PAGE_HTML))]));
     let repo = provider_repo();
-    register(&repo, &format!("{}/page.html", site.base), "webpage", None);
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[]);
-    assert_eq!(code, 0, "sync run failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
-    let item = item(&report(&stdout), "webpage");
-    assert_eq!(item["action"], "failed", "an error page must fail the item\n{stdout}");
-
-    let (stdout, _, code) = run(&repo, &["source", "search", "photon", "--mode", "advanced"], &[]);
-    assert_eq!(code, 0);
+    // `source new` must fail cleanly when the server returns a non-2xx status.
+    let (stdout, stderr, code) = run(
+        &repo,
+        &["source", "new", &format!("{}/page.html", site.base), "--project", "alpha", "--name", "webpage"],
+        &[],
+    );
+    assert_ne!(code, 0, "source new with a 404 URL must fail\nstdout:\n{stdout}\nstderr:\n{stderr}");
     assert!(
-        report(&stdout)["results"].as_array().expect("results").is_empty(),
-        "error-page content must not be ingested\n{stdout}"
+        stderr.contains("404") || stderr.contains("failed"),
+        "error must mention the non-success status\nstderr:\n{stderr}"
     );
 }
 
 #[test]
-fn https_failure_is_a_clean_item_error() {
+fn https_mismatch_is_rejected_at_source_add_time() {
     // Plain-HTTP mock reached over https:// — the TLS handshake must fail as
     // a per-item error, never a crash or a fallback to cleartext.
     let site = MockSite::start(HashMap::from([("/page.html".to_string(), SiteResponse::ok("text/html", PAGE_HTML))]));
     let https_url = format!("https://{}/page.html", site.base.trim_start_matches("http://"));
     let repo = provider_repo();
-    register(&repo, &https_url, "webpage", None);
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[]);
-    assert_eq!(code, 0, "sync run failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
-    let item = item(&report(&stdout), "webpage");
-    assert_eq!(item["action"], "failed", "{stdout}");
-    assert!(!item["error"].as_str().unwrap_or("").is_empty(), "{stdout}");
+    let (stdout, stderr, code) =
+        run(&repo, &["source", "new", &https_url, "--project", "alpha", "--name", "webpage"], &[]);
+    assert_ne!(code, 0, "source new with HTTPS-to-HTTP must fail\nstdout:\n{stdout}\nstderr:\n{stderr}");
 }
 
 #[test]
@@ -116,7 +127,7 @@ fn url_credentials_never_appear_in_reports() {
     let repo = provider_repo();
     register(&repo, &with_credentials, "webpage", None);
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync"], &[]);
     assert_eq!(code, 0, "sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     assert_eq!(item(&report(&stdout), "webpage")["action"], "added", "{stdout}");
     assert!(!format!("{stdout}{stderr}").contains(PASSWORD), "sync leaked URL credentials");
@@ -127,49 +138,59 @@ fn url_credentials_never_appear_in_reports() {
 }
 
 #[test]
-fn redirects_are_limited_by_configuration() {
+fn redirects_are_limited_at_source_add_time() {
     let site = MockSite::start(HashMap::from([
         ("/page.html".to_string(), SiteResponse::redirect("/final.html")),
         ("/final.html".to_string(), SiteResponse::ok("text/html", PAGE_HTML)),
     ]));
     let repo = provider_repo();
     configure_embedding(repo.path(), &[("fetch_max_redirects", serde_yaml::Value::from(0_u64))]);
-    register(&repo, &format!("{}/page.html", site.base), "webpage", None);
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[]);
-    assert_eq!(code, 0, "sync run failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
-    let item = item(&report(&stdout), "webpage");
-    assert_eq!(item["action"], "failed", "redirects beyond the configured limit must fail\n{stdout}");
+    let (stdout, stderr, code) = run(
+        &repo,
+        &["source", "new", &format!("{}/page.html", site.base), "--project", "alpha", "--name", "webpage"],
+        &[],
+    );
+    assert_ne!(code, 0, "source new with redirect limit 0 must fail\nstdout:\n{stdout}\nstderr:\n{stderr}");
 }
 
 #[test]
-fn responses_are_bounded_by_the_configured_byte_limit() {
+fn responses_are_bounded_at_source_add_time() {
     let big = "x".repeat(4096);
     let site = MockSite::start(HashMap::from([("/page.html".to_string(), SiteResponse::ok("text/html", &big))]));
     let repo = provider_repo();
     configure_embedding(repo.path(), &[("fetch_max_bytes", serde_yaml::Value::from(64_u64))]);
-    register(&repo, &format!("{}/page.html", site.base), "webpage", None);
 
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[]);
-    assert_eq!(code, 0, "sync run failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
-    let item = item(&report(&stdout), "webpage");
-    assert_eq!(item["action"], "failed", "responses beyond the configured byte limit must fail\n{stdout}");
-    assert!(item["error"].as_str().unwrap_or("").contains("byte"), "{stdout}");
+    let (stdout, stderr, code) = run(
+        &repo,
+        &["source", "new", &format!("{}/page.html", site.base), "--project", "alpha", "--name", "webpage"],
+        &[],
+    );
+    assert_ne!(
+        code, 0,
+        "source new with byte limit 64 must reject oversized response\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("byte") || stderr.contains("limit"),
+        "error must mention the byte limit\nstderr:\n{stderr}"
+    );
 }
 
 #[test]
-fn requests_are_bounded_by_the_configured_timeout() {
+fn requests_are_bounded_at_source_add_time() {
     let site = MockSite::start(HashMap::from([("/page.html".to_string(), SiteResponse::hang(30))]));
     let repo = provider_repo();
     configure_embedding(repo.path(), &[("fetch_timeout_seconds", serde_yaml::Value::from(1_u64))]);
-    register(&repo, &format!("{}/page.html", site.base), "webpage", None);
 
     let started = Instant::now();
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync"], &[]);
+    let (stdout, stderr, code) = run(
+        &repo,
+        &["source", "new", &format!("{}/page.html", site.base), "--project", "alpha", "--name", "webpage"],
+        &[],
+    );
     let elapsed = started.elapsed();
-    assert!(elapsed < Duration::from_secs(15), "sync must respect the configured timeout; took {elapsed:?}");
-    assert_eq!(code, 0, "sync run failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
-    assert_eq!(item(&report(&stdout), "webpage")["action"], "failed", "{stdout}");
+    assert!(elapsed < Duration::from_secs(15), "source new must respect the configured timeout; took {elapsed:?}");
+    assert_ne!(code, 0, "source new with timeout must fail\nstdout:\n{stdout}\nstderr:\n{stderr}");
 }
 
 /// Register a URL Source in project alpha; `kind` of `Some("rss")` registers

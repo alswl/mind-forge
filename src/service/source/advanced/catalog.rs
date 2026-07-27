@@ -131,6 +131,94 @@ impl SourceCatalog {
     }
 }
 
+/// Discover repository-authored article artifacts as RAG registrations.
+/// Article rows are derived from local files and are intentionally not
+/// exported to the legacy Source projection or source-only bundles.
+pub fn discover_article_registrations(repo_root: &Path) -> Vec<CatalogRegistration> {
+    let mut out = Vec::new();
+    let projects = repo_root.join("projects");
+    let Ok(entries) = std::fs::read_dir(projects) else { return out };
+    for entry in entries.flatten() {
+        let project_path = entry.path();
+        if !project_path.is_dir() {
+            continue;
+        }
+        let project_identity = entry.file_name().to_string_lossy().to_string();
+        let project_rel =
+            project_path.strip_prefix(repo_root).unwrap_or(&project_path).to_string_lossy().replace('\\', "/");
+        let project_key = super::identity::project_key(&project_rel);
+        for (directory, kind, prefix) in
+            [("prompts", "article_prompt", "prompt:"), ("thinking", "article_thinking", "thinking:")]
+        {
+            collect_article_files(
+                &project_path,
+                &project_key,
+                &project_identity,
+                &project_rel,
+                &project_path.join(directory),
+                kind,
+                prefix,
+                &mut out,
+            );
+        }
+        let outputs = project_path.join("outputs");
+        if let Ok(months) = std::fs::read_dir(outputs) {
+            for month in months.flatten() {
+                collect_article_files(
+                    &project_path,
+                    &project_key,
+                    &project_identity,
+                    &project_rel,
+                    &month.path(),
+                    "article",
+                    "article:",
+                    &mut out,
+                );
+            }
+        }
+    }
+    out.sort_by(|a, b| a.registration_key.cmp(&b.registration_key));
+    out
+}
+
+#[allow(clippy::too_many_arguments)]
+fn collect_article_files(
+    project_path: &Path,
+    project_key: &str,
+    project_identity: &str,
+    project_rel: &str,
+    directory: &Path,
+    kind: &str,
+    prefix: &str,
+    out: &mut Vec<CatalogRegistration>,
+) {
+    let Ok(files) = std::fs::read_dir(directory) else { return };
+    for file in files.flatten() {
+        let path = file.path();
+        if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+        let Ok(location) = path.strip_prefix(project_path).map(|p| p.to_string_lossy().replace('\\', "/")) else {
+            continue;
+        };
+        let name = path.file_stem().map(|s| s.to_string_lossy()).unwrap_or_default();
+        out.push(CatalogRegistration {
+            registration_key: super::identity::registration_key(project_key, kind, &location),
+            project_key: project_key.to_string(),
+            project_identity: project_identity.to_string(),
+            project_path: project_rel.to_string(),
+            source_identity: format!("{prefix}{name}"),
+            source_type: kind.to_string(),
+            source_kind: Some(kind.to_string()),
+            registered_location: location,
+            tags_json: "[]".into(),
+            labels_json: "{}".into(),
+            annotations_json: "{}".into(),
+            state: "live".into(),
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

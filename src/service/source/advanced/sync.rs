@@ -196,7 +196,7 @@ fn sync_lance_catalog(
     store: &LanceStore,
 ) -> Result<SyncReport> {
     let catalog = super::catalog::SourceCatalog::discover(config, repo_root)?;
-    let registrations = catalog
+    let mut registrations = catalog
         .registrations(Some(store))?
         .into_iter()
         .filter(|registration| {
@@ -208,10 +208,44 @@ fn sync_lance_catalog(
         })
         .filter(|registration| source_filter.is_none_or(|filter| filter == registration.source_identity))
         .collect::<Vec<_>>();
+
+    // Article artifacts are normal global RAG inputs. Their registrations are
+    // derived from local files and never projected into legacy Source YAML.
+    let existing_keys =
+        registrations.iter().map(|r| r.registration_key.clone()).collect::<std::collections::BTreeSet<_>>();
+    let articles = super::catalog::discover_article_registrations(repo_root)
+        .into_iter()
+        .filter(|r| project_filter.is_none_or(|p| p == r.project_identity))
+        .filter(|r| !existing_keys.contains(&r.registration_key))
+        .collect::<Vec<_>>();
+    if !dry_run && !articles.is_empty() {
+        let rows = articles
+            .iter()
+            .map(|r| crate::model::source_advanced::SourceRegistration {
+                registration_key: r.registration_key.clone(),
+                project_key: r.project_key.clone(),
+                project_identity: r.project_identity.clone(),
+                project_path: r.project_path.clone(),
+                source_identity: r.source_identity.clone(),
+                source_type: r.source_type.clone(),
+                source_kind: r.source_kind.clone(),
+                registered_location: r.registered_location.clone(),
+                tags_json: r.tags_json.clone(),
+                labels_json: r.labels_json.clone(),
+                annotations_json: r.annotations_json.clone(),
+                fact_fingerprint: super::identity::raw_fingerprint(r.registered_location.as_bytes()),
+                registration_revision: 1,
+                state: crate::model::source_advanced::RegistrationState::Live,
+            })
+            .collect::<Vec<_>>();
+        store.append_registrations(&rows)?;
+    }
+    registrations.extend(articles);
+
     if source_filter.is_some() && project_filter.is_none() && registrations.len() > 1 {
         return Err(crate::error::MfError::usage(
             "--source matches more than one project; add --project to select one binding".to_string(),
-            Some("use `mf source advanced sync --source <IDENTITY> --project <PROJECT>`".to_string()),
+            Some("use `mf source sync --source <IDENTITY> --project <PROJECT>`".to_string()),
         ));
     }
     let chunk_config = ChunkConfig {
@@ -324,10 +358,10 @@ fn sync_one_source(
     kind: &str,
     location: &str,
     registration_key: &str,
-    config: &ResolvedSourceConfig,
+    _config: &ResolvedSourceConfig,
     chunk_config: &ChunkConfig,
     dry_run: bool,
-    offline: bool,
+    _offline: bool,
     store: Option<&LanceStore>,
     provider: Option<&super::embedding::EmbeddingProvider>,
 ) -> Result<SyncItem> {
@@ -336,25 +370,23 @@ fn sync_one_source(
         // by article path; assembled from Markdown blocks, never fetched.
         acquisition::acquire_article(project_path, location)
     } else if acquisition::is_url(location) {
-        if offline {
-            return Ok(SyncItem {
-                project_identity: String::new(),
-                registration_key: registration_key.to_string(),
-                source_identity: name.to_string(),
-                action: "skipped".to_string(),
-                before_state: None,
-                after_state: RelationState::Pending,
-                detected_format: Some(kind.to_string()),
-                affected_chunks: 0,
-                error: Some("offline mode: web/RSS sources require network".to_string()),
-            });
-        }
-        acquisition::acquire_http(
-            location,
-            config.fetch_max_bytes,
-            config.fetch_timeout_seconds,
-            config.fetch_max_redirects,
-        )
+        // Bug B: `sync` is network-free. Legacy URL-only registrations (pre-Bug B)
+        // are not auto-migrated — the user must re-`source add` them so a local
+        // file is created under `sources/web/`.
+        return Ok(SyncItem {
+            project_identity: String::new(),
+            registration_key: registration_key.to_string(),
+            source_identity: name.to_string(),
+            action: "skipped".to_string(),
+            before_state: None,
+            after_state: RelationState::Pending,
+            detected_format: Some(kind.to_string()),
+            affected_chunks: 0,
+            error: Some(
+                "legacy URL-only registration: re-add with `mf source new <url> --name <name>` to fetch and store locally"
+                    .to_string(),
+            ),
+        });
     } else {
         acquisition::acquire_local(project_path, location)
     } {
@@ -501,7 +533,7 @@ pub(crate) fn open_active_store(repo_root: &Path) -> Result<LanceStore> {
         crate::error::MfError::missing_lance_pointer(
             "missing",
             "Lance backend is active but current.json is absent".to_string(),
-            Some("run `mf source advanced recover --snapshot ID --yes`".to_string()),
+            Some("run `mf source admin recover --snapshot ID --yes`".to_string()),
         )
     })?;
     let relative = pointer.database_uri.strip_prefix("./").ok_or_else(|| {
@@ -570,7 +602,7 @@ pub fn clear_derived(
     if source.is_some() && project.is_none() {
         return Err(crate::error::MfError::usage(
             "clearing one Source requires --project to make the binding unambiguous".to_string(),
-            Some("use `mf source advanced clear <SOURCE> --project <PROJECT> --yes`".to_string()),
+            Some("use `mf source admin clear <SOURCE> --project <PROJECT> --yes`".to_string()),
         ));
     }
     if all && source.is_some() {
@@ -685,7 +717,7 @@ pub fn recover_from_snapshot(
     let target = snapshots.iter().find(|s| s.snapshot_id == snapshot_id).ok_or_else(|| {
         crate::error::MfError::recovery_unavailable(
             format!("snapshot '{snapshot_id}' not found in retained snapshots"),
-            Some("run `mf source advanced status` to list available snapshots".to_string()),
+            Some("run `mf source status` to list available snapshots".to_string()),
         )
     })?;
 

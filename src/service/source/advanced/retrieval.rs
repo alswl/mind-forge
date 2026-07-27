@@ -212,7 +212,7 @@ fn open_active_store(repo_root: &Path) -> Result<Option<super::lance_store::Lanc
         MfError::missing_lance_pointer(
             "missing",
             "Lance backend is active but current.json is absent".to_string(),
-            Some("run `mf source advanced recover --snapshot ID --yes`".to_string()),
+            Some("run `mf source admin recover --snapshot ID --yes`".to_string()),
         )
     })?;
     let relative = Path::new(&pointer.database_uri)
@@ -611,8 +611,7 @@ fn search_repository_with_store(
             if advanced_results.is_empty() {
                 if total_basic == 0 {
                     warnings.push(
-                        "advanced search found no results — ensure content has been synced with `mf source advanced sync`"
-                            .to_string(),
+                        "search found no results — ensure content has been synced with `mf source sync`".to_string(),
                     );
                 } else {
                     warnings.push(

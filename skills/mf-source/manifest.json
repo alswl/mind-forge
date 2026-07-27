@@ -1,7 +1,7 @@
 {
   "name": "mf-source",
   "version": "1.0.0",
-  "description": "Advanced Source enrichment for mind-forge repositories",
+  "description": "Repository-wide Source RAG search and synchronization for mind-forge repositories",
   "prompt_version": "1",
   "schema_version": "1",
   "files": [

@@ -8,14 +8,17 @@
 
 pub mod acquisition;
 pub mod activation;
+pub mod bundle;
 pub mod catalog;
 pub mod chunk;
 pub mod compatibility;
 pub mod config;
 pub mod embedding;
 pub mod enrichment;
+pub mod export;
 pub mod extraction;
 pub mod identity;
+pub mod import;
 pub mod lance_store;
 pub mod lifecycle;
 pub mod primary;
@@ -24,6 +27,7 @@ pub mod retrieval;
 pub mod skill_install;
 pub mod status;
 pub mod sync;
+pub mod trace;
 
 use std::path::{Path, PathBuf};
 

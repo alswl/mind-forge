@@ -6,7 +6,7 @@ use common::embedding_provider::{provider_repo, run};
 
 fn synced_repo() -> tempfile::TempDir {
     let repo = provider_repo();
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync", "--offline"], &[]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     repo
 }
@@ -32,7 +32,7 @@ fn pointer_file_exists_after_sync() {
 fn sync_idempotent_no_error() {
     let repo = synced_repo();
     // Second sync must succeed without errors.
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync", "--offline"], &[]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "second sync must succeed\nstdout:\n{stdout}\nstderr:\n{stderr}");
 }
 
@@ -45,10 +45,10 @@ fn retained_snapshots_count_increases_after_multiple_syncs() {
         "# Updated\n\nNew content for revision test.\n",
     )
     .unwrap();
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync", "--offline"], &[]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "second sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     // Status must report at least 1 retained snapshot.
-    let (status_out, _, _) = run(&repo, &["source", "advanced", "status"], &[]);
+    let (status_out, _, _) = run(&repo, &["source", "status"], &[]);
     let v: serde_json::Value = serde_json::from_str(&status_out).expect("valid JSON");
     let snapshots = v["data"]["data"]["retained_snapshots"].as_u64().unwrap_or(0);
     assert!(snapshots >= 1, "must have retained snapshots after syncs, got {snapshots}\n{status_out}");
@@ -63,7 +63,7 @@ fn project_intents_created_as_json_files() {
     let txn_dir = advanced_dir.join("transactions");
     // After a clean sync, the transactions directory may or may not exist.
     // Either way, the status must report zero pending intents.
-    let (status_out, _, _) = run(&repo, &["source", "advanced", "status"], &[]);
+    let (status_out, _, _) = run(&repo, &["source", "status"], &[]);
     let v: serde_json::Value = serde_json::from_str(&status_out).expect("valid JSON");
     let intents = v["data"]["data"]["pending_intents"].as_u64().unwrap_or(0);
     assert_eq!(intents, 0, "clean sync must have zero pending intents, got {intents}\n{status_out}");

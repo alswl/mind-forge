@@ -282,92 +282,11 @@ fn render_template_list_help_snapshot() {
     assert_snapshot!("render_template_list_help", stdout);
 }
 
-// ── Source advanced help snapshots ──
-
-#[test]
-fn source_advanced_help_snapshot() {
-    let (stdout, _, code) = run(&["source", "advanced", "--help"]);
-    assert_eq!(code, 0);
-    assert_snapshot!("source_advanced_help", stdout);
-}
-
-#[test]
-fn source_advanced_enable_help_snapshot() {
-    let (stdout, _, code) = run(&["source", "advanced", "enable", "--help"]);
-    assert_eq!(code, 0);
-    assert_snapshot!("source_advanced_enable_help", stdout);
-}
-
-#[test]
-fn source_advanced_sync_help_snapshot() {
-    let (stdout, _, code) = run(&["source", "advanced", "sync", "--help"]);
-    assert_eq!(code, 0);
-    assert_snapshot!("source_advanced_sync_help", stdout);
-}
-
-#[test]
-fn source_advanced_enrich_help_snapshot() {
-    let (stdout, _, code) = run(&["source", "advanced", "enrich", "--help"]);
-    assert_eq!(code, 0);
-    assert_snapshot!("source_advanced_enrich_help", stdout);
-}
-
-#[test]
-fn source_advanced_skill_install_help_snapshot() {
-    let (stdout, _, code) = run(&["source", "advanced", "skill-install", "--help"]);
-    assert_eq!(code, 0);
-    assert_snapshot!("source_advanced_skill_install_help", stdout);
-}
-
 #[test]
 fn source_search_help_snapshot() {
     let (stdout, _, code) = run(&["source", "search", "--help"]);
     assert_eq!(code, 0);
     assert_snapshot!("source_search_help", stdout);
-}
-
-// ── Source advanced US3 help snapshots ──
-
-#[test]
-fn source_advanced_status_help_snapshot() {
-    let (stdout, _, code) = run(&["source", "advanced", "status", "--help"]);
-    assert_eq!(code, 0);
-    assert_snapshot!("source_advanced_status_help", stdout);
-}
-
-#[test]
-fn source_advanced_rebuild_help_snapshot() {
-    let (stdout, _, code) = run(&["source", "advanced", "rebuild", "--help"]);
-    assert_eq!(code, 0);
-    assert_snapshot!("source_advanced_rebuild_help", stdout);
-}
-
-#[test]
-fn source_advanced_clear_help_snapshot() {
-    let (stdout, _, code) = run(&["source", "advanced", "clear", "--help"]);
-    assert_eq!(code, 0);
-    assert_snapshot!("source_advanced_clear_help", stdout);
-}
-
-#[test]
-fn source_advanced_recover_help_snapshot() {
-    let (stdout, _, code) = run(&["source", "advanced", "recover", "--help"]);
-    assert_eq!(code, 0);
-    assert_snapshot!("source_advanced_recover_help", stdout);
-}
-
-#[test]
-fn source_advanced_legacy_help_snapshot() {
-    let (stdout, _, code) = run(&["source", "advanced", "legacy", "--help"]);
-    assert_eq!(code, 0);
-    assert_snapshot!("source_advanced_legacy_help", stdout);
-}
-
-#[test]
-fn source_advanced_disable_help_snapshot() {
-    let (stdout, _, code) = run(&["source", "advanced", "disable", "--help"]);
-    assert_eq!(code, 0);
-    assert_snapshot!("source_advanced_disable_help", stdout);
 }
 
 // ── Init help snapshots ──

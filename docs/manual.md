@@ -205,9 +205,9 @@ available for compatibility.
 re-registering the same path is a no-op — and cannot be combined with `--link`
 or `--force`.
 
-### 7.1 Advanced Source (LanceDB RAG)
+### 7.1 Source RAG (LanceDB)
 
-`mf source advanced` is the repository-wide LanceDB backend for Sources. Its
+`mf source` is the repository-wide LanceDB backend for Sources. Its
 data lives at `.mind-forge/cache/source/advanced/`, is local and rebuildable
 (gitignored via `.mind-forge/.gitignore`), and uses a five-table LanceDB store
 (registrations, documents, registration_content, chunks, enrichments) with
@@ -217,24 +217,19 @@ atomic snapshot publication and retained-snapshot recovery.
 
 ```bash
 # From the Mind Repo root
-mf source advanced enable --dry-run
-mf source advanced enable
-mf source advanced sync --offline
-mf source advanced status
-mf source search "your query" --mode advanced
+mf source sync --offline
+mf source status
+mf search "your query"
 ```
 
 #### Search
 
 ```bash
-mf source search <QUERY> [--mode basic|advanced|both] [-o text|json]
-                        [--project NAME] [--source NAME] [--limit N]
+mf search <QUERY> [-o text|json] [--project NAME] [--source NAME] [--limit N]
                         [--revision N|DATE]
 ```
 
-- **basic** — metadata search across registered Source identities
-- **advanced** — LanceDB BM25 full-text + vector hybrid search (requires synced content)
-- **both** — fused results with RRF k=60, deduplicated by document
+- Searches both registered Source identities and synced article/content records.
 - **--revision** — integer revision number, ISO date, or relative date
 
 Default output is a text table; `-o json` for machine-readable envelopes.
@@ -242,12 +237,11 @@ Default output is a text table; `-o json` for machine-readable envelopes.
 #### Management
 
 ```bash
-mf source advanced status                 # backend health, snapshots, intents
-mf source advanced rebuild [--dry-run]    # rebuild all derived content
-mf source advanced clear --yes            # clear derived content, keep registrations
-mf source advanced recover --snapshot ID --yes   # recover from a retained snapshot
-mf source advanced legacy export|import   # YAML compatibility projections
-mf source advanced disable                # switch back to legacy backend (projections must be current)
+mf source status
+mf source admin rebuild [--dry-run]
+mf source admin clear --yes
+mf source admin recover --snapshot ID --yes
+mf source export|import|trace
 ```
 
 #### Embedding provider
@@ -269,15 +263,8 @@ or the `MF_EMBEDDING_API_KEY` env var; they are never serialized.
 
 #### Claude enrichment
 
-`mf source advanced enrich list|show|apply` and the installable `/mf-source` Skill
-let Claude extract summaries, topics, and keywords from synced content:
-
-```bash
-mf source advanced skill-install --dry-run
-mf source advanced skill-install
-```
-
-Enrichments are committed under `.mind-forge/enrichments/` as durable authority.
+The experimental enrichment CLI is intentionally not part of the terminal
+surface. Existing enrichment data remains durable and is not migrated or deleted.
 
 ## 8. Assets
 

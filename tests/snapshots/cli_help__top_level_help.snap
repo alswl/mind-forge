@@ -1,5 +1,6 @@
 ---
 source: tests/cli_help.rs
+assertion_line: 17
 expression: stdout
 ---
 mind-forge: a local-first knowledge management CLI
@@ -11,6 +12,7 @@ Commands:
   project     Manage projects
   article     Manage articles
   source      Manage content sources
+  search      Search the repository-wide RAG corpus
   asset       Manage project assets
   term        Manage terminology [aliases: terms]
   build       Build articles

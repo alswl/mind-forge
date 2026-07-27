@@ -78,7 +78,7 @@ impl ResolvedSourceConfig {
                  and storage_schema_version."
                     .to_string(),
                 Some(
-                    "run `mf source advanced enable` to activate, or set backend to `legacy` \
+                    "run `mf source sync` to activate, or set backend to `legacy` \
                      in minds.yaml if Lance is not yet activated"
                         .to_string(),
                 ),

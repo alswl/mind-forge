@@ -450,11 +450,36 @@ fn add_self_reference_rejected() {
 }
 
 // =========================================================================
-// URL class tests (US2)
+// URL class tests (Bug B)
+//
+// After Bug B every `mf source new <url>` fetches and stores a local file
+// under `sources/<kind>/<name>.<ext>`.  The tests below use a loopback HTTP
+// server so they do not depend on external network.
 // =========================================================================
+use std::io::Read;
+use std::io::Write;
+use std::net::TcpListener;
+
+/// Start a tiny HTTP server on a random local port, serve `(status, body)` to
+/// the next GET request, and return `http://127.0.0.1:<port>/<path>`.
+fn start_http_mock(status: u16, body: &'static str, path: &str) -> (String, std::thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let url = format!("http://{address}/{path}");
+    let response = format!(
+        "HTTP/1.1 {status} OK\r\nConnection: close\r\nContent-Length: {}\r\nContent-Type: text/html\r\n\r\n{body}",
+        body.len()
+    );
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let _ = stream.read(&mut [0_u8; 1024]);
+        let _ = stream.write_all(response.as_bytes());
+    });
+    (url, server)
+}
 
 // ---------------------------------------------------------------------------
-// 11. add_url_web_happy — add https://... --name x → kind=web, no disk file
+// 11. add_url_web_happy — add a web URL → local file + url+path registered
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -463,6 +488,7 @@ fn add_url_web_happy() {
     common::create_project(&repo, "alpha");
     let project = repo.path().join("alpha");
 
+    let (url, server) = start_http_mock(200, "<html>hello</html>", "research");
     let assert = Command::cargo_bin("mf")
         .unwrap()
         .args([
@@ -470,7 +496,7 @@ fn add_url_web_happy() {
             repo.path().to_str().unwrap(),
             "source",
             "new",
-            "https://example.com/research",
+            &url,
             "--project",
             "alpha",
             "--name",
@@ -479,19 +505,24 @@ fn add_url_web_happy() {
         .assert();
 
     assert.success();
+    server.join().unwrap();
 
-    // Index has the URL entry
+    // Local file created under sources/web/
+    let local_file = project.join("sources/web/research-blog.html");
+    assert!(local_file.exists(), "web source should be fetched and stored at {local_file:?}");
+    let content = std::fs::read_to_string(&local_file).unwrap();
+    assert_eq!(content, "<html>hello</html>");
+
+    // Index has both url and path
     let index_content = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
     assert!(index_content.contains("research-blog"));
     assert!(index_content.contains("web"));
-    assert!(index_content.contains("https://example.com/research"));
-
-    // No file created on disk
-    assert!(!project.join("sources/web").exists());
+    assert!(index_content.contains(&url));
+    assert!(index_content.contains("sources/web/research-blog.html"));
 }
 
 // ---------------------------------------------------------------------------
-// 12. add_url_requires_name — missing --name → usage
+// 12. add_url_requires_name — missing --name → usage (validated before fetch)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -519,7 +550,7 @@ fn add_url_requires_name() {
 }
 
 // ---------------------------------------------------------------------------
-// 13. add_url_rss_explicit — --type rss --name x → kind=rss
+// 13. add_url_rss_explicit — --file-kind rss → local file under sources/rss/
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -528,6 +559,7 @@ fn add_url_rss_explicit() {
     common::create_project(&repo, "alpha");
     let project = repo.path().join("alpha");
 
+    let (url, server) = start_http_mock(200, "<rss>feed</rss>", "feed.xml");
     let assert = Command::cargo_bin("mf")
         .unwrap()
         .args([
@@ -535,7 +567,7 @@ fn add_url_rss_explicit() {
             repo.path().to_str().unwrap(),
             "source",
             "new",
-            "https://example.com/feed.xml",
+            &url,
             "--project",
             "alpha",
             "--file-kind",
@@ -546,13 +578,18 @@ fn add_url_rss_explicit() {
         .assert();
 
     assert.success();
+    server.join().unwrap();
+
+    let local_file = project.join("sources/rss/my-feed.xml");
+    assert!(local_file.exists(), "RSS source should be fetched and stored at {local_file:?}");
 
     let index_content = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
     assert!(index_content.contains("rss"));
+    assert!(index_content.contains("sources/rss/my-feed.xml"));
 }
 
 // ---------------------------------------------------------------------------
-// 14. add_url_type_pdf_with_url_rejected — --type pdf + URL → usage
+// 14. add_url_type_pdf_with_url_rejected — --file-kind pdf + URL → usage
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -578,11 +615,11 @@ fn add_url_type_pdf_with_url_rejected() {
         .output()
         .unwrap();
 
-    assert!(!output.status.success(), "--type pdf + URL should fail");
+    assert!(!output.status.success(), "--file-kind pdf + URL should fail");
 }
 
 // ---------------------------------------------------------------------------
-// 15. add_url_type_file_with_url_rejected — --type file + URL → usage
+// 15. add_url_type_file_with_url_rejected — --file-kind file + URL → usage
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -608,11 +645,11 @@ fn add_url_type_file_with_url_rejected() {
         .output()
         .unwrap();
 
-    assert!(!output.status.success(), "--type file + URL should fail");
+    assert!(!output.status.success(), "--file-kind file + URL should fail");
 }
 
 // ---------------------------------------------------------------------------
-// 16. add_url_invalid_scheme — non-http(s) → usage
+// 16. add_url_invalid_scheme — http:// with empty host → usage
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -620,7 +657,6 @@ fn add_url_invalid_scheme() {
     let repo = common::setup_repo();
     common::create_project(&repo, "alpha");
 
-    // also test missing host
     let output = Command::cargo_bin("mf")
         .unwrap()
         .args([
@@ -641,7 +677,7 @@ fn add_url_invalid_scheme() {
 }
 
 // ---------------------------------------------------------------------------
-// 17. add_url_force_replaces — same name + --force → updated_at refreshed
+// 17. add_url_force_replaces — same name + --force → updated, old file cleaned
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -650,7 +686,8 @@ fn add_url_force_replaces() {
     common::create_project(&repo, "alpha");
     let project = repo.path().join("alpha");
 
-    // First add
+    // First add (fetches the "original" URL)
+    let (url1, server1) = start_http_mock(200, "original content", "original");
     Command::cargo_bin("mf")
         .unwrap()
         .args([
@@ -658,7 +695,7 @@ fn add_url_force_replaces() {
             repo.path().to_str().unwrap(),
             "source",
             "new",
-            "https://example.com/original",
+            &url1,
             "--project",
             "alpha",
             "--name",
@@ -666,8 +703,14 @@ fn add_url_force_replaces() {
         ])
         .assert()
         .success();
+    server1.join().unwrap();
+
+    let first_file = project.join("sources/web/test-url.html");
+    assert!(first_file.exists());
+    assert_eq!(std::fs::read_to_string(&first_file).unwrap(), "original content");
 
     // Second add with --force and different URL
+    let (url2, server2) = start_http_mock(200, "updated content", "updated");
     let assert = Command::cargo_bin("mf")
         .unwrap()
         .args([
@@ -675,7 +718,7 @@ fn add_url_force_replaces() {
             repo.path().to_str().unwrap(),
             "source",
             "new",
-            "https://example.com/updated",
+            &url2,
             "--project",
             "alpha",
             "--name",
@@ -685,11 +728,14 @@ fn add_url_force_replaces() {
         .assert();
 
     assert.success();
+    server2.join().unwrap();
 
     let index_path = project.join("mind-index.yaml");
     let second_content = std::fs::read_to_string(&index_path).unwrap();
     // URL should be updated
-    assert!(second_content.contains("https://example.com/updated"));
+    assert!(second_content.contains(&url2));
     // Entry should be present
     assert!(second_content.contains("test-url"));
+    // Local file contains the new content
+    assert_eq!(std::fs::read_to_string(&first_file).unwrap(), "updated content");
 }

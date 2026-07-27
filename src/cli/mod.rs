@@ -9,7 +9,7 @@ pub mod publish;
 pub mod render;
 pub mod shared_flags;
 pub mod source;
-pub mod source_advanced;
+pub mod source_rag;
 pub mod term;
 pub mod version;
 
@@ -137,6 +137,8 @@ pub enum TopLevelCommand {
     Article(article::ArticleCmd),
     #[command(about = "Manage content sources")]
     Source(source::SourceCmd),
+    #[command(about = "Search the repository-wide RAG corpus")]
+    Search(source::GlobalSearchArgs),
     #[command(about = "Manage project assets")]
     Asset(asset::AssetCmd),
     #[command(about = "Manage terminology", visible_alias = "terms")]
@@ -186,6 +188,7 @@ impl RootCli {
             None => return Ok(CommandOutcome::RootHelp),
             Some(TopLevelCommand::Version) => version::handle_version(ctx),
             Some(TopLevelCommand::Source(command)) => source::dispatch(command, ctx),
+            Some(TopLevelCommand::Search(args)) => source::dispatch_global_search(args, ctx),
             Some(TopLevelCommand::Asset(command)) => asset::dispatch(command, ctx),
             Some(TopLevelCommand::Project(command)) => project::dispatch(command, ctx),
             Some(TopLevelCommand::Article(command)) => article::dispatch(command, ctx),

@@ -19,6 +19,12 @@ Treat these four stores as one workspace:
 
 - `prompts/`: control plane for objective, mode, constraints, evaluation criteria, deliverable contract, outline, open loops, and durable decisions.
 - `sources/`: evidence and provenance. Register material through `mf source new ... --json`; keep access dates and volatile-data context in the source material.
+- Source registrations are dual-written when the repository RAG corpus is
+  active: Lance is primary and `mind-index.yaml` is the compatibility
+  projection. After adding or changing sources, run `mf source sync --offline`
+  and use `mf search "..." --output json` to retrieve evidence across Sources,
+  article prose, prompts, and thinking. Do not treat a successful YAML-only
+  write as proof that the RAG corpus is current.
 - `thinking/`: working ledger for comparisons, contradictions, assumptions, feedback, decisions, blockers, and next investigations. Use `<project>/thinking/<article-key>.md`; create it when work begins and it is absent.
 - `docs/`: the current user-readable deliverable, never a deferred final dump. `outputs/` remains generated and must not be edited.
 
@@ -51,6 +57,19 @@ When the author revises a delivered article and both versions are identifiable, 
 Use stable open-loop IDs with severity (`critical`, `major`, `minor`) and status (`open`, `resolved`, `accepted`, `superseded`). Unsupported claims remain evidence gaps.
 
 ## Research and materialize
+
+Before comparing evidence, refresh the repository-wide retrieval view when
+needed:
+
+```bash
+mf source sync --offline
+mf search "<research question>" --output json
+```
+
+Search is read-only; inspect result provenance and registration identity before
+using a hit as evidence. If the corpus is missing or degraded, check
+`mf source status --output json` and report the limitation rather than silently
+falling back to an incomplete source list.
 
 - Ask first only for missing hard constraints that would invalidate the work. Continue with explicit assumptions when uncertainty is non-blocking.
 - For comparisons, normalize the basis before ranking: applicable dates, people or units, variant, currency, taxes or fees, cancellation terms, access time, and other domain-specific conditions.

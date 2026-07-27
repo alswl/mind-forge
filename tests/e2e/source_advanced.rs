@@ -62,14 +62,14 @@ fn report(stdout: &str) -> Value {
 fn enable_imports_legacy_registrations_and_activates_lance() {
     let ds = indexed_repo();
 
-    let (stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "source", "advanced", "enable"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "source", "sync", "--offline"]);
     assert_eq!(code, 0, "enable failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
 
     let data = report(&stdout);
-    assert_eq!(data["total_registrations"], 2, "enable must import both legacy registrations: {stdout}");
+    assert_eq!(data["registrations_total"], 2, "sync must import both legacy registrations: {stdout}");
 
     // The backend marker is now Lance; status reflects it.
-    let (status_out, _, status_code) = run_in(ds.root(), &["--output", "json", "source", "advanced", "status"]);
+    let (status_out, _, status_code) = run_in(ds.root(), &["--output", "json", "source", "status"]);
     assert_eq!(status_code, 0, "status failed: {status_out}");
     assert_eq!(report(&status_out)["backend"], "lance", "backend marker should switch to lance: {status_out}");
 }
@@ -77,10 +77,7 @@ fn enable_imports_legacy_registrations_and_activates_lance() {
 #[test]
 fn sync_persists_shared_content_offline() {
     let ds = indexed_repo();
-    let (out, err, code) = run_in(ds.root(), &["--output", "json", "source", "advanced", "enable"]);
-    assert_eq!(code, 0, "enable failed: {out}{err}");
-
-    let (stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "source", "advanced", "sync", "--offline"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "source", "sync", "--offline"]);
     assert_eq!(code, 0, "offline sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
 
     let data = report(&stdout);
@@ -95,9 +92,9 @@ fn sync_persists_shared_content_offline() {
 /// Build a repo whose content has already been synced into the Lance corpus.
 fn synced_repo() -> Dataset {
     let ds = indexed_repo();
-    let (out, err, code) = run_in(ds.root(), &["source", "advanced", "enable"]);
+    let (out, err, code) = run_in(ds.root(), &["source", "sync", "--offline"]);
     assert_eq!(code, 0, "enable failed: {out}{err}");
-    let (out, err, code) = run_in(ds.root(), &["source", "advanced", "sync", "--offline"]);
+    let (out, err, code) = run_in(ds.root(), &["source", "sync", "--offline"]);
     assert_eq!(code, 0, "sync failed: {out}{err}");
     ds
 }
@@ -117,9 +114,9 @@ fn advanced_search_matches_chinese_via_icu_tokenizer() {
     .expect("write chinese source");
     let (o, e, c) = run_in(ds.root(), &["source", "index", "--project", "alpha"]);
     assert_eq!(c, 0, "index failed: {o}{e}");
-    let (o, e, c) = run_in(ds.root(), &["source", "advanced", "enable"]);
+    let (o, e, c) = run_in(ds.root(), &["source", "sync", "--offline"]);
     assert_eq!(c, 0, "enable failed: {o}{e}");
-    let (o, e, c) = run_in(ds.root(), &["source", "advanced", "sync", "--offline"]);
+    let (o, e, c) = run_in(ds.root(), &["source", "sync", "--offline"]);
     assert_eq!(c, 0, "sync failed: {o}{e}");
 
     for term in ["光合作用", "叶绿体", "化学能"] {
@@ -209,7 +206,7 @@ fn basic_search_matches_metadata_not_content() {
 fn status_reports_lance_backend_and_counts() {
     let ds = synced_repo();
 
-    let (stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "source", "advanced", "status"]);
+    let (stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "source", "status"]);
     assert_eq!(code, 0, "status failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
 
     let data = report(&stdout);

@@ -7,7 +7,7 @@ description: Use the mf Rust CLI to manage mind 0.3.0-compatible local knowledge
 
 ## Overview
 
-`mf` manages local mind-format knowledge repos: content sources, assets, articles (file or directory), glossary terms, builds, publishing, publish targets, render templates, and configuration.
+`mf` manages local mind-format knowledge repos: content sources, assets, articles (file or directory), glossary terms, builds, publishing, publish targets, render templates, configuration, and a repository-wide RAG corpus.
 
 **Key concepts:**
 - **Mind Repo**: A directory rooted at `minds.yaml`. Most commands require running inside one.
@@ -159,6 +159,34 @@ Without a direction flag in a TTY, the CLI infers the unique reasonable directio
 `prompts/` (control plane: objective, mode, constraints, decisions) and `thinking/` (working ledger) are derived-projection schema, reconciled by `mf article index` and surfaced through `mf article list`/`show` above — there is no standalone `mf prompt`/`mf thinking` command group. `prompts/<key>.md` is the source of truth (frontmatter `article:` and optional `mode:` of `editorial`/`research`/`decision-research`); `thinking/<key>.md` associates with an article purely by key alignment (its own filename stem matching the article's), carries no frontmatter, and has no `duplicate` state. Binding status (`bound`/`orphan`/`duplicate`) is computed at query time against the current `articles` set and is never persisted. Cross-article anomalies (an orphaned prompt, two prompts bound to one article) have no single article row to attach to — they surface only through `mf project lint`'s `orphan_prompt`/`duplicate_binding`/`missing_thinking` rules (see below).
 
 ### `mf source` — Manage content sources
+
+#### Source RAG and dual-write behavior
+
+When the repository RAG corpus is active, `mf source new` writes the
+Source registration to the Lance primary first and then updates the project's
+`mind-index.yaml` compatibility projection. A primary write failure is not
+silently downgraded to a legacy-only registration; projection problems are
+reported as degraded warnings. Repositories without an active corpus remain
+legacy-only until the first `mf source sync`.
+
+Use the canonical global search and synchronization commands:
+
+```bash
+mf source sync --offline                 # initialize/refresh the local RAG corpus
+mf search "<query>" --output json       # search Sources and article content together
+mf source status --output json           # inspect corpus health
+```
+
+`mf source sync` also discovers article prose, prompts, and thinking files by
+default. It is local-first and does not fetch URL sources during sync. Use
+`mf search` for content retrieval; it has no `--mode` switch and returns the
+repository-wide RAG result set. `mf source search --mode ...` is only a temporary
+compatibility path for existing scripts.
+
+Low-frequency maintenance uses `mf source admin rebuild|clear|recover`; bundle
+and provenance operations use `mf source export|import|trace`. The former
+`source advanced` command tree, model installation, and enrichment CLI are not
+part of the user-facing interface.
 
 Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (alias `rm`), `index`, `clean`.
 

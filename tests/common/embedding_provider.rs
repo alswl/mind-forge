@@ -24,7 +24,7 @@ const MANIFEST: &str = "schema_version: '1'\nprojects:\n  \
     - name: alpha\n    path: ./projects/alpha\n    created_at: \"2026-07-17T08:00:00Z\"\n    archived_at: ~\n";
 
 /// Build a repo with one indexed Markdown Source in project alpha and the
-/// Lance backend enabled, ready for provider-backed sync/search.
+/// RAG corpus initialized, ready for provider-backed sync/search.
 pub fn provider_repo() -> TempDir {
     let repo = TempDir::new().expect("temp repo");
     std::fs::write(repo.path().join("minds.yaml"), MANIFEST).expect("write manifest");
@@ -38,8 +38,17 @@ pub fn provider_repo() -> TempDir {
     .expect("source file");
     let (stdout, stderr, code) = run(&repo, &["source", "index", "--project", "alpha"], &[]);
     assert_eq!(code, 0, "source index failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "enable"], &[]);
-    assert_eq!(code, 0, "advanced enable failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
+    assert_eq!(code, 0, "source sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+    repo
+}
+
+/// Build the same repository with registrations active but derived RAG data
+/// cleared, so a subsequent provider-backed sync must process its chunks.
+pub fn provider_repo_for_embedding() -> TempDir {
+    let repo = provider_repo();
+    let (stdout, stderr, code) = run(&repo, &["source", "admin", "clear", "--all", "--yes"], &[]);
+    assert_eq!(code, 0, "clear derived RAG data failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     repo
 }
 

@@ -323,19 +323,19 @@ impl MfError {
                 Some("remove the conflicting file or directory manually, or pick a different title")
             }
             Self::CorruptLanceMarker { hint, .. } => {
-                hint.as_deref().or(Some("run `mf source advanced enable` to activate, or set backend to legacy"))
+                hint.as_deref().or(Some("run `mf source sync` to activate and build the RAG index"))
             }
-            Self::MissingLancePointer { hint, .. } => {
-                hint.as_deref().or(Some("run `mf source advanced status` for diagnosis, or `mf source advanced recover` with a retained snapshot"))
-            }
+            Self::MissingLancePointer { hint, .. } => hint.as_deref().or(Some(
+                "run `mf source status` for diagnosis, or `mf source admin recover` with a retained snapshot",
+            )),
             Self::AdvancedStore { hint, .. } => hint.as_deref(),
             Self::AdvancedModel { hint, .. } => hint.as_deref(),
             Self::AdvancedSyncFailed { hint, .. } => hint.as_deref(),
             Self::EnrichmentRejected { hint, .. } => hint.as_deref(),
             Self::RecoveryUnavailable { hint, .. } => hint.as_deref(),
-            Self::DisableBlocked { hint, .. } => {
-                hint.as_deref().or(Some("recover from a validated snapshot first, then export projections to reach parity"))
-            }
+            Self::DisableBlocked { hint, .. } => hint
+                .as_deref()
+                .or(Some("recover from a validated snapshot first, then export projections to reach parity")),
             Self::Internal(_) | Self::Io(_) | Self::Json(_) => Some("this is an internal error; please report it"),
         }
     }

@@ -6,7 +6,7 @@ use common::embedding_provider::{provider_repo, run};
 
 fn synced_repo() -> tempfile::TempDir {
     let repo = provider_repo();
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "sync", "--offline"], &[]);
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     repo
 }
@@ -15,7 +15,7 @@ fn synced_repo() -> tempfile::TempDir {
 fn recover_nonexistent_snapshot_is_recovery_error() {
     let repo = synced_repo();
     let (stdout, stderr, code) =
-        run(&repo, &["source", "advanced", "recover", "--snapshot", "nonexistent-snapshot", "--yes"], &[]);
+        run(&repo, &["source", "admin", "recover", "--snapshot", "nonexistent-snapshot", "--yes"], &[]);
     assert!(code != 0, "nonexistent snapshot must fail\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let combined = format!("{stdout}{stderr}");
     assert!(combined.contains("snapshot") || combined.contains("not found"), "error must mention snapshot\n{combined}");
@@ -24,7 +24,7 @@ fn recover_nonexistent_snapshot_is_recovery_error() {
 #[test]
 fn status_lists_retained_snapshots() {
     let repo = synced_repo();
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "status"], &[]);
+    let (stdout, stderr, code) = run(&repo, &["source", "status"], &[]);
     assert_eq!(code, 0, "status failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     let snapshots = v["data"]["data"]["retained_snapshots"].as_u64().unwrap_or(0);
@@ -36,15 +36,10 @@ fn status_lists_retained_snapshots() {
 fn disable_blocks_when_projections_have_drift() {
     let repo = synced_repo();
     let (stdout, stderr, code) = run(&repo, &["source", "advanced", "disable"], &[]);
-    // Disable may succeed if projections are current, or block with details.
-    // Either outcome is valid; the key is that it doesn't crash.
+    // Removed commands must be rejected cleanly.
     let combined = format!("{stdout}{stderr}");
-    if code != 0 {
-        assert!(
-            combined.contains("projection") || combined.contains("drift") || combined.contains("legacy export"),
-            "disable error must mention projection status\n{combined}"
-        );
-    }
+    assert_eq!(code, 2);
+    assert!(combined.contains("unrecognized"));
 }
 
 // ── T064: Project intent recovery ──
@@ -52,7 +47,7 @@ fn disable_blocks_when_projections_have_drift() {
 #[test]
 fn project_intents_are_visible_in_status() {
     let repo = synced_repo();
-    let (stdout, stderr, code) = run(&repo, &["source", "advanced", "status"], &[]);
+    let (stdout, stderr, code) = run(&repo, &["source", "status"], &[]);
     assert_eq!(code, 0, "status failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     // pending_intents must be reported (even if zero).
