@@ -107,15 +107,68 @@ mf build "First Note" --project notes
 
 See [docs/manual.md](docs/manual.md) for the full manual.
 
+## Mind Repo model
+
+A Mind Repo is more than a folder of finished documents. Each article is
+supported by four first-class knowledge stores:
+
+| Store | Responsibility |
+|---|---|
+| **Sources** | Evidence and provenance: what the work can rely on. |
+| **Prompts** | The control plane: objective, mode, audience, constraints, criteria, and durable decisions. |
+| **Thinking** | The working ledger: reasoning, conflicts, assumptions, feedback, blockers, and follow-ups. |
+| **Articles** | The current user-readable synthesis or deliverable. |
+
+Prompt and Thinking are authored Markdown, not transient chat context. A Prompt
+binds to an Article through its declared `article` field; a Thinking ledger
+associates by article key. `mf article list` and `show` expose both relationships,
+while `mf article index` reconciles their projections after manual edits.
+
+```mermaid
+flowchart TD
+  Repo[Mind Repo<br/>minds.yaml]
+  Repo --> Project[Project<br/>mind.yaml]
+
+  subgraph Knowledge[First-class project knowledge]
+    Sources[Sources<br/>evidence]
+    Prompts[Prompts<br/>intent and constraints]
+    Thinking[Thinking<br/>reasoning ledger]
+    Articles[Articles<br/>current synthesis]
+    Support[Assets and Terms]
+  end
+
+  Project --> Sources
+  Project --> Prompts
+  Project --> Thinking
+  Project --> Articles
+  Project --> Support
+
+  Prompts -. governs .-> Articles
+  Thinking -. explains .-> Articles
+  Sources --> RAG[Local RAG corpus]
+  Prompts --> RAG
+  Thinking --> RAG
+  Articles --> RAG
+  RAG --> Work[Human or Agent workflow]
+  Work --> Articles
+  Articles --> Build[Build and Publish]
+```
+
+The separation is deliberate: Prompt preserves intent, Thinking preserves the
+path taken, Sources preserve evidence, and Article preserves the result. RAG
+connects all four without collapsing their ownership boundaries.
+
 ## Core workflow
 
 ```text
-capture → sync RAG → search evidence → write article → build → publish
+set intent → capture evidence → reason → sync/search → write → build → publish
 ```
 
-- `mf source new` records a Source.
+- `prompts/<key>.md` defines the article's objective and constraints.
+- `thinking/<key>.md` records reasoning and work state as they evolve.
+- `mf source new` records evidence with provenance.
 - `mf source sync --offline` initializes or refreshes the local corpus.
-- `mf search <QUERY>` searches Sources and article context together.
+- `mf search <QUERY>` searches Sources, Prompts, Thinking, and Article content.
 - `mf article`, `mf build`, and `mf publish` manage the writing pipeline.
 
 ## Source RAG
@@ -130,7 +183,7 @@ mf source status --output json
 ```
 
 `mf search` is the canonical global retrieval command. It has no `--mode`
-flag and searches registered Sources, article prose, prompts, and thinking.
+flag and searches registered Sources, article prose, Prompts, and Thinking.
 Results include provenance; verify the returned project, Source identity, and
 location before citing a result.
 
@@ -181,8 +234,8 @@ my-repo/
 │       ├── mind-index.yaml
 │       ├── docs/
 │       ├── sources/
-│       ├── prompts/
-│       ├── thinking/
+│       ├── prompts/        # intent and control plane
+│       ├── thinking/       # reasoning and work ledger
 │       └── outputs/
 └── .mind-forge/cache/source/advanced/  # rebuildable RAG state
 ```
