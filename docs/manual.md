@@ -430,6 +430,39 @@ is omitted. File-based publishers (`.mind-forge/publisher/<name>.yaml`) are
 discovered for both paths. Local publishers respect `config.prefix` in the
 publisher definition for the destination filename.
 
+### Publish-time transforms (all target types)
+
+Both `local` and `yuque-prompt` targets support these config-driven transforms:
+
+| Config Key | Effect | Default |
+|------------|--------|---------|
+| `config.svg_to_png` | Replace `.svg` image refs with `.png` when a sibling `.png` exists next to the build artifact | `false` |
+| `config.banner_markdown` | Prepend inline markdown banner at publish time (takes precedence over `banner_file`) | — |
+| `config.banner_file` | Prepend banner from a project-relative file | — |
+
+Banner injection is idempotent — re-running publish does not stack a second banner.
+
+### yuque-prompt target
+
+`yuque-prompt` writes a publish-ready file to `outputs/<stem>.yuque.md`
+(deterministic path next to the build artifact) in addition to its usual
+stdout prompt/envelope output. Override the path with `config.out_path`
+(project-relative).
+
+The JSON outcome envelope gains a `destination` field (the written file path,
+or absent under `--dry-run`).
+
+For publishing to yuque.com:
+
+```bash
+mf publish run <article> --target <yuque-prompt>
+yuque update doc <ns/slug> --body-file outputs/<article>.yuque.md --upload-images
+```
+
+:::info cards (author-in-source): for highlight/callout blocks, write them in
+the article or block source file. `mf build` preserves `:::` blocks verbatim,
+so cards survive every rebuild without hand-patching.
+
 ## 11. Render Templates
 
 ```bash

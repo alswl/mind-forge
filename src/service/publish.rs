@@ -445,19 +445,9 @@ fn run_yuque_prompt(
 
     let raw_content = fs::read_to_string(&artifact_path).map_err(MfError::Io)?;
     let artifact_dir = artifact_path.parent().unwrap_or(Path::new("."));
-    let (mut content, mut transforms) = apply_svg_to_png_transform(&raw_content, artifact_dir);
+    let (content, transforms) = apply_publish_transforms(&raw_content, artifact_dir, target, project_path)?;
 
-    // #21: inject a configured banner into the published payload only — the
-    // on-disk build artifact is never modified, so the banner survives every
-    // `mf build` regeneration without hand-patching.
-    if let Some(banner) = resolve_publish_banner(target, project_path)?
-        && !content.starts_with(banner.trim_end())
-    {
-        content = format!("{}\n\n{}", banner.trim_end(), content);
-        transforms.banner_injected = true;
-    }
-
-    let envelope = target.config.clone().unwrap_or_else(|| serde_json::json!({}));
+    let dest = resolve_yuque_prompt_destination(target, project_path, config, article_entry)?;
 
     let suggested_update_command =
         format!("mf publish update {} --target {} --status published --target-url <URL>", args.article, target.name);
@@ -475,6 +465,39 @@ After publishing, run:\n\
         suggested = suggested_update_command,
     );
 
+    // Warn on empty artifact, mirroring run_local behavior.
+    if raw_content.is_empty() {
+        eprintln!("warning: build artifact is empty");
+    }
+
+    let envelope = target.config.clone().unwrap_or_else(|| serde_json::json!({}));
+
+    // Respect --dry-run: compute but don't write.
+    if args.dry_run.dry_run {
+        return Ok(YuquePromptRunOutcome {
+            target_name: target.name.clone(),
+            article: args.article.clone(),
+            article_path: article_entry.article_path.clone(),
+            build_artifact_path: artifact_path.to_string_lossy().to_string(),
+            content,
+            prompt,
+            envelope,
+            suggested_update_command,
+            dry_run: true,
+            destination: None,
+            transforms,
+        });
+    }
+
+    // Write the publish-ready file to disk.
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).map_err(MfError::Io)?;
+    }
+    if dest.exists() && !args.force.force {
+        return Err(MfError::file_exists(dest));
+    }
+    util::atomic_write(&dest, &content)?;
+
     Ok(YuquePromptRunOutcome {
         target_name: target.name.clone(),
         article: args.article.clone(),
@@ -484,9 +507,83 @@ After publishing, run:\n\
         prompt,
         envelope,
         suggested_update_command,
-        dry_run: args.dry_run.dry_run,
+        dry_run: false,
+        destination: Some(dest.to_string_lossy().to_string()),
         transforms,
     })
+}
+
+/// Resolve the destination path for the `yuque-prompt` publish-ready file.
+///
+/// Default: `<layout.build_output>/<stem>.yuque.<format>`.
+/// Override: `config.out_path` (project-relative).
+/// The resolved path MUST stay inside the project boundary.
+fn resolve_yuque_prompt_destination(
+    target: &PublishTarget,
+    project_path: &Path,
+    config: &MindConfig,
+    article_entry: &Article,
+) -> Result<PathBuf> {
+    // Allow per-target override via config.out_path
+    if let Some(cfg) = target.config.as_ref()
+        && let Some(out_path) = cfg.get("out_path").and_then(|v| v.as_str())
+        && !out_path.trim().is_empty()
+    {
+        let resolved = project_path.join(out_path);
+        // Safety: ensure the resolved path stays inside the project boundary.
+        let canonical_project = project_path.canonicalize().unwrap_or_else(|_| project_path.to_path_buf());
+        let canonical_dest = resolved.canonicalize().unwrap_or_else(|_| resolved.clone());
+        if !canonical_dest.starts_with(&canonical_project) {
+            return Err(MfError::usage(
+                format!("out_path '{out_path}' resolves outside the project"),
+                Some("use a project-relative path".to_string()),
+            ));
+        }
+        return Ok(resolved);
+    }
+
+    // Default: <build_output>/<stem>.yuque.<format>
+    let layout = config_svc::effective_layout(project_path)?;
+    let format =
+        if config.build.format.is_empty() { defaults::DEFAULT_BUILD_FORMAT } else { config.build.format.as_str() };
+    let stem = index::article_output_stem(&article_entry.article_path);
+    Ok(project_path.join(&layout.build_output).join(format!("{stem}.yuque.{format}")))
+}
+
+/// Apply publish-time transforms to the build artifact content: SVG→PNG
+/// substitution (when `config.svg_to_png` is enabled) and banner injection
+/// (when `config.banner_markdown` / `config.banner_file` is configured).
+///
+/// The on-disk build artifact is never modified — this operates on an in-memory
+/// copy only. Both transforms are generic and available to any publish target
+/// type; target handlers differ only in where the result is written.
+fn apply_publish_transforms(
+    raw_content: &str,
+    artifact_dir: &Path,
+    target: &PublishTarget,
+    project_path: &Path,
+) -> Result<(String, PayloadTransforms)> {
+    // Step 1: SVG→PNG (gated by config.svg_to_png, default false)
+    let (mut content, mut transforms) = if is_svg_to_png_enabled(target) {
+        apply_svg_to_png_transform(raw_content, artifact_dir)
+    } else {
+        (raw_content.to_string(), PayloadTransforms::default())
+    };
+
+    // Step 2: banner injection (gated by config.banner_markdown / banner_file)
+    if let Some(banner) = resolve_publish_banner(target, project_path)?
+        && !content.starts_with(banner.trim_end())
+    {
+        content = format!("{}\n\n{}", banner.trim_end(), content);
+        transforms.banner_injected = true;
+    }
+
+    Ok((content, transforms))
+}
+
+/// Whether `config.svg_to_png` is explicitly enabled on the target.
+fn is_svg_to_png_enabled(target: &PublishTarget) -> bool {
+    target.config.as_ref().and_then(|c| c.get("svg_to_png")).and_then(|v| v.as_bool()).unwrap_or(false)
 }
 
 /// Substitute relative `.svg` image references with a sibling `.png` when one
@@ -602,5 +699,128 @@ mod tests {
         assert!(content.contains("![data](data:image/svg+xml;base64,AAAA)"), "data URI should not be transformed");
         assert!(transforms.svg_png_replaced.is_empty(), "no replacements expected");
         assert_eq!(transforms.svg_png_missing, vec!["assets/missing.svg"]);
+    }
+
+    // ── apply_publish_transforms tests (spec 070) ──
+
+    fn make_target(config: serde_json::Value) -> PublishTarget {
+        PublishTarget {
+            name: "test-target".to_string(),
+            target_type: PublishTargetType::YuquePrompt,
+            enabled: true,
+            config: Some(config),
+            path: None,
+            prefix: None,
+            book_slug: None,
+            namespace: None,
+        }
+    }
+
+    #[test]
+    fn publish_transforms_applies_svg_to_png_when_enabled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let artifact_dir = tmp.path();
+        fs::create_dir_all(artifact_dir.join("assets")).unwrap();
+        fs::write(artifact_dir.join("assets/logo.png"), b"png").unwrap();
+
+        let target = make_target(serde_json::json!({"svg_to_png": true}));
+        let input = "![logo](assets/logo.svg)\n";
+        let (content, transforms) = apply_publish_transforms(input, artifact_dir, &target, tmp.path()).unwrap();
+
+        assert!(content.contains("![logo](assets/logo.png)"), "should rewrite: {content}");
+        assert_eq!(transforms.svg_png_replaced, vec!["assets/logo.svg"]);
+        assert!(transforms.svg_png_missing.is_empty());
+        assert!(!transforms.banner_injected);
+    }
+
+    #[test]
+    fn publish_transforms_skips_svg_to_png_when_not_enabled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let artifact_dir = tmp.path();
+        fs::create_dir_all(artifact_dir.join("assets")).unwrap();
+        fs::write(artifact_dir.join("assets/logo.png"), b"png").unwrap();
+
+        // Default (no svg_to_png key) → disabled
+        let target = make_target(serde_json::json!({}));
+        let input = "![logo](assets/logo.svg)\n";
+        let (content, transforms) = apply_publish_transforms(input, artifact_dir, &target, tmp.path()).unwrap();
+
+        assert!(content.contains("![logo](assets/logo.svg)"), "should keep original svg: {content}");
+        assert!(transforms.svg_png_replaced.is_empty());
+        assert!(transforms.svg_png_missing.is_empty());
+    }
+
+    #[test]
+    fn publish_transforms_injects_banner_when_configured() {
+        let tmp = tempfile::tempdir().unwrap();
+        let artifact_dir = tmp.path();
+
+        let target = make_target(serde_json::json!({"banner_markdown": ":::warning\nHeader\n:::"}));
+        let input = "# Body\n";
+        let (content, transforms) = apply_publish_transforms(input, artifact_dir, &target, tmp.path()).unwrap();
+
+        assert!(content.starts_with(":::warning\nHeader\n:::\n\n"), "should start with banner: {content}");
+        assert!(content.contains("# Body"), "should keep body");
+        assert!(transforms.banner_injected);
+    }
+
+    #[test]
+    fn publish_transforms_banner_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let artifact_dir = tmp.path();
+
+        let target = make_target(serde_json::json!({"banner_markdown": ":::warning\nHeader\n:::"}));
+        let input = ":::warning\nHeader\n:::\n\n# Body\n";
+        let (content, transforms) = apply_publish_transforms(input, artifact_dir, &target, tmp.path()).unwrap();
+
+        // Banner already present — should not stack a second one.
+        assert_eq!(content, input, "should not double-inject banner");
+        assert!(!transforms.banner_injected);
+    }
+
+    #[test]
+    fn publish_transforms_applies_both_when_configured() {
+        let tmp = tempfile::tempdir().unwrap();
+        let artifact_dir = tmp.path();
+        fs::create_dir_all(artifact_dir.join("assets")).unwrap();
+        fs::write(artifact_dir.join("assets/logo.png"), b"png").unwrap();
+
+        let target = make_target(serde_json::json!({
+            "svg_to_png": true,
+            "banner_markdown": ":::warning\nBanner\n:::"
+        }));
+        let input = "![logo](assets/logo.svg)\n";
+        let (content, transforms) = apply_publish_transforms(input, artifact_dir, &target, tmp.path()).unwrap();
+
+        assert!(content.starts_with(":::warning\nBanner\n:::\n\n"), "should start with banner");
+        assert!(content.contains("assets/logo.png"), "should rewrite svg→png: {content}");
+        assert!(transforms.banner_injected);
+        assert_eq!(transforms.svg_png_replaced, vec!["assets/logo.svg"]);
+    }
+
+    #[test]
+    fn publish_transforms_records_missing_png() {
+        let tmp = tempfile::tempdir().unwrap();
+        let artifact_dir = tmp.path();
+
+        let target = make_target(serde_json::json!({"svg_to_png": true}));
+        let input = "![missing](assets/no_png.svg)\n";
+        let (content, transforms) = apply_publish_transforms(input, artifact_dir, &target, tmp.path()).unwrap();
+
+        assert!(content.contains("![missing](assets/no_png.svg)"), "should keep svg ref: {content}");
+        assert!(transforms.svg_png_replaced.is_empty());
+        assert_eq!(transforms.svg_png_missing, vec!["assets/no_png.svg"]);
+    }
+
+    #[test]
+    fn publish_transforms_banner_file_unreadable_is_usage_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let artifact_dir = tmp.path();
+
+        let target = make_target(serde_json::json!({"banner_file": "nonexistent.md"}));
+        let err = apply_publish_transforms("body", artifact_dir, &target, tmp.path()).unwrap_err();
+
+        assert_eq!(err.kind(), "usage", "should be a usage error, got: {err:?}");
+        assert!(err.to_string().contains("banner_file"), "should mention banner_file: {err}");
     }
 }

@@ -1219,3 +1219,60 @@ fn build_dry_run_output_unaffected_by_prompts_and_thinking_data() {
         "build --dry-run output must be byte-identical regardless of prompts/thinking data"
     );
 }
+
+/// #21 / spec 070 FR-013: a `:::info` card authored in the article source
+/// MUST be preserved verbatim in the build output and survive repeated builds.
+#[test]
+fn build_preserves_author_written_info_card() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    let project = repo.path().join("my-project");
+
+    // Use mf article new to create and index the article properly
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project)
+        .args(["article", "new", "Card Test"])
+        .assert()
+        .success();
+
+    // Overwrite the source with :::info content
+    let article_md = "---\ntitle: Card Test\n---\n\n# Intro\n\nSome text.\n\n:::info\n💡 **Key Insight**\n\nThis is a highlight card.\n:::\n\nMore text.\n";
+    let article_path = project.join("docs").join("card-test.md");
+    fs::write(&article_path, article_md).unwrap();
+
+    // Index
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project)
+        .args(["article", "index"])
+        .assert()
+        .success();
+
+    // First build
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project)
+        .args(["build", "card-test"])
+        .assert()
+        .success();
+
+    let output_path = project.join("outputs").join("card-test.md");
+    let output1 = fs::read_to_string(&output_path).unwrap();
+    assert!(output1.contains(":::info"), "card block must be in output after build 1:\n{output1}");
+    assert!(output1.contains("**Key Insight**"), "card body must be preserved:\n{output1}");
+
+    // Second build — card MUST still be present
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(&project)
+        .args(["build", "card-test"])
+        .assert()
+        .success();
+
+    let output2 = fs::read_to_string(&output_path).unwrap();
+    // The card text may differ slightly in whitespace after merge, but the block
+    // marker and key content must survive.
+    assert!(output2.contains(":::info"), "card block must survive second build:\n{output2}");
+    assert!(output2.contains("**Key Insight**"), "card body must survive second build:\n{output2}");
+}

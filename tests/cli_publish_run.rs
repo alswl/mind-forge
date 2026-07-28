@@ -534,6 +534,12 @@ fn yuque_prompt_target_yaml(name: &str, with_config: bool) -> String {
 
 // #21: banner injection at publish time (spec 069 US5)
 
+fn yuque_svg_target_yaml(name: &str) -> String {
+    format!(
+        "    - name: {name}\n      type: yuque-prompt\n      enabled: true\n      config:\n        namespace: my-blog\n        tags:\n          - tech\n          - rust\n        svg_to_png: true\n",
+    )
+}
+
 fn yuque_banner_target_yaml(name: &str, banner: &str) -> String {
     format!(
         "    - name: {name}\n      type: yuque-prompt\n      enabled: true\n      config:\n        banner_markdown: \"{banner}\"\n",
@@ -672,7 +678,7 @@ fn write_artifact_content(repo: &common::TempDir, content: &[u8]) {
 
 #[test]
 fn yuque_prompt_svg_replaced_with_existing_sibling_png() {
-    let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
+    let repo = setup_repo_with_targets(&yuque_svg_target_yaml("yuque-draft"));
     fs::create_dir_all(repo.path().join("my-project/_build/assets")).unwrap();
     fs::write(repo.path().join("my-project/_build/assets/logo.png"), b"fake-png-bytes").unwrap();
     write_artifact_content(
@@ -698,7 +704,7 @@ fn yuque_prompt_svg_replaced_with_existing_sibling_png() {
 
 #[test]
 fn yuque_prompt_svg_missing_png_kept_and_warned() {
-    let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
+    let repo = setup_repo_with_targets(&yuque_svg_target_yaml("yuque-draft"));
     write_artifact_content(&repo, b"# Hello\n\n![logo](assets/missing.svg)\n");
 
     let out = run_publish(&repo, &["--output", "json", "publish", "run", ARTICLE, "--target", "yuque-draft"]);
@@ -719,7 +725,7 @@ fn yuque_prompt_svg_missing_png_kept_and_warned() {
 
 #[test]
 fn yuque_prompt_svg_transform_skips_fenced_code_blocks() {
-    let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
+    let repo = setup_repo_with_targets(&yuque_svg_target_yaml("yuque-draft"));
     fs::create_dir_all(repo.path().join("my-project/_build/assets")).unwrap();
     fs::write(repo.path().join("my-project/_build/assets/logo.png"), b"fake-png-bytes").unwrap();
     write_artifact_content(
@@ -754,7 +760,7 @@ fn yuque_prompt_svg_transform_does_not_modify_outputs_file() {
 
 #[test]
 fn yuque_prompt_svg_transform_dry_run_still_returns_transformed_payload() {
-    let repo = setup_repo_with_targets(&yuque_prompt_target_yaml("yuque-draft", true));
+    let repo = setup_repo_with_targets(&yuque_svg_target_yaml("yuque-draft"));
     fs::create_dir_all(repo.path().join("my-project/_build/assets")).unwrap();
     fs::write(repo.path().join("my-project/_build/assets/logo.png"), b"fake-png-bytes").unwrap();
     write_artifact_content(&repo, b"# Hello\n\n![logo](assets/logo.svg)\n");

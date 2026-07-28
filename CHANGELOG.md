@@ -3,6 +3,9 @@
 All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
+### Features
+- `mf publish run` on `yuque-prompt` targets now writes a persistent publish-ready file to `outputs/<stem>.yuque.md` (in addition to the existing stdout prompt/envelope); the JSON envelope gains an additive `destination` field. SVG→PNG substitution and banner injection are now generic publish-time transforms controlled by `config.svg_to_png` (bool, default false), `config.banner_markdown`, and `config.banner_file` — available to all target types, not hardcoded to `yuque-prompt`. (spec 070, #21)
+
 ### Changes
 - **Breaking**: Remove correction-mutation flags from `term update`; correction edits now go solely through `term correction update`/`remove` (spec 052)
 - `term correction add` now reports `created: true|false` in JSON and "added" vs "already exists, skipped" in text

@@ -41,6 +41,11 @@ pub struct YuquePromptRunOutcome {
     pub envelope: serde_json::Value,
     pub suggested_update_command: String,
     pub dry_run: bool,
+    /// Path to the persistent publish-ready file written on disk
+    /// (`outputs/<stem>.yuque.md`). `None` under `--dry-run` or when the
+    /// file output is disabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destination: Option<String>,
     /// SVG→PNG payload substitutions applied to `content` (spec 064 FR-013).
     /// The outputs file on disk is never modified; this only describes the
     /// in-memory payload transform.
@@ -111,6 +116,7 @@ mod tests {
             suggested_update_command: "mf publish update a --target tgt --status published --target-url <URL>"
                 .to_string(),
             dry_run: true,
+            destination: None,
             transforms: PayloadTransforms::default(),
         });
         let v = serde_json::to_value(&outcome).unwrap();
@@ -119,6 +125,31 @@ mod tests {
         assert_eq!(v["envelope"], serde_json::json!({}));
         assert_eq!(v["transforms"]["svg_png_replaced"], serde_json::json!([]));
         assert_eq!(v["transforms"]["svg_png_missing"], serde_json::json!([]));
+        // destination is None → absent from JSON
+        assert!(
+            v["destination"].is_null() || v.get("destination").is_none(),
+            "None destination should be null or absent"
+        );
+    }
+
+    #[test]
+    fn yuque_prompt_outcome_with_destination_serializes_path() {
+        let outcome = PublishRunOutcome::YuquePrompt(YuquePromptRunOutcome {
+            target_name: "tgt".to_string(),
+            article: "a".to_string(),
+            article_path: "docs/a.md".to_string(),
+            build_artifact_path: "/p/_build/a.md".to_string(),
+            content: "hello".to_string(),
+            prompt: "Please publish ...".to_string(),
+            envelope: serde_json::json!({}),
+            suggested_update_command: "mf publish update a --target tgt --status published --target-url <URL>"
+                .to_string(),
+            dry_run: false,
+            destination: Some("outputs/a.yuque.md".to_string()),
+            transforms: PayloadTransforms::default(),
+        });
+        let v = serde_json::to_value(&outcome).unwrap();
+        assert_eq!(v["destination"], "outputs/a.yuque.md");
     }
 
     #[test]
