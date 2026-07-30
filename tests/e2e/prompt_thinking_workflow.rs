@@ -62,3 +62,38 @@ fn prompt_thinking_reconcile_show_then_lint_detects_orphan() {
     assert_eq!(orphan["severity"], "error");
     assert_eq!(code, 1, "orphan_prompt must fail lint: stdout={stdout}\nstderr={stderr}");
 }
+
+#[test]
+fn directory_article_block_restructure_preserves_projections() {
+    let ds = Dataset::empty().with_standard_project("alpha");
+    let project = ds.root().join("projects/alpha");
+    fs::create_dir_all(project.join("docs/post")).unwrap();
+    fs::create_dir_all(project.join("prompts")).unwrap();
+    fs::create_dir_all(project.join("thinking")).unwrap();
+    fs::write(project.join("docs/post/01-intro.md"), "# Intro\n").unwrap();
+    fs::write(project.join("docs/post/02-body.md"), "# Body\n").unwrap();
+    fs::write(project.join("prompts/post.md"), "---\narticle: docs/post\n---\n\nPrompt\n").unwrap();
+    fs::write(project.join("thinking/post.md"), "Thinking\n").unwrap();
+
+    let (stdout, stderr, code) = run_in(ds.root(), &["article", "index", "--project", "alpha", "--output", "json"]);
+    assert_eq!(code, 0, "initial index failed: {stdout}\n{stderr}");
+
+    for args in [
+        &["article", "block", "new", "docs/post", "middle", "--after", "01-intro.md", "--project", "alpha"][..],
+        &["article", "block", "move", "docs/post", "body", "--after", "01-intro.md", "--project", "alpha"][..],
+        &["article", "block", "renumber", "docs/post", "--start", "1", "--project", "alpha"][..],
+    ] {
+        let (stdout, stderr, code) = run_in(ds.root(), args);
+        assert_eq!(code, 0, "block command {:?} failed: {stdout}\n{stderr}", args);
+    }
+
+    assert!(project.join("docs/post/01-intro.md").exists());
+    assert!(project.join("docs/post/02-body.md").exists());
+    assert!(project.join("docs/post/03-middle.md").exists());
+    let (stdout, stderr, code) =
+        run_in(ds.root(), &["--output", "json", "article", "show", "docs/post", "--project", "alpha"]);
+    assert_eq!(code, 0, "article show failed: {stdout}\n{stderr}");
+    let envelope: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(envelope["data"]["prompt"]["binding_status"], "bound", "{stdout}");
+    assert_eq!(envelope["data"]["thinking"]["path"], "thinking/post.md", "{stdout}");
+}

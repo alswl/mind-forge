@@ -98,10 +98,7 @@ pub fn import_bundle(repo_root: &Path, bundle: &Path, overwrite: bool, dry_run: 
     if !config.is_lance() {
         // Activate Lance backend first if not already active.
         if !dry_run {
-            let legacy = super::config::ResolvedSourceConfig::from_config(
-                crate::service::repo::load_manifest(&repo_root.join("minds.yaml"))?.source.as_ref(),
-            )?;
-            super::activation::activate(repo_root, &legacy)?;
+            super::activation::activate(repo_root, &config)?;
         }
     } else if !overwrite {
         // Target already has a published corpus — explicit --overwrite required.

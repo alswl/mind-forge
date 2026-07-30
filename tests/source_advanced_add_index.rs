@@ -113,3 +113,20 @@ fn dry_run_source_new_writes_nothing() {
     let (lout, _lerr, _lcode) = run(&repo, &["source", "list", "--project", "alpha"], &[]);
     assert!(!lout.contains("previewsrc"), "dry-run must not register the source\n{lout}");
 }
+
+#[test]
+fn register_only_works_without_a_lance_pointer_and_reports_rag_skipped() {
+    let repo = common::setup_lance_marker_empty_cache();
+    std::fs::create_dir_all(repo.path().join("projects/alpha/sources/file")).unwrap();
+    std::fs::write(repo.path().join("projects/alpha/mind.yaml"), "schema_version: '1'\n").unwrap();
+    let input = repo.path().join("projects/alpha/sources/file/pointerless.md");
+    std::fs::write(&input, "pointerless registration\n").unwrap();
+    let (out, err, code) = run(
+        &repo,
+        &["source", "new", input.to_str().unwrap(), "--project", "alpha", "--register-only", "--name", "pointerless"],
+        &[],
+    );
+    assert_eq!(code, 0, "{out}\n{err}");
+    assert!(out.contains("\"rag_indexed\":false"), "{out}");
+    assert!(!err.contains("missing_lance_pointer"), "{err}");
+}

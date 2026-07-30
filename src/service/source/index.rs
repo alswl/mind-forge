@@ -73,11 +73,12 @@ struct DiskSource {
     source_kind: Option<SourceKind>,
 }
 
-fn source_kind_dir_name(source_kind: &SourceKind) -> &'static str {
+fn source_kind_dir_name(source_kind: &SourceKind) -> String {
     match source_kind {
-        SourceKind::Yuque => "yuque",
-        SourceKind::Meeting => "meeting",
-        SourceKind::Misc => "misc",
+        SourceKind::Yuque => "yuque".to_string(),
+        SourceKind::Meeting => "meeting".to_string(),
+        SourceKind::Misc => "misc".to_string(),
+        SourceKind::Other(value) => value.clone(),
     }
 }
 

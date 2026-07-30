@@ -40,6 +40,8 @@ pub enum SourceSubcommand {
     Remove(SourceRemoveArgs),
     #[command(about = "Rename a source")]
     Rename(SourceRenameArgs),
+    #[command(about = "Move a source to another project")]
+    Move(SourceMoveArgs),
     #[command(about = "Clean source index")]
     Clean(SourceCleanArgs),
     #[command(about = "Show source details")]
@@ -235,6 +237,15 @@ pub struct SourceRenameArgs {
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
+pub struct SourceMoveArgs {
+    pub path: String,
+    #[arg(long = "to-project")]
+    pub to_project: String,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
+}
+
+#[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceCleanArgs {
     #[command(flatten)]
     pub dry_run: DryRunFlag,
@@ -329,6 +340,7 @@ pub fn dispatch(command: SourceCmd, ctx: &mut CommandCtx) -> Result<CommandOutco
         Some(SourceSubcommand::Index(args)) => handle_index(args, ctx),
         Some(SourceSubcommand::Remove(args)) => handle_remove(args, ctx),
         Some(SourceSubcommand::Rename(args)) => handle_rename(args, ctx),
+        Some(SourceSubcommand::Move(args)) => handle_move(args, ctx),
         Some(SourceSubcommand::Clean(args)) => handle_clean(args, ctx),
         Some(SourceSubcommand::Show(args)) => handle_source_show(args, ctx),
         Some(SourceSubcommand::Search(args)) => handle_search(args, ctx, false),
@@ -390,7 +402,8 @@ fn handle_list(args: SourceListArgs, ctx: &CommandCtx) -> Result<CommandOutcome>
                     Some("yuque") => Some(SourceKind::Yuque),
                     Some("meeting") => Some(SourceKind::Meeting),
                     Some("misc") => Some(SourceKind::Misc),
-                    _ => None,
+                    Some(other) => Some(SourceKind::Other(other.to_string())),
+                    None => None,
                 };
                 Some(crate::model::source::Source {
                     name: registration.source_identity,
@@ -707,6 +720,41 @@ fn handle_clean(args: SourceCleanArgs, ctx: &CommandCtx) -> Result<CommandOutcom
 
 // ── Handle: mf source rename ────────────────────────────────────────────────
 
+fn handle_move(args: SourceMoveArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let source_project = svc_util::resolve_project(root, ctx.project(), ctx.cwd())?;
+    let target_project = svc_util::resolve_project(root, Some(&args.to_project), ctx.cwd())?;
+    let report = svc_source::move_source(&source_project, &target_project, &args.path, args.dry_run.dry_run)?;
+    let mut rag_indexed = false;
+    let mut warnings = Vec::new();
+    if !report.dry_run
+        && let Ok(config) = svc_source::advanced::config::load_repository_config(root)
+        && config.is_lance()
+    {
+        match svc_source::advanced::sync::sync_repository(root, &config, None, None, false, true) {
+            Ok(_) => rag_indexed = true,
+            Err(error) => warnings.push(format!("RAG re-key deferred; run `mf source sync` ({error})")),
+        }
+    }
+    let result = VerbResult {
+        verb: Verb::Move,
+        kind: "source",
+        identity: report.name.clone(),
+        old_identity: Some(report.old_path.clone()),
+        path: Some(report.new_path.clone()),
+        dry_run: report.dry_run,
+        details: serde_json::json!({"name": report.name, "old_path": report.old_path, "new_path": report.new_path, "dry_run": report.dry_run, "rag_indexed": rag_indexed}),
+    };
+    match ctx.format() {
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings.clone(), None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            warnings,
+            None,
+        )),
+    }
+}
+
 fn handle_rename(args: SourceRenameArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     let repo_root = ctx.require_repo_path()?;
     let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
@@ -981,6 +1029,7 @@ fn source_add_outcome(
             svc_source::AddMode::Register => "register",
         },
         "replaced": outcome.replaced,
+        "rag_indexed": outcome.indexing.as_ref().is_some_and(|indexing| indexing.indexed),
     });
     if let Some(ref key) = outcome.registration_key {
         details["registration_key"] = serde_json::Value::String(key.clone());

@@ -190,6 +190,19 @@ pub struct RepositorySourceConfig {
     pub advanced: Option<AdvancedSourceConfig>,
 }
 
+/// Machine-local Lance activation state. This is deliberately separate from
+/// tracked `minds.yaml`: the active generation is a per-worktree cache fact,
+/// not human-authored repository configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LocalSourceState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activation_snapshot_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activation_catalog_fingerprint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage_schema_version: Option<String>,
+}
+
 impl Default for RepositorySourceConfig {
     fn default() -> Self {
         Self {

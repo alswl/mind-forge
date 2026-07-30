@@ -5,12 +5,14 @@ pub mod completion;
 pub mod config;
 pub mod deprecation;
 pub mod project;
+pub mod prompt;
 pub mod publish;
 pub mod render;
 pub mod shared_flags;
 pub mod source;
 pub mod source_rag;
 pub mod term;
+pub mod thinking;
 pub mod version;
 
 use std::path::PathBuf;
@@ -135,6 +137,10 @@ pub enum TopLevelCommand {
     Project(project::ProjectCmd),
     #[command(about = "Manage articles")]
     Article(article::ArticleCmd),
+    #[command(about = "View prompt projections")]
+    Prompt(prompt::PromptCmd),
+    #[command(about = "View thinking projections")]
+    Thinking(thinking::ThinkingCmd),
     #[command(about = "Manage content sources")]
     Source(source::SourceCmd),
     #[command(about = "Search the repository-wide RAG corpus")]
@@ -192,6 +198,8 @@ impl RootCli {
             Some(TopLevelCommand::Asset(command)) => asset::dispatch(command, ctx),
             Some(TopLevelCommand::Project(command)) => project::dispatch(command, ctx),
             Some(TopLevelCommand::Article(command)) => article::dispatch(command, ctx),
+            Some(TopLevelCommand::Prompt(command)) => prompt::dispatch(command, ctx),
+            Some(TopLevelCommand::Thinking(command)) => thinking::dispatch(command, ctx),
             Some(TopLevelCommand::Term(command)) => term::dispatch(command, ctx),
             Some(TopLevelCommand::Completion(command)) => completion::dispatch(command, ctx),
             Some(TopLevelCommand::Build(args)) => build::dispatch(args, ctx),

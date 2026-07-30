@@ -110,7 +110,7 @@ fn index_rejects_incompatible_schema() {
     let ds = Dataset::incompatible_schema().with_project("p1");
 
     let (_, stderr, code) = run_in(ds.root(), &["project", "index"]);
-    assert_eq!(code, 1);
+    assert_eq!(code, 2);
     assert!(stderr.contains("incompatible schema"));
 }
 

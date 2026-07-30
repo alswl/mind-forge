@@ -1,5 +1,71 @@
 use super::*;
 
+fn resolve_article_for_edit(project_path: &Path, selector: &str) -> Result<String> {
+    resolve_article_path(project_path, selector)
+}
+
+fn edit_outcome(project_path: &Path, format: Format, report: article_svc::BlockEditReport) -> Result<CommandOutcome> {
+    let result = VerbResult {
+        verb: Verb::Update,
+        kind: "block",
+        identity: report
+            .new_path
+            .clone()
+            .or_else(|| report.old_path.clone())
+            .unwrap_or_else(|| report.article_path.clone()),
+        old_identity: report.old_path.clone(),
+        path: report.new_path.clone(),
+        dry_run: report.dry_run,
+        details: serde_json::json!({"article_path": report.article_path, "old_path": report.old_path, "new_path": report.new_path, "order": report.order}),
+    };
+    match format {
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path)))),
+            Vec::new(),
+            None,
+        )),
+    }
+}
+
+pub(super) fn handle_block_new(args: ArticleBlockNewArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let project = svc_util::resolve_project(root, ctx.project(), ctx.cwd())?;
+    let article = resolve_article_for_edit(&project, &args.article)?;
+    let report = article_svc::new_block(
+        &project,
+        &article,
+        &args.slug,
+        args.after.as_deref(),
+        args.start,
+        args.dry_run.dry_run,
+    )?;
+    edit_outcome(&project, ctx.format(), report)
+}
+
+pub(super) fn handle_block_move(args: ArticleBlockMoveArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let project = svc_util::resolve_project(root, ctx.project(), ctx.cwd())?;
+    let article = resolve_article_for_edit(&project, &args.article)?;
+    let report = article_svc::move_block(
+        &project,
+        &article,
+        &args.block,
+        args.after.as_deref(),
+        args.start,
+        args.dry_run.dry_run,
+    )?;
+    edit_outcome(&project, ctx.format(), report)
+}
+
+pub(super) fn handle_block_renumber(args: ArticleBlockRenumberArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let project = svc_util::resolve_project(root, ctx.project(), ctx.cwd())?;
+    let article = resolve_article_for_edit(&project, &args.article)?;
+    let report = article_svc::renumber_blocks(&project, &article, args.start, args.dry_run.dry_run)?;
+    edit_outcome(&project, ctx.format(), report)
+}
+
 /// Resolve an article selector (title or path) against the project index,
 /// returning the canonical project-relative article path. Shared by the
 /// `block rename` and `block rm` handlers.

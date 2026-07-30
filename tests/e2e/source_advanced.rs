@@ -102,6 +102,30 @@ fn synced_repo() -> Dataset {
 }
 
 #[test]
+fn missing_cache_is_rebootstrapped_and_advanced_reads_explain_recovery() {
+    let ds = synced_repo();
+    let cache = ds.root().join(".mind-forge/cache");
+    std::fs::remove_dir_all(&cache).expect("remove derived cache");
+
+    let (stdout, stderr, code) = run_in(ds.root(), &["source", "search", "quantum", "--mode", "advanced"]);
+    assert_ne!(code, 0, "advanced search must not silently rebuild: {stdout}\n{stderr}");
+    let combined = format!("{stdout}{stderr}");
+    assert!(combined.contains("mf source sync"), "recovery hint missing: {combined}");
+
+    std::fs::write(ds.root().join("new-source.md"), "registered after cache loss\n").unwrap();
+    let (stdout, stderr, code) =
+        run_in(ds.root(), &["source", "new", "new-source.md", "--project", "alpha", "--no-index"]);
+    assert_eq!(code, 0, "registration must not require the missing pointer: {stdout}\n{stderr}");
+
+    let (stdout, stderr, code) = run_in(ds.root(), &["source", "sync", "--offline"]);
+    assert_eq!(code, 0, "sync should rebuild the missing cache: {stdout}\n{stderr}");
+    assert!(
+        ds.root().join(".mind-forge/cache/source/advanced/current.json").exists(),
+        "sync must restore the Lance pointer"
+    );
+}
+
+#[test]
 fn advanced_search_matches_chinese_via_icu_tokenizer() {
     // Chinese has no word spaces, so the default `simple` FTS tokenizer cannot
     // match it. The index is built with ICU segmentation so both CJK and

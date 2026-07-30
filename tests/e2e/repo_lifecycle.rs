@@ -109,12 +109,12 @@ fn incompatible_schema_reports_error() {
 
     // project list 现在读取 manifest，应报错
     let (_, stderr, code) = run_in(ds.root(), &["project", "list"]);
-    assert_eq!(code, 1, "list now reads manifest -> incompatible schema error");
+    assert_eq!(code, 2, "list now reads manifest -> incompatible schema usage error");
     assert!(stderr.contains("incompatible schema"), "stderr: {stderr}");
 
     // project index 读取 manifest，应报错
     let (_, stderr, code) = run_in(ds.root(), &["project", "index"]);
-    assert_eq!(code, 1);
+    assert_eq!(code, 2);
     assert!(stderr.contains("incompatible schema"));
 }
 

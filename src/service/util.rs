@@ -47,6 +47,16 @@ pub fn atomic_write(path: &Path, content: &str) -> Result<()> {
     Ok(())
 }
 
+/// Dry-run-aware variant of [`atomic_write`]. Returns whether a write would
+/// have occurred, while preserving the original helper for existing callers.
+pub fn atomic_write_dry_run(path: &Path, content: &str, dry_run: bool) -> Result<bool> {
+    if dry_run {
+        return Ok(true);
+    }
+    atomic_write(path, content)?;
+    Ok(false)
+}
+
 /// Validate that `version` is among the compatible schema versions.
 ///
 /// The compatible set is `["1"]` for the current generation.
@@ -96,6 +106,18 @@ pub fn atomic_write_directory(target: &Path, files: &[(&str, &str)]) -> Result<(
         MfError::Io(e)
     })?;
     Ok(())
+}
+
+/// Dry-run-aware directory write seam. Validation and planning remain the
+/// caller's responsibility; this function guarantees no filesystem mutation
+/// when `dry_run` is set.
+#[allow(dead_code)]
+pub fn atomic_write_directory_dry_run(target: &Path, files: &[(&str, &str)], dry_run: bool) -> Result<bool> {
+    if dry_run {
+        return Ok(true);
+    }
+    atomic_write_directory(target, files)?;
+    Ok(false)
 }
 
 /// Return the modification time of `path` as RFC 3339 UTC string
@@ -578,5 +600,21 @@ mod tests {
             .collect();
         assert!(siblings.is_empty(), "no tmp dir left behind");
         let _ = result;
+    }
+
+    #[test]
+    fn atomic_write_dry_run_does_not_create_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("new.yaml");
+        assert!(atomic_write_dry_run(&path, "value: true\n", true).unwrap());
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn atomic_write_directory_dry_run_does_not_create_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("article");
+        assert!(atomic_write_directory_dry_run(&target, &[("01.md", "body\n")], true).unwrap());
+        assert!(!target.exists());
     }
 }

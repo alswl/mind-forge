@@ -240,6 +240,13 @@ pub fn search_repository(
 fn open_active_store(repo_root: &Path) -> Result<Option<super::lance_store::LanceStore>> {
     let config = super::config::load_repository_config(repo_root)?;
     config.require_current_schema()?;
+    if config.is_marker_corrupt {
+        return Err(MfError::missing_lance_pointer(
+            "missing",
+            "Lance activation state exists but its current store cannot be resolved".to_string(),
+            Some("run `mf source sync` to rebuild the missing local store".to_string()),
+        ));
+    }
     if config.is_legacy() {
         return Ok(None);
     }
@@ -249,7 +256,7 @@ fn open_active_store(repo_root: &Path) -> Result<Option<super::lance_store::Lanc
         MfError::missing_lance_pointer(
             "missing",
             "Lance backend is active but current.json is absent".to_string(),
-            Some("run `mf source admin recover --snapshot ID --yes`".to_string()),
+            Some("run `mf source sync` to rebuild the missing local store".to_string()),
         )
     })?;
     let relative = Path::new(&pointer.database_uri)

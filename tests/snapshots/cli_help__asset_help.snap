@@ -14,6 +14,7 @@ Commands:
   clean   Clean stale asset index entries
   remove  Remove an asset [aliases: rm]
   rename  Rename an asset
+  move    Move an asset to another project
   show    Show asset details
 
 Options:

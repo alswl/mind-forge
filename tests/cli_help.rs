@@ -234,6 +234,20 @@ fn article_help_snapshot() {
 }
 
 #[test]
+fn prompt_help_snapshot() {
+    let (stdout, _, code) = run(&["prompt", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("prompt_help", stdout);
+}
+
+#[test]
+fn thinking_help_snapshot() {
+    let (stdout, _, code) = run(&["thinking", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("thinking_help", stdout);
+}
+
+#[test]
 fn article_new_help_snapshot() {
     let (stdout, _, code) = run(&["article", "new", "--help"]);
     assert_eq!(code, 0);
