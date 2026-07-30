@@ -4,6 +4,7 @@ mod convert;
 mod index;
 mod lint;
 mod list;
+mod r#move;
 mod new;
 mod remove;
 mod rename;
@@ -15,6 +16,7 @@ pub use self::binding::{
     prompt_view_for_article, prompt_views_by_article, thinking_view_for_article, thinking_views_by_key,
 };
 pub use self::block::remove_block;
+pub use self::block::{BlockEditReport, move_block, new_block, renumber_blocks};
 pub use self::convert::{
     execute_to_directory, execute_to_single_file, list_section_files, plan_conversion, plausible_directions,
     update_index_for_conversion, update_prompt_binding_for_conversion,
@@ -25,9 +27,9 @@ pub use self::index::{
 };
 pub use self::lint::lint_articles;
 pub use self::list::{article_file_mtime, effective_article_dir, list_articles, list_articles_all_projects};
+pub use self::r#move::move_article;
 pub use self::new::new_article;
 pub use self::remove::remove_article;
 pub use self::rename::{rename_article, rename_block};
-pub use self::template::{resolve_template, validate_template_blocks};
 pub use self::typora::{compute_typora_assets_path, effective_typora_enabled, inject_typora_front_matter};
 pub use self::update::{ArticleUpdate, update_article};

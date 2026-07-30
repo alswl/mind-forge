@@ -1,6 +1,38 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Assert that a command left a fixture tree byte-for-byte unchanged.
+#[allow(dead_code)]
+pub fn assert_tree_unchanged(dir: &Path, before: &[(PathBuf, Vec<u8>)]) {
+    let mut actual = Vec::new();
+    collect_tree(dir, dir, &mut actual);
+    actual.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut expected = before.to_vec();
+    expected.sort_by(|a, b| a.0.cmp(&b.0));
+    assert_eq!(actual, expected, "command mutated the fixture tree");
+}
+
+#[allow(dead_code)]
+pub fn snapshot_tree(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+    let mut files = Vec::new();
+    collect_tree(dir, dir, &mut files);
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    files
+}
+
+fn collect_tree(root: &Path, current: &Path, out: &mut Vec<(PathBuf, Vec<u8>)>) {
+    let entries = fs::read_dir(current).unwrap();
+    for entry in entries {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.is_dir() {
+            collect_tree(root, &path, out);
+        } else {
+            out.push((path.strip_prefix(root).unwrap().to_path_buf(), fs::read(path).unwrap()));
+        }
+    }
+}
+
 pub use tempfile::TempDir;
 
 pub mod embedding_provider;
@@ -27,6 +59,21 @@ pub fn setup_git_repo() -> TempDir {
     std::process::Command::new("git").args(["config", "user.name", "Test"]).current_dir(dir.path()).output().unwrap();
     // Stage minds.yaml so git mv works
     std::process::Command::new("git").args(["add", "minds.yaml"]).current_dir(dir.path()).output().unwrap();
+    dir
+}
+
+/// Fixture for activation-recovery tests: tracked config declares Lance while
+/// the per-worktree marker is present but the computed cache/pointer is absent.
+#[allow(dead_code)]
+pub fn setup_lance_marker_empty_cache() -> TempDir {
+    let dir = setup_repo();
+    fs::create_dir_all(dir.path().join(".mind-forge")).unwrap();
+    fs::write(dir.path().join("minds.yaml"), "schema: '1'\nprojects: []\nsource:\n  backend: lance\n").unwrap();
+    fs::write(
+        dir.path().join(".mind-forge/state.yaml"),
+        "activation_snapshot_id: snap-missing\nactivation_catalog_fingerprint: fp\nstorage_schema_version: '2'\n",
+    )
+    .unwrap();
     dir
 }
 

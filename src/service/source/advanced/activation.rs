@@ -277,7 +277,8 @@ pub fn activate(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<Activ
     };
     publication::write_pointer(&advanced_dir, &pointer)?;
 
-    // 5. Atomically patch minds.yaml to set the Lance marker
+    // 5. Keep backend selection in tracked config; activation identity is
+    // machine-local state for this worktree.
     patch_backend_marker(repo_root, &snapshot_id, &catalog_fp)?;
 
     publication::release_writer_lock(lock_file);
@@ -290,8 +291,8 @@ pub fn activate(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<Activ
     })
 }
 
-/// Atomically patch `minds.yaml` to set `source.backend: lance` with the
-/// activation marker fields. Preserves all other YAML content.
+/// Atomically patch `minds.yaml` to set `source.backend: lance`, then persist
+/// the activation marker in the gitignored local state file.
 fn patch_backend_marker(repo_root: &Path, snapshot_id: &str, catalog_fingerprint: &str) -> Result<()> {
     let minds_yaml = repo_root.join("minds.yaml");
     let original = if minds_yaml.exists() {
@@ -314,10 +315,9 @@ fn patch_backend_marker(repo_root: &Path, snapshot_id: &str, catalog_fingerprint
         let source_block =
             map.get_mut(&source_key).and_then(serde_yaml::Value::as_mapping_mut).expect("source is a mapping");
         source_block.insert("backend".into(), serde_yaml::Value::String("lance".into()));
-        source_block.insert("activation_snapshot_id".into(), serde_yaml::Value::String(snapshot_id.into()));
-        source_block
-            .insert("activation_catalog_fingerprint".into(), serde_yaml::Value::String(catalog_fingerprint.into()));
-        source_block.insert("storage_schema_version".into(), serde_yaml::Value::String(STORAGE_SCHEMA_VERSION.into()));
+        source_block.remove("activation_snapshot_id");
+        source_block.remove("activation_catalog_fingerprint");
+        source_block.remove("storage_schema_version");
     }
 
     let updated = serde_yaml::to_string(&root)
@@ -332,35 +332,38 @@ fn patch_backend_marker(repo_root: &Path, snapshot_id: &str, catalog_fingerprint
         dir.sync_all()?;
     }
 
+    crate::service::repo::save_local_state(
+        repo_root,
+        &crate::model::manifest::LocalSourceState {
+            activation_snapshot_id: Some(snapshot_id.to_string()),
+            activation_catalog_fingerprint: Some(catalog_fingerprint.to_string()),
+            storage_schema_version: Some(STORAGE_SCHEMA_VERSION.to_string()),
+        },
+    )?;
+
     Ok(())
 }
 
-/// Rewrite only `minds.yaml.source.storage_schema_version` to the current
-/// version. Used by `rebuild` to adopt schema v2 after regenerating the
-/// context-enriched primary + derived tables. No-op fields are preserved.
+/// Adopt the current storage schema after rebuilding the derived tables.
+/// Legacy tracked marker fields are removed so local state is authoritative.
 pub fn upgrade_storage_schema_version(repo_root: &Path) -> Result<()> {
+    let mut state = crate::service::repo::load_local_state(repo_root)?;
+    state.storage_schema_version = Some(STORAGE_SCHEMA_VERSION.to_string());
+    crate::service::repo::save_local_state(repo_root, &state)?;
+
     let minds_yaml = repo_root.join("minds.yaml");
-    if !minds_yaml.exists() {
-        return Ok(());
-    }
-    let original = fs::read_to_string(&minds_yaml)?;
-    let mut root: serde_yaml::Value = serde_yaml::from_str(&original)
-        .map_err(|e| MfError::advanced_store(format!("cannot parse minds.yaml: {e}"), None))?;
-    if let serde_yaml::Value::Mapping(ref mut map) = root {
-        let source_key = serde_yaml::Value::String("source".to_string());
-        if let Some(serde_yaml::Value::Mapping(source_block)) = map.get_mut(&source_key) {
-            source_block
-                .insert("storage_schema_version".into(), serde_yaml::Value::String(STORAGE_SCHEMA_VERSION.into()));
+    if minds_yaml.exists() {
+        let original = fs::read_to_string(&minds_yaml)?;
+        let mut root: serde_yaml::Value = serde_yaml::from_str(&original)
+            .map_err(|e| MfError::advanced_store(format!("cannot parse minds.yaml: {e}"), None))?;
+        if let Some(source) = root.get_mut("source").and_then(serde_yaml::Value::as_mapping_mut) {
+            for field in ["activation_snapshot_id", "activation_catalog_fingerprint", "storage_schema_version"] {
+                source.remove(serde_yaml::Value::String(field.to_string()));
+            }
+            let updated = serde_yaml::to_string(&root)
+                .map_err(|e| MfError::advanced_store(format!("cannot serialize minds.yaml: {e}"), None))?;
+            crate::service::util::atomic_write(&minds_yaml, &updated)?;
         }
-    }
-    let updated = serde_yaml::to_string(&root)
-        .map_err(|e| MfError::advanced_store(format!("cannot serialize minds.yaml: {e}"), None))?;
-    let tmp = minds_yaml.with_extension("tmp");
-    fs::write(&tmp, &updated)?;
-    fs::rename(&tmp, &minds_yaml)?;
-    if let Some(parent) = minds_yaml.parent() {
-        let dir = fs::File::open(parent)?;
-        dir.sync_all()?;
     }
     Ok(())
 }
@@ -391,6 +394,7 @@ pub fn disable_backend(repo_root: &Path) -> Result<()> {
     if let Some(parent) = minds_yaml.parent() {
         fs::File::open(parent)?.sync_all()?;
     }
+    crate::service::repo::save_local_state(repo_root, &Default::default())?;
     Ok(())
 }
 

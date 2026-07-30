@@ -701,7 +701,7 @@ pub(crate) fn open_active_store(repo_root: &Path) -> Result<LanceStore> {
         crate::error::MfError::missing_lance_pointer(
             "missing",
             "Lance backend is active but current.json is absent".to_string(),
-            Some("run `mf source admin recover --snapshot ID --yes`".to_string()),
+            Some("run `mf source sync` to rebuild the missing local store".to_string()),
         )
     })?;
     let relative = pointer.database_uri.strip_prefix("./").ok_or_else(|| {

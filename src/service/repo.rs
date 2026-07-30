@@ -11,7 +11,7 @@ use chrono::Utc;
 use serde::Serialize;
 
 use crate::error::{MfError, Result};
-use crate::model::manifest::{MindsManifest, ProjectEntry, default_projects_dir};
+use crate::model::manifest::{LocalSourceState, MindsManifest, ProjectEntry, default_projects_dir};
 use crate::runtime::repo::detect_repo_root;
 use crate::service::util;
 
@@ -139,6 +139,36 @@ pub fn save_manifest(manifest: &MindsManifest, path: &Path) -> Result<()> {
     util::atomic_write(path, &content)
 }
 
+const LOCAL_STATE_RELATIVE_PATH: &str = ".mind-forge/state.yaml";
+
+pub fn local_state_path(repo_root: &Path) -> PathBuf {
+    repo_root.join(LOCAL_STATE_RELATIVE_PATH)
+}
+
+pub fn load_local_state(repo_root: &Path) -> Result<LocalSourceState> {
+    let path = local_state_path(repo_root);
+    match fs::read_to_string(&path) {
+        Ok(content) if !content.trim().is_empty() => serde_yaml::from_str(&content).map_err(|e| MfError::ParseError {
+            kind: "yaml".to_string(),
+            path,
+            detail: e.to_string(),
+        }),
+        Ok(content) if content.trim().is_empty() => Ok(LocalSourceState::default()),
+        Ok(_) => Ok(LocalSourceState::default()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(LocalSourceState::default()),
+        Err(e) => Err(MfError::Io(e)),
+    }
+}
+
+pub fn save_local_state(repo_root: &Path, state: &LocalSourceState) -> Result<()> {
+    let path = local_state_path(repo_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(MfError::Io)?;
+    }
+    let content = serde_yaml::to_string(state).map_err(|e| MfError::Internal(e.into()))?;
+    util::atomic_write(&path, &content)
+}
+
 fn serialize_mind_manifest(manifest: &MindsManifest) -> std::result::Result<String, serde_yaml::Error> {
     let mut map = serde_yaml::Mapping::new();
     map.insert(
@@ -155,6 +185,15 @@ fn serialize_mind_manifest(manifest: &MindsManifest) -> std::result::Result<Stri
         .map(|project| serde_yaml::Value::String(project_path_for_mind_manifest(&project.path)))
         .collect();
     map.insert(serde_yaml::Value::String("projects".to_string()), serde_yaml::Value::Sequence(projects));
+    if let Some(source) = &manifest.source {
+        let mut source_value = serde_yaml::to_value(source)?;
+        if let serde_yaml::Value::Mapping(source_map) = &mut source_value {
+            for key in ["activation_snapshot_id", "activation_catalog_fingerprint", "storage_schema_version"] {
+                source_map.remove(serde_yaml::Value::String(key.to_string()));
+            }
+        }
+        map.insert(serde_yaml::Value::String("source".to_string()), source_value);
+    }
     serde_yaml::to_string(&serde_yaml::Value::Mapping(map))
 }
 
@@ -192,6 +231,49 @@ fn project_name_from_relpath(path: &str) -> String {
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| path.to_string())
+}
+
+#[cfg(test)]
+mod local_state_tests {
+    use super::*;
+
+    #[test]
+    fn local_state_round_trips_without_touching_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest_path = dir.path().join("minds.yaml");
+        fs::write(&manifest_path, "schema: '1'\nprojects: []\n").unwrap();
+        let before = fs::read(&manifest_path).unwrap();
+        let state = LocalSourceState {
+            activation_snapshot_id: Some("snap".to_string()),
+            activation_catalog_fingerprint: Some("fp".to_string()),
+            storage_schema_version: Some("2".to_string()),
+        };
+        save_local_state(dir.path(), &state).unwrap();
+        assert_eq!(load_local_state(dir.path()).unwrap(), state);
+        assert_eq!(fs::read(&manifest_path).unwrap(), before);
+        assert!(local_state_path(dir.path()).ends_with(".mind-forge/state.yaml"));
+    }
+
+    #[test]
+    fn save_manifest_keeps_backend_but_omits_activation_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("minds.yaml");
+        let mut manifest = MindsManifest::create_default();
+        manifest.source = Some(crate::model::manifest::RepositorySourceConfig {
+            backend: crate::model::manifest::SourceBackend::Lance,
+            activation_snapshot_id: Some("snap".into()),
+            activation_catalog_fingerprint: Some("fp".into()),
+            storage_schema_version: Some("2".into()),
+            search: None,
+            advanced: None,
+        });
+        save_manifest(&manifest, &path).unwrap();
+        let content = fs::read_to_string(path).unwrap();
+        assert!(content.contains("backend: lance"));
+        assert!(!content.contains("activation_snapshot_id"));
+        assert!(!content.contains("activation_catalog_fingerprint"));
+        assert!(!content.contains("storage_schema_version"));
+    }
 }
 
 // ---------------------------------------------------------------------------

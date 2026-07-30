@@ -19,19 +19,24 @@ use super::{compute_typora_assets_path, effective_typora_enabled, inject_typora_
 /// Handles both directory mode (default) and file mode (`--file`). The
 /// template arg is resolved via [`builtin_template`] first and falls back
 /// to a project-root-relative path lookup.
+#[allow(clippy::too_many_arguments)]
 pub fn new_article(
     project_path: &Path,
     title: &str,
+    slug: Option<&str>,
     template_arg: &str,
     file_mode: bool,
     tags: &[String],
     draft: bool,
     force: bool,
+    dry_run: bool,
 ) -> Result<NewArticleResult> {
-    let filename = util::to_filename(title);
+    let filename = slug.map(str::to_string).unwrap_or_else(|| util::to_filename(title));
     let layout = config_svc::effective_layout(project_path)?;
     let docs_dir = project_path.join(&layout.articles);
-    fs::create_dir_all(&docs_dir).map_err(MfError::Io)?;
+    if !dry_run {
+        fs::create_dir_all(&docs_dir).map_err(MfError::Io)?;
+    }
 
     // Resolve template
     let (resolved_body, article_type, template_label) = if let Some((body, at)) = builtin_template(template_arg) {
@@ -78,6 +83,7 @@ pub fn new_article(
             article_type,
             draft,
             force,
+            dry_run,
         )
     } else {
         write_article_directory(
@@ -91,6 +97,7 @@ pub fn new_article(
             article_type,
             draft,
             force,
+            dry_run,
         )
     }?;
 
@@ -136,6 +143,7 @@ fn write_article_file(
     article_type: ArticleType,
     draft: bool,
     force: bool,
+    dry_run: bool,
 ) -> Result<Vec<String>> {
     let file_path = project_path.join(format!("{docs}/{slug}.{}", defaults::MARKDOWN_EXTENSION));
     let dir_path = project_path.join(format!("{docs}/{slug}"));
@@ -152,9 +160,13 @@ fn write_article_file(
 
     let backup_path = if file_path.exists() {
         if force {
-            let backup_path = sibling_backup_path(&file_path);
-            fs::rename(&file_path, &backup_path).map_err(MfError::Io)?;
-            Some(backup_path)
+            if dry_run {
+                None
+            } else {
+                let backup_path = sibling_backup_path(&file_path);
+                fs::rename(&file_path, &backup_path).map_err(MfError::Io)?;
+                Some(backup_path)
+            }
         } else {
             return Err(MfError::file_exists(file_path));
         }
@@ -168,6 +180,12 @@ fn write_article_file(
         content.to_string()
     };
 
+    if dry_run {
+        let article_path = format!("{docs}/{file_name}");
+        write_index_entry(project_path, title, article_type, &article_path, now, draft, force, true)?;
+        return Ok(vec![file_name]);
+    }
+
     if let Err(e) = fs::write(&file_path, content).map_err(MfError::Io) {
         if let Some(backup_path) = &backup_path {
             let _ = fs::rename(backup_path, &file_path);
@@ -176,7 +194,7 @@ fn write_article_file(
     }
 
     let article_path = format!("{docs}/{file_name}");
-    match write_index_entry(project_path, title, article_type, &article_path, now, draft, force) {
+    match write_index_entry(project_path, title, article_type, &article_path, now, draft, force, false) {
         Ok(()) => {
             if let Some(backup_path) = backup_path {
                 let _ = fs::remove_file(backup_path);
@@ -205,6 +223,7 @@ fn write_article_directory(
     article_type: ArticleType,
     draft: bool,
     force: bool,
+    dry_run: bool,
 ) -> Result<Vec<String>> {
     let dir_path = project_path.join(format!("{docs}/{slug}"));
     let file_path = project_path.join(format!("{docs}/{slug}.{}", defaults::MARKDOWN_EXTENSION));
@@ -220,9 +239,13 @@ fn write_article_directory(
 
     let backup_path = if dir_path.exists() {
         if force {
-            let backup_path = sibling_backup_path(&dir_path);
-            fs::rename(&dir_path, &backup_path).map_err(MfError::Io)?;
-            Some(backup_path)
+            if dry_run {
+                None
+            } else {
+                let backup_path = sibling_backup_path(&dir_path);
+                fs::rename(&dir_path, &backup_path).map_err(MfError::Io)?;
+                Some(backup_path)
+            }
         } else {
             return Err(MfError::file_exists(dir_path));
         }
@@ -238,6 +261,11 @@ fn write_article_directory(
     }
     let files: Vec<String> = blocks.iter().map(|(filename, _)| filename.clone()).collect();
     let block_refs: Vec<(&str, &str)> = blocks.iter().map(|(f, b)| (f.as_str(), b.as_str())).collect();
+    if dry_run {
+        let article_path = format!("{docs}/{slug}");
+        write_index_entry(project_path, title, article_type, &article_path, now, draft, force, true)?;
+        return Ok(files);
+    }
     if let Err(e) = util::atomic_write_directory(&dir_path, &block_refs) {
         if let Some(backup_path) = &backup_path {
             let _ = fs::rename(backup_path, &dir_path);
@@ -246,7 +274,7 @@ fn write_article_directory(
     }
 
     let article_path = format!("{docs}/{slug}");
-    match write_index_entry(project_path, title, article_type, &article_path, now, draft, force) {
+    match write_index_entry(project_path, title, article_type, &article_path, now, draft, force, false) {
         Ok(()) => {
             if let Some(backup_path) = backup_path {
                 let _ = fs::remove_dir_all(backup_path);
@@ -263,6 +291,7 @@ fn write_article_directory(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_index_entry(
     project_path: &Path,
     title: &str,
@@ -271,6 +300,7 @@ fn write_index_entry(
     now: &str,
     draft: bool,
     force: bool,
+    dry_run: bool,
 ) -> Result<()> {
     let project_name = util::dir_name(project_path);
     let mut index = index::load(project_path)?;
@@ -291,6 +321,8 @@ fn write_index_entry(
         updated_at: now.to_string(),
         template_origin: None,
     });
-    index::save(project_path, &index)?;
+    if !dry_run {
+        index::save(project_path, &index)?;
+    }
     Ok(())
 }

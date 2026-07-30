@@ -1,4 +1,3 @@
-use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use crate::error::{MfError, Result};
@@ -51,34 +50,6 @@ pub(crate) fn resolve_custom_template_path(project_path: &Path, template_arg: &s
         let _ = util::canonicalize_within(project_path, parent)?;
     }
     Ok(tmpl_path)
-}
-
-/// Resolve a template argument into the body string.
-///
-/// Checks builtin templates first, then falls back to a project-root-relative
-/// file lookup. Used by both the real and dry-run article creation paths.
-pub fn resolve_template(project_path: &Path, template_arg: &str, title: &str) -> Result<String> {
-    if let Some((body, _at)) = builtin_template(template_arg) {
-        return Ok(body.replace("{title}", title));
-    }
-    let tmpl_path = resolve_custom_template_path(project_path, template_arg)?;
-    let body = fs::read_to_string(&tmpl_path).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            MfError::UnknownTemplate { name: template_arg.to_string() }
-        } else {
-            MfError::Io(e)
-        }
-    })?;
-    Ok(body.replace("{title}", title))
-}
-
-/// Validate that a resolved template body parses without duplicate block slugs.
-///
-/// Runs `split_template_into_blocks` and discards the result on success.
-/// Returns [`MfError::DuplicateBlockSlug`] when validation fails.
-pub fn validate_template_blocks(resolved: &str) -> Result<()> {
-    split_template_into_blocks(resolved)?;
-    Ok(())
 }
 
 /// Split a resolved template body into block files for a directory article.

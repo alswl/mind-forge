@@ -37,6 +37,46 @@ fn sync_idempotent_no_error() {
 }
 
 #[test]
+fn sync_keeps_minds_yaml_stable_and_writes_local_marker() {
+    let repo = provider_repo();
+    let minds_before = std::fs::read(repo.path().join("minds.yaml")).unwrap();
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
+    assert_eq!(code, 0, "sync failed\nstdout:{stdout}\nstderr:{stderr}");
+    assert_eq!(minds_before, std::fs::read(repo.path().join("minds.yaml")).unwrap());
+    let state = std::fs::read_to_string(repo.path().join(".mind-forge/state.yaml")).unwrap();
+    assert!(state.contains("activation_snapshot_id"));
+    assert!(state.contains("storage_schema_version"));
+}
+
+#[test]
+fn sync_does_not_block_branch_checkout_with_minds_yaml_changes() {
+    let repo = provider_repo();
+    let root = repo.path();
+    for args in [
+        &["init"][..],
+        &["config", "user.email", "test@example.com"],
+        &["config", "user.name", "Mind Forge Tests"],
+        &["add", "minds.yaml"],
+        &["commit", "-m", "baseline"],
+        &["branch", "alternate"],
+    ] {
+        let output = std::process::Command::new("git").args(args).current_dir(root).output().unwrap();
+        assert!(output.status.success(), "git {:?} failed: {}", args, String::from_utf8_lossy(&output.stderr));
+    }
+
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
+    assert_eq!(code, 0, "sync failed\nstdout:{stdout}\nstderr:{stderr}");
+    let checkout =
+        std::process::Command::new("git").args(["checkout", "alternate"]).current_dir(root).output().unwrap();
+    assert!(
+        checkout.status.success(),
+        "checkout must not be blocked by minds.yaml changes: {}",
+        String::from_utf8_lossy(&checkout.stderr)
+    );
+    assert!(!String::from_utf8_lossy(&checkout.stderr).contains("local changes would be overwritten"));
+}
+
+#[test]
 fn retained_snapshots_count_increases_after_multiple_syncs() {
     let repo = synced_repo();
     // Force a content change then re-sync to create another snapshot.

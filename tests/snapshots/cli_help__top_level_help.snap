@@ -11,6 +11,8 @@ Commands:
   init        Initialize a directory as a Mind Repo
   project     Manage projects
   article     Manage articles
+  prompt      View prompt projections
+  thinking    View thinking projections
   source      Manage content sources
   search      Search the repository-wide RAG corpus
   asset       Manage project assets

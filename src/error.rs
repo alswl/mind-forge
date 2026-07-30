@@ -207,7 +207,6 @@ impl MfError {
         match self {
             Self::Usage { .. } => ExitCode::UsageError,
             Self::NotInMindRepo { .. }
-            | Self::IncompatibleSchema { .. }
             | Self::ParseError { .. }
             | Self::FileExists { .. }
             | Self::NotFound { .. }
@@ -217,6 +216,7 @@ impl MfError {
             | Self::InvalidTemplateName { .. }
             | Self::NoArticleFiles { .. }
             | Self::BuildArtifactMissing { .. } => ExitCode::Failure,
+            Self::IncompatibleSchema { .. } => ExitCode::UsageError,
             Self::NotImplemented { .. } => ExitCode::NotImplemented,
             Self::UnknownTemplate { .. } => ExitCode::UsageError,
             Self::DuplicateBlockSlug { .. } | Self::ShapeConflict { .. } => ExitCode::Failure,
@@ -447,6 +447,7 @@ mod tests {
             expected: vec!["1".to_string()],
         };
         assert_eq!(err.kind(), "incompatible_schema");
+        assert_eq!(err.exit_code(), ExitCode::UsageError);
     }
 
     // ── hint tests (US9 / T066) ──

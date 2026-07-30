@@ -16,8 +16,40 @@ pub fn load_repository_config(repo_root: &std::path::Path) -> Result<ResolvedSou
     if !manifest_path.exists() {
         return ResolvedSourceConfig::from_config(None);
     }
-    let manifest = crate::service::repo::load_manifest(&manifest_path)?;
-    ResolvedSourceConfig::from_config(manifest.source.as_ref())
+    let mut manifest = crate::service::repo::load_manifest(&manifest_path)?;
+    if let Some(source) = manifest.source.as_mut() {
+        let state = crate::service::repo::load_local_state(repo_root)?;
+        // Keep an explicitly present legacy marker authoritative. This is
+        // needed for repositories upgraded from the tracked-marker format and
+        // also makes manual schema-downgrade diagnostics observable. New
+        // activations omit these fields from minds.yaml and use local state.
+        let has_tracked_marker = source.activation_snapshot_id.is_some()
+            || source.activation_catalog_fingerprint.is_some()
+            || source.storage_schema_version.is_some();
+        if !has_tracked_marker {
+            source.activation_snapshot_id = state.activation_snapshot_id;
+            source.activation_catalog_fingerprint = state.activation_catalog_fingerprint;
+            source.storage_schema_version = state.storage_schema_version;
+        } else {
+            source.activation_snapshot_id = source.activation_snapshot_id.take().or(state.activation_snapshot_id);
+            source.activation_catalog_fingerprint =
+                source.activation_catalog_fingerprint.take().or(state.activation_catalog_fingerprint);
+            source.storage_schema_version = source.storage_schema_version.take().or(state.storage_schema_version);
+        }
+    }
+    let mut resolved = ResolvedSourceConfig::from_config(manifest.source.as_ref())?;
+    if resolved.is_lance_active
+        && crate::service::source::advanced::publication::read_pointer(
+            &crate::service::source::advanced::advanced_store_dir(repo_root),
+        )?
+        .is_none()
+    {
+        // A marker without a resolvable current pointer is stale local state,
+        // not an active store. Sync will take the activation/bootstrap path.
+        resolved.is_lance_active = false;
+        resolved.is_marker_corrupt = true;
+    }
+    Ok(resolved)
 }
 
 /// Resolve the configured embedding vector dimension for a repository.
@@ -187,14 +219,39 @@ mod tests {
     #[test]
     fn load_repository_config_uses_manifest_source_block() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(
-            dir.path().join("minds.yaml"),
-            "schema_version: '1'\nprojects: []\nsource:\n  backend: lance\n  activation_snapshot_id: snap-1\n  activation_catalog_fingerprint: fp-1\n  storage_schema_version: '1'\n",
+        std::fs::write(dir.path().join("minds.yaml"), "schema_version: '1'\nprojects: []\nsource:\n  backend: lance\n")
+            .unwrap();
+        crate::service::repo::save_local_state(
+            dir.path(),
+            &crate::model::manifest::LocalSourceState {
+                activation_snapshot_id: Some("snap-1".into()),
+                activation_catalog_fingerprint: Some("fp-1".into()),
+                storage_schema_version: Some("1".into()),
+            },
         )
         .unwrap();
 
         let resolved = load_repository_config(dir.path()).unwrap();
-        assert!(resolved.is_lance());
+        assert!(!resolved.is_lance(), "a marker without a resolvable pointer is not active");
         assert_eq!(resolved.activation_snapshot_id.as_deref(), Some("snap-1"));
+    }
+
+    #[test]
+    fn marker_without_pointer_is_not_resolved_as_active() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("minds.yaml"), "schema: '1'\nprojects: []\nsource:\n  backend: lance\n")
+            .unwrap();
+        crate::service::repo::save_local_state(
+            dir.path(),
+            &crate::model::manifest::LocalSourceState {
+                activation_snapshot_id: Some("snap".into()),
+                activation_catalog_fingerprint: Some("fp".into()),
+                storage_schema_version: Some("2".into()),
+            },
+        )
+        .unwrap();
+        let resolved = load_repository_config(dir.path()).unwrap();
+        assert!(!resolved.is_lance());
+        assert!(resolved.is_marker_corrupt);
     }
 }

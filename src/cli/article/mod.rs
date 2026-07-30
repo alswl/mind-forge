@@ -24,7 +24,7 @@ use crate::output::show::{ShowBlock, ShowField, ShowOpts, ShowValue, json_envelo
 use crate::output::verb::{Verb, VerbOpts, VerbResult, json_envelope as verb_json, render_text as verb_text};
 use crate::service::{article as article_svc, config as config_svc, identity, util as svc_util};
 
-use self::block::{handle_block_rename, handle_block_rm};
+use self::block::{handle_block_move, handle_block_new, handle_block_rename, handle_block_renumber, handle_block_rm};
 use self::convert::handle_convert;
 use self::lint::handle_lint;
 use self::show::handle_article_show;
@@ -52,6 +52,8 @@ pub enum ArticleSubcommand {
     Index(ArticleIndexArgs),
     #[command(about = "Rename an article")]
     Rename(ArticleRenameArgs),
+    #[command(about = "Move an article to another project")]
+    Move(ArticleMoveArgs),
     #[command(about = "Remove an article", visible_alias = "rm")]
     Remove(ArticleRemoveArgs),
     #[command(about = "Show article details")]
@@ -68,6 +70,9 @@ pub enum ArticleSubcommand {
 pub struct ArticleNewArgs {
     /// Article title (sole positional)
     pub title: String,
+    /// Optional ASCII-friendly filename slug. Without it the title is used.
+    #[arg(long)]
+    pub slug: Option<String>,
     /// Template: built-in schema name (blank/arch/prd/blog) or path under project root. Default: blank.
     #[arg(short = 't', long, default_value = "blank")]
     pub template: String,
@@ -149,6 +154,16 @@ pub struct ArticleRenameArgs {
 }
 
 #[derive(Debug, Clone, Args)]
+pub struct ArticleMoveArgs {
+    /// Article path or title
+    pub path: String,
+    #[arg(long = "to-project")]
+    pub to_project: String,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
+}
+
+#[derive(Debug, Clone, Args)]
 pub struct ArticleConvertArgs {
     /// Convert directory articles to single-file articles
     #[arg(long = "to-single-file", conflicts_with = "to_directory")]
@@ -167,10 +182,50 @@ pub struct ArticleConvertArgs {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ArticleBlockSubcommand {
+    #[command(about = "Create a block within a directory article")]
+    New(ArticleBlockNewArgs),
+    #[command(about = "Move a block within a directory article")]
+    Move(ArticleBlockMoveArgs),
+    #[command(about = "Renumber blocks contiguously")]
+    Renumber(ArticleBlockRenumberArgs),
     #[command(about = "Rename a block within a directory article")]
     Rename(ArticleBlockRenameArgs),
     #[command(about = "Remove a block within a directory article", visible_alias = "remove")]
     Rm(ArticleBlockRmArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ArticleBlockNewArgs {
+    pub article: String,
+    /// New block slug without a numeric prefix
+    pub slug: String,
+    #[arg(long)]
+    pub after: Option<String>,
+    #[arg(long, default_value_t = 1)]
+    pub start: usize,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ArticleBlockMoveArgs {
+    pub article: String,
+    pub block: String,
+    #[arg(long)]
+    pub after: Option<String>,
+    #[arg(long, default_value_t = 1)]
+    pub start: usize,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ArticleBlockRenumberArgs {
+    pub article: String,
+    #[arg(long, default_value_t = 1)]
+    pub start: usize,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -213,50 +268,16 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
         Some(ArticleSubcommand::New(args)) => {
             let project_path = svc_util::resolve_project(root, project, cwd)?;
 
-            if args.dry_run.dry_run {
-                let filename = svc_util::to_filename(&args.title);
-                let layout = config_svc::effective_layout(&project_path)?;
-                let identity = if args.file {
-                    format!("{}/{}.{}", layout.articles, filename, defaults::MARKDOWN_EXTENSION)
-                } else {
-                    format!("{}/{}", layout.articles, filename)
-                };
-
-                // Bug #10 fix: dry-run must run the same parse + block-slug
-                // validation as the real run so outcomes always agree.
-                let resolved = article_svc::resolve_template(&project_path, &args.template, &args.title)?;
-                article_svc::validate_template_blocks(&resolved)?;
-
-                let result = VerbResult {
-                    verb: Verb::Create,
-                    kind: "article",
-                    identity,
-                    old_identity: None,
-                    path: None,
-                    dry_run: true,
-                    details: serde_json::json!({"title": args.title, "template": args.template}),
-                };
-                return match format {
-                    Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
-                    Format::Text => Ok(CommandOutcome::Success(
-                        serde_json::Value::String(verb_text(
-                            &result,
-                            &VerbOpts::from_repo_root(Some(project_path.as_path())),
-                        )),
-                        Vec::new(),
-                        None,
-                    )),
-                };
-            }
-
             let svc_result = article_svc::new_article(
                 &project_path,
                 &args.title,
+                args.slug.as_deref(),
                 &args.template,
                 args.file,
                 &args.tag,
                 args.draft,
                 args.force.force,
+                args.dry_run.dry_run,
             )?;
 
             let article_path = if svc_result.shape == "directory" {
@@ -270,8 +291,8 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
                 kind: "article",
                 identity: article_path.clone(),
                 old_identity: None,
-                path: Some(article_path.clone()),
-                dry_run: false,
+                path: (!args.dry_run.dry_run).then(|| article_path.clone()),
+                dry_run: args.dry_run.dry_run,
                 details: serde_json::json!({
                     "title": args.title,
                     "filename": svc_result.filename,
@@ -284,14 +305,19 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
                     "typora_copy_images_to": svc_result.typora_copy_images_to,
                 }),
             };
+            let warnings = if args.slug.is_none() && !svc_result.filename.is_ascii() {
+                vec!["article title produced a non-ASCII filename; consider an English --slug".to_string()]
+            } else {
+                Vec::new()
+            };
             match format {
-                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
                 Format::Text => Ok(CommandOutcome::Success(
                     serde_json::Value::String(verb_text(
                         &result,
                         &VerbOpts::from_repo_root(Some(project_path.as_path())),
                     )),
-                    Vec::new(),
+                    warnings,
                     None,
                 )),
             }
@@ -691,6 +717,48 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
                 )),
             }
         }
+        Some(ArticleSubcommand::Move(args)) => {
+            let source_project = svc_util::resolve_project(root, project, cwd)?;
+            let target_project = svc_util::resolve_project(root, Some(&args.to_project), cwd)?;
+            let report = article_svc::move_article(&source_project, &target_project, &args.path, args.dry_run.dry_run)?;
+            let mut warnings = Vec::new();
+            let mut rag_indexed = report.rag_indexed;
+            if !report.dry_run
+                && let Ok(config) = crate::service::source::advanced::config::load_repository_config(root)
+                && config.is_lance()
+            {
+                match crate::service::source::advanced::sync::sync_repository(root, &config, None, None, false, true) {
+                    Ok(_) => rag_indexed = true,
+                    Err(error) => warnings.push(format!("RAG re-key deferred; run `mf source sync` ({error})")),
+                }
+            }
+            let result = VerbResult {
+                verb: Verb::Move,
+                kind: "article",
+                identity: report.new_path.clone(),
+                old_identity: Some(report.old_path.clone()),
+                path: (!report.dry_run).then(|| report.new_path.clone()),
+                dry_run: report.dry_run,
+                details: serde_json::json!({
+                    "old_path": report.old_path,
+                    "new_path": report.new_path,
+                    "moved_prompts": report.moved_prompts,
+                    "moved_thinking": report.moved_thinking,
+                    "moved_publish_records": report.moved_publish_records,
+                    "rag_indexed": rag_indexed,
+                    "from_scope": source_project.display().to_string(),
+                    "to_scope": target_project.display().to_string(),
+                }),
+            };
+            match format {
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings.clone(), None)),
+                Format::Text => Ok(CommandOutcome::Success(
+                    serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+                    warnings,
+                    None,
+                )),
+            }
+        }
         Some(ArticleSubcommand::Remove(args)) => {
             let project_path = svc_util::resolve_project(root, project, cwd)?;
             identity::validate_entity_path(&project_path, &args.path)?;
@@ -728,6 +796,9 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
             }
         }
         Some(ArticleSubcommand::Block(block_cmd)) => match block_cmd {
+            ArticleBlockSubcommand::New(args) => handle_block_new(args, ctx),
+            ArticleBlockSubcommand::Move(args) => handle_block_move(args, ctx),
+            ArticleBlockSubcommand::Renumber(args) => handle_block_renumber(args, ctx),
             ArticleBlockSubcommand::Rename(args) => handle_block_rename(args, ctx),
             ArticleBlockSubcommand::Rm(args) => handle_block_rm(args, ctx),
         },

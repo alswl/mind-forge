@@ -128,6 +128,9 @@ fn render_outcome(
         }
         CommandOutcome::Completion(shell) => cli::completion::render_completion(shell, stdout),
         CommandOutcome::Success(data, warnings, exit_code) => {
+            for warning in &warnings {
+                writeln!(stderr, "warning: {warning}")?;
+            }
             let data = inject_warnings(data, &warnings);
             render(stdout, context.format(), context.color(), Payload::Success(&data))?;
             Ok(ExitCode::from(exit_code.unwrap_or(0)))

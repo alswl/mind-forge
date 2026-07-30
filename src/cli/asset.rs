@@ -44,6 +44,8 @@ pub enum AssetSubcommand {
     Remove(AssetRemoveArgs),
     #[command(about = "Rename an asset")]
     Rename(AssetRenameArgs),
+    #[command(about = "Move an asset to another project")]
+    Move(AssetMoveArgs),
     #[command(about = "Show asset details")]
     Show(AssetShowArgs),
 }
@@ -155,6 +157,15 @@ pub struct AssetRenameArgs {
     pub dry_run: DryRunFlag,
 }
 
+#[derive(Debug, Clone, Args, Serialize)]
+pub struct AssetMoveArgs {
+    pub path: String,
+    #[arg(long = "to-project")]
+    pub to_project: String,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
@@ -175,6 +186,7 @@ pub fn dispatch(command: AssetCmd, ctx: &mut CommandCtx) -> Result<CommandOutcom
         Some(AssetSubcommand::Show(args)) => handle_asset_show(args, root, cwd, format, project),
         Some(AssetSubcommand::Remove(args)) => handle_remove(args, root, cwd, format, project),
         Some(AssetSubcommand::Rename(args)) => handle_rename(args, root, cwd, format, project),
+        Some(AssetSubcommand::Move(args)) => handle_move(args, root, cwd, format, project),
     }
 }
 
@@ -635,6 +647,53 @@ fn handle_rename(
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
             Vec::new(),
+            None,
+        )),
+    }
+}
+
+fn handle_move(
+    args: AssetMoveArgs,
+    root: &Path,
+    cwd: &Path,
+    format: Format,
+    project: Option<&str>,
+) -> Result<CommandOutcome> {
+    let source_project = svc_util::resolve_project(root, project, cwd)?;
+    let target_project = svc_util::resolve_project(root, Some(&args.to_project), cwd)?;
+    identity::validate_entity_path(&source_project, &args.path)?;
+    let report = asset_svc::move_asset(&source_project, &target_project, &args.path, args.dry_run.dry_run)?;
+    let mut rag_indexed = false;
+    let mut warnings = Vec::new();
+    if !report.dry_run
+        && let Ok(config) = crate::service::source::advanced::config::load_repository_config(root)
+        && config.is_lance()
+    {
+        match crate::service::source::advanced::sync::sync_repository(root, &config, None, None, false, true) {
+            Ok(_) => rag_indexed = true,
+            Err(error) => warnings.push(format!("RAG re-key deferred; run `mf source sync` ({error})")),
+        }
+    }
+    let result = VerbResult {
+        verb: Verb::Move,
+        kind: "asset",
+        identity: report.new_path.clone(),
+        old_identity: Some(report.old_path.clone()),
+        path: (!report.dry_run).then(|| report.new_path.clone()),
+        dry_run: report.dry_run,
+        details: serde_json::json!({
+            "old_path": report.old_path,
+            "new_path": report.new_path,
+            "from_scope": source_project.display().to_string(),
+            "to_scope": target_project.display().to_string(),
+            "rag_indexed": rag_indexed,
+        }),
+    };
+    match format {
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings.clone(), None)),
+        Format::Text => Ok(CommandOutcome::Success(
+            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
+            warnings,
             None,
         )),
     }

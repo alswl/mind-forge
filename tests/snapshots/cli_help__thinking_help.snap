@@ -1,17 +1,15 @@
 ---
 source: tests/cli_help.rs
+assertion_line: 247
 expression: stdout
 ---
-Manage blocks within a directory article
+View thinking projections
 
-Usage: mf article block [OPTIONS] <COMMAND>
+Usage: mf thinking [OPTIONS] [COMMAND]
 
 Commands:
-  new       Create a block within a directory article
-  move      Move a block within a directory article
-  renumber  Renumber blocks contiguously
-  rename    Rename a block within a directory article
-  rm        Remove a block within a directory article [aliases: remove]
+  list  
+  show  
 
 Options:
       --root <PATH>      Mind Repo root directory

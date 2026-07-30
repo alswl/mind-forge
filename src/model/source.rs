@@ -1,30 +1,67 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 // ---------------------------------------------------------------------------
 // SourceKind — source channel/origin (mind primary)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SourceKind {
     Yuque,
     Meeting,
     Misc,
+    Other(String),
 }
 
 impl SourceKind {
-    pub const fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::Yuque => "yuque",
             Self::Meeting => "meeting",
             Self::Misc => "misc",
+            Self::Other(value) => value,
         }
+    }
+}
+
+impl Serialize for SourceKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for SourceKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(match value.as_str() {
+            "yuque" => Self::Yuque,
+            "meeting" => Self::Meeting,
+            "misc" => Self::Misc,
+            _ => Self::Other(value),
+        })
     }
 }
 
 impl std::fmt::Display for SourceKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SourceKind;
+
+    #[test]
+    fn unknown_source_kind_round_trips_losslessly() {
+        let parsed: SourceKind = serde_yaml::from_str("article_prompt\n").unwrap();
+        assert_eq!(parsed, SourceKind::Other("article_prompt".to_string()));
+        assert_eq!(serde_yaml::to_string(&parsed).unwrap(), "article_prompt\n");
     }
 }
 

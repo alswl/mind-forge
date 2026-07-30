@@ -1,0 +1,23 @@
+schema: '1'
+sources:
+  sources/yuque/2026-07-note.md:
+    name: 2026-07-note
+    type: file
+    source_kind: article_prompt
+    url: null
+    path: sources/yuque/2026-07-note.md
+    tags: [important]
+    added_at: '2026-07-30T00:00:00Z'
+    updated_at: '2026-07-30T00:00:00Z'
+terms:
+  - term: RAG
+    definition: retrieval augmented generation
+publish_records:
+  - article: docs/note.md
+    path: docs/note.md
+    target_name: local
+    status: draft
+    target_url: null
+    published_at: null
+extra_section:
+  keep: true

@@ -44,7 +44,7 @@ fn json_incompatible_schema_envelope() {
 
     let (_stdout, stderr, code) = run_in(ds.root(), &["--output", "json", "project", "index"]);
 
-    assert_eq!(code, 1);
+    assert_eq!(code, 2);
 
     let parsed: serde_json::Value = serde_json::from_str(&stderr).expect("valid JSON");
     assert_eq!(parsed["error"]["kind"], "incompatible_schema");
@@ -123,7 +123,7 @@ fn text_incompatible_schema_has_hint() {
 
     let (_, stderr, code) = run_in(ds.root(), &["project", "index"]);
 
-    assert_eq!(code, 1);
+    assert_eq!(code, 2);
     assert!(stderr.contains("incompatible schema"));
     assert!(stderr.contains("Hint:"), "should have upgrade hint: {stderr}");
 }

@@ -14,6 +14,7 @@ Commands:
   index   Index sources
   remove  Remove a source [aliases: rm]
   rename  Rename a source
+  move    Move a source to another project
   clean   Clean source index
   show    Show source details
   search  Search sources across the repository

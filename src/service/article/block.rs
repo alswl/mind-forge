@@ -8,6 +8,175 @@ use crate::error::{MfError, Result};
 use super::list_section_files;
 use super::rename::resolve_block_filename;
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct BlockEditReport {
+    pub article_path: String,
+    pub old_path: Option<String>,
+    pub new_path: Option<String>,
+    pub order: Vec<String>,
+    pub dry_run: bool,
+}
+
+fn block_slug(filename: &str) -> String {
+    filename.trim_end_matches(".md").split_once('-').map(|(_, slug)| slug).unwrap_or(filename).to_string()
+}
+
+fn rewrite_blocks(project_path: &Path, article_path: &str, blocks: &[(String, String)], dry_run: bool) -> Result<()> {
+    if dry_run {
+        return Ok(());
+    }
+    let article_dir = project_path.join(article_path);
+    let tmp = article_dir.with_file_name(format!(".{}.rewrite", article_dir.file_name().unwrap().to_string_lossy()));
+    if tmp.exists() {
+        fs::remove_dir_all(&tmp).map_err(MfError::Io)?;
+    }
+    let refs: Vec<(&str, &str)> = blocks.iter().map(|(name, body)| (name.as_str(), body.as_str())).collect();
+    crate::service::util::atomic_write_directory(&tmp, &refs)?;
+    let backup = article_dir.with_file_name(format!(".{}.backup", article_dir.file_name().unwrap().to_string_lossy()));
+    if backup.exists() {
+        fs::remove_dir_all(&backup).map_err(MfError::Io)?;
+    }
+    fs::rename(&article_dir, &backup).map_err(MfError::Io)?;
+    if let Err(error) = fs::rename(&tmp, &article_dir).map_err(MfError::Io) {
+        let _ = fs::rename(&backup, &article_dir);
+        return Err(error);
+    }
+    fs::remove_dir_all(&backup).map_err(MfError::Io)
+}
+
+pub fn new_block(
+    project_path: &Path,
+    article_path: &str,
+    slug: &str,
+    after: Option<&str>,
+    start: usize,
+    dry_run: bool,
+) -> Result<BlockEditReport> {
+    let files: Vec<String> = list_section_files(project_path, article_path)?
+        .into_iter()
+        .filter_map(|path| Path::new(&path).file_name().and_then(|name| name.to_str()).map(str::to_string))
+        .collect();
+    if files.is_empty() {
+        return Err(MfError::not_found("no blocks found", None::<String>));
+    }
+    let new_slug = crate::service::util::to_filename(slug);
+    if new_slug.is_empty() || new_slug == "untitled" {
+        return Err(MfError::usage("block slug must contain an alphanumeric character", None::<String>));
+    }
+    if files.iter().any(|file| block_slug(file) == new_slug) {
+        return Err(MfError::usage(
+            format!("block slug '{}' already exists", slug),
+            Some("choose a unique block slug".to_string()),
+        ));
+    }
+    let insert_at = match after {
+        Some(block) => files
+            .iter()
+            .position(|file| file == block || block_slug(file) == block)
+            .map(|i| i + 1)
+            .ok_or_else(|| MfError::not_found(format!("block '{block}' not found"), None::<String>))?,
+        None => files.len(),
+    };
+    let mut bodies: Vec<(String, String)> = files
+        .iter()
+        .map(|file| {
+            Ok((file.clone(), fs::read_to_string(project_path.join(article_path).join(file)).map_err(MfError::Io)?))
+        })
+        .collect::<Result<_>>()?;
+    let mut new_body = format!("# {}\n\n", slug.trim());
+    if let Ok(config) = crate::service::config::load_project(project_path, Some(project_path))
+        && let Some(config) = config
+        && super::effective_typora_enabled(config.plugins.as_ref())
+    {
+        let layout = crate::service::config::effective_layout(project_path)?;
+        let assets_path =
+            super::compute_typora_assets_path(project_path, &layout.assets, &project_path.join(article_path));
+        new_body = super::inject_typora_front_matter(&new_body, &assets_path);
+    }
+    bodies.insert(insert_at, (String::new(), new_body));
+    let mut normalized = Vec::new();
+    for (i, (old, body)) in bodies.into_iter().enumerate() {
+        let block_name = if old.is_empty() { new_slug.clone() } else { block_slug(&old) };
+        normalized.push((format!("{:02}-{}.md", start + i, block_name), body));
+    }
+    let order = normalized.iter().map(|(name, _)| name.clone()).collect();
+    rewrite_blocks(project_path, article_path, &normalized, dry_run)?;
+    Ok(BlockEditReport {
+        article_path: article_path.to_string(),
+        old_path: None,
+        new_path: Some(format!("{article_path}/{:02}-{}.md", start + insert_at, new_slug)),
+        order,
+        dry_run,
+    })
+}
+
+pub fn move_block(
+    project_path: &Path,
+    article_path: &str,
+    block: &str,
+    after: Option<&str>,
+    start: usize,
+    dry_run: bool,
+) -> Result<BlockEditReport> {
+    let files: Vec<String> = list_section_files(project_path, article_path)?
+        .into_iter()
+        .filter_map(|path| Path::new(&path).file_name().and_then(|name| name.to_str()).map(str::to_string))
+        .collect();
+    let from = resolve_block_filename(&files, article_path, block)?;
+    let moved_body = fs::read_to_string(project_path.join(article_path).join(&from)).map_err(MfError::Io)?;
+    let mut selected = files.clone();
+    let item = selected.remove(selected.iter().position(|f| f == &from).unwrap());
+    let at = match after {
+        Some(value) => selected
+            .iter()
+            .position(|f| f == value || block_slug(f) == value)
+            .map(|i| i + 1)
+            .ok_or_else(|| MfError::not_found(format!("block '{value}' not found"), None::<String>))?,
+        None => selected.len(),
+    };
+    selected.insert(at, item);
+    let mut normalized = Vec::new();
+    for (i, old) in selected.iter().enumerate() {
+        normalized.push((
+            format!("{:02}-{}.md", start + i, block_slug(old)),
+            fs::read_to_string(project_path.join(article_path).join(old)).map_err(MfError::Io)?,
+        ));
+    }
+    let order = normalized.iter().map(|(name, _)| name.clone()).collect();
+    rewrite_blocks(project_path, article_path, &normalized, dry_run)?;
+    let new_name = normalized.iter().find(|(_, body)| body == &moved_body).map(|(name, _)| name.clone());
+    Ok(BlockEditReport {
+        article_path: article_path.to_string(),
+        old_path: Some(format!("{article_path}/{from}")),
+        new_path: new_name.map(|n| format!("{article_path}/{n}")),
+        order,
+        dry_run,
+    })
+}
+
+pub fn renumber_blocks(
+    project_path: &Path,
+    article_path: &str,
+    start: usize,
+    dry_run: bool,
+) -> Result<BlockEditReport> {
+    let files: Vec<String> = list_section_files(project_path, article_path)?
+        .into_iter()
+        .filter_map(|path| Path::new(&path).file_name().and_then(|name| name.to_str()).map(str::to_string))
+        .collect();
+    let mut normalized = Vec::new();
+    for (i, old) in files.iter().enumerate() {
+        normalized.push((
+            format!("{:02}-{}.md", start + i, block_slug(old)),
+            fs::read_to_string(project_path.join(article_path).join(old)).map_err(MfError::Io)?,
+        ));
+    }
+    let order = normalized.iter().map(|(name, _)| name.clone()).collect();
+    rewrite_blocks(project_path, article_path, &normalized, dry_run)?;
+    Ok(BlockEditReport { article_path: article_path.to_string(), old_path: None, new_path: None, order, dry_run })
+}
+
 /// Report from a block removal within a directory article.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -218,5 +387,32 @@ mod tests {
         let err = remove_block(proj, "docs/my-article", "notes", false).unwrap_err();
         assert!(matches!(err, MfError::Usage { .. }));
         assert!(err.to_string().contains("multiple blocks match"));
+    }
+
+    #[test]
+    fn new_and_renumber_blocks_are_collision_safe() {
+        let tmp = tempfile::tempdir().unwrap();
+        let article = tmp.path().join("docs/article");
+        fs::create_dir_all(&article).unwrap();
+        fs::write(article.join("01-first.md"), "first\n").unwrap();
+        fs::write(article.join("03-third.md"), "third\n").unwrap();
+        let created = new_block(tmp.path(), "docs/article", "second", Some("first"), 1, false).unwrap();
+        assert_eq!(created.order, vec!["01-first.md", "02-second.md", "03-third.md"]);
+        assert!(article.join("02-second.md").exists());
+        let report = renumber_blocks(tmp.path(), "docs/article", 1, false).unwrap();
+        assert_eq!(report.order, vec!["01-first.md", "02-second.md", "03-third.md"]);
+    }
+
+    #[test]
+    fn move_block_dry_run_preserves_tree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let article = tmp.path().join("docs/article");
+        fs::create_dir_all(&article).unwrap();
+        fs::write(article.join("01-first.md"), "first\n").unwrap();
+        fs::write(article.join("02-second.md"), "second\n").unwrap();
+        let report = move_block(tmp.path(), "docs/article", "first", Some("second"), 1, true).unwrap();
+        assert!(report.dry_run);
+        assert!(article.join("01-first.md").exists());
+        assert!(article.join("02-second.md").exists());
     }
 }

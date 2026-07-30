@@ -6,7 +6,7 @@ use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::article::Article;
 use crate::model::index::IndexFile;
-use crate::service::util::{atomic_write, validate_schema_version};
+use crate::service::util::validate_schema_version;
 
 const INDEX_FILENAME: &str = "mind-index.yaml";
 
@@ -339,10 +339,17 @@ fn merge_top_level_value(key: &str, existing: &mut serde_yaml::Value, incoming: 
 
 /// Atomically write `index` to `project_root/mind-index.yaml`.
 pub fn save(project_root: &Path, index: &IndexFile) -> Result<()> {
+    save_dry_run(project_root, index, false).map(|_| ())
+}
+
+/// Serialize and optionally persist an index. Returns `true` when the write
+/// was intentionally skipped by dry-run.
+pub fn save_dry_run(project_root: &Path, index: &IndexFile, dry_run: bool) -> Result<bool> {
     let path = project_root.join(INDEX_FILENAME);
+    validate_schema_version(&index.schema_version, &path)?;
     let yaml = serialize_mind_index(index)
         .map_err(|e| MfError::Internal(anyhow::anyhow!("serialize {}: {e}", path.display())))?;
-    atomic_write(&path, &yaml)
+    crate::service::util::atomic_write_dry_run(&path, &yaml, dry_run)
 }
 
 pub fn serialize_mind_index(index: &IndexFile) -> std::result::Result<String, serde_yaml::Error> {
@@ -1056,5 +1063,33 @@ terms:
         let bindings = resolve_prompt_bindings(&index);
         assert_eq!(bindings.len(), 2);
         assert!(bindings.iter().all(|b| b.status == crate::model::prompt::BindingStatus::Duplicate));
+    }
+
+    #[test]
+    fn dict_fixture_accepts_unknown_source_kind_and_preserves_sections() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("mind-index.yaml"),
+            include_str!("../../tests/fixtures/mind-index-dict-article-prompt.yaml"),
+        )
+        .unwrap();
+        let mut index = load(dir.path()).unwrap();
+        assert_eq!(index.sources.as_ref().unwrap()[0].source_kind.as_ref().unwrap().as_str(), "article_prompt");
+        index.sources.as_mut().unwrap().push(crate::model::source::Source {
+            name: "new".into(),
+            kind: crate::model::source::FileKind::File,
+            source_kind: None,
+            url: None,
+            path: Some("sources/new.md".into()),
+            tags: vec![],
+            added_at: String::new(),
+            updated_at: String::new(),
+        });
+        save(dir.path(), &index).unwrap();
+        let written = std::fs::read_to_string(dir.path().join("mind-index.yaml")).unwrap();
+        assert!(written.contains("article_prompt"));
+        assert!(written.contains("publish_records:"));
+        assert!(written.contains("extra_section:"));
+        assert_eq!(load(dir.path()).unwrap().sources.unwrap().len(), 2);
     }
 }

@@ -14,9 +14,10 @@ use crate::model::source_advanced::{RegistrationState, SourceRegistration};
 use crate::service::source::add::{AddArgs, AddMode, AddOutcome, InputForm};
 use crate::service::source::rename::{SourceRenameIdentity, SourceRenameReport};
 
+#[cfg(test)]
+use super::config::ResolvedSourceConfig;
 use super::{
     catalog::{CatalogRegistration, SourceCatalog},
-    config::ResolvedSourceConfig,
     identity, sync,
 };
 
@@ -33,9 +34,7 @@ pub fn update_registration(
     if let Some(url) = url {
         crate::service::source::validate_url(url)?;
     }
-    let config = ResolvedSourceConfig::from_config(
-        crate::service::repo::load_manifest(&repo_root.join("minds.yaml"))?.source.as_ref(),
-    )?;
+    let config = super::config::load_repository_config(repo_root)?;
     if !config.is_lance() {
         return Err(MfError::usage("Lance primary mutation requires an active Lance backend".to_string(), None));
     }
@@ -165,9 +164,7 @@ pub fn add_registration(
     if register_only && args.force {
         return Err(MfError::usage("--register-only cannot be combined with --force", None));
     }
-    let config = ResolvedSourceConfig::from_config(
-        crate::service::repo::load_manifest(&repo_root.join("minds.yaml"))?.source.as_ref(),
-    )?;
+    let config = super::config::load_repository_config(repo_root)?;
     if !config.is_lance() {
         return Err(MfError::usage("Lance primary mutation requires an active Lance backend".to_string(), None));
     }
@@ -480,6 +477,7 @@ fn source_kind_name(kind: Option<&SourceKind>) -> Option<String> {
         Some(SourceKind::Yuque) => Some("yuque".to_string()),
         Some(SourceKind::Meeting) => Some("meeting".to_string()),
         Some(SourceKind::Misc) => Some("misc".to_string()),
+        Some(SourceKind::Other(value)) => Some(value.clone()),
         None => None,
     }
 }
@@ -497,9 +495,7 @@ pub fn rename_registration(
 ) -> Result<SourceRenameReport> {
     crate::service::util::require_nonempty(old_name, "old source name")?;
     crate::service::util::require_nonempty(new_name, "new source name")?;
-    let config = ResolvedSourceConfig::from_config(
-        crate::service::repo::load_manifest(&repo_root.join("minds.yaml"))?.source.as_ref(),
-    )?;
+    let config = super::config::load_repository_config(repo_root)?;
     if !config.is_lance() {
         return Err(MfError::usage("Lance primary mutation requires an active Lance backend".to_string(), None));
     }
@@ -678,9 +674,7 @@ pub fn remove_registration(
     force: bool,
     dry_run: bool,
 ) -> Result<SourceRemoveReport> {
-    let config = ResolvedSourceConfig::from_config(
-        crate::service::repo::load_manifest(&repo_root.join("minds.yaml"))?.source.as_ref(),
-    )?;
+    let config = super::config::load_repository_config(repo_root)?;
     let store = sync::open_active_store(repo_root)?;
     let catalog = SourceCatalog::discover(&config, repo_root)?;
     let project_rel = project_path.strip_prefix(repo_root).unwrap_or(project_path).to_string_lossy().replace('\\', "/");
@@ -739,9 +733,7 @@ pub fn remove_registration(
 /// the Lance counterpart of `mf source clean`: missing files are detected from
 /// primary facts, while YAML is refreshed only after those facts are changed.
 pub fn clean_registrations(repo_root: &Path, project_path: &Path, dry_run: bool) -> Result<SourceIndexReport> {
-    let config = ResolvedSourceConfig::from_config(
-        crate::service::repo::load_manifest(&repo_root.join("minds.yaml"))?.source.as_ref(),
-    )?;
+    let config = super::config::load_repository_config(repo_root)?;
     if !config.is_lance() {
         return Err(MfError::usage("Lance primary mutation requires an active Lance backend".to_string(), None));
     }
@@ -814,10 +806,7 @@ mod tests {
 
         let source = update_registration(dir.path(), &project, "notes", Some("renamed"), None).unwrap();
         assert_eq!(source.name, "renamed");
-        let config = ResolvedSourceConfig::from_config(
-            crate::service::repo::load_manifest(&dir.path().join("minds.yaml")).unwrap().source.as_ref(),
-        )
-        .unwrap();
+        let config = crate::service::source::advanced::config::load_repository_config(dir.path()).unwrap();
         let store = sync::open_active_store(dir.path()).unwrap();
         let catalog = SourceCatalog::discover(&config, dir.path()).unwrap();
         let primary = catalog.registrations(Some(&store)).unwrap();
@@ -862,10 +851,7 @@ mod tests {
         assert_eq!(report.after.path.as_deref(), Some("sources/renamed.md"));
         assert!(!project.join("sources/notes.md").exists());
         assert!(project.join("sources/renamed.md").exists());
-        let config = ResolvedSourceConfig::from_config(
-            crate::service::repo::load_manifest(&dir.path().join("minds.yaml")).unwrap().source.as_ref(),
-        )
-        .unwrap();
+        let config = crate::service::source::advanced::config::load_repository_config(dir.path()).unwrap();
         let store = sync::open_active_store(dir.path()).unwrap();
         let catalog = SourceCatalog::discover(&config, dir.path()).unwrap();
         let rows = catalog.registrations(Some(&store)).unwrap();
@@ -906,10 +892,7 @@ mod tests {
         assert_eq!(report.removed.len(), 1);
         assert_eq!(report.removed[0].name, "missing");
         assert_eq!(report.kept_count, 1);
-        let config = ResolvedSourceConfig::from_config(
-            crate::service::repo::load_manifest(&dir.path().join("minds.yaml")).unwrap().source.as_ref(),
-        )
-        .unwrap();
+        let config = crate::service::source::advanced::config::load_repository_config(dir.path()).unwrap();
         let store = sync::open_active_store(dir.path()).unwrap();
         let catalog = SourceCatalog::discover(&config, dir.path()).unwrap();
         let rows = catalog.registrations(Some(&store)).unwrap();
@@ -954,10 +937,7 @@ mod tests {
         let outcome = add_registration(dir.path(), &project, dir.path(), &args, false, false, false, None).unwrap();
         assert_eq!(outcome.source.path.as_deref(), Some("sources/file/outside.md"));
         assert!(project.join("sources/file/outside.md").exists());
-        let config = ResolvedSourceConfig::from_config(
-            crate::service::repo::load_manifest(&dir.path().join("minds.yaml")).unwrap().source.as_ref(),
-        )
-        .unwrap();
+        let config = crate::service::source::advanced::config::load_repository_config(dir.path()).unwrap();
         let store = sync::open_active_store(dir.path()).unwrap();
         let catalog = SourceCatalog::discover(&config, dir.path()).unwrap();
         let rows = catalog.registrations(Some(&store)).unwrap();
