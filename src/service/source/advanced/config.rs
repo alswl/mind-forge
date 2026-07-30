@@ -110,6 +110,26 @@ impl ResolvedSourceConfig {
         self.backend == SourceBackend::Lance && self.is_lance_active
     }
 
+    /// Reject serving reads/incremental sync from an out-of-date snapshot.
+    ///
+    /// When Lance is active but the persisted `storage_schema_version` is not the
+    /// current one, the derived cache lacks context enrichment; refuse with an
+    /// actionable diagnostic requiring `rebuild` rather than silently reading the
+    /// old schema (spec 071, FR schema compat). Legacy/inactive backends pass.
+    pub fn require_current_schema(&self) -> Result<()> {
+        use crate::service::source::advanced::activation::STORAGE_SCHEMA_VERSION;
+        if self.is_lance_active && self.storage_schema_version.as_deref() != Some(STORAGE_SCHEMA_VERSION) {
+            let found = self.storage_schema_version.as_deref().unwrap_or("<none>");
+            return Err(MfError::advanced_store(
+                format!(
+                    "repository Source index is schema v{found}, but this build requires v{STORAGE_SCHEMA_VERSION}"
+                ),
+                Some("run `mf source admin rebuild` to regenerate the index with the current schema".to_string()),
+            ));
+        }
+        Ok(())
+    }
+
     /// Returns true when the legacy backend should be used.
     pub fn is_legacy(&self) -> bool {
         !self.is_lance()

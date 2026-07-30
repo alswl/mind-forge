@@ -69,6 +69,8 @@ pub fn sync_repository(
             projects_ready: 0,
             projects_failed: 0,
             items: vec![],
+            coverage: Vec::new(),
+            skipped_items: Vec::new(),
             index_revision: None,
             warnings: vec![],
         });
@@ -124,6 +126,7 @@ pub fn sync_repository(
                         offline,
                         store.as_ref(),
                         None,
+                        None,
                     ) {
                         Ok(item) => {
                             match item.action.as_str() {
@@ -178,6 +181,8 @@ pub fn sync_repository(
         projects_ready,
         projects_failed,
         items,
+        coverage: Vec::new(),
+        skipped_items: Vec::new(),
         index_revision: if dry_run { None } else { Some("sync-1".to_string()) },
         warnings: vec![],
     })
@@ -195,6 +200,11 @@ fn sync_lance_catalog(
     offline: bool,
     store: &LanceStore,
 ) -> Result<SyncReport> {
+    // Bring a schema-v1 registrations table up to the current schema before any
+    // context-bearing append (spec 071 v1→v2 migration). No-op once migrated.
+    if !dry_run {
+        store.migrate_registrations_schema()?;
+    }
     let catalog = super::catalog::SourceCatalog::discover(config, repo_root)?;
     let mut registrations = catalog
         .registrations(Some(store))?
@@ -213,11 +223,20 @@ fn sync_lance_catalog(
     // derived from local files and never projected into legacy Source YAML.
     let existing_keys =
         registrations.iter().map(|r| r.registration_key.clone()).collect::<std::collections::BTreeSet<_>>();
-    let articles = super::catalog::discover_article_registrations(repo_root)
+    // Article, project, and term artifacts are all repository-authored RAG
+    // inputs discovered from local facts (spec 071 US2). Terms are repo-global
+    // so they ignore the project filter.
+    let mut articles = super::catalog::discover_article_registrations(repo_root);
+    articles.extend(super::catalog::discover_project_registrations(repo_root));
+    let mut articles = articles
         .into_iter()
         .filter(|r| project_filter.is_none_or(|p| p == r.project_identity))
+        .chain(super::catalog::discover_term_registrations(repo_root).into_iter().filter(|_| project_filter.is_none()))
         .filter(|r| !existing_keys.contains(&r.registration_key))
         .collect::<Vec<_>>();
+    // Derive per-registration context (project goal, lifecycle, relations,
+    // prompt/thinking siblings) and persist it with the new rows (spec 071).
+    super::catalog::enrich_single_owner_contexts(repo_root, &mut articles);
     if !dry_run && !articles.is_empty() {
         let rows = articles
             .iter()
@@ -236,6 +255,8 @@ fn sync_lance_catalog(
                 fact_fingerprint: super::identity::raw_fingerprint(r.registered_location.as_bytes()),
                 registration_revision: 1,
                 state: crate::model::source_advanced::RegistrationState::Live,
+                context_json: r.context_json.clone(),
+                imported_by_json: r.imported_by_json.clone(),
             })
             .collect::<Vec<_>>();
         store.append_registrations(&rows)?;
@@ -258,6 +279,10 @@ fn sync_lance_catalog(
     let mut skipped = 0u64;
     let mut failed = 0u64;
     let mut projects = std::collections::BTreeMap::<String, bool>::new();
+    // Per-kind coverage (kind → [indexed, skipped]) and item-by-item skip
+    // reasons so nothing is silently dropped (spec 071 US2, FR-003/004).
+    let mut coverage = std::collections::BTreeMap::<String, [u64; 2]>::new();
+    let mut skipped_items = Vec::<crate::model::source_advanced::SkippedItem>::new();
 
     // Resolve the explicit remote provider once per mutation. No provider is
     // selected implicitly and credentials remain environment-only.
@@ -266,6 +291,14 @@ fn sync_lance_catalog(
 
     for registration in registrations {
         let project_path = repo_root.join(&registration.project_path);
+        let kind = registration.source_type.clone();
+        let location = registration.registered_location.clone();
+        // Single-owner kinds carry their persisted context into chunk text.
+        let preamble = registration
+            .context_json
+            .as_deref()
+            .and_then(|j| serde_json::from_str::<crate::model::source_advanced::DocumentContext>(j).ok())
+            .and_then(|ctx| ctx.preamble());
         let outcome = sync_one_source(
             &project_path,
             &registration.source_identity,
@@ -278,24 +311,60 @@ fn sync_lance_catalog(
             offline,
             (!dry_run).then_some(store),
             provider.as_ref(),
+            preamble.as_deref(),
         );
+        let entry = coverage.entry(kind.clone()).or_default();
         match outcome {
             Ok(mut item) => {
                 item.project_identity = registration.project_identity.clone();
                 match item.action.as_str() {
-                    "added" => added += 1,
+                    // Content that produced no chunks (empty/whitespace-only) is
+                    // reported as an `empty` skip, not a silent zero-content index.
+                    "added" if item.affected_chunks == 0 && !dry_run => {
+                        skipped += 1;
+                        entry[1] += 1;
+                        skipped_items.push(crate::model::source_advanced::SkippedItem {
+                            location: location.clone(),
+                            kind: kind.clone(),
+                            reason: "empty".to_string(),
+                        });
+                    }
+                    "added" => {
+                        added += 1;
+                        entry[0] += 1;
+                    }
                     "failed" => {
                         failed += 1;
+                        entry[1] += 1;
                         projects.insert(registration.project_identity.clone(), true);
+                        skipped_items.push(reason_from_item(&item, &kind, &location));
                     }
-                    _ => skipped += 1,
+                    // A "skipped" item with an error (e.g. a legacy URL-only
+                    // registration) is genuinely not indexed; one without an
+                    // error is unchanged and already in the corpus, so it counts
+                    // as covered rather than a silent drop.
+                    _ if item.error.is_some() => {
+                        skipped += 1;
+                        entry[1] += 1;
+                        skipped_items.push(reason_from_item(&item, &kind, &location));
+                    }
+                    _ => {
+                        skipped += 1;
+                        entry[0] += 1;
+                    }
                 }
                 projects.entry(registration.project_identity).or_insert(false);
                 items.push(item);
             }
             Err(error) => {
                 failed += 1;
+                entry[1] += 1;
                 projects.insert(registration.project_identity.clone(), true);
+                skipped_items.push(crate::model::source_advanced::SkippedItem {
+                    location: location.clone(),
+                    kind: kind.clone(),
+                    reason: "error".to_string(),
+                });
                 items.push(SyncItem {
                     project_identity: registration.project_identity,
                     registration_key: registration.registration_key,
@@ -343,9 +412,32 @@ fn sync_lance_catalog(
         projects_ready: projects.len() as u64 - projects_failed,
         projects_failed,
         items,
+        coverage: coverage
+            .into_iter()
+            .map(|(kind, [indexed, skipped])| crate::model::source_advanced::CoverageByKind { kind, indexed, skipped })
+            .collect(),
+        skipped_items,
         index_revision: (!dry_run).then(|| "sync-primary".to_string()),
         warnings,
     })
+}
+
+/// Classify why a synced item was not indexed. An empty extraction (zero chunks)
+/// is `empty`; any other non-added outcome carries the item's error text or a
+/// generic `skipped` reason (spec 071 FR-003).
+fn reason_from_item(item: &SyncItem, _kind: &str, _location: &str) -> crate::model::source_advanced::SkippedItem {
+    let reason = if item.affected_chunks == 0 && item.error.is_none() {
+        "empty"
+    } else if item.error.is_some() {
+        "error"
+    } else {
+        "skipped"
+    };
+    crate::model::source_advanced::SkippedItem {
+        location: _location.to_string(),
+        kind: _kind.to_string(),
+        reason: reason.to_string(),
+    }
 }
 
 /// Select the embedding provider for a mutation, honoring `--offline`: a
@@ -413,6 +505,7 @@ pub(crate) fn sync_registration(
         offline,
         (!dry_run).then_some(store),
         provider.as_ref(),
+        None,
     )?;
     Ok((item, warnings))
 }
@@ -431,11 +524,19 @@ fn sync_one_source(
     _offline: bool,
     store: Option<&LanceStore>,
     provider: Option<&super::embedding::EmbeddingProvider>,
+    preamble: Option<&str>,
 ) -> Result<SyncItem> {
     let content = match if kind == "article" {
         // `article` Sources are the project's own mind-forge articles referenced
         // by article path; assembled from Markdown blocks, never fetched.
         acquisition::acquire_article(project_path, location)
+    } else if kind == "project" {
+        // `project` Sources assemble the project goal/description from mind.yaml.
+        acquisition::acquire_project(project_path)
+    } else if kind == "term" {
+        // `term` Sources assemble a repo-global glossary definition by name;
+        // `project_path` is the repository root for the synthetic term project.
+        acquisition::acquire_term(project_path, location)
     } else if acquisition::is_url(location) {
         // Bug B: `sync` is network-free. Legacy URL-only registrations (pre-Bug B)
         // are not auto-migrated — the user must re-`source add` them so a local
@@ -534,8 +635,8 @@ fn sync_one_source(
         None => 1,
     };
 
-    // Chunk the document
-    let chunks = super::chunk::chunk_document(&extraction.units, &dk, revision, chunk_config)?;
+    // Chunk the document, prepending the context preamble for single-owner kinds.
+    let chunks = super::chunk::chunk_document_with_preamble(&extraction.units, &dk, revision, chunk_config, preamble)?;
     let chunk_count = chunks.len() as u64;
 
     if let Some(store) = store {
@@ -658,6 +759,8 @@ pub fn clear_derived(
             projects_ready: 0,
             projects_failed: 0,
             items: vec![],
+            coverage: Vec::new(),
+            skipped_items: Vec::new(),
             index_revision: None,
             warnings: if !dry_run {
                 vec!["clear requires --all flag with optional --project scope".to_string()]
@@ -734,6 +837,8 @@ pub fn clear_derived(
                 .len() as u64,
             projects_failed: 0,
             items,
+            coverage: Vec::new(),
+            skipped_items: Vec::new(),
             index_revision: (!dry_run).then(|| format!("clear-{}", chrono::Utc::now().format("%Y%m%dT%H%M%SZ"))),
             warnings: vec![],
         });

@@ -94,15 +94,27 @@ pub mod article_kind {
     /// Thinking from `thinking/<key>.md`.
     pub const ARTICLE_THINKING: &str = "article_thinking";
 
-    /// Return true when `kind` is an article-kind (must be excluded from
-    /// export/import bundles).
+    /// Repository-authored `project` goal (from `mind.yaml`).
+    pub const PROJECT: &str = "project";
+    /// Repository-authored `term` definition.
+    pub const TERM: &str = "term";
+
+    /// Return true when `kind` is an article-kind.
     pub fn is_article_kind(kind: &str) -> bool {
         matches!(kind, ARTICLE | ARTICLE_PROMPT | ARTICLE_THINKING)
     }
 
-    /// Return true when `kind` is a source-kind (eligible for export/import).
+    /// Return true when `kind` is repository-authored/derived content whose
+    /// bytes are assembled at sync (article, project, term), not a raw source
+    /// file. Such kinds are excluded from export/import bundles and from the
+    /// raw-file change detection during export (spec 071).
+    pub fn is_derived_kind(kind: &str) -> bool {
+        is_article_kind(kind) || matches!(kind, PROJECT | TERM)
+    }
+
+    /// Return true when `kind` is a raw source-kind (eligible for export/import).
     pub fn is_source_kind(kind: &str) -> bool {
-        !is_article_kind(kind)
+        !is_derived_kind(kind)
     }
 }
 
@@ -122,8 +134,8 @@ pub fn trace_links(repo_root: &Path, project_filter: Option<&str>) -> Result<Vec
 
     let mut links = Vec::new();
     for row in &rows {
-        // Skip article kinds — trace is for sources only.
-        if article_kind::is_article_kind(&row.source_type) {
+        // Skip derived kinds — trace is for raw sources only.
+        if article_kind::is_derived_kind(&row.source_type) {
             continue;
         }
         // Filter by project.

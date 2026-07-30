@@ -202,12 +202,22 @@ Use the canonical global search and synchronization commands:
 
 ```bash
 mf source sync --offline                 # initialize/refresh the local RAG corpus
-mf search "<query>" --output json       # search Sources, Prompts, Thinking, and Articles
+mf search "<query>" --output json       # default global retrieval across the whole corpus
 mf source status --output json           # inspect corpus health
 ```
 
-`mf source sync` discovers Sources, Prompt files, Thinking files, and Article
-prose by default. It is local-first and does not fetch URL sources during sync.
+`mf search` is the default entry point for repository-wide retrieval. Every hit
+carries `registrations[].context` (schema v2): `repository`, `project_identity`,
+`project_goal`, `content_kind`, `lifecycle_status`, `relations` (dangling links
+marked `resolved:false`), and, for source hits, `imported_by` provenance
+(`project` + originating `article`). Consume this context to attribute and cite
+hits; it is read-only. `mf source sync` reports per-kind `coverage` and
+item-by-item `skipped_items` (with `reason`) so indexing is auditable — nothing
+is silently dropped.
+
+`mf source sync` discovers Sources, Prompt files, Thinking files, Article prose,
+project goals (`project` kind), and terms (`term` kind) by default. It is
+local-first and does not fetch URL sources during sync.
 `--offline` forbids only *external* network access; a loopback embedding
 endpoint (`127.0.0.1`/`localhost`, e.g. a local Ollama) is not network access
 and keeps working. If `--offline` blocks an external endpoint, sync warns
@@ -235,6 +245,7 @@ Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (a
 `--link` — Symlink instead of copy (local files)
 `--register-only` — Index a file that already lives inside the project's `sources/` directory without copying its bytes. Idempotent (re-registering the same path is a no-op). Accepts project-, sources-, and repo-relative paths as well as absolute. Rejects paths outside `sources/`, URLs, and combination with `--link` or `--force`.
 `--no-index` — Register only, without indexing the source into RAG (Lance backend). By default a new source is chunked and embedded so it is searchable at once.
+`--article <PATH>` — Capture the originating article (project-relative) that introduced this source, persisted as authoritative `imported_by` provenance. Must stay within the project; an escaping path is a usage error (exit 2).
 
 **`mf source list`** (alias `ls`)
 `--filter <PATTERN>` — Filter by name

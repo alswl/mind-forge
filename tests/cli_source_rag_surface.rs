@@ -25,7 +25,7 @@ fn canonical_search_help_has_no_mode_switch() {
 #[test]
 fn canonical_search_covers_source_and_article_content() {
     let repo = provider_repo();
-    let article = repo.path().join("projects/alpha/outputs/2026-07");
+    let article = repo.path().join("projects/alpha/docs");
     std::fs::create_dir_all(&article).unwrap();
     std::fs::write(article.join("rag-surface.md"), "article-rag-surface-phrase").unwrap();
     let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);

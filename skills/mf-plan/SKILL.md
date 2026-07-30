@@ -68,9 +68,15 @@ mf search "<research question>" --output json
 ```
 
 Search is read-only; inspect result provenance and registration identity before
-using a hit as evidence. If the corpus is missing or degraded, check
-`mf source status --output json` and report the limitation rather than silently
-falling back to an incomplete source list.
+using a hit as evidence. Each hit's `registrations[].context` carries structured
+attribution — repository, owning project and its goal, content kind, article
+lifecycle status, internal `relations` (with dangling links marked
+`resolved:false`), and, for source hits, `imported_by` provenance. Consume and
+cite this context when placing a hit; the corpus now also covers `project` goals
+and `term` definitions, so search for related work, prior decisions, terminology,
+and source origins before adding new material. If the corpus is missing or
+degraded, check `mf source status --output json` and report the limitation
+rather than silently falling back to an incomplete source list.
 
 - Ask first only for missing hard constraints that would invalidate the work. Continue with explicit assumptions when uncertainty is non-blocking.
 - For comparisons, normalize the basis before ranking: applicable dates, people or units, variant, currency, taxes or fees, cancellation terms, access time, and other domain-specific conditions.

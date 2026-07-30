@@ -12,12 +12,14 @@ outside the repository scope.
 
 ## Knowledge roles
 
-RAG indexes four first-class stores while preserving their roles:
+RAG indexes these first-class stores while preserving their roles:
 
 - Sources preserve evidence and provenance.
 - Prompts define intent, constraints, criteria, and durable decisions.
 - Thinking records reasoning, conflicts, feedback, blockers, and next steps.
 - Articles contain the current user-readable synthesis.
+- Project goals (`project` kind) and terms (`term` kind) are also indexed, so
+  project intent and terminology are retrievable.
 
 Prompt and Thinking hits provide intent or reasoning context. They are not
 factual evidence by themselves; verify factual claims against a Source and its
@@ -42,8 +44,12 @@ updates the projection. A projection warning does not mean the primary Source
 was lost; inspect `mf source status` and run `mf source sync` to reconcile.
 
 `mf search` is the canonical global retrieval command. It searches Sources,
-Prompts, Thinking, and Articles together. Use `mf source search` only for
-temporary scripts that still depend on its compatibility `--mode` flag.
+Prompts, Thinking, Articles, project goals, and terms together. Every hit's
+`registrations[].context` carries repository/project attribution, project goal,
+content kind, article lifecycle, `relations`, and — for source hits —
+`imported_by` provenance; use it to attribute hits. Search is read-only. Use
+`mf source search` only for temporary scripts that still depend on its
+compatibility `--mode` flag.
 
 Use search for advanced retrieval instead of reading only one project's YAML:
 

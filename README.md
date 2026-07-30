@@ -149,6 +149,7 @@ flowchart TD
   Prompts --> RAG
   Thinking --> RAG
   Articles --> RAG
+  Support --> RAG
   RAG --> Work[Human or Agent workflow]
   Work --> Articles
   Articles --> Build[Build and Publish]
@@ -168,7 +169,8 @@ set intent → capture evidence → reason → sync/search → write → build �
 - `thinking/<key>.md` records reasoning and work state as they evolve.
 - `mf source new` records evidence with provenance.
 - `mf source sync --offline` initializes or refreshes the local corpus.
-- `mf search <QUERY>` searches Sources, Prompts, Thinking, and Article content.
+- `mf search <QUERY>` searches Sources, Prompts, Thinking, Article content,
+  project goals, and terms — each hit carrying structured attribution context.
 - `mf article`, `mf build`, and `mf publish` manage the writing pipeline.
 
 ## Source RAG
@@ -183,9 +185,15 @@ mf source status --output json
 ```
 
 `mf search` is the canonical global retrieval command. It has no `--mode`
-flag and searches registered Sources, article prose, Prompts, and Thinking.
-Results include provenance; verify the returned project, Source identity, and
-location before citing a result.
+flag and searches registered Sources, article prose, Prompts, Thinking, project
+goals, and repository terms.
+
+Every hit carries a structured `context` on each `registrations[]` entry:
+repository and owning project (with the project's goal), content kind, article
+lifecycle status, internal `relations` (links and prompt/thinking siblings, with
+dangling targets marked `resolved:false`), and — for Source hits — `imported_by`
+provenance. Consume this context to attribute and cite a result instead of
+re-deriving it. Search is read-only.
 
 `mf source search --mode ...` is retained only for old scripts. New workflows
 should use `mf search`.
@@ -202,8 +210,14 @@ A projection warning does not mean the primary Source was lost. Run
 until their first successful sync.
 
 Sync is local-first and non-destructive. It reads saved local Source files and
-discovers article prose, `prompts/`, and `thinking/` by default. Unchanged
-content is synchronized idempotently.
+discovers authored article prose (the `docs/` articles, not `outputs/` build
+artifacts), `prompts/`, `thinking/`, project goals (`mind.yaml`), and repository
+terms by default. Unchanged content is synchronized idempotently. The sync
+report includes per-kind `coverage` and item-by-item `skipped_items` (each with
+a `reason`) so nothing is silently dropped.
+
+`mf source new`/`add` accepts `--article <PATH>` to record the originating
+article as authoritative import provenance on the Source binding.
 
 ### Maintenance and bundles
 
@@ -218,6 +232,11 @@ mf source trace
 
 The old `source advanced` command tree and terminal enrichment workflow are
 removed. Existing enrichment data is not deleted by sync or maintenance.
+
+The RAG storage schema is `v2` (per-registration context). A repository indexed
+under `v1` refuses `search`/`sync` with a diagnostic; run `mf source admin
+rebuild` once to regenerate the context-enriched index and adopt `v2`. No
+migration shim is provided.
 
 Optional semantic embeddings use an OpenAI-compatible `/v1/embeddings`
 provider. Credentials belong in environment variables or the gitignored

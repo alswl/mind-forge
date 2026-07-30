@@ -71,8 +71,8 @@ pub fn export_bundle(repo_root: &Path, output: &Path, force: bool, dry_run: bool
     for batch in store.scan_rows("registrations")? {
         for row in 0..batch.num_rows() {
             let kind = nullable_str(string_col(&batch, "source_kind")?, row);
-            // Export only source kinds (not article*).
-            if kind.as_deref().is_some_and(article_kind::is_article_kind) {
+            // Export only raw source kinds (not derived article/project/term).
+            if kind.as_deref().is_some_and(article_kind::is_derived_kind) {
                 continue;
             }
             let revision = int64_col(&batch, "registration_revision")?.value(row);

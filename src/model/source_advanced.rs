@@ -106,6 +106,14 @@ pub struct SourceRegistration {
     pub fact_fingerprint: String,
     pub registration_revision: i64,
     pub state: RegistrationState,
+    /// Serialized [`DocumentContext`] derived during sync (schema v2). `None`
+    /// until the registration has been enriched.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_json: Option<String>,
+    /// Serialized [`ImportProvenance`] for `source` bindings, captured at
+    /// `source add`/`source new` (schema v2). `None` for non-source or legacy rows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported_by_json: Option<String>,
 }
 
 fn empty_json_object() -> String {
@@ -240,6 +248,127 @@ pub struct EnrichmentJob {
     pub prompt_version: String,
 }
 
+// ── Document context (schema v2) ────────────────────────────────────────────
+
+/// The kind of content a registration indexes. Determines whether structured
+/// context participates in vector embedding (`single_owner`) or is returned as
+/// per-binding provenance only (`source`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentKind {
+    Source,
+    Article,
+    ArticlePrompt,
+    ArticleThinking,
+    Project,
+    Term,
+}
+
+impl ContentKind {
+    /// Parse from the `source_type`/`source_kind` string used in registrations.
+    pub fn from_registration_kind(kind: &str) -> Self {
+        match kind {
+            "article" => Self::Article,
+            "article_prompt" => Self::ArticlePrompt,
+            "article_thinking" => Self::ArticleThinking,
+            "project" => Self::Project,
+            "term" => Self::Term,
+            _ => Self::Source,
+        }
+    }
+
+    /// A single-owner kind is registered 1:1 with its content and may carry its
+    /// context into the embedded chunk text. `source` content is shared across
+    /// projects, so its context is provenance-only.
+    pub fn is_single_owner(self) -> bool {
+        !matches!(self, Self::Source)
+    }
+}
+
+/// A directed relationship discovered from a document (internal links,
+/// prompt/thinking siblings). `resolved` reflects current repository facts only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Relation {
+    pub relation_type: RelationType,
+    pub target: String,
+    pub resolved: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[allow(clippy::enum_variant_names)]
+pub enum RelationType {
+    ArticleToArticle,
+    ArticleToFile,
+    ArticleToPrompt,
+    ArticleToThinking,
+    ArticleToTerm,
+}
+
+/// Import provenance for a `source` binding: which project (and, when captured
+/// at creation, which originating article) introduced this source. Authoritative
+/// fact persisted per binding; never inferred from article prose.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportProvenance {
+    pub project: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub article: Option<String>,
+}
+
+/// Structured context derived per registration and persisted to
+/// `registrations.context_json` (authoritative, schema v2). Drives the context
+/// preamble for single-owner kinds and search provenance for all kinds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DocumentContext {
+    pub repository: String,
+    pub project_identity: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_goal: Option<String>,
+    pub content_kind: ContentKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lifecycle_status: Option<String>,
+    pub relations: Vec<Relation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub imported_by: Option<ImportProvenance>,
+    pub single_owner: bool,
+}
+
+impl DocumentContext {
+    /// Render the deterministic, compact context preamble prepended to
+    /// single-owner content before chunking (spec 071 data-model). Returns
+    /// `None` for shared `source` content, whose vectors must stay context-free.
+    pub fn preamble(&self) -> Option<String> {
+        if !self.single_owner {
+            return None;
+        }
+        let kind = serde_json::to_value(self.content_kind).ok().and_then(|v| v.as_str().map(str::to_string));
+        let mut header = format!("[project: {}", self.project_identity);
+        if let Some(goal) = &self.project_goal {
+            header.push_str(&format!(" — {goal}"));
+        }
+        header.push(']');
+        if let Some(kind) = kind {
+            header.push_str(&format!(" [kind: {kind}]"));
+        }
+        if let Some(status) = &self.lifecycle_status {
+            header.push_str(&format!(" [status: {status}]"));
+        }
+        if !self.relations.is_empty() {
+            let targets = self.relations.iter().map(|r| r.target.as_str()).collect::<Vec<_>>().join(", ");
+            header.push_str(&format!("\n[links: {targets}]"));
+        }
+        Some(header)
+    }
+
+    /// Normalize relations into deterministic order and drop duplicates so the
+    /// persisted context and derived preamble are stable (SC-006).
+    pub fn normalize(&mut self) {
+        self.relations.sort_by(|a, b| a.relation_type.cmp(&b.relation_type).then_with(|| a.target.cmp(&b.target)));
+        self.relations.dedup_by(|a, b| a.relation_type == b.relation_type && a.target == b.target);
+        self.single_owner = self.content_kind.is_single_owner();
+    }
+}
+
 // ── Search ─────────────────────────────────────────────────────────────────
 
 /// Content location within a document.
@@ -303,6 +432,10 @@ pub struct SearchResultRegistration {
     /// Non-identifying annotations carried from the registration.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub annotations: std::collections::BTreeMap<String, String>,
+    /// Structured context for this binding (spec 071): repository/project
+    /// attribution, content kind, lifecycle, relations, and — for source
+    /// bindings — import provenance. Every hit carries one.
+    pub context: DocumentContext,
 }
 
 /// Enrichment summary in a search result.
@@ -354,6 +487,25 @@ pub struct SyncItem {
     pub error: Option<String>,
 }
 
+/// Per-kind coverage counts in a sync report (spec 071). `indexed + skipped`
+/// equals the number of discovered items of that kind.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoverageByKind {
+    pub kind: String,
+    pub indexed: u64,
+    pub skipped: u64,
+}
+
+/// One discovered item that was not indexed, with a machine reason so nothing is
+/// silently dropped (spec 071, FR-003). `reason` ∈ `empty` / `binary` /
+/// `excluded` / `encoding_error` / `over_budget`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkippedItem {
+    pub location: String,
+    pub kind: String,
+    pub reason: String,
+}
+
 /// Aggregate sync report.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncReport {
@@ -368,6 +520,14 @@ pub struct SyncReport {
     pub projects_ready: u64,
     pub projects_failed: u64,
     pub items: Vec<SyncItem>,
+    /// Per-kind coverage counts (spec 071). `indexed + skipped` equals the
+    /// discovered total for each kind, so coverage is auditable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub coverage: Vec<CoverageByKind>,
+    /// Every discovered item that was not indexed, with a machine reason
+    /// (spec 071) — no silent drops.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skipped_items: Vec<SkippedItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_revision: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
@@ -476,4 +636,72 @@ pub struct ModelIdentity {
     pub normalization: String,
     pub query_prefix: String,
     pub passage_prefix: String,
+}
+
+#[cfg(test)]
+mod context_tests {
+    use super::*;
+
+    fn rel(kind: RelationType, target: &str) -> Relation {
+        Relation { relation_type: kind, target: target.to_string(), resolved: true }
+    }
+
+    #[test]
+    fn normalize_sorts_and_dedups_relations() {
+        let mut ctx = DocumentContext {
+            repository: "r".into(),
+            project_identity: "p".into(),
+            project_goal: None,
+            content_kind: ContentKind::Article,
+            lifecycle_status: None,
+            relations: vec![
+                rel(RelationType::ArticleToFile, "b.png"),
+                rel(RelationType::ArticleToArticle, "z.md"),
+                rel(RelationType::ArticleToArticle, "a.md"),
+                rel(RelationType::ArticleToArticle, "a.md"),
+            ],
+            imported_by: None,
+            single_owner: false,
+        };
+        ctx.normalize();
+        assert_eq!(ctx.relations.iter().map(|r| r.target.as_str()).collect::<Vec<_>>(), vec!["a.md", "z.md", "b.png"]);
+    }
+
+    #[test]
+    fn normalize_derives_single_owner_from_kind() {
+        let mut article = DocumentContext {
+            repository: "r".into(),
+            project_identity: "p".into(),
+            project_goal: None,
+            content_kind: ContentKind::Article,
+            lifecycle_status: None,
+            relations: vec![],
+            imported_by: None,
+            single_owner: false,
+        };
+        article.normalize();
+        assert!(article.single_owner);
+
+        let mut source = DocumentContext { content_kind: ContentKind::Source, ..article.clone() };
+        source.single_owner = true;
+        source.normalize();
+        assert!(!source.single_owner);
+    }
+
+    #[test]
+    fn content_kind_parses_registration_kinds() {
+        assert_eq!(ContentKind::from_registration_kind("article"), ContentKind::Article);
+        assert_eq!(ContentKind::from_registration_kind("article_prompt"), ContentKind::ArticlePrompt);
+        assert_eq!(ContentKind::from_registration_kind("project"), ContentKind::Project);
+        assert_eq!(ContentKind::from_registration_kind("term"), ContentKind::Term);
+        assert_eq!(ContentKind::from_registration_kind("file"), ContentKind::Source);
+        assert_eq!(ContentKind::from_registration_kind("web"), ContentKind::Source);
+    }
+
+    #[test]
+    fn imported_by_omits_null_article() {
+        let prov = ImportProvenance { project: "beta".into(), article: None };
+        let json = serde_json::to_string(&prov).unwrap();
+        assert_eq!(json, r#"{"project":"beta"}"#);
+    }
 }

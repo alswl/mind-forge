@@ -4,9 +4,11 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Features
+- **RAG context enrichment (spec 071)**: every `mf search` hit's `registrations[].context` now carries structured attribution — `repository`, `project_identity`, `project_goal`, `content_kind`, `lifecycle_status`, internal `relations` (dangling links marked `resolved:false`), and, for source hits, `imported_by` import provenance. Single-owner content (article/prompt/thinking/project/term) gets a deterministic context preamble folded into its embedded chunk text so attribution participates in matching; shared source vectors are left context-free. `mf source sync` now also indexes `project` goals (from `mind.yaml`) and repository `term` definitions, and reports per-kind `coverage` plus item-by-item `skipped_items` (with `reason`) so indexing is auditable with no silent drops. `mf source new`/`add` gains `--article <PATH>` to capture the originating article as authoritative provenance. All new JSON fields are additive.
 - `mf publish run` on `yuque-prompt` targets now writes a persistent publish-ready file to `outputs/<stem>.yuque.md` (in addition to the existing stdout prompt/envelope); the JSON envelope gains an additive `destination` field. SVG→PNG substitution and banner injection are now generic publish-time transforms controlled by `config.svg_to_png` (bool, default false), `config.banner_markdown`, and `config.banner_file` — available to all target types, not hardcoded to `yuque-prompt`. (spec 070, #21)
 
 ### Changes
+- **Breaking (spec 071)**: the repository RAG storage schema version is bumped `1`→`2` for the new per-registration context. An index pinned at v1 refuses `mf search`/`mf source sync` with an actionable diagnostic; run `mf source admin rebuild` once to regenerate the context-enriched index and adopt v2. No migration shim is provided (single-maintainer system).
 - **Breaking**: Remove correction-mutation flags from `term update`; correction edits now go solely through `term correction update`/`remove` (spec 052)
 - `term correction add` now reports `created: true|false` in JSON and "added" vs "already exists, skipped" in text
 - Clarify `--filter`/`--alias`/`--tag` help text for `term list`

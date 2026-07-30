@@ -27,10 +27,13 @@ Options:
       --no-index                   Register only, without indexing the source into RAG (Lance
                                    backend). By default a new source is chunked and embedded so it
                                    is searchable at once
+      --article <ARTICLE>          Originating article that introduced this source (project-relative
+                                   path). Captured as authoritative import provenance (spec 071).
+                                   Must stay within the project; an escaping path is a usage error
+      --no-color                   Disable colored output
   -f, --force                      Proceed despite safety checks: overwrite an existing target, or
                                    remove an entity referenced by others
-      --no-color                   Disable colored output
-      --dry-run                    Preview changes without writing
   -p, --project <NAME>             Project name for project-scoped operations
+      --dry-run                    Preview changes without writing
   -h, --help                       Print help
   -V, --version                    Print version

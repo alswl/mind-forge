@@ -110,6 +110,56 @@ pub fn acquire_article(project_path: &Path, article_path: &str) -> Result<Acquir
     })
 }
 
+/// Assemble a `project` Source: the project's identity plus its `mind.yaml`
+/// goal/description as searchable Markdown (spec 071 US2). Empty when the
+/// project has no descriptive fields; the caller reports it as skipped.
+pub fn acquire_project(project_path: &Path) -> Result<AcquiredContent> {
+    let identity = project_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let text = fs::read_to_string(project_path.join("mind.yaml")).unwrap_or_default();
+    let value: serde_yaml::Value = serde_yaml::from_str(&text).unwrap_or(serde_yaml::Value::Null);
+    let field = |key: &str| value.as_mapping().and_then(|m| m.get(key)).and_then(|v| v.as_str()).map(str::to_string);
+    let mut body = format!("# {identity}\n");
+    for key in ["goal", "description", "objective"] {
+        if let Some(v) = field(key)
+            && !v.trim().is_empty()
+        {
+            body.push_str(&format!("\n{v}\n"));
+        }
+    }
+    Ok(AcquiredContent {
+        raw_bytes: body.into_bytes(),
+        acquisition_kind: "project".to_string(),
+        canonical_locator: "mind.yaml".to_string(),
+        registered_location: "mind.yaml".to_string(),
+    })
+}
+
+/// Assemble a `term` Source from the repository-global term of the given name:
+/// definition, aliases, and description as searchable Markdown (spec 071 US2).
+pub fn acquire_term(repo_root: &Path, term_name: &str) -> Result<AcquiredContent> {
+    let terms = crate::service::term::global::load_terms(repo_root)?;
+    let term = terms
+        .iter()
+        .find(|t| t.term == term_name)
+        .ok_or_else(|| MfError::advanced_store(format!("term not found: {term_name}"), None))?;
+    let mut body = format!("# {}\n", term.term);
+    if let Some(def) = &term.definition {
+        body.push_str(&format!("\n{def}\n"));
+    }
+    if let Some(desc) = &term.description {
+        body.push_str(&format!("\n{desc}\n"));
+    }
+    if !term.aliases.is_empty() {
+        body.push_str(&format!("\nAliases: {}\n", term.aliases.join(", ")));
+    }
+    Ok(AcquiredContent {
+        raw_bytes: body.into_bytes(),
+        acquisition_kind: "term".to_string(),
+        canonical_locator: format!("term:{term_name}"),
+        registered_location: term_name.to_string(),
+    })
+}
+
 /// Fetch a registered HTTP(S) Source. This function is deliberately only
 /// called by sync/rebuild; search and ordinary Source commands never acquire
 /// URLs. Both HTTP and HTTPS are accepted because local fixture/proxy services

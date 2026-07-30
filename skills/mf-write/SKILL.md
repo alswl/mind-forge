@@ -30,9 +30,14 @@ When a Source is added or changed, remember that an active RAG repository
 dual-writes: Lance is the primary registration store and `mind-index.yaml` is a
 compatibility projection. Run `mf source sync --offline` before drafting, then
 use `mf search "<claim or topic>" --output json` to search Sources, Prompts,
-Thinking, and Articles. Prompt and Thinking hits provide intent or reasoning
-context, not evidence by themselves. Verify Source provenance before citing a
-factual claim.
+Thinking, Articles, project goals, and terms before drafting or reusing existing
+material. Each hit's `registrations[].context` gives repository/project
+attribution, project goal, content kind, article lifecycle, `relations`, and —
+for source hits — `imported_by` provenance; consume it to place and cite the hit
+correctly. Prompt and Thinking hits provide intent or reasoning context, not
+evidence by themselves. Verify Source provenance before citing a factual claim.
+If the corpus is empty or unavailable, continue without retrieval and report the
+degradation rather than stalling.
 
 ## Draft or revise
 

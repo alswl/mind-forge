@@ -26,7 +26,10 @@ use crate::service::source::advanced::publication::{
     self, RepositorySourceIndexPointer, RepositorySourceIndexSnapshot, TableVersionRef,
 };
 
-const STORAGE_SCHEMA_VERSION: &str = "1";
+/// Current authoritative storage schema version. Bumped 1→2 for spec 071
+/// (per-registration `context_json` + source `imported_by`). A v1 snapshot must
+/// be rebuilt (`mf source admin rebuild`) before search/sync will serve it.
+pub const STORAGE_SCHEMA_VERSION: &str = "2";
 
 /// Result of an activation dry-run: lists every registration that would be imported.
 #[derive(Debug, Serialize)]
@@ -207,6 +210,8 @@ pub fn activate(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<Activ
             ),
             registration_revision: 1,
             state: crate::model::source_advanced::RegistrationState::Live,
+            context_json: None,
+            imported_by_json: None,
         })
         .collect::<Vec<_>>();
     store.append_registrations(&registrations)?;
@@ -327,6 +332,36 @@ fn patch_backend_marker(repo_root: &Path, snapshot_id: &str, catalog_fingerprint
         dir.sync_all()?;
     }
 
+    Ok(())
+}
+
+/// Rewrite only `minds.yaml.source.storage_schema_version` to the current
+/// version. Used by `rebuild` to adopt schema v2 after regenerating the
+/// context-enriched primary + derived tables. No-op fields are preserved.
+pub fn upgrade_storage_schema_version(repo_root: &Path) -> Result<()> {
+    let minds_yaml = repo_root.join("minds.yaml");
+    if !minds_yaml.exists() {
+        return Ok(());
+    }
+    let original = fs::read_to_string(&minds_yaml)?;
+    let mut root: serde_yaml::Value = serde_yaml::from_str(&original)
+        .map_err(|e| MfError::advanced_store(format!("cannot parse minds.yaml: {e}"), None))?;
+    if let serde_yaml::Value::Mapping(ref mut map) = root {
+        let source_key = serde_yaml::Value::String("source".to_string());
+        if let Some(serde_yaml::Value::Mapping(source_block)) = map.get_mut(&source_key) {
+            source_block
+                .insert("storage_schema_version".into(), serde_yaml::Value::String(STORAGE_SCHEMA_VERSION.into()));
+        }
+    }
+    let updated = serde_yaml::to_string(&root)
+        .map_err(|e| MfError::advanced_store(format!("cannot serialize minds.yaml: {e}"), None))?;
+    let tmp = minds_yaml.with_extension("tmp");
+    fs::write(&tmp, &updated)?;
+    fs::rename(&tmp, &minds_yaml)?;
+    if let Some(parent) = minds_yaml.parent() {
+        let dir = fs::File::open(parent)?;
+        dir.sync_all()?;
+    }
     Ok(())
 }
 

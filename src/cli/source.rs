@@ -151,6 +151,11 @@ pub struct SourceAddArgs {
     /// default a new source is chunked and embedded so it is searchable at once.
     #[arg(long = "no-index")]
     pub no_index: bool,
+    /// Originating article that introduced this source (project-relative path).
+    /// Captured as authoritative import provenance (spec 071). Must stay within
+    /// the project; an escaping path is a usage error.
+    #[arg(long = "article")]
+    pub article: Option<String>,
     #[command(flatten)]
     pub force: ForceFlag,
     #[command(flatten)]
@@ -917,6 +922,7 @@ fn handle_add(args: SourceAddArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
             args.register_only,
             args.dry_run.dry_run,
             !args.no_index,
+            args.article.as_deref(),
         )?;
         return source_add_outcome(outcome, args.dry_run.dry_run, &project_path, ctx);
     }
@@ -1067,8 +1073,21 @@ fn handle_search(args: SourceSearchArgs, ctx: &mut CommandCtx, canonical: bool) 
             let opts = ListOpts::from_flags(false, false).with_repo_root(Some(repo.to_path_buf()));
             let mut rows: Vec<ListRow> = Vec::new();
             for (i, r) in report.results.iter().enumerate() {
-                let source_label = if !r.registrations.is_empty() {
-                    format!("{}:{}", r.registrations[0].project_identity, r.registrations[0].source_identity)
+                let source_label = if let Some(reg) = r.registrations.first() {
+                    // Compact context summary (spec 071): attribution plus lifecycle
+                    // status and relation count for articles, or import provenance
+                    // for source bindings. Full structure is in the JSON output.
+                    let mut label = format!("{}:{}", reg.project_identity, reg.source_identity);
+                    if let Some(status) = &reg.context.lifecycle_status {
+                        label.push_str(&format!(" [{status}]"));
+                    }
+                    if !reg.context.relations.is_empty() {
+                        label.push_str(&format!(" →{}", reg.context.relations.len()));
+                    }
+                    if let Some(article) = reg.context.imported_by.as_ref().and_then(|p| p.article.as_deref()) {
+                        label.push_str(&format!(" ←{article}"));
+                    }
+                    label
                 } else {
                     String::new()
                 };

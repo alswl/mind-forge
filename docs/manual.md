@@ -188,6 +188,7 @@ Sources track reference material used by a project.
 mf source new https://example.com/ref --name ref-a --file-kind web --project blog
 mf source new paper.pdf --file-kind pdf --project blog
 mf source new sources/file/existing.md --register-only --project blog
+mf source new report.pdf --project blog --article docs/my-analysis.md
 mf source list --project blog
 mf source show ref-a --project blog
 mf source update ref-a --url https://example.com/v2 --project blog
@@ -204,6 +205,11 @@ available for compatibility.
 `sources/` directory without copying or moving its bytes. It is idempotent —
 re-registering the same path is a no-op — and cannot be combined with `--link`
 or `--force`.
+
+`--article <PATH>` records the originating article (project-relative) that
+introduced this Source, persisted as authoritative `imported_by` provenance and
+returned with every search hit for the Source. The path must stay within the
+project; an escaping path is a usage error.
 
 ### 7.1 Source RAG (LanceDB)
 
@@ -229,10 +235,19 @@ mf search <QUERY> [-o text|json] [--project NAME] [--source NAME] [--limit N]
                         [--revision N|DATE]
 ```
 
-- Searches both registered Source identities and synced article/content records.
+- Searches Sources, authored article prose, Prompts, Thinking, project goals,
+  and repository terms.
 - **--revision** — integer revision number, ISO date, or relative date
 
 Default output is a text table; `-o json` for machine-readable envelopes.
+
+Each hit carries a structured `context` on every `registrations[]` entry
+(schema v2): `repository`, `project_identity`, `project_goal`, `content_kind`,
+`lifecycle_status`, `relations` (internal links + prompt/thinking siblings;
+dangling targets are `resolved:false`), and — for Source hits — `imported_by`
+provenance (`project` plus the originating `article` when captured). Single-owner
+content (article/project/term) also folds a compact context preamble into its
+embedded chunk text so attribution participates in matching. Search is read-only.
 
 #### Management
 
@@ -243,6 +258,15 @@ mf source admin clear --yes
 mf source admin recover --snapshot ID --yes
 mf source export|import|trace
 ```
+
+`mf source sync` reports per-kind `coverage` and item-by-item `skipped_items`
+(each with a `reason`: `empty`/`binary`/`excluded`/`error`), so indexing is
+auditable and nothing is silently dropped. `--dry-run` reports without writing
+or fetching.
+
+The RAG storage schema is `v2`. A repository last indexed under `v1` refuses
+`search`/`sync` with an actionable diagnostic; run `mf source admin rebuild`
+once to regenerate the context-enriched index and adopt `v2` (no migration shim).
 
 #### Embedding provider
 

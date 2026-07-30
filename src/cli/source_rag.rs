@@ -111,6 +111,9 @@ pub struct AdvancedTraceArgs {
 pub fn handle_sync(args: AdvancedSyncArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     let repo = ctx.require_repo_path()?;
     let mut config = svc::source::advanced::config::load_repository_config(repo)?;
+    // An out-of-date snapshot must be rebuilt before incremental sync; fresh
+    // activation below writes the current schema, so gate only existing indexes.
+    config.require_current_schema()?;
     let dry_run = args.dry_run.dry_run;
 
     if !config.is_lance() {
@@ -167,6 +170,12 @@ pub fn handle_rebuild(args: AdvancedRebuildArgs, ctx: &mut CommandCtx) -> Result
     let repo = ctx.require_repo_path()?;
     let config = svc::source::advanced::config::load_repository_config(repo)?;
     let report = svc::source::advanced::sync::rebuild_repository(repo, &config, args.dry_run.dry_run, args.offline)?;
+    // Rebuild is the schema migration path: after regenerating the context-
+    // enriched index, adopt the current storage schema version so subsequent
+    // search/sync stop reporting the v1→v2 incompatibility.
+    if !args.dry_run.dry_run && report.registrations_failed == 0 {
+        svc::source::advanced::activation::upgrade_storage_schema_version(repo)?;
+    }
     let json = serde_json::to_value(&report).unwrap_or_default();
     let warnings: Vec<String> = if report.registrations_failed > 0 {
         vec![format!(

@@ -70,6 +70,21 @@ pub fn chunk_document(
     content_revision: i64,
     config: &ChunkConfig,
 ) -> Result<Vec<Chunk>> {
+    chunk_document_with_preamble(units, document_key, content_revision, config, None)
+}
+
+/// As [`chunk_document`], but for single-owner kinds a deterministic context
+/// `preamble` is prepended to the first chunk's text so attribution flows into
+/// keyword + vector matching (spec 071 Decision 1). The preamble is embedded
+/// text only: chunk locators continue to point at original content units, so no
+/// offset adjustment is needed for line/byte locators derived from those units.
+pub fn chunk_document_with_preamble(
+    units: &[ExtractedUnit],
+    document_key: &str,
+    content_revision: i64,
+    config: &ChunkConfig,
+    preamble: Option<&str>,
+) -> Result<Vec<Chunk>> {
     if units.is_empty() {
         return Ok(Vec::new());
     }
@@ -128,6 +143,25 @@ pub fn chunk_document(
             &units[start_idx..end_idx],
             config,
         ));
+    }
+
+    // Prepend the context preamble to the first chunk's indexed text. The
+    // locator is unchanged (it points at the original first unit), while the
+    // chunk id is re-derived because its indexed text now differs.
+    if let Some(preamble) = preamble.filter(|p| !p.is_empty())
+        && let Some(first) = chunks.first_mut()
+    {
+        let text = format!("{preamble}\n{}", first.text);
+        first.text_fingerprint = identity::raw_fingerprint(text.as_bytes());
+        first.token_count = config.estimate_tokens(&text);
+        first.chunk_id = identity::chunk_id(
+            document_key,
+            content_revision,
+            &first.locator_json,
+            &config.policy_version,
+            &first.text_fingerprint,
+        );
+        first.text = text;
     }
 
     Ok(chunks)
@@ -219,5 +253,29 @@ mod tests {
         let c1 = chunk_document(&u1, "dk", 1, &ChunkConfig::default()).unwrap();
         let c2 = chunk_document(&u2, "dk", 1, &ChunkConfig::default()).unwrap();
         assert_ne!(c1[0].chunk_id, c2[0].chunk_id);
+    }
+
+    #[test]
+    fn preamble_prepends_to_first_chunk_and_preserves_locator() {
+        let units = make_units(&["Quantum teleportation transfers state."]);
+        let plain = chunk_document(&units, "dk", 1, &ChunkConfig::default()).unwrap();
+        let enriched =
+            chunk_document_with_preamble(&units, "dk", 1, &ChunkConfig::default(), Some("[project: alpha]")).unwrap();
+        // Preamble is embedded in the first chunk's indexed text.
+        assert!(enriched[0].text.starts_with("[project: alpha]\n"), "preamble prepended\n{}", enriched[0].text);
+        assert!(enriched[0].text.contains("Quantum teleportation"));
+        // Locator is unchanged (still points at the original first unit).
+        assert_eq!(enriched[0].locator_json, plain[0].locator_json);
+        assert_eq!(enriched[0].locator_sort_key, plain[0].locator_sort_key);
+        // Indexed text changed, so the content-addressed id is re-derived.
+        assert_ne!(enriched[0].chunk_id, plain[0].chunk_id);
+    }
+
+    #[test]
+    fn empty_preamble_is_noop() {
+        let units = make_units(&["Hello world"]);
+        let plain = chunk_document(&units, "dk", 1, &ChunkConfig::default()).unwrap();
+        let with_empty = chunk_document_with_preamble(&units, "dk", 1, &ChunkConfig::default(), Some("")).unwrap();
+        assert_eq!(plain[0].chunk_id, with_empty[0].chunk_id);
     }
 }

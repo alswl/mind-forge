@@ -75,6 +75,9 @@ pub fn registrations_schema() -> SchemaRef {
         utf8_field("fact_fingerprint", false),
         int64_field("registration_revision", false),
         utf8_field("state", false),
+        // Schema v2 (spec 071): per-registration derived context + source provenance.
+        utf8_field("context_json", true),
+        utf8_field("imported_by_json", true),
     ]))
 }
 
@@ -290,6 +293,75 @@ impl LanceStore {
         Ok(())
     }
 
+    /// Ensure the `registrations` table carries the current (schema v2) columns.
+    ///
+    /// A table created under v1 lacks `context_json`/`imported_by_json`, so
+    /// appending context-bearing rows fails the schema match. Recreate the table
+    /// with the current schema, preserving every existing row (new columns
+    /// null). No-op when the columns already exist. This is the on-disk half of
+    /// the v1→v2 migration that `rebuild` performs (spec 071).
+    pub fn migrate_registrations_schema(&self) -> Result<()> {
+        let table = self.open_table(TABLE_REGISTRATIONS)?;
+        let schema = self
+            .rt()
+            .block_on(async { table.schema().await })
+            .map_err(|e| MfError::advanced_store(format!("cannot read registrations schema: {e}"), None))?;
+        if schema.field_with_name("context_json").is_ok() {
+            return Ok(());
+        }
+        let rows = self.read_all_registrations()?;
+        self.rt().block_on(async {
+            self.db
+                .drop_table(TABLE_REGISTRATIONS, &[])
+                .await
+                .map_err(|e| MfError::advanced_store(format!("cannot drop registrations for migration: {e}"), None))
+        })?;
+        self.create_table(TABLE_REGISTRATIONS, registrations_schema())?;
+        self.append_registrations(&rows)?;
+        Ok(())
+    }
+
+    /// Read every registration row into [`SourceRegistration`]. Schema-v2 columns
+    /// are read when present and default to `None` on older tables.
+    fn read_all_registrations(&self) -> Result<Vec<SourceRegistration>> {
+        use crate::model::source_advanced::RegistrationState;
+        let mut out = Vec::new();
+        for batch in self.scan_rows(TABLE_REGISTRATIONS)? {
+            let col = |name: &str| batch.column_by_name(name).and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let opt =
+                |name: &str, row: usize| col(name).and_then(|a| (!a.is_null(row)).then(|| a.value(row).to_string()));
+            let s = |name: &str, row: usize| col(name).map(|a| a.value(row).to_string()).unwrap_or_default();
+            let revs =
+                batch.column_by_name("registration_revision").and_then(|c| c.as_any().downcast_ref::<Int64Array>());
+            for row in 0..batch.num_rows() {
+                out.push(SourceRegistration {
+                    registration_key: s("registration_key", row),
+                    project_key: s("project_key", row),
+                    project_identity: s("project_identity", row),
+                    project_path: s("project_path", row),
+                    source_identity: s("source_identity", row),
+                    source_type: s("source_type", row),
+                    source_kind: opt("source_kind", row),
+                    registered_location: s("registered_location", row),
+                    tags_json: s("tags_json", row),
+                    labels_json: opt("labels_json", row).unwrap_or_else(|| "{}".to_string()),
+                    annotations_json: opt("annotations_json", row).unwrap_or_else(|| "{}".to_string()),
+                    fact_fingerprint: s("fact_fingerprint", row),
+                    registration_revision: revs.map(|a| a.value(row)).unwrap_or(1),
+                    state: match s("state", row).as_str() {
+                        "pending" => RegistrationState::Pending,
+                        "failed" => RegistrationState::Failed,
+                        "orphaned" => RegistrationState::Orphaned,
+                        _ => RegistrationState::Live,
+                    },
+                    context_json: opt("context_json", row),
+                    imported_by_json: opt("imported_by_json", row),
+                });
+            }
+        }
+        Ok(out)
+    }
+
     /// Add rows to a table. The RecordBatch schema must match the table.
     pub fn append_rows(&self, table_name: &str, batch: arrow_array::RecordBatch) -> Result<()> {
         let table = self.open_table(table_name)?;
@@ -349,6 +421,12 @@ impl LanceStore {
                             crate::model::source_advanced::RegistrationState::Orphaned => "orphaned",
                         })
                         .collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    registrations.iter().map(|r| r.context_json.as_deref()).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    registrations.iter().map(|r| r.imported_by_json.as_deref()).collect::<Vec<_>>(),
                 )),
             ],
         )
@@ -854,6 +932,97 @@ mod tests {
         let schema = registrations_schema();
         let pk = schema.field_with_name("registration_key").unwrap();
         assert!(!pk.is_nullable());
+    }
+
+    /// The schema-v1 `registrations` layout (pre spec 071): the 14 columns
+    /// that shipped before `context_json`/`imported_by_json` were added.
+    fn registrations_schema_v1() -> SchemaRef {
+        Arc::new(Schema::new(vec![
+            utf8_field("registration_key", false),
+            utf8_field("project_key", false),
+            utf8_field("project_identity", false),
+            utf8_field("project_path", false),
+            utf8_field("source_identity", false),
+            utf8_field("source_type", false),
+            utf8_field("source_kind", true),
+            utf8_field("registered_location", false),
+            utf8_field("tags_json", false),
+            utf8_field("labels_json", false),
+            utf8_field("annotations_json", false),
+            utf8_field("fact_fingerprint", false),
+            int64_field("registration_revision", false),
+            utf8_field("state", false),
+        ]))
+    }
+
+    #[test]
+    fn migrate_registrations_schema_upgrades_v1_table_and_preserves_rows() {
+        use crate::model::source_advanced::{RegistrationState, SourceRegistration};
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = LanceStore::create(&dir.path().join("db")).unwrap().with_dimension(1024);
+
+        // Simulate a real on-disk v1 registrations table (no context columns).
+        store.create_table(TABLE_REGISTRATIONS, registrations_schema_v1()).unwrap();
+        let one = |v: &str| Arc::new(StringArray::from(vec![v])) as ArrayRef;
+        let batch = RecordBatch::try_new(
+            registrations_schema_v1(),
+            vec![
+                one("rk-1"),
+                one("pk-1"),
+                one("alpha"),
+                one("projects/alpha"),
+                one("notes"),
+                one("file"),
+                one("file"),
+                one("sources/file/notes.md"),
+                one("[]"),
+                one("{}"),
+                one("{}"),
+                one("fp-1"),
+                Arc::new(Int64Array::from(vec![1])) as ArrayRef,
+                one("live"),
+            ],
+        )
+        .unwrap();
+        store.append_rows(TABLE_REGISTRATIONS, batch).unwrap();
+
+        // Before migration a context-bearing append fails the schema match.
+        let ctx_row = SourceRegistration {
+            registration_key: "rk-2".into(),
+            project_key: "pk-1".into(),
+            project_identity: "alpha".into(),
+            project_path: "projects/alpha".into(),
+            source_identity: "article:foo".into(),
+            source_type: "article".into(),
+            source_kind: Some("article".into()),
+            registered_location: "docs/foo.md".into(),
+            tags_json: "[]".into(),
+            labels_json: "{}".into(),
+            annotations_json: "{}".into(),
+            fact_fingerprint: "fp-2".into(),
+            registration_revision: 1,
+            state: RegistrationState::Live,
+            context_json: Some("{\"repository\":\"r\"}".into()),
+            imported_by_json: None,
+        };
+        assert!(
+            store.append_registrations(std::slice::from_ref(&ctx_row)).is_err(),
+            "v1 table must reject context row"
+        );
+
+        // Migration recreates the table with the v2 schema, preserving rows.
+        store.migrate_registrations_schema().unwrap();
+        assert_eq!(store.read_all_registrations().unwrap().len(), 1, "existing row preserved through migration");
+
+        // The append that crashed before now succeeds (proves the v2 columns
+        // exist), and re-running the migration is a no-op on a v2 table.
+        store.append_registrations(std::slice::from_ref(&ctx_row)).unwrap();
+        store.migrate_registrations_schema().unwrap();
+        let rows = store.read_all_registrations().unwrap();
+        assert_eq!(rows.len(), 2, "context row appended after migration");
+        let migrated = rows.iter().find(|r| r.registration_key == "rk-2").unwrap();
+        assert_eq!(migrated.context_json.as_deref(), Some("{\"repository\":\"r\"}"), "context persisted round-trip");
     }
 
     #[test]

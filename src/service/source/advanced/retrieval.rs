@@ -16,7 +16,8 @@ use chrono::NaiveDate;
 
 use crate::error::{MfError, Result};
 use crate::model::source_advanced::{
-    SearchResultRegistration, SearchScope, SourceLocator, SourceSearchReport, SourceSearchResult,
+    ContentKind, DocumentContext, ImportProvenance, SearchResultRegistration, SearchScope, SourceLocator,
+    SourceSearchReport, SourceSearchResult,
 };
 use crate::model::source_search::SearchMode;
 
@@ -146,6 +147,41 @@ struct BasicCandidate {
     labels: std::collections::BTreeMap<String, String>,
     annotations: std::collections::BTreeMap<String, String>,
     match_field: String,
+    /// Persisted `DocumentContext` (schema v2), present for enriched rows.
+    context_json: Option<String>,
+    /// Persisted `ImportProvenance` for source bindings (schema v2).
+    imported_by_json: Option<String>,
+}
+
+/// Build the `DocumentContext` returned with a search hit. Enriched
+/// (single-owner) rows deserialize their persisted context; every other row —
+/// including source bindings — synthesizes a minimal context from live
+/// registration facts so every hit carries attribution (contract: each
+/// `registrations[]` element MUST include `context`).
+fn build_registration_context(candidate: &BasicCandidate, repository: &str) -> DocumentContext {
+    if let Some(json) = &candidate.context_json
+        && let Ok(ctx) = serde_json::from_str::<DocumentContext>(json)
+    {
+        return ctx;
+    }
+    let content_kind = ContentKind::from_registration_kind(&candidate.source_type);
+    let imported_by =
+        candidate.imported_by_json.as_deref().and_then(|j| serde_json::from_str::<ImportProvenance>(j).ok()).or_else(
+            || {
+                (content_kind == ContentKind::Source)
+                    .then(|| ImportProvenance { project: candidate.project_identity.clone(), article: None })
+            },
+        );
+    DocumentContext {
+        repository: repository.to_string(),
+        project_identity: candidate.project_identity.clone(),
+        project_goal: None,
+        content_kind,
+        lifecycle_status: None,
+        relations: Vec::new(),
+        imported_by,
+        single_owner: content_kind.is_single_owner(),
+    }
 }
 
 /// A candidate from advanced (FTS or vector) search.
@@ -203,6 +239,7 @@ pub fn search_repository(
 /// reader opens LanceDB.  Legacy repositories intentionally return no store.
 fn open_active_store(repo_root: &Path) -> Result<Option<super::lance_store::LanceStore>> {
     let config = super::config::load_repository_config(repo_root)?;
+    config.require_current_schema()?;
     if config.is_legacy() {
         return Ok(None);
     }
@@ -252,6 +289,7 @@ fn search_repository_with_store(
 ) -> Result<SourceSearchReport> {
     let mut warnings = Vec::new();
     let mut results = Vec::new();
+    let repository = super::catalog::repository_identity(repo_root);
 
     let projects_dir = repo_root.join("projects");
     if !projects_dir.exists() {
@@ -307,6 +345,8 @@ fn search_repository_with_store(
                 labels,
                 annotations: serde_json::from_str(&registration.annotations_json).unwrap_or_default(),
                 match_field: String::new(),
+                context_json: registration.context_json,
+                imported_by_json: registration.imported_by_json,
             });
         }
     } else {
@@ -381,6 +421,8 @@ fn search_repository_with_store(
                             labels: std::collections::BTreeMap::new(),
                             annotations: std::collections::BTreeMap::new(),
                             match_field: String::new(),
+                            context_json: None,
+                            imported_by_json: None,
                         });
                     }
                 }
@@ -389,7 +431,7 @@ fn search_repository_with_store(
     }
 
     // Perform basic search
-    let basic_results = basic_search(query, &all_registrations);
+    let basic_results = basic_search(query, &all_registrations, &repository);
     let total_basic = basic_results.len();
     // Resolve the revision filter: integer → exact match; date → per-registration
     // revision map resolved from synced_at timestamps.
@@ -513,7 +555,7 @@ fn search_repository_with_store(
                     // Attach only registrations that passed the prefilters; a
                     // chunk with no matching registration is filtered out. The
                     // result's type is the matched registration's real type.
-                    let regs = registrations_for_document(&all_registrations, &document_bindings, &dk);
+                    let regs = registrations_for_document(&all_registrations, &document_bindings, &dk, &repository);
                     if regs.is_empty() {
                         continue;
                     }
@@ -577,7 +619,12 @@ fn search_repository_with_store(
                 if !text.to_lowercase().contains(&query_lower) {
                     continue;
                 }
-                let regs = registrations_for_document(&all_registrations, &document_bindings, documents.value(row));
+                let regs = registrations_for_document(
+                    &all_registrations,
+                    &document_bindings,
+                    documents.value(row),
+                    &repository,
+                );
                 if regs.is_empty() {
                     continue;
                 }
@@ -684,7 +731,7 @@ fn search_repository_with_store(
 }
 
 /// Basic metadata search: case-insensitive substring match over registration fields.
-fn basic_search(query: &str, registrations: &[BasicCandidate]) -> Vec<SourceSearchResult> {
+fn basic_search(query: &str, registrations: &[BasicCandidate], repository: &str) -> Vec<SourceSearchResult> {
     let query_lower = query.to_lowercase();
     let mut matched: Vec<(BasicCandidate, String)> = Vec::new();
 
@@ -715,6 +762,7 @@ fn basic_search(query: &str, registrations: &[BasicCandidate]) -> Vec<SourceSear
             chunk_id: None,
             snippet: format!("{} ({})", reg.source_identity, match_field),
             registrations: vec![SearchResultRegistration {
+                context: build_registration_context(&reg, repository),
                 registration_key: reg.registration_key,
                 project_identity: reg.project_identity,
                 project_path: reg.project_path,
@@ -741,12 +789,14 @@ fn registrations_for_document(
     candidates: &[BasicCandidate],
     bindings: &BTreeMap<String, BTreeSet<String>>,
     document_key: &str,
+    repository: &str,
 ) -> Vec<SearchResultRegistration> {
     let Some(keys) = bindings.get(document_key) else { return Vec::new() };
     let mut registrations = candidates
         .iter()
         .filter(|candidate| keys.contains(&candidate.registration_key))
         .map(|reg| SearchResultRegistration {
+            context: build_registration_context(reg, repository),
             registration_key: reg.registration_key.clone(),
             project_identity: reg.project_identity.clone(),
             project_path: reg.project_path.clone(),
@@ -805,8 +855,10 @@ mod tests {
             labels: Default::default(),
             annotations: Default::default(),
             match_field: String::new(),
+            context_json: None,
+            imported_by_json: None,
         }];
-        let results = basic_search("machine", &regs);
+        let results = basic_search("machine", &regs, "test-repo");
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].registrations[0].source_identity, "machine-learning-paper");
     }
@@ -825,8 +877,10 @@ mod tests {
             labels: Default::default(),
             annotations: Default::default(),
             match_field: String::new(),
+            context_json: None,
+            imported_by_json: None,
         }];
-        let results = basic_search("rag", &regs);
+        let results = basic_search("rag", &regs, "test-repo");
         assert_eq!(results.len(), 1);
     }
 
@@ -844,8 +898,10 @@ mod tests {
             labels: Default::default(),
             annotations: Default::default(),
             match_field: String::new(),
+            context_json: None,
+            imported_by_json: None,
         }];
-        let results = basic_search("nonexistent", &regs);
+        let results = basic_search("nonexistent", &regs, "test-repo");
         assert!(results.is_empty());
     }
 
