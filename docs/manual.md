@@ -487,6 +487,36 @@ yuque update doc <ns/slug> --body-file outputs/<article>.yuque.md --upload-image
 the article or block source file. `mf build` preserves `:::` blocks verbatim,
 so cards survive every rebuild without hand-patching.
 
+### Private content (author-in-source)
+
+Keep private notes and internal discussion in an article's source without
+ever shipping them, using either of two mind-forge markers:
+
+```markdown
+> [!mf-private] discussion with a reviewer
+> This stays in the source but is stripped from every build/publish artifact.
+
+---
+mind-forge-visibility: private
+---
+```
+
+- A `> [!mf-private]` (or explicit `> [!mind-forge-private]`) callout hides an
+  in-place span — an aside, a paragraph, a whole discussion section — anywhere
+  in an article. Any callout in the `mf-*` / `mind-forge-*` namespace is
+  private by default.
+- In a directory (multi-file) article, a block file's `mind-forge-visibility:
+  private` front-matter key excludes that entire block from the merged build.
+  `public` (or no key) is the default and is unchanged.
+- Both forms are stripped at `mf build`, so `mf publish` (which reads the
+  build artifact) never sees them either. Source files are never modified —
+  private content stays fully visible and editable on every rebuild.
+- Fail-safe: an unrecognized `mind-forge-visibility` value, or marking the
+  article's first/title block private, fails the build and is reported by
+  `mf article lint` rather than silently publishing.
+- Markers written inside a fenced code block (to document the syntax itself)
+  are left as literal text.
+
 ## 11. Render Templates
 
 ```bash
