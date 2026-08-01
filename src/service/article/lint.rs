@@ -5,6 +5,7 @@ use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::article::LintIssue;
 use crate::service::config as config_svc;
+use crate::service::util::markdown;
 
 /// Lint articles in the project: check filenames and content quality.
 /// When `fix` is true, auto-fix fixable issues.
@@ -73,6 +74,36 @@ fn check_content(issues: &mut Vec<LintIssue>, full_path: &Path, rel_path: &str) 
             path: rel_path.to_string(),
             fixable: false,
         });
+    }
+
+    // mind-forge-visibility validation (spec 073, FR-006/FR-007). `lint_articles`
+    // only scans top-level docs/*.md files, so every file reaching this check is
+    // a single-file article's own (and only) block — i.e. its title block. A
+    // directory article's block files (docs/<article>/NN-*.md) are not walked
+    // here; `mf build` is authoritative for validating those (it fails the
+    // build before writing an artifact on the same conditions).
+    match markdown::block_visibility(&content) {
+        Ok(markdown::Visibility::Private) => {
+            issues.push(LintIssue {
+                severity: "error".to_string(),
+                kind: "mind_forge_private_title_block".to_string(),
+                message:
+                    "the article's only block carries the H1 title and cannot be marked mind-forge-visibility: private"
+                        .to_string(),
+                path: rel_path.to_string(),
+                fixable: false,
+            });
+        }
+        Ok(markdown::Visibility::Public) => {}
+        Err(e) => {
+            issues.push(LintIssue {
+                severity: "error".to_string(),
+                kind: "mind_forge_visibility_invalid".to_string(),
+                message: e.to_string(),
+                path: rel_path.to_string(),
+                fixable: false,
+            });
+        }
     }
 
     Ok(())

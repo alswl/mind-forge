@@ -69,6 +69,24 @@ Recognize short and multiline Markdown comments beginning with `mf-feedback`. As
 
 Because current build behavior does not guarantee removal of these comments, unresolved `mf-feedback` annotations block publication.
 
+## Private content: annotations and internal blocks
+
+For content the author wants to keep in the article source but never publish — a private
+note, a discussion aside, a passage written during process discussion that must not ship —
+use mind-forge private content instead of `mf-feedback`. Unlike `mf-feedback`, private
+content is never required to be resolved or removed; `mf build` and `mf publish` simply
+exclude it from every generated artifact while it stays intact in the source file.
+
+- **In place, any position**: wrap it in a callout, `> [!mf-private]` (or the explicit
+  `> [!mind-forge-private]`); any callout in the `mf-*` / `mind-forge-*` namespace is private
+  by default.
+- **A whole block file**, in a directory article: set `mind-forge-visibility: private` in
+  that block's front matter.
+- Both are block-level only (no inline sub-phrase hiding); the first/title block of an
+  article can never be marked private front-matter (`mf build` and `mf article lint` fail
+  rather than produce a titleless artifact); an unrecognized `mind-forge-visibility` value
+  also fails rather than silently publishing.
+
 ## Review and build
 
 For revision or publication readiness:

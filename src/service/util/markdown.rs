@@ -147,12 +147,28 @@ impl Default for FenceTracker {
 /// Source files keep the `typora-copy-images-to` key for editor convenience,
 /// but build artifacts should not publish that local editor setting.
 pub fn strip_typora_front_matter(content: &str) -> String {
+    strip_front_matter_keys(content, is_typora_copy_images_to_line)
+}
+
+/// Remove mind-forge build-directive front-matter keys (e.g.
+/// `mind-forge-visibility`) from generated build content (spec 073, FR-010).
+/// Source files keep these keys; only the build artifact must not leak them.
+pub fn strip_mind_forge_front_matter(content: &str) -> String {
+    strip_front_matter_keys(content, is_mind_forge_key_line)
+}
+
+/// Shared front-matter key removal: drop every leading-front-matter line for
+/// which `should_remove` returns true, then reassemble (or drop entirely) the
+/// `---`-delimited block. Used by [`strip_typora_front_matter`] and
+/// [`strip_mind_forge_front_matter`], which differ only in which keys they
+/// target.
+fn strip_front_matter_keys(content: &str, should_remove: impl Fn(&str) -> bool) -> String {
     if let Some((front, body, eol)) = split_initial_yaml_front_matter(content) {
         let mut kept = String::new();
         let mut removed = false;
 
         for line in front.split_inclusive('\n') {
-            if is_typora_copy_images_to_line(line) {
+            if should_remove(line) {
                 removed = true;
             } else {
                 kept.push_str(line);
@@ -217,6 +233,130 @@ fn split_initial_yaml_front_matter(content: &str) -> Option<(&str, &str, &'stati
 fn is_typora_copy_images_to_line(line: &str) -> bool {
     let line = line.trim_start().trim_end_matches(['\r', '\n']);
     line.starts_with("typora-copy-images-to:")
+}
+
+fn is_mind_forge_key_line(line: &str) -> bool {
+    let line = line.trim_start().trim_end_matches(['\r', '\n']);
+    line.starts_with("mind-forge-")
+}
+
+/// A block's build/publish visibility (spec 073).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Visibility {
+    /// Included in build/publish output (the default).
+    Public,
+    /// Excluded from build/publish output; retained in source.
+    Private,
+}
+
+/// An unrecognized `mind-forge-visibility` value. The closed vocabulary is
+/// `public` | `private`; anything else is an error rather than an implied
+/// `Public` (privacy fail-safe — FR-006).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VisibilityError {
+    pub value: String,
+}
+
+impl std::fmt::Display for VisibilityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid mind-forge-visibility value '{}': expected 'public' or 'private'", self.value)
+    }
+}
+
+/// Resolve a block file's visibility from its leading front matter (spec 073,
+/// FR-002/FR-006). Absent front matter, an absent key, or `mind-forge-visibility:
+/// public` resolve to [`Visibility::Public`]. Any value other than the exact
+/// lowercase `public`/`private` is an error — never silently treated as public.
+pub fn block_visibility(content: &str) -> Result<Visibility, VisibilityError> {
+    let Some((front, _, _)) = split_initial_yaml_front_matter(content) else {
+        return Ok(Visibility::Public);
+    };
+
+    for line in front.split_inclusive('\n') {
+        let trimmed = line.trim_start().trim_end_matches(['\r', '\n']);
+        let Some(rest) = trimmed.strip_prefix("mind-forge-visibility:") else {
+            continue;
+        };
+        let value = rest.trim().trim_matches(|c| c == '"' || c == '\'');
+        return match value {
+            "public" => Ok(Visibility::Public),
+            "private" => Ok(Visibility::Private),
+            other => Err(VisibilityError { value: other.to_string() }),
+        };
+    }
+
+    Ok(Visibility::Public)
+}
+
+/// Remove every `mind-forge-*` private callout — a blockquote whose header
+/// line is `> [!<type>]` with `<type>` starting (case-insensitively) with
+/// `mf-` or `mind-forge-` — from `content` (spec 073, FR-001/FR-008).
+///
+/// A callout is the maximal run of consecutive blockquote lines starting at
+/// its header line; it is self-delimiting (ends at the first non-blockquote
+/// line), so there is no "unclosed" failure mode. Nested callouts inside a
+/// private callout are removed along with it. Callouts inside fenced code
+/// blocks are left untouched (literal text, via [`FenceTracker`]).
+pub fn strip_private_callouts(content: &str) -> String {
+    let mut result = String::with_capacity(content.len());
+    let mut fence = FenceTracker::new();
+    let lines: Vec<&str> = content.split_inclusive('\n').collect();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let line = lines[i];
+        let line_body = line.trim_end_matches(['\r', '\n']);
+        let inside_fence = matches!(fence.process_line(line_body), FenceStatus::Inside);
+
+        if !inside_fence && is_private_callout_header(line_body) {
+            i += 1;
+            while i < lines.len() {
+                let next_body = lines[i].trim_end_matches(['\r', '\n']);
+                if is_blockquote_line(next_body) {
+                    i += 1;
+                } else {
+                    break;
+                }
+            }
+            continue;
+        }
+
+        result.push_str(line);
+        i += 1;
+    }
+
+    result
+}
+
+/// Whether `line` (indentation ≤3 spaces, matching the fence-marker rule) is
+/// a blockquote line, i.e. starts with `>`.
+fn is_blockquote_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let indent = line.len() - trimmed.len();
+    indent <= 3 && trimmed.starts_with('>')
+}
+
+/// Whether `line` is a private-callout header: a blockquote line whose first
+/// token is `[!<type>]` with `<type>` starting (case-insensitively) with
+/// `mf-` or `mind-forge-`.
+fn is_private_callout_header(line: &str) -> bool {
+    parse_callout_type(line).is_some_and(|t| {
+        let lower = t.to_lowercase();
+        lower.starts_with("mf-") || lower.starts_with("mind-forge-")
+    })
+}
+
+/// Parse the callout `<type>` out of a `> [!<type>] ...` header line, if any.
+fn parse_callout_type(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    if line.len() - trimmed.len() > 3 {
+        return None;
+    }
+    let rest = trimmed.strip_prefix('>')?;
+    let rest = rest.strip_prefix(' ').unwrap_or(rest);
+    let rest = rest.strip_prefix("[!")?;
+    let end = rest.find(']')?;
+    Some(&rest[..end])
 }
 
 /// Determine whether a link/image target should be rewritten at all.
@@ -775,5 +915,123 @@ mod tests {
     fn rewrite_html_img_src_no_tag_returns_original() {
         let mut map = |_: &str| Some("unused".to_string());
         assert_eq!(rewrite_line_references("plain text", &mut map), "plain text");
+    }
+
+    // ── mind-forge private callouts (spec 073, FR-001/FR-008) ───────────────
+
+    // Note: the blank line before AND after a callout are both preserved (only
+    // the callout's own lines are removed), so a callout sitting between two
+    // blank lines leaves a double blank line behind — the documented "no
+    // further cleanup beyond the marked span" edge case (spec.md).
+
+    #[test]
+    fn strip_private_callouts_removes_short_form() {
+        let content = "Before.\n\n> [!mf-private]\n> Secret note.\n\nAfter.\n";
+        assert_eq!(strip_private_callouts(content), "Before.\n\n\nAfter.\n");
+    }
+
+    #[test]
+    fn strip_private_callouts_removes_explicit_alias() {
+        let content = "Before.\n\n> [!mind-forge-private]\n> Secret note.\n\nAfter.\n";
+        assert_eq!(strip_private_callouts(content), "Before.\n\n\nAfter.\n");
+    }
+
+    #[test]
+    fn strip_private_callouts_is_case_insensitive() {
+        let content = "Before.\n\n> [!MF-Private]\n> Secret.\n\nAfter.\n";
+        assert_eq!(strip_private_callouts(content), "Before.\n\n\nAfter.\n");
+    }
+
+    #[test]
+    fn strip_private_callouts_removes_multi_paragraph_list_and_nested() {
+        let content = "Before.\n\n\
+> [!mf-private] title\n\
+> Paragraph one.\n\
+>\n\
+> - item a\n\
+> - item b\n\
+>\n\
+> > [!mf-private] nested\n\
+> > still private\n\
+\n\
+After.\n";
+        assert_eq!(strip_private_callouts(content), "Before.\n\n\nAfter.\n");
+    }
+
+    #[test]
+    fn strip_private_callouts_leaves_fenced_example_untouched() {
+        let content = "Before.\n```\n> [!mf-private]\n> shown as an example\n```\nAfter.\n";
+        assert_eq!(strip_private_callouts(content), content);
+    }
+
+    #[test]
+    fn strip_private_callouts_leaves_non_private_callout_untouched() {
+        let content = "Before.\n\n> [!note]\n> This is a normal callout.\n\nAfter.\n";
+        assert_eq!(strip_private_callouts(content), content);
+    }
+
+    #[test]
+    fn strip_private_callouts_is_idempotent() {
+        let content = "Before.\n\n> [!mf-private]\n> Secret.\n\nAfter.\n";
+        let once = strip_private_callouts(content);
+        let twice = strip_private_callouts(&once);
+        assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn strip_private_callouts_noop_without_markers() {
+        let content = "# Title\n\nJust ordinary prose with no callouts at all.\n";
+        assert_eq!(strip_private_callouts(content), content);
+    }
+
+    // ── mind-forge-visibility front matter (spec 073, FR-002/FR-006) ────────
+
+    #[test]
+    fn block_visibility_defaults_to_public_without_frontmatter() {
+        assert_eq!(block_visibility("# Title\nbody\n").unwrap(), Visibility::Public);
+    }
+
+    #[test]
+    fn block_visibility_defaults_to_public_without_the_key() {
+        assert_eq!(block_visibility("---\ntitle: Foo\n---\nbody\n").unwrap(), Visibility::Public);
+    }
+
+    #[test]
+    fn block_visibility_reads_explicit_public() {
+        let content = "---\nmind-forge-visibility: public\n---\nbody\n";
+        assert_eq!(block_visibility(content).unwrap(), Visibility::Public);
+    }
+
+    #[test]
+    fn block_visibility_reads_private() {
+        let content = "---\nmind-forge-visibility: private\n---\nbody\n";
+        assert_eq!(block_visibility(content).unwrap(), Visibility::Private);
+    }
+
+    #[test]
+    fn block_visibility_rejects_unrecognized_value() {
+        for bad in ["internal", "privat", "true", "Private"] {
+            let content = format!("---\nmind-forge-visibility: {bad}\n---\nbody\n");
+            let err = block_visibility(&content).unwrap_err();
+            assert_eq!(err.value, bad, "value should be echoed back for {bad:?}");
+        }
+    }
+
+    #[test]
+    fn strip_mind_forge_front_matter_removes_only_that_key() {
+        let content = "---\ntitle: Foo\nmind-forge-visibility: private\n---\nbody\n";
+        assert_eq!(strip_mind_forge_front_matter(content), "---\ntitle: Foo\n---\nbody\n");
+    }
+
+    #[test]
+    fn strip_mind_forge_front_matter_drops_frontmatter_entirely_when_key_is_only_content() {
+        let content = "---\nmind-forge-visibility: private\n---\nbody\n";
+        assert_eq!(strip_mind_forge_front_matter(content), "body\n");
+    }
+
+    #[test]
+    fn strip_mind_forge_front_matter_noop_without_the_key() {
+        let content = "---\ntitle: Foo\n---\nbody\n";
+        assert_eq!(strip_mind_forge_front_matter(content), content);
     }
 }

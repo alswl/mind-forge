@@ -259,11 +259,46 @@ fn build_article_content(
         }));
     }
 
-    // 8. Read and concatenate files
+    // 8. Read and concatenate files, applying private-content exclusion
+    // (spec 073): a block marked `mind-forge-visibility: private` is skipped
+    // entirely (except the first/title block, which cannot be private), and
+    // `> [!mf-private]` / `> [!mind-forge-private]` callouts are stripped from
+    // every included block. Fails before any artifact is written if a
+    // visibility value is unrecognized or the title block is marked private.
     let mut content = String::new();
-    for file in &article_files {
-        let file_content = fs::read_to_string(file).map_err(MfError::Io)?;
-        let file_content = markdown::strip_typora_front_matter(&file_content);
+    for (idx, file) in article_files.iter().enumerate() {
+        let raw_content = fs::read_to_string(file).map_err(MfError::Io)?;
+
+        let visibility = markdown::block_visibility(&raw_content).map_err(|e| {
+            MfError::usage(
+                format!(
+                    "invalid mind-forge-visibility value '{}' in {}: expected 'public' or 'private'",
+                    e.value,
+                    file.display()
+                ),
+                Some("fix the mind-forge-visibility value in the block's front matter".to_string()),
+            )
+        })?;
+
+        if visibility == markdown::Visibility::Private {
+            if idx == 0 {
+                return Err(MfError::usage(
+                    format!(
+                        "the first block of the article ({}) carries the title and cannot be marked mind-forge-visibility: private",
+                        file.display()
+                    ),
+                    Some(
+                        "move the private content to a later block, or use a `> [!mf-private]` callout instead"
+                            .to_string(),
+                    ),
+                ));
+            }
+            continue;
+        }
+
+        let file_content = markdown::strip_typora_front_matter(&raw_content);
+        let file_content = markdown::strip_mind_forge_front_matter(&file_content);
+        let file_content = markdown::strip_private_callouts(&file_content);
         content.push_str(&file_content);
         if !content.ends_with('\n') {
             content.push('\n');

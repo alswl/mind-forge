@@ -1276,3 +1276,306 @@ fn build_preserves_author_written_info_card() {
     assert!(output2.contains(":::info"), "card block must survive second build:\n{output2}");
     assert!(output2.contains("**Key Insight**"), "card body must survive second build:\n{output2}");
 }
+
+// ── Private content (spec 073): in-place callouts + whole-block front matter ──
+
+#[test]
+fn build_strips_private_callout_short_form() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "private-note");
+    common::write_doc(
+        &repo,
+        "my-project",
+        "private-note",
+        "# Approach\n\nWe chose the streaming parser.\n\n> [!mf-private]\n> Revisit whether buffered is actually slower.\n\nIt handles 10k lines comfortably.\n",
+    );
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "private-note"])
+        .assert()
+        .success();
+
+    let output_path = repo.path().join("my-project/outputs/private-note.md");
+    let output = fs::read_to_string(&output_path).unwrap();
+    assert!(output.contains("streaming parser"), "public prose must remain:\n{output}");
+    assert!(output.contains("10k lines"), "public prose must remain:\n{output}");
+    assert!(!output.contains("mf-private"), "callout marker must not leak:\n{output}");
+    assert!(!output.contains("Revisit whether buffered"), "private content must not leak:\n{output}");
+
+    // Source file is untouched.
+    let source_path = repo.path().join("my-project/docs/private-note.md");
+    let source = fs::read_to_string(&source_path).unwrap();
+    assert!(source.contains("mf-private"), "source must retain the callout marker");
+    assert!(source.contains("Revisit whether buffered"), "source must retain the private content");
+}
+
+#[test]
+fn build_strips_private_callout_explicit_alias() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "private-alias");
+    common::write_doc(
+        &repo,
+        "my-project",
+        "private-alias",
+        "# Title\n\nPublic text.\n\n> [!mind-forge-private]\n> Secret discussion.\n\nMore public text.\n",
+    );
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "private-alias"])
+        .assert()
+        .success();
+
+    let output = fs::read_to_string(repo.path().join("my-project/outputs/private-alias.md")).unwrap();
+    assert!(output.contains("Public text"));
+    assert!(output.contains("More public text"));
+    assert!(!output.contains("Secret discussion"), "explicit alias must also be stripped:\n{output}");
+}
+
+#[test]
+fn build_strips_multi_paragraph_and_nested_private_callout() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "private-multi");
+    common::write_doc(
+        &repo,
+        "my-project",
+        "private-multi",
+        "# Title\n\nIntro.\n\n> [!mf-private] discussion\n> Paragraph one.\n>\n> - item a\n> - item b\n>\n> > [!mf-private] nested\n> > still private\n\nConclusion.\n",
+    );
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "private-multi"])
+        .assert()
+        .success();
+
+    let output = fs::read_to_string(repo.path().join("my-project/outputs/private-multi.md")).unwrap();
+    assert!(output.contains("Intro."));
+    assert!(output.contains("Conclusion."));
+    assert!(!output.contains("Paragraph one"));
+    assert!(!output.contains("item a"));
+    assert!(!output.contains("still private"));
+}
+
+#[test]
+fn build_preserves_private_callout_syntax_shown_in_fenced_code() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "private-doc-example");
+    common::write_doc(
+        &repo,
+        "my-project",
+        "private-doc-example",
+        "# Docs\n\nExample syntax:\n\n```markdown\n> [!mf-private]\n> shown as documentation, not a real marker\n```\n\nDone.\n",
+    );
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "private-doc-example"])
+        .assert()
+        .success();
+
+    let output = fs::read_to_string(repo.path().join("my-project/outputs/private-doc-example.md")).unwrap();
+    assert!(
+        output.contains("shown as documentation, not a real marker"),
+        "fenced example must be preserved:\n{output}"
+    );
+}
+
+#[test]
+fn build_fails_on_unrecognized_visibility_value() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "bad-visibility");
+    // A single-file article whose only block has an invalid value. This is
+    // also, incidentally, the first/only block — but the invalid-value check
+    // must fire (and be named as such), not the title-block check.
+    common::write_doc(
+        &repo,
+        "my-project",
+        "bad-visibility",
+        "---\nmind-forge-visibility: internal\n---\n\n# Title\n\nBody.\n",
+    );
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "bad-visibility"])
+        .output()
+        .expect("command runs");
+
+    assert_eq!(output.status.code(), Some(2), "invalid visibility value must be a usage error");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("internal"), "error should name the invalid value:\n{stderr}");
+    assert!(
+        !repo.path().join("my-project/outputs/bad-visibility.md").exists(),
+        "no artifact should be written on validation failure"
+    );
+}
+
+#[test]
+fn build_fails_when_first_block_marked_private() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "private-title");
+    common::write_doc(
+        &repo,
+        "my-project",
+        "private-title",
+        "---\nmind-forge-visibility: private\n---\n\n# Title\n\nBody.\n",
+    );
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "private-title"])
+        .output()
+        .expect("command runs");
+
+    assert_eq!(output.status.code(), Some(2), "private title block must be a usage error");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("private"), "error should mention the private/title-block condition:\n{stderr}");
+    assert!(
+        !repo.path().join("my-project/outputs/private-title.md").exists(),
+        "no artifact should be written on validation failure"
+    );
+}
+
+#[test]
+fn build_directory_article_omits_private_block_and_keeps_order() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    let article_dir = repo.path().join("my-project/docs/team-review");
+    fs::create_dir_all(&article_dir).unwrap();
+    fs::write(article_dir.join("01-intro.md"), "# Team Review\n\nIntro block.\n").unwrap();
+    fs::write(
+        article_dir.join("02-discussion.md"),
+        "---\nmind-forge-visibility: private\n---\n\n## Internal discussion\n\nNot for readers.\n",
+    )
+    .unwrap();
+    fs::write(article_dir.join("03-conclusion.md"), "## Conclusion\n\nFinal block.\n").unwrap();
+    common::write_index(
+        &repo,
+        "my-project",
+        "schema_version: '1'\narticles:\n  - title: 'team-review'\n    project: 'my-project'\n    article_type: blog\n    article_path: 'docs/team-review'\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n",
+    );
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "team-review"])
+        .assert()
+        .success();
+
+    let output = fs::read_to_string(repo.path().join("my-project/outputs/team-review.md")).unwrap();
+    assert!(output.contains("Intro block."), "public block before the private one must be included:\n{output}");
+    assert!(output.contains("Final block."), "public block after the private one must be included:\n{output}");
+    assert!(!output.contains("Internal discussion"), "private block content must be omitted:\n{output}");
+    assert!(!output.contains("Not for readers"), "private block content must be omitted:\n{output}");
+    assert!(!output.contains("mind-forge-visibility"), "the directive key must never leak:\n{output}");
+
+    // Order preserved: Intro before Conclusion.
+    let intro_pos = output.find("Intro block.").unwrap();
+    let conclusion_pos = output.find("Final block.").unwrap();
+    assert!(intro_pos < conclusion_pos, "block order must be preserved");
+
+    // The private block file itself remains on disk, untouched.
+    assert!(article_dir.join("02-discussion.md").exists(), "private block file must remain on disk");
+    let block_source = fs::read_to_string(article_dir.join("02-discussion.md")).unwrap();
+    assert!(block_source.contains("mind-forge-visibility: private"), "source file keeps the directive");
+}
+
+#[test]
+fn build_directory_article_public_block_unchanged() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    let article_dir = repo.path().join("my-project/docs/plain-review");
+    fs::create_dir_all(&article_dir).unwrap();
+    fs::write(article_dir.join("01-intro.md"), "# Plain Review\n\nIntro.\n").unwrap();
+    fs::write(article_dir.join("02-body.md"), "---\nmind-forge-visibility: public\n---\n\n## Body\n\nText.\n").unwrap();
+    common::write_index(
+        &repo,
+        "my-project",
+        "schema_version: '1'\narticles:\n  - title: 'plain-review'\n    project: 'my-project'\n    article_type: blog\n    article_path: 'docs/plain-review'\n    status: draft\n    created_at: '2026-05-07T00:00:00Z'\n    updated_at: '2026-05-07T00:00:00Z'\n",
+    );
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "plain-review"])
+        .assert()
+        .success();
+
+    let output = fs::read_to_string(repo.path().join("my-project/outputs/plain-review.md")).unwrap();
+    assert!(output.contains("Intro."));
+    assert!(output.contains("## Body"));
+    assert!(output.contains("Text."));
+    assert!(!output.contains("mind-forge-visibility"), "explicit public key must not leak either:\n{output}");
+}
+
+#[test]
+fn build_private_callout_survives_repeated_edit_build_cycles() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "repeated-cycle");
+    let source_path = repo.path().join("my-project/docs/repeated-cycle.md");
+    let v1 = "# Title\n\nPublic v1.\n\n> [!mf-private]\n> Private note v1.\n\nEnd.\n";
+    common::write_doc(&repo, "my-project", "repeated-cycle", v1);
+
+    for _ in 0..2 {
+        Command::cargo_bin("mf")
+            .expect("binary exists")
+            .current_dir(repo.path().join("my-project"))
+            .args(["build", "repeated-cycle"])
+            .assert()
+            .success();
+
+        let output = fs::read_to_string(repo.path().join("my-project/outputs/repeated-cycle.md")).unwrap();
+        assert!(!output.contains("Private note v1"), "private note must not leak on any build:\n{output}");
+        let source = fs::read_to_string(&source_path).unwrap();
+        assert!(source.contains("Private note v1"), "source must retain the private note across rebuilds");
+        assert_eq!(source, v1, "rebuilding must never mutate the source file");
+    }
+
+    // Edit the source (still private) and rebuild once more.
+    let v2 = "# Title\n\nPublic v2.\n\n> [!mf-private]\n> Private note v2.\n\nEnd.\n";
+    common::write_doc(&repo, "my-project", "repeated-cycle", v2);
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "repeated-cycle"])
+        .assert()
+        .success();
+    let output = fs::read_to_string(repo.path().join("my-project/outputs/repeated-cycle.md")).unwrap();
+    assert!(output.contains("Public v2"));
+    assert!(!output.contains("Private note v2"), "edited private note must still be excluded:\n{output}");
+    let source = fs::read_to_string(&source_path).unwrap();
+    assert_eq!(source, v2, "source reflects the author's edit, untouched by build");
+}
+
+#[test]
+fn build_marker_free_article_is_unaffected() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "no-markers");
+    let body = "# Title\n\nJust ordinary prose with no private markers at all.\n";
+    common::write_doc(&repo, "my-project", "no-markers", body);
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "no-markers"])
+        .assert()
+        .success();
+
+    let output = fs::read_to_string(repo.path().join("my-project/outputs/no-markers.md")).unwrap();
+    assert_eq!(output, body, "marker-free article must build byte-identical to its source");
+}
