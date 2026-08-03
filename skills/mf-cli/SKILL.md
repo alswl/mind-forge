@@ -120,7 +120,7 @@ Import a directory as a project.
 
 ### `mf article` — Manage articles
 
-Subcommands: `new`, `list` (alias `ls`), `show`, `update`, `rename`, `remove` (alias `rm`), `block`, `convert`, `lint`, `index`.
+Subcommands: `new`, `list` (alias `ls`), `show`, `update`, `rename`, `move`, `remove` (alias `rm`), `block`, `convert`, `lint`, `index`.
 
 **`mf article new <TITLE>`**
 Create an article. `<TITLE>` is the sole positional argument; the article type is derived from `--template`.
@@ -144,9 +144,11 @@ Update article metadata in `mind-index.yaml`.
 
 **`mf article rename <OLD_PATH> <NEW_SLUG>`** — Rename an article (slug only). Changes the file/directory path on disk; the title is left unchanged. Use `_title` on `article update` to change the title. Handles both single-file and directory articles. Automatically renames the associated prompt file and updates its `article:` frontmatter binding.
 
+**`mf article move <PATH> --to-project <PROJECT>`** — Move an article to another project. Reports `old_path`/`new_path` and the updated index projections. `--dry-run` safe (leaves the tree byte-identical).
+
 **`mf article remove <PATH>`** (alias `rm`) — Remove an article. Interactive TTY confirmation unless `--yes` or `--force` is set. `<PATH>` accepts the title, the `article_path`, or the index key — with or without a trailing `.md`; all forms resolve to (and remove) the same index entry. No match exits non-zero with `article not found`; never reports success for a no-op.
 
-**`mf article lint`** — Lint articles.
+**`mf article lint`** — Lint articles. Also validates spec 073 visibility: `mind_forge_private_title_block` (error — the sole/title block cannot be `mind-forge-visibility: private`) and `mind_forge_visibility_invalid` (error — the value must be `public` or `private`).
 
 **`mf article convert`**
 Convert article shape between directory and single-file.
@@ -165,8 +167,9 @@ Without a direction flag in a TTY, the CLI infers the unique reasonable directio
 `thinking/` (working ledger) are first-class authored Markdown stores. Only
 their `mind-index.yaml` entries are derived projections, reconciled by
 `mf article index` and surfaced through `mf article list`/`show` above. The
-absence of standalone `mf prompt`/`mf thinking` command groups is a CLI design
-choice, not a data-ownership hierarchy. `prompts/<key>.md` is the source of
+standalone `mf prompt`/`mf thinking` command groups are read-only projection
+*viewers* (`list`/`show` only, see below); that they never mutate is a CLI
+design choice, not a data-ownership hierarchy. `prompts/<key>.md` is the source of
 truth (frontmatter `article:` and optional `mode:` of `editorial`/`research`/
 `decision-research`); `thinking/<key>.md` associates with an article purely by
 key alignment (its own filename stem matching the article's), carries no
@@ -176,6 +179,31 @@ frontmatter, and has no `duplicate` state. Binding status
 prompt, two prompts bound to one article) have no single article row to attach
 to — they surface only through `mf project lint`'s
 `orphan_prompt`/`duplicate_binding`/`missing_thinking` rules (see below).
+
+### `mf prompt` — View prompt projections
+
+Read-only viewers over the current project's `prompts:` projection in
+`mind-index.yaml`. The source of truth is always `prompts/<key>.md`; these
+commands never mutate files or the index. Reconcile the projection with
+`mf article index`.
+
+Subcommands: `list` (default when no subcommand is given), `show`.
+
+**`mf prompt list`** — List prompt projections for the current project.
+
+**`mf prompt show <PATH>`** — Show one prompt projection (path taken from a `list` row).
+
+### `mf thinking` — View thinking projections
+
+Read-only viewers over the current project's `thinking:` projection. The source
+of truth is always `thinking/<key>.md`; these commands never mutate. Reconcile
+the projection with `mf article index`.
+
+Subcommands: `list` (default when no subcommand is given), `show`.
+
+**`mf thinking list`** — List thinking projections for the current project.
+
+**`mf thinking show <PATH>`** — Show one thinking projection (path taken from a `list` row).
 
 ### `mf source` — Manage content sources
 
@@ -235,7 +263,7 @@ and provenance operations use `mf source export|import|trace`. The former
 `source advanced` command tree, model installation, and enrichment CLI are not
 part of the user-facing interface.
 
-Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (alias `rm`), `index`, `clean`.
+Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `move`, `remove` (alias `rm`), `index`, `clean`, plus the RAG/corpus commands `search`, `sync`, `status`, `export`, `import`, `trace`, and `admin` (`rebuild`/`clear`/`recover`) described above.
 
 **`mf source new <INPUT>`**
 `-n`, `--name <NAME>` — Source name
@@ -259,6 +287,8 @@ Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (a
 
 **`mf source rename <OLD_PATH> <NEW_PATH>`** — Rename a source by path or name.
 
+**`mf source move <NAME_OR_PATH> --to-project <PROJECT>`** — Move a source to another project. Dual-write aware (updates the Lance primary and the `mind-index.yaml` projection). `--dry-run` safe.
+
 **`mf source remove <NAME_OR_PATH>`** (alias `rm`)
 `--keep-file` — Remove from index only, keep file on disk
 
@@ -268,7 +298,7 @@ Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (a
 
 ### `mf asset` — Manage project assets
 
-Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (alias `rm`), `index`, `clean`.
+Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `move`, `remove` (alias `rm`), `index`, `clean`.
 
 **`mf asset new <PATH>`**
 `--name <NAME>` — Asset name
@@ -288,6 +318,8 @@ Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (a
 `--all` — Update all assets (mutually exclusive with `PATH`)
 
 **`mf asset rename <OLD_PATH> <NEW_PATH>`** — Rename an asset.
+
+**`mf asset move <PATH> --to-project <PROJECT>`** — Move an asset to another project. `--dry-run` safe.
 
 **`mf asset remove <PATH>`** (alias `rm`) — Remove an asset.
 
@@ -383,6 +415,13 @@ Accepts a repeatable `--term <NAME>` (canonical name, case-sensitive exact match
 
 `ARTICLE` may be an indexed article name/slug or a repo-relative path prefixed with `@`, such as `@projects/blog/docs/2026-03-review/`. Directory articles are built by merging Markdown files in filename order. Relative image/link/reference paths are automatically rewritten to resolve from the output directory; paths inside fenced code blocks, absolute paths, and URLs are left unchanged.
 
+**Private content (spec 073).** At build time, private content is stripped from the assembled output while the source file stays intact — there is no CLI flag to author or toggle it; visibility lives entirely in the article markup. Two block-level entry points:
+
+- **Callout**: any `> [!mf-private]` / `> [!mind-forge-private]` callout (the `mf-*` / `mind-forge-*` namespace, case-insensitive) is removed. Such markers inside fenced code blocks are treated as examples and kept.
+- **Block front matter**: a block whose front matter sets `mind-forge-visibility: private` is skipped entirely. The closed vocabulary is `public` | `private`.
+
+The build **fails** (rather than emit a titleless artifact) if the first/title block is marked private, or if `mind-forge-visibility` carries any value other than `public`/`private`. Private content is still indexed for the author's own RAG retrieval; only build/publish output excludes it.
+
 ### `mf publish` — Publish articles and manage targets
 
 Subcommands: `run`, `update`, `target`.
@@ -392,6 +431,8 @@ Publish article to a target (supported: `local`, `yuque-prompt`).
 `--target <TARGET>` — Publish target (optional when `publish.default_target` is configured)
 
 Without `--target`, `mf` resolves the configured `publish.default_target` from `mind.yaml`. File-based publishers (`.mind-forge/publisher/<name>.yaml`) are discovered for both explicit and default targets. Local publishers honor `config.prefix` for the destination filename.
+
+Private content stripped at build (spec 073) is inherited by every target — the exclusion happens once during assembly, so no per-target transform is required.
 
 **`mf publish update <ARTICLE>`**
 Update a `publish_records` entry in `mind-index.yaml`.
@@ -514,6 +555,13 @@ mf article index --project my-project                  # reconciles articles + p
 mf article list --project my-project                   # PROMPT/THINKING columns per article
 mf article show my-first-post --project my-project      # bound/orphan/duplicate status + thinking presence
 mf project lint --project my-project                    # surfaces orphan_prompt/duplicate_binding/missing_thinking
+mf prompt list --project my-project                     # read-only view of prompt projections
+mf thinking list --project my-project                   # read-only view of thinking projections
+
+# Cross-project moves (dry-run safe)
+mf article move docs/my-first-post --to-project other-project
+mf asset move image.png --to-project other-project
+mf source move ref-canonical --to-project other-project
 
 # Terms
 mf term new "Zettelkasten" --definition "A note-taking method" --project my-project
@@ -582,4 +630,4 @@ mf version --json
 - `term show`, `term update`, and `term remove` operate on the selected correction without requiring sibling substring entries to be migrated first.
 - `article convert` evaluates eligible articles project-wide; it does not take an article selector.
 - `mf init` is the preferred bootstrap command; `mf config init` remains deprecated compatibility.
-- `mind-index.yaml`'s `prompts:`/`thinking:` sections are reconciled caches, never the source of truth — that's always the Markdown files under `prompts/`/`thinking/`. There is no standalone `mf prompt`/`mf thinking` command group; binding info is surfaced through `mf article list`/`show` and reconciled by `mf article index`, and binding status is computed at query time and never persisted. `article rename`/`article convert` keep both files and both projections consistent automatically; a manual `mf article index` is only needed after hand-edited files.
+- `mind-index.yaml`'s `prompts:`/`thinking:` sections are reconciled caches, never the source of truth — that's always the Markdown files under `prompts/`/`thinking/`. The `mf prompt`/`mf thinking` command groups (`list`/`show`) are read-only viewers over these projections and never mutate them; richer binding info is surfaced through `mf article list`/`show` and reconciled by `mf article index`, and binding status is computed at query time and never persisted. `article rename`/`article convert` keep both files and both projections consistent automatically; a manual `mf article index` is only needed after hand-edited files.
