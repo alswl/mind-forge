@@ -102,6 +102,8 @@ For each annotation:
 
 Never silently delete feedback. Unresolved feedback blocks publication because current build behavior does not guarantee removal from generated Markdown.
 
+For a persistent private aside — a process-discussion note or exploratory passage that must stay in the source but never ship — use mind-forge private content rather than `mf-feedback`: wrap it in a `> [!mf-private]` callout, or set `mind-forge-visibility: private` on a whole block file. Unlike feedback, it never needs to be resolved or removed; `mf build`/`mf publish` exclude it while it stays intact in the source, and it remains available for the author's own RAG retrieval. See `$mf-write` / `$mf-cli` for the exact rules (block-level only; the title block cannot be private).
+
 ## Hand off by concern
 
 Use `$mf-write` for prose craft, substantial rewriting, assembly, build, and publication. Do not hand off merely because research changed the article: maintaining a research deliverable is part of this skill.
