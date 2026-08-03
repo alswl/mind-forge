@@ -216,6 +216,12 @@ silently downgraded to a legacy-only registration; projection problems are
 reported as degraded warnings. Repositories without an active corpus remain
 legacy-only until the first `mf source sync`.
 
+Lance activation metadata is machine-local, kept in the gitignored
+`.mind-forge/state.yaml`; the tracked `minds.yaml` stays human-readable and
+carries no machine pointers. If a worktree loses its pointer or local cache,
+`mf source sync` bootstraps it — read-only search reports the sync hint rather
+than rebuilding automatically.
+
 By default `mf source new` also indexes the new Source into RAG (chunks +
 embeddings) in the same step, so it is searchable without a separate
 `mf source sync`; the result is reported in an additive `indexing` field. Pass
