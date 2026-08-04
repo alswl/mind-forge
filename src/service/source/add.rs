@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::path::PathBuf;
 
 use chrono::Utc;
 
@@ -53,6 +52,35 @@ pub struct AddArgs<'a> {
     pub source_kind: Option<SourceKind>,
     pub link: bool,
     pub force: bool,
+}
+
+/// Derive a concrete, unique `-n` suggestion for an auto-derived name collision:
+/// `sources/<seg>/…/<stem>.<ext>` → `<seg>-<stem>` (e.g. `sources/dima/2026-07/
+/// 0731.md` → `dima-0731`). Falls back to the immediate parent directory name
+/// when the layout is flat (spec 074 #32).
+fn suggest_unique_name(source_path: &Path, sources_dir: &Path) -> String {
+    let stem = source_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let rel = source_path.strip_prefix(sources_dir).unwrap_or(source_path);
+    let mut components = rel.components();
+    let first = components.next();
+    let has_deeper = components.next().is_some();
+    if let (Some(segment), true) = (first, has_deeper) {
+        let segment = segment.as_os_str().to_string_lossy().to_string();
+        if !segment.is_empty() && segment != stem {
+            return format!("{segment}-{stem}");
+        }
+    }
+    let parent = source_path.parent().and_then(|p| p.file_name()).map(|p| p.to_string_lossy().to_string());
+    parent.map_or_else(|| stem.clone(), |parent| format!("{parent}-{stem}"))
+}
+
+/// Actionable duplicate-source-name error (spec 074 #32): names the taken
+/// source and — when the collision came from an auto-derived name — suggests a
+/// concrete unique `-n` value. No automatic renaming is introduced.
+fn name_collision_error(taken: &str, suggestion: Option<String>) -> MfError {
+    let hint =
+        suggestion.map_or_else(|| "choose a unique --name".to_string(), |suggestion| format!("try -n {suggestion}"));
+    MfError::usage(format!("source name '{taken}' is already registered"), Some(hint))
 }
 
 pub fn register_only(
@@ -114,8 +142,9 @@ pub fn register_only(
             indexing: None,
         });
     }
-    if sources.iter().any(|source| source.name == name) {
-        return Err(MfError::file_exists(project_path.join("mind-index.yaml")));
+    if let Some(taken) = sources.iter().find(|source| source.name == name) {
+        let suggestion = if args.name.is_none() { Some(suggest_unique_name(&source_path, &sources_dir)) } else { None };
+        return Err(name_collision_error(&taken.name, suggestion));
     }
 
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
@@ -160,11 +189,18 @@ enum UpsertSlot<'a> {
 }
 
 /// Look up a source by name and determine whether we should create or replace.
-fn locate_slot<'a>(sources: &'a [Source], name: &str, force: bool, conflict_marker: PathBuf) -> Result<UpsertSlot<'a>> {
+/// `suggestion` carries a concrete unique `-n` value for the actionable
+/// duplicate-name error (spec 074 #32); it is `None` for explicit `--name` adds.
+fn locate_slot<'a>(
+    sources: &'a [Source],
+    name: &str,
+    force: bool,
+    suggestion: Option<String>,
+) -> Result<UpsertSlot<'a>> {
     match sources.iter().position(|s| s.name == name) {
         None => Ok(UpsertSlot::New),
         Some(idx) if force => Ok(UpsertSlot::Replace { idx, prior: &sources[idx] }),
-        Some(_) => Err(MfError::file_exists(conflict_marker)),
+        Some(idx) => Err(name_collision_error(&sources[idx].name, suggestion)),
     }
 }
 
@@ -273,7 +309,8 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
 
     let mut index = index::load(project_path)?;
     let sources = index.sources.get_or_insert_with(Vec::new);
-    let slot = locate_slot(sources, &name, args.force, project_path.join("mind-index.yaml"))?;
+    // URL adds always carry an explicit --name, so no auto-derived suggestion.
+    let slot = locate_slot(sources, &name, args.force, None)?;
 
     let (mode, source, replaced) = match slot {
         UpsertSlot::Replace { idx, prior } => {
@@ -382,7 +419,9 @@ fn add_path(repo_root: &Path, project_path: &Path, cwd: &Path, args: &AddArgs) -
         ));
     }
 
-    let slot = locate_slot(sources, &name, args.force, dest.clone())?;
+    // Only auto-derived (no explicit -n) collisions get a concrete suggestion.
+    let suggestion = if args.name.is_none() { Some(suggest_unique_name(&source_path, &sources_dir)) } else { None };
+    let slot = locate_slot(sources, &name, args.force, suggestion)?;
 
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 

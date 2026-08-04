@@ -28,7 +28,7 @@ use crate::service::source::advanced::publication::{
 
 /// Current authoritative storage schema version. Bumped 1→2 for spec 071
 /// (per-registration `context_json` + source `imported_by`). A v1 snapshot must
-/// be rebuilt (`mf source admin rebuild`) before search/sync will serve it.
+/// be rebuilt (`mf source sync --rebuild`) before search/sync will serve it.
 pub const STORAGE_SCHEMA_VERSION: &str = "2";
 
 /// Result of an activation dry-run: lists every registration that would be imported.

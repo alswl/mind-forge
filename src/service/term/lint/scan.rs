@@ -48,6 +48,24 @@ pub(crate) fn is_cjk_ideograph(c: char) -> bool {
     )
 }
 
+/// True when a correction `original` is pure CJK and at most two Han characters
+/// — the ambiguous class (e.g. 「以可」) where a jieba segmentation miss could
+/// mis-fire. Such `Word`/standalone corrections lint as **advisory** and are
+/// never auto-applied by `term fix` without an explicit opt-in (spec 074 #30).
+fn is_short_cjk_correction(original: &str) -> bool {
+    let mut count = 0;
+    for c in original.chars() {
+        if !is_cjk_ideograph(c) {
+            return false;
+        }
+        count += 1;
+        if count > 2 {
+            return false;
+        }
+    }
+    (1..=2).contains(&count)
+}
+
 /// A character that would continue a word/token if adjacent to a match: a CJK
 /// ideograph or an ASCII alphanumeric. Used for the #24 substring-tail warning.
 fn is_word_continuation(c: char) -> bool {
@@ -164,12 +182,21 @@ fn apply_word_boundary(
         }
         WordCheck::Cjk => {
             // Use jieba word segmentation as the CJK word-boundary oracle.
-            // A correction fires only when both edges of the match align with
-            // jieba token boundaries. This fixes Bug #8 (fires in pure-CJK
-            // context) and rejects spans that cross a word boundary (Bug #5
-            // cross-boundary partial-matches).
+            // For the ambiguous **short pure-CJK** class (≤2 Han characters)
+            // the matched span must be itself *one exact jieba token* (spec 074
+            // #30). Edge alignment alone (`span_aligns`) fired for spans that
+            // merely sit between two separately-emitted tokens, e.g. 「以可」 in
+            // 「以可独立验证」 where 以 and 可 are separate words — the reported
+            // false positive. Longer or mixed CJK+ASCII compounds (e.g.
+            // 「网关api」) keep the edge-alignment oracle, which reliably gates
+            // on genuine standalone occurrences.
             if let Some(jb) = jieba {
-                jb.span_aligns(offset, original_len)
+                let span = &content[offset..offset + original_len];
+                if is_short_cjk_correction(span) {
+                    jb.is_token(offset, original_len)
+                } else {
+                    jb.span_aligns(offset, original_len)
+                }
             } else {
                 // Fallback: no jieba boundaries available — accept (should not
                 // happen in practice; scan_content always provides boundaries).
@@ -189,6 +216,9 @@ pub(crate) struct InternalFinding {
     pub(crate) term_name: String,
     pub(crate) confidence: Option<f64>,
     pub(crate) replacement_eligible: bool,
+    /// True for a short-CJK advisory finding: it may lint but is skipped by
+    /// auto-apply unless the user explicitly opts in (`--term NAME[:ORIGINAL]`).
+    pub(crate) advisory: bool,
     /// Position of the source Correction in the YAML `corrections:` list.
     /// Used by `deduplicate_spans` as the tie-breaker when two corrections
     /// share the same byte span: lower wins (i.e., the earlier-declared rule).
@@ -252,6 +282,10 @@ pub(crate) fn scan_file_for_corrections(
         }
         let check = WordCheck::for_correction(c.match_kind, c.boundary, c.original);
         let is_ambiguous = c.is_ambiguous;
+        // #30 policy backstop: short pure-CJK word corrections are advisory —
+        // they lint but are not auto-applied (a future segmentation miss must
+        // not corrupt prose). Longer CJK and ASCII corrections are unaffected.
+        let short_cjk_advisory = matches!(check, WordCheck::Cjk) && is_short_cjk_correction(c.original);
         let mut search_start = 0;
         while search_start < sanitized.len() {
             let Some(rel_offset) = find_subseq(&sanitized[search_start..], orig_bytes) else {
@@ -288,8 +322,14 @@ pub(crate) fn scan_file_for_corrections(
                 term: c.term_name.to_string(),
                 description: c.description.map(String::from),
                 confidence: c.confidence,
-                replacement_eligible: !is_ambiguous,
-                safety_reason: if is_ambiguous { Some("ambiguous".to_string()) } else { None },
+                replacement_eligible: !is_ambiguous && !short_cjk_advisory,
+                safety_reason: if is_ambiguous {
+                    Some("ambiguous".to_string())
+                } else if short_cjk_advisory {
+                    Some("short-cjk-advisory".to_string())
+                } else {
+                    None
+                },
                 candidates: if is_ambiguous { c.candidates.to_vec() } else { vec![] },
                 match_kind: c.match_kind,
                 fix_kind: c.fix_kind,
@@ -309,7 +349,8 @@ pub(crate) fn scan_file_for_corrections(
                 fix_kind: c.fix_kind,
                 term_name: c.term_name.to_string(),
                 confidence: c.confidence,
-                replacement_eligible: !is_ambiguous,
+                replacement_eligible: !is_ambiguous && !short_cjk_advisory,
+                advisory: short_cjk_advisory,
                 yaml_index: c.yaml_index,
             });
 
@@ -669,6 +710,54 @@ mod tests {
     fn word_mode_rejects_embedded_occurrence() {
         let word = scan_original("scatter cat", "cat", MatchKind::Word);
         assert_eq!(word.len(), 1, "word mode must reject the embedded occurrence");
+    }
+
+    // ── Spec 074 #30: short-CJK false positive + advisory classification ─────
+
+    /// T003: 「以可」 in 「以可独立验证和回退的方案」 spans a grammatical word
+    /// boundary (以 + 可 + verb) and is NOT one jieba token → zero findings.
+    #[test]
+    fn short_cjk_spanning_word_boundary_is_not_flagged() {
+        let findings = scan_original("以可独立验证和回退的方案", "以可", MatchKind::Word);
+        assert_eq!(
+            findings.len(),
+            0,
+            "以可 must not be flagged when 以 and 可 are separate words, found: {findings:#?}"
+        );
+    }
+
+    /// T004: a genuine standalone short-CJK occurrence still surfaces — as an
+    /// advisory finding (replacement_eligible=false, safety_reason=short-cjk-advisory).
+    #[test]
+    fn genuine_short_cjk_standalone_is_advisory() {
+        let findings = scan_original("机器 很常见", "机器", MatchKind::Word);
+        assert_eq!(findings.len(), 1, "standalone 机器 must still surface");
+        let f = &findings[0];
+        assert!(!f.replacement_eligible, "short-CJK finding must be advisory (not replacement-eligible)");
+        assert_eq!(
+            f.safety_reason.as_deref(),
+            Some("short-cjk-advisory"),
+            "advisory finding must carry safety_reason=short-cjk-advisory"
+        );
+    }
+
+    /// A longer (≥3 Han-char) CJK word correction stays replacement-eligible
+    /// (the advisory downgrade applies only to ≤2 Han-char originals).
+    #[test]
+    fn longer_cjk_correction_stays_replacement_eligible() {
+        let findings = scan_original("机器人 很常见", "机器人", MatchKind::Word);
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].replacement_eligible, "longer CJK correction must remain auto-fixable");
+        assert_eq!(findings[0].safety_reason, None);
+    }
+
+    /// A CJK substring correction (not word/standalone) is unaffected by the
+    /// short-CJK advisory downgrade.
+    #[test]
+    fn cjk_substring_is_not_advisory() {
+        let findings = scan_original("以可独立验证", "以可", MatchKind::Substring);
+        assert_eq!(findings.len(), 1, "loose/standalone substring must still match");
+        assert!(findings[0].replacement_eligible, "substring matches must not be advisory");
     }
 
     #[test]

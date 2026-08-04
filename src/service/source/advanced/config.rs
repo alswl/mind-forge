@@ -156,7 +156,7 @@ impl ResolvedSourceConfig {
                 format!(
                     "repository Source index is schema v{found}, but this build requires v{STORAGE_SCHEMA_VERSION}"
                 ),
-                Some("run `mf source admin rebuild` to regenerate the index with the current schema".to_string()),
+                Some("run `mf source sync --rebuild` to regenerate the index with the current schema".to_string()),
             ));
         }
         Ok(())
