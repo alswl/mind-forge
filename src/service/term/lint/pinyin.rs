@@ -112,6 +112,7 @@ pub(crate) fn scan_for_pinyin(
                     term_name: entry.cref.term_name.to_string(),
                     confidence: entry.cref.confidence,
                     replacement_eligible: !entry.cref.is_ambiguous,
+                    advisory: false,
                     yaml_index: entry.cref.yaml_index,
                 });
             }

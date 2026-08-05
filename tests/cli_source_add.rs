@@ -518,10 +518,9 @@ fn add_file_rejects_existing() {
 
     assert!(!output.status.success(), "should fail on duplicate");
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(
-        stderr.contains("file_exists") || stderr.contains("already exists") || stderr.contains("refusing to overwrite"),
-        "stderr: {stderr}"
-    );
+    // Spec 074 #32: the collision is now an actionable usage error naming the
+    // taken source and suggesting a concrete -n value.
+    assert!(stderr.contains("already registered") && stderr.contains("-n "), "stderr: {stderr}");
 }
 
 // ---------------------------------------------------------------------------

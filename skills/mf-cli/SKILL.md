@@ -258,6 +258,13 @@ and keeps working. If `--offline` blocks an external endpoint, sync warns
 explicitly and text-indexes only rather than silently dropping vectors; check
 `mf source status`'s `chunks_embedded_count` (vs `chunks_count`) to confirm
 vectors are present.
+
+`mf source sync --rebuild` regenerates the Lance Source index to the current
+storage schema (full re-index/re-embed) and emits a stderr warning that a full
+re-index ran. It is the schema-drift recovery path: when a build requires a
+newer storage schema than the persisted one, plain `mf source sync` and the
+read-only advanced commands refuse with a hint to `run `mf source sync --rebuild``
+— use that flag instead of detouring to `mf source admin rebuild`.
 Use `mf search` for content retrieval; it has no `--mode` switch and returns
 the repository-wide RAG result set. A Prompt or Thinking hit supplies intent
 or reasoning context, not factual evidence by itself; verify factual claims
@@ -399,6 +406,7 @@ Rename a term.
 
 **`mf term lint [PATH]`**
 Lint term consistency using `word`, `substring`, and `pinyin`. `substring + loose` performs embedded literal matching; `substring + standalone` suppresses ASCII identifier/path internals and requires CJK jieba token alignment. Pinyin findings are always `fix: suggested` (trailing `?` marker).
+Short (≤2 Han-character) pure-CJK `word` corrections are **advisory** (spec 074 #30): the matched span must be one exact jieba token to fire, and any genuine standalone occurrence is linted with `replacement_eligible: false` + `safety_reason: "short-cjk-advisory"` — so `term fix` never auto-applies it. Opt in explicitly with `--term <NAME>` / `--term <NAME:ORIGINAL>` to apply such a finding.
 `--fix` — Auto-correct term usage in docs (pair with `--dry-run` to preview). Non-TTY exits 2 unless `-y`/`--force` is passed. A `--fix --dry-run` preview lists each finding with its context, confidence, and selection state (`selected`, `excluded_*`, `below_confidence`, `suggested_disabled`, `ambiguous`, …).
 `--term <NAME>` or `--term <NAME:ORIGINAL>` — Repeatable; scope to one or more named terms (case-sensitive exact canonical name match) or, with the `NAME:ORIGINAL` form, one specific correction pair. When omitted, all terms are scanned. Unknown name/pair exits 2 with no edits.
 `--exclude-term <NAME>` — Repeatable; skip corrections for the named term(s).

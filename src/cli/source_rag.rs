@@ -21,6 +21,11 @@ pub struct AdvancedSyncArgs {
     /// Forbid all network access (Web/RSS acquisition disabled)
     #[arg(long)]
     pub offline: bool,
+    /// Regenerate the Lance Source index to the current storage schema (full
+    /// re-index/re-embed). Recovers from a schema-drift refusal in one command
+    /// family instead of detouring to `source admin rebuild`.
+    #[arg(long)]
+    pub rebuild: bool,
     #[command(flatten)]
     pub dry_run: DryRunFlag,
 }
@@ -111,10 +116,38 @@ pub struct AdvancedTraceArgs {
 pub fn handle_sync(args: AdvancedSyncArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
     let repo = ctx.require_repo_path()?;
     let mut config = svc::source::advanced::config::load_repository_config(repo)?;
+    let dry_run = args.dry_run.dry_run;
+
+    // `--rebuild` is the explicit schema-recovery path (spec 074 #33): regenerate
+    // the index to the current storage schema, bypassing the drift refusal below.
+    // It reuses the admin-rebuild sequence so there is no second rebuild impl.
+    if args.rebuild {
+        let report = svc::source::advanced::sync::rebuild_repository(repo, &config, dry_run, args.offline)?;
+        if !dry_run && report.registrations_failed == 0 {
+            svc::source::advanced::activation::upgrade_storage_schema_version(repo)?;
+        }
+        let json = serde_json::to_value(&report).unwrap_or_default();
+        let mut warnings: Vec<String> = if report.registrations_failed > 0 {
+            vec![format!(
+                "{} of {} registration(s) failed rebuild",
+                report.registrations_failed, report.registrations_total
+            )]
+        } else {
+            vec![]
+        };
+        if !dry_run {
+            warnings.push("full re-index (re-embed) ran; storage schema updated".to_string());
+        }
+        return Ok(CommandOutcome::Success(
+            serde_json::json!({"status": "ok", "command": "source.sync", "data": json}),
+            warnings,
+            None,
+        ));
+    }
+
     // An out-of-date snapshot must be rebuilt before incremental sync; fresh
     // activation below writes the current schema, so gate only existing indexes.
     config.require_current_schema()?;
-    let dry_run = args.dry_run.dry_run;
 
     if !config.is_lance() {
         if dry_run {
