@@ -196,6 +196,7 @@ impl FixSelection {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn classify(
         &self,
         term: &str,
@@ -204,9 +205,18 @@ impl FixSelection {
         confidence: Option<f64>,
         fix_kind: FixKind,
         replacement_eligible: bool,
+        advisory: bool,
     ) -> FindingSelection {
         if !replacement_eligible {
-            return FindingSelection::Ambiguous;
+            // Advisory findings (e.g. short-CJK, spec 074 #30) are skipped by
+            // auto-apply unless the user explicitly opted in by naming the term
+            // or pair (`--term NAME` / `--term NAME:ORIGINAL`). Ambiguous
+            // findings (multiple candidate terms) stay ineligible even when
+            // named — the user must resolve the candidates, not force one.
+            let explicitly_opted_in = advisory
+                && (self.selected_terms.contains(term)
+                    || self.selected_pairs.contains(&(term.to_string(), original.to_string())));
+            return if explicitly_opted_in { FindingSelection::Selected } else { FindingSelection::Ambiguous };
         }
         if original == correct {
             return FindingSelection::NotReplacement;
@@ -688,15 +698,15 @@ mod tests {
     fn selection_uses_inclusive_minimum_confidence() {
         let selection = FixSelection { include_suggested: true, min_confidence: Some(0.8), ..Default::default() };
         assert_eq!(
-            selection.classify("Synthetic", "old", "new", Some(0.8), FixKind::Suggested, true),
+            selection.classify("Synthetic", "old", "new", Some(0.8), FixKind::Suggested, true, false),
             FindingSelection::Selected
         );
         assert_eq!(
-            selection.classify("Synthetic", "old", "new", Some(0.79), FixKind::Suggested, true),
+            selection.classify("Synthetic", "old", "new", Some(0.79), FixKind::Suggested, true, false),
             FindingSelection::BelowConfidence
         );
         assert_eq!(
-            selection.classify("Synthetic", "old", "new", None, FixKind::Suggested, true),
+            selection.classify("Synthetic", "old", "new", None, FixKind::Suggested, true, false),
             FindingSelection::BelowConfidence
         );
     }
@@ -707,7 +717,7 @@ mod tests {
         selection.selected_terms.insert("Synthetic".into());
         selection.excluded_terms.insert("Synthetic".into());
         assert_eq!(
-            selection.classify("Synthetic", "old", "new", Some(1.0), FixKind::Required, true),
+            selection.classify("Synthetic", "old", "new", Some(1.0), FixKind::Required, true, false),
             FindingSelection::ExcludedTerm
         );
     }
@@ -718,16 +728,47 @@ mod tests {
         selection.selected_pairs.insert(("Synthetic".into(), "wanted".into()));
         selection.excluded_originals.insert("blocked".into());
         assert_eq!(
-            selection.classify("Synthetic", "wanted", "new", Some(1.0), FixKind::Required, true),
+            selection.classify("Synthetic", "wanted", "new", Some(1.0), FixKind::Required, true, false),
             FindingSelection::Selected
         );
         assert_eq!(
-            selection.classify("Synthetic", "other", "new", Some(1.0), FixKind::Required, true),
+            selection.classify("Synthetic", "other", "new", Some(1.0), FixKind::Required, true, false),
             FindingSelection::NotSelected
         );
         assert_eq!(
-            selection.classify("Other", "blocked", "new", Some(1.0), FixKind::Required, true),
+            selection.classify("Other", "blocked", "new", Some(1.0), FixKind::Required, true, false),
             FindingSelection::ExcludedOriginal
+        );
+    }
+
+    #[test]
+    fn advisory_finding_requires_explicit_opt_in() {
+        // Short-CJK advisory findings (replacement_eligible=false, advisory=true)
+        // are Ambiguous by default and Selected only when the user names the
+        // term or (term, original) pair via --term NAME[:ORIGINAL].
+        let selection = FixSelection::default();
+        assert_eq!(
+            selection.classify("Synthetic", "以可", "new", Some(1.0), FixKind::Required, false, true),
+            FindingSelection::Ambiguous,
+            "advisory finding must be skipped without explicit opt-in"
+        );
+
+        let mut selection = FixSelection::default();
+        selection.selected_pairs.insert(("Synthetic".into(), "以可".into()));
+        assert_eq!(
+            selection.classify("Synthetic", "以可", "new", Some(1.0), FixKind::Required, false, true),
+            FindingSelection::Selected,
+            "explicit --term NAME:ORIGINAL opt-in must apply an advisory finding"
+        );
+
+        // Ambiguous (multi-candidate) findings stay ineligible even when named —
+        // the user must resolve the candidates, not force one.
+        let mut selection = FixSelection::default();
+        selection.selected_terms.insert("Synthetic".into());
+        assert_eq!(
+            selection.classify("Synthetic", "ambiguous", "new", Some(1.0), FixKind::Required, false, false),
+            FindingSelection::Ambiguous,
+            "ambiguous findings must not be force-applied by --term"
         );
     }
 }

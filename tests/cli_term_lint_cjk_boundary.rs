@@ -191,50 +191,79 @@ terms:
 
 // ── US2 (Bug #8): CJK corrections fire in pure-CJK text (T014) ──
 
-/// T014: `term lint` reports `争光→征光` in pure-Chinese text (Bug #8 fix).
+/// T014: `term lint` reports `时刻→实刻` in pure-Chinese text (Bug #8 fix).
 #[test]
 fn cjk_correction_fires_in_pure_cjk_text_lint() {
     let repo = setup_cjk_repo();
     let project = repo.path().join("alpha");
     let index_yaml = r#"schema_version: '1'
 terms:
-  - term: Honor
+  - term: Moment
     corrections:
-      - original: 争光
-        correct: 征光
+      - original: 时刻
+        correct: 实刻
 "#;
     write_cjk_index(&repo, "alpha", index_yaml);
-    write_cjk_doc(&project, "cjk", "为国争光的精神，争光！\n");
+    write_cjk_doc(&project, "cjk", "把握每一时刻，时刻！\n");
 
     let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(!output.status.success(), "should exit 1 with a finding");
-    assert!(stdout.contains("争光"), "must report 争光 occurrence: {stdout}");
-    assert!(stdout.contains("征光"), "must suggest 征光 correction: {stdout}");
+    assert!(stdout.contains("时刻"), "must report 时刻 occurrence: {stdout}");
+    assert!(stdout.contains("实刻"), "must suggest 实刻 correction: {stdout}");
 }
 
-/// T014: `term fix` replaces `争光→征光` with `--include-suggested -y` (SC-002 positive).
+/// T014: `term fix` replaces `时刻→实刻` with `--term Moment` (the explicit opt-in
+/// for short-CJK advisory findings, spec 074 #30) plus --include-suggested -y
+/// (SC-002 positive).
 #[test]
 fn cjk_correction_fix_replaces_in_pure_cjk_text() {
     let repo = setup_cjk_repo();
     let project = repo.path().join("alpha");
     let index_yaml = r#"schema_version: '1'
 terms:
-  - term: Honor
+  - term: Moment
     corrections:
-      - original: 争光
-        correct: 征光
+      - original: 时刻
+        correct: 实刻
 "#;
     write_cjk_index(&repo, "alpha", index_yaml);
-    write_cjk_doc(&project, "cjk", "争光\n");
+    write_cjk_doc(&project, "cjk", "时刻\n");
+
+    let output = mf(&repo)
+        .args(["term", "fix", "--project", "alpha", "--term", "Moment", "--include-suggested", "-y"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(output.status.success(), "fix should succeed; stderr={stderr}");
+
+    let fixed = fs::read_to_string(project.join("docs/cjk.md")).unwrap();
+    assert!(!fixed.contains("时刻"), "时刻 should be replaced in fixed file: {fixed}");
+    assert!(fixed.contains("实刻"), "实刻 should appear in fixed file: {fixed}");
+}
+
+/// Spec 074 #30: without the explicit opt-in, the short-CJK correction 时刻→实刻
+/// is advisory and `term fix` must NOT apply it (prose stays intact).
+#[test]
+fn cjk_short_correction_not_auto_applied_without_opt_in() {
+    let repo = setup_cjk_repo();
+    let project = repo.path().join("alpha");
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: Moment
+    corrections:
+      - original: 时刻
+        correct: 实刻
+"#;
+    write_cjk_index(&repo, "alpha", index_yaml);
+    write_cjk_doc(&project, "cjk", "时刻\n");
 
     let output = mf(&repo).args(["term", "fix", "--project", "alpha", "--include-suggested", "-y"]).output().unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(output.status.success(), "fix should succeed; stderr={stderr}");
 
     let fixed = fs::read_to_string(project.join("docs/cjk.md")).unwrap();
-    assert!(!fixed.contains("争光"), "争光 should be replaced in fixed file: {fixed}");
-    assert!(fixed.contains("征光"), "征光 should appear in fixed file: {fixed}");
+    assert!(fixed.contains("时刻"), "时刻 (short-CJK advisory) must NOT be auto-applied: {fixed}");
 }
 
 // ── US2 (Bug #5): common words not clobbered (T015) ──

@@ -26,14 +26,18 @@ fn e2e_quickstart_workflow() {
     // "var60a" embeds 60 in an ASCII identifier → must NOT change.
     // "他叫 60。" has 60 standalone → must change.
     // CJK: 测试小文件 (小文 embedded between CJK chars, both neighbors CJK) → unchanged.
-    // 小文 followed by ASCII space → standalone → changed.
+    // 小文 followed by ASCII space → standalone → changed (advisory, spec 074 #30,
+    // so it is explicitly opted in via --term "<name>:小文").
     std::fs::write(sources_dir.join("notes.md"), "var60a is a symbol.\n他叫 60。\n测试小文件\n小文 负责备份\n")
         .unwrap();
 
     run_in(root, &["term", "new", "六十", "--misrecognition", "60"]);
     run_in(root, &["term", "new", "<name>", "--misrecognition", "小文"]);
 
-    let (stdout, stderr, code) = run_in(root, &["term", "fix", "sources/notes.md", "-y", "--include-suggested"]);
+    let (stdout, stderr, code) = run_in(
+        root,
+        &["term", "fix", "sources/notes.md", "--term", "六十:60", "--term", "<name>:小文", "-y", "--include-suggested"],
+    );
     assert_eq!(code, 0, "step 3: fix should succeed, got: {stdout} {stderr}");
 
     let fixed = std::fs::read_to_string(sources_dir.join("notes.md")).unwrap();

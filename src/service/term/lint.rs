@@ -181,6 +181,7 @@ fn apply_selection(
             internal.confidence,
             internal.fix_kind,
             internal.replacement_eligible,
+            internal.advisory,
         );
         finding.selection = state;
         match state {
@@ -622,6 +623,7 @@ fn apply_term_fixes(
                 ifind.confidence,
                 ifind.fix_kind,
                 ifind.replacement_eligible,
+                ifind.advisory,
             );
             if !state.is_selected() {
                 continue;

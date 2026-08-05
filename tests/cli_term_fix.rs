@@ -598,3 +598,64 @@ fn term_filter_multi_term_json() {
     assert!(names.contains(&"RAG"));
     assert!(names.contains(&"LLM"));
 }
+
+/// T005 (spec 074 #30): `term fix` over the reported sentence leaves the file
+/// byte-identical — 以可 spans a grammatical word boundary and is not applied.
+#[test]
+fn term_fix_leaves_reported_short_cjk_sentence_byte_identical() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    common::write_index(
+        &repo,
+        "alpha",
+        r#"schema_version: '1'
+terms:
+  - term: Keyi
+    corrections:
+      - original: 以可
+        correct: 可以
+"#,
+    );
+    let doc_path = project.join("docs/demo.md");
+    let reported = "以可独立验证和回退的方案\n";
+    fs::write(&doc_path, reported).unwrap();
+
+    let output = mf(&repo).args(["term", "fix", "--project", "alpha", "--yes"]).output().unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let after = fs::read_to_string(&doc_path).unwrap();
+    assert_eq!(after, reported, "term fix must leave the reported sentence byte-identical");
+}
+
+/// T005b (spec 074 #30): `term fix --term Device:机器` explicitly opts into the
+/// advisory short-CJK finding and applies it — the opt-in path works. (机器 is
+/// a genuine jieba token, so a standalone occurrence surfaces as advisory.)
+#[test]
+fn term_fix_explicit_opt_in_applies_short_cjk() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    common::write_index(
+        &repo,
+        "alpha",
+        r#"schema_version: '1'
+terms:
+  - term: Device
+    corrections:
+      - original: 机器
+        correct: 装置
+"#,
+    );
+    let doc_path = project.join("docs/demo.md");
+    fs::write(&doc_path, "机器 很常见。\n").unwrap();
+
+    let output =
+        mf(&repo).args(["term", "fix", "--project", "alpha", "--term", "Device:机器", "--yes"]).output().unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let after = fs::read_to_string(&doc_path).unwrap();
+    assert!(after.contains("装置"), "explicit --term opt-in must apply the advisory finding: {after}");
+}

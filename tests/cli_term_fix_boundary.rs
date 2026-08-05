@@ -138,8 +138,22 @@ terms:
     write_index(&repo, index);
     write_doc(&repo, "cjk", "小文件 备份策略\n小文 负责备份\n");
 
+    // 小文 is a short (≤2 Han-char) CJK word correction, so it is advisory in
+    // spec 074 #30 — pass `--term "<name>:小文"` as the explicit opt-in so the
+    // boundary behaviour under test (standalone applies, embedded does not)
+    // remains observable.
     let output = mf(&repo)
-        .args(["term", "fix", "--project", "alpha", "docs/cjk.md", "--include-suggested", "-y"])
+        .args([
+            "term",
+            "fix",
+            "--project",
+            "alpha",
+            "docs/cjk.md",
+            "--term",
+            "<name>:小文",
+            "--include-suggested",
+            "-y",
+        ])
         .output()
         .unwrap();
     assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));

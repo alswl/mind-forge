@@ -36,6 +36,17 @@ my_aidc_db             → skipped (underscore neighbours, snake_case)
 独立 aidc 站点          → matched (whitespace neighbour on both sides)
 ```
 
+### CJK `word` corrections (spec 074 #30)
+
+A `word`-matched CJK correction must fire on an **exact jieba token**. For the
+ambiguous short class (≤2 Han characters, e.g. 「以可」), the matched span must be
+one contiguous jieba token — a span that merely sits between two separately
+emitted tokens (`以` + `可` in 「以可独立验证」) is not flagged. Genuine standalone
+short-CJK occurrences still lint, but as **advisory**: `replacement_eligible:
+false` with `safety_reason: "short-cjk-advisory"`, so `term fix` never
+auto-applies them. Opt in explicitly with `--term <NAME>` or
+`--term <NAME:ORIGINAL>` to apply such a finding.
+
 ### When to Use
 
 Use `boundary: standalone` when a short ASCII acronym (`aidc`, `ob`, `ats`) was previously demoted to `fix: suggested` because of identifier-collision risk. Pairing `boundary: standalone` with `fix: required` restores automatic rewriting while respecting identifier boundaries.

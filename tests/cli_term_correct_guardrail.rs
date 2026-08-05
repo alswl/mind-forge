@@ -226,7 +226,12 @@ fn fix_writes_correct_content() {
     let repo = setup_guardrail_repo();
     write_doc(&repo, "demo", "在线服物上线了\n");
 
-    let output = mf(&repo).args(["term", "fix", "--project", "alpha", "--yes", "--json"]).output().unwrap();
+    // 服物 is a ≤2 Han-char CJK correction → advisory in spec 074 #30; pass the
+    // explicit `--term 服务:服物` opt-in so the fix path is still exercised.
+    let output = mf(&repo)
+        .args(["term", "fix", "--project", "alpha", "--term", "服务:服物", "--yes", "--json"])
+        .output()
+        .unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["data"]["fixed_count"], 1, "one fix applied: {stdout}");
@@ -259,7 +264,24 @@ fn combined_document_all_guardrails() {
     // Space-separate 网关api so it passes standalone boundary check.
     write_doc(&repo, "demo", "测试服物和网关API还有 网关api 的问题\n");
 
-    let output = mf(&repo).args(["term", "fix", "--project", "alpha", "--yes", "--json"]).output().unwrap();
+    // 服物 (≤2 Han-char CJK) is advisory in spec 074 #30 — opt in explicitly.
+    // 网关api is a mixed CJK+ASCII compound: replacement-eligible, but it must
+    // still be named because --term selectors scope the run.
+    let output = mf(&repo)
+        .args([
+            "term",
+            "fix",
+            "--project",
+            "alpha",
+            "--term",
+            "服务:服物",
+            "--term",
+            "网关API:网关api",
+            "--yes",
+            "--json",
+        ])
+        .output()
+        .unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: Value = serde_json::from_str(&stdout).unwrap();
 

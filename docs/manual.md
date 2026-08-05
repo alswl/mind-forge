@@ -253,6 +253,7 @@ embedded chunk text so attribution participates in matching. Search is read-only
 
 ```bash
 mf source status
+mf source sync --rebuild            # schema-drift recovery in the sync family
 mf source admin rebuild [--dry-run]
 mf source admin clear --yes
 mf source admin recover --snapshot ID --yes
@@ -265,8 +266,9 @@ auditable and nothing is silently dropped. `--dry-run` reports without writing
 or fetching.
 
 The RAG storage schema is `v2`. A repository last indexed under `v1` refuses
-`search`/`sync` with an actionable diagnostic; run `mf source admin rebuild`
-once to regenerate the context-enriched index and adopt `v2` (no migration shim).
+`search`/`sync` with an actionable diagnostic pointing at `mf source sync --rebuild`;
+run that once to regenerate the context-enriched index and adopt `v2` (no
+migration shim, and no detour through `source admin rebuild`).
 
 #### Embedding provider
 
