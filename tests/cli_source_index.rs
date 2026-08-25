@@ -571,4 +571,34 @@ mod lance_index {
             "must not surface the generic file-conflict error\nstdout:\n{stdout}\nstderr:\n{stderr}"
         );
     }
+
+    /// T036/FR-013/I-2: a source-side write leaves `terms:` byte-identical —
+    /// not just semantically unchanged. The compatibility mirror used to
+    /// round-trip the *whole* document through `serde_yaml::Value`, which
+    /// reformats every other key's indentation style even when only
+    /// `sources:` changed in content.
+    #[test]
+    fn index_leaves_terms_byte_identical() {
+        let repo = provider_repo();
+        let project = repo.path().join("projects/alpha");
+        {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new().append(true).open(project.join("mind-index.yaml")).unwrap();
+            write!(
+                f,
+                "terms:\n  - term: Device\n    corrections:\n      - original: \u{673a}\u{5668}\n        correct: \u{88c5}\u{7f6e}\n"
+            )
+            .unwrap();
+        }
+        let before = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+        let terms_before = before.split_once("terms:").unwrap().1;
+
+        std::fs::write(project.join("sources/file/second.md"), "second\n").unwrap();
+        let (stdout, stderr, code) = run(&repo, &["source", "index", "--project", "alpha"], &[]);
+        assert_eq!(code, 0, "index failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+
+        let after = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+        let terms_after = after.split_once("terms:").unwrap().1;
+        assert_eq!(terms_before, terms_after, "terms: must survive a source-side write byte-identical");
+    }
 }

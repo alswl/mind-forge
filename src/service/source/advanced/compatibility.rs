@@ -167,6 +167,68 @@ fn merge_sources(
     (result, kept_yaml_only)
 }
 
+/// Byte range of a top-level (column-0) YAML key's block within `text`,
+/// spanning from its `key:` line through the line before the next top-level
+/// key (or end of file). `None` when the key is absent.
+///
+/// Spec 075 FR-013/I-2: a writer confined to one key must leave every other
+/// key byte-identical. Parsing the whole document into a `serde_yaml::Value`
+/// and re-serializing it — even touching only one key of the resulting
+/// mapping — reformats every *other* key too (list-item indent style,
+/// scalar quoting), because the reformatting happens at serialize time for
+/// the whole tree, not per key. Splicing at the raw-text level is the only
+/// way to leave untouched keys byte-for-byte identical.
+fn top_level_key_span(text: &str, key: &str) -> Option<(usize, usize)> {
+    let bare = format!("{key}:");
+    let prefixed = format!("{key}: ");
+    let mut start = None;
+    let mut end = text.len();
+    let mut offset = 0usize;
+    for line in text.split_inclusive('\n') {
+        let trimmed = line.trim_end_matches(['\n', '\r']);
+        match start {
+            None => {
+                if trimmed == bare || trimmed.starts_with(&prefixed) {
+                    start = Some(offset);
+                }
+            }
+            Some(_) => {
+                // A column-0 `- item` is a valid, and exactly serde_yaml's
+                // own, style for a sequence directly under its parent key —
+                // it continues the block, it is not a new top-level key.
+                if !trimmed.is_empty() && !trimmed.starts_with([' ', '\t', '-']) {
+                    end = offset;
+                    break;
+                }
+            }
+        }
+        offset += line.len();
+    }
+    start.map(|s| (s, end))
+}
+
+/// Replace (or append) a single top-level key's block in raw YAML text,
+/// leaving every byte outside that block untouched.
+fn splice_top_level_key(original: &str, key: &str, rendered_block: &str) -> String {
+    match top_level_key_span(original, key) {
+        Some((start, end)) => {
+            let mut out = String::with_capacity(original.len() + rendered_block.len());
+            out.push_str(&original[..start]);
+            out.push_str(rendered_block);
+            out.push_str(&original[end..]);
+            out
+        }
+        None => {
+            let mut out = original.to_string();
+            if !out.is_empty() && !out.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str(rendered_block);
+            out
+        }
+    }
+}
+
 /// Compare Lance primary registrations with a project's legacy YAML.
 #[derive(Debug, Serialize)]
 pub struct ProjectionComparison {
@@ -250,7 +312,7 @@ pub fn export_project_with_removals(
     }
 
     let yaml_data = fs::read_to_string(&index_path)?;
-    let mut legacy: serde_yaml::Value = serde_yaml::from_str(&yaml_data)
+    let legacy: serde_yaml::Value = serde_yaml::from_str(&yaml_data)
         .map_err(|e| MfError::advanced_store(format!("cannot parse legacy index: {e}"), None))?;
 
     let legacy_count = legacy.get("sources").and_then(|s| s.as_sequence()).map(|s| s.len()).unwrap_or(0);
@@ -271,11 +333,14 @@ pub fn export_project_with_removals(
     // FR-014/I-1: entries with no store row yet are kept, not dropped — `mf
     // source index` is what imports them into the store.
     let (merged, _kept_yaml_only) = merge_sources(existing_sources.as_ref(), &registrations, permitted_removals);
-    if let serde_yaml::Value::Mapping(ref mut root) = legacy {
-        root.insert("sources".into(), serde_yaml::Value::Sequence(merged));
-    }
-    let rendered = serde_yaml::to_string(&legacy)
-        .map_err(|e| MfError::advanced_store(format!("cannot serialize legacy projection: {e}"), None))?;
+    // FR-013/I-2: splice only the `sources:` block into the raw text so every
+    // other key (`terms:`, `articles:`, `prompts:`, `thinking:`, ...) stays
+    // byte-identical — see `splice_top_level_key`.
+    let mut sources_block_map = serde_yaml::Mapping::new();
+    sources_block_map.insert(Value::String("sources".to_string()), Value::Sequence(merged));
+    let sources_block = serde_yaml::to_string(&Value::Mapping(sources_block_map))
+        .map_err(|e| MfError::advanced_store(format!("cannot serialize sources projection: {e}"), None))?;
+    let rendered = splice_top_level_key(&yaml_data, "sources", &sources_block);
     let expected_fp = crate::service::source::advanced::identity::raw_fingerprint(rendered.as_bytes());
     let observed_fp = crate::service::source::advanced::identity::raw_fingerprint(yaml_data.as_bytes());
 
