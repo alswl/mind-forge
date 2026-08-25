@@ -319,9 +319,12 @@ pub fn validate_project_name(name: &str) -> Result<()> {
         ));
     }
     if name.contains('/') || name.contains('\\') {
+        // Spec 075 US7/FR-036: show the bare form of what was supplied so the
+        // user does not have to strip the path themselves.
+        let bare = name.rsplit(['/', '\\']).find(|segment| !segment.is_empty()).unwrap_or(name);
         return Err(MfError::usage(
             format!("invalid project name '{name}': path separators are not allowed"),
-            Some("use a kebab-case NAME (e.g. my-project)".to_string()),
+            Some(format!("use the bare name '{bare}'")),
         ));
     }
     for c in name.chars() {

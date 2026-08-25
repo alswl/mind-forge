@@ -1579,3 +1579,26 @@ fn build_marker_free_article_is_unaffected() {
     let output = fs::read_to_string(repo.path().join("my-project/outputs/no-markers.md")).unwrap();
     assert_eq!(output, body, "marker-free article must build byte-identical to its source");
 }
+
+/// T095/FR-037 (spec 075 US7): a path-like value passed to `--output` (the
+/// global text/json format flag, easily confused by name with build's own
+/// `--out <PATH>`) must name `--out` as the flag that accepts an output
+/// path, not just list the valid format values.
+#[test]
+fn build_output_format_confusion_names_the_out_flag() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "intro");
+    common::write_doc(&repo, "my-project", "intro", "# Intro\n");
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["--output", "out.md", "build", "intro"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("possible values"), "must still list valid formats: {stderr}");
+    assert!(stderr.contains("--out"), "must name the flag that accepts an output path: {stderr}");
+}
