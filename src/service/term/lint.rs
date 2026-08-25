@@ -164,6 +164,12 @@ struct SelectionCounts {
     excluded: u64,
     below_confidence: u64,
     ineligible: u64,
+    /// Spec 075 US3/T062: the narrow subset of `ineligible` that is held back
+    /// only because it is an unopted-in advisory finding (e.g. short-CJK) —
+    /// not a genuinely ambiguous one (multiple competing terms). `classify`
+    /// maps both cases to `FindingSelection::Ambiguous`, so `internal.advisory`
+    /// (set independently at scan time) is what discriminates them here.
+    held_back: u64,
 }
 
 fn apply_selection(
@@ -184,11 +190,15 @@ fn apply_selection(
             internal.advisory,
         );
         finding.selection = state;
+        finding.held_back = state == FindingSelection::Ambiguous && internal.advisory;
         match state {
             FindingSelection::Selected => counts.selected += 1,
             FindingSelection::ExcludedTerm | FindingSelection::ExcludedOriginal => counts.excluded += 1,
             FindingSelection::BelowConfidence => counts.below_confidence += 1,
             _ => counts.ineligible += 1,
+        }
+        if finding.held_back {
+            counts.held_back += 1;
         }
     }
     counts
@@ -254,6 +264,7 @@ pub(crate) fn empty_report(fix: bool, dry_run: bool) -> TermLintReport {
         excluded_count: 0,
         below_confidence_count: 0,
         ineligible_count: 0,
+        held_back_count: 0,
     }
 }
 
@@ -347,6 +358,7 @@ pub(crate) fn lint_single_file_with_selection(
             excluded_count: counts.excluded,
             below_confidence_count: counts.below_confidence,
             ineligible_count: counts.ineligible,
+            held_back_count: counts.held_back,
         });
     }
 
@@ -398,6 +410,7 @@ fn single_file_report(
         excluded_count: counts.excluded,
         below_confidence_count: counts.below_confidence,
         ineligible_count: counts.ineligible,
+        held_back_count: counts.held_back,
     }
 }
 
@@ -497,6 +510,7 @@ pub(crate) fn lint_walk_with_selection(
             excluded_count: counts.excluded,
             below_confidence_count: counts.below_confidence,
             ineligible_count: counts.ineligible,
+            held_back_count: counts.held_back,
         });
     }
 
@@ -675,6 +689,7 @@ fn apply_term_fixes(
         excluded_count: counts.excluded,
         below_confidence_count: counts.below_confidence,
         ineligible_count: counts.ineligible,
+        held_back_count: counts.held_back,
     })
 }
 

@@ -338,6 +338,8 @@ pub(crate) fn scan_file_for_corrections(
                 substring_adjacent_word,
                 selection: if is_ambiguous { FindingSelection::Ambiguous } else { FindingSelection::Selected },
                 context: context_excerpt(content, abs_offset, orig_bytes.len()),
+                // Overwritten by `apply_selection` once the fix scope is known.
+                held_back: false,
             });
 
             internal_findings.push(InternalFinding {

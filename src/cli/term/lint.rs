@@ -187,7 +187,13 @@ pub(super) fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<Comman
             Ok(CommandOutcome::Success(serde_json::Value::Object(data), warnings, exit_code))
         }
         Format::Text => {
-            let mut output = format_lint_text_with_target(&report, effective_fix, effective_dry_run, Some(target_type));
+            let mut output = format_lint_text_with_target(
+                &report,
+                effective_fix,
+                effective_dry_run,
+                Some(target_type),
+                args.path.as_deref(),
+            );
             // Text mode uses Raw output (no warning channel), so fold the #24
             // substring-adjacency warnings into the rendered text.
             for w in &warnings {
@@ -211,7 +217,7 @@ fn compute_lint_exit_code(report: &crate::model::term::TermLintReport, fix: bool
 }
 
 fn format_lint_text(report: &crate::model::term::TermLintReport, fix: bool, dry_run: bool) -> String {
-    format_lint_text_with_target(report, fix, dry_run, None)
+    format_lint_text_with_target(report, fix, dry_run, None, None)
 }
 
 fn format_lint_text_with_target(
@@ -219,6 +225,7 @@ fn format_lint_text_with_target(
     fix: bool,
     dry_run: bool,
     target_type: Option<&str>,
+    path_hint: Option<&str>,
 ) -> String {
     let mut lines = Vec::new();
 
@@ -297,8 +304,12 @@ fn format_lint_text_with_target(
                 let suggested_mark = if f.fix_kind == crate::model::term::FixKind::Suggested { "?" } else { "" };
                 let boundary_mark =
                     if f.boundary == crate::model::term::Boundary::Standalone { ", standalone" } else { "" };
+                // Spec 075 US3/FR-020: a held-back finding must be visibly
+                // distinguished from an auto-applicable one, not just marked
+                // identically to a normal standalone match.
+                let held_back_mark = if f.held_back { ", held back" } else { "" };
                 lines.push(format!(
-                    "{}:{}:{}: \"{}\" → \"{}\" [{}]{}{}{}",
+                    "{}:{}:{}: \"{}\" → \"{}\" [{}]{}{}{}{}",
                     f.path,
                     f.line,
                     f.column,
@@ -307,7 +318,8 @@ fn format_lint_text_with_target(
                     f.term,
                     confidence_part,
                     suggested_mark,
-                    boundary_mark
+                    boundary_mark,
+                    held_back_mark
                 ));
             }
         }
@@ -335,6 +347,20 @@ fn format_lint_text_with_target(
             report.failures.len(),
             if report.failures.len() == 1 { "" } else { "s" },
         ));
+        // Spec 075 US3/FR-021/FR-022: bring the non-dry-run summary into
+        // agreement with the dry-run one, which already reports an
+        // ineligible count — a held-back finding must never be silent, and
+        // a zero-applied result must never look bare when something was
+        // held back rather than genuinely absent.
+        if report.held_back_count > 0 {
+            let example_term = report.findings.iter().find(|f| f.held_back).map(|f| f.term.as_str()).unwrap_or("TERM");
+            let count = report.held_back_count;
+            let plural = if count == 1 { "" } else { "s" };
+            let path = path_hint.unwrap_or("<PATH>");
+            lines.push(format!(
+                "{count} finding{plural} held back; apply with `mf term fix {path} --term {example_term}`"
+            ));
+        }
     } else {
         lines.push(format!("{total_findings} findings in {file_count} files"));
     }
@@ -369,6 +395,7 @@ mod tests {
                 substring_adjacent_word: false,
                 selection: FindingSelection::Selected,
                 context: "context with old token".into(),
+                held_back: false,
             }],
             scanned_files: 1,
             skipped_files: vec![],
@@ -381,6 +408,7 @@ mod tests {
             excluded_count: 0,
             below_confidence_count: 0,
             ineligible_count: 0,
+            held_back_count: 0,
         };
         let output = format_lint_text(&report, true, true);
         assert!(output.contains("synthetic.md:2:4"));

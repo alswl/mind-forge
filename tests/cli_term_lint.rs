@@ -1076,3 +1076,56 @@ terms:
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("identifier-character edges"), "got: {stderr}");
 }
+
+// ---------------------------------------------------------------------------
+// Spec 075 US3: held-back corrections are visible, not silently discarded.
+// ---------------------------------------------------------------------------
+
+fn setup_held_back_repo() -> (common::TempDir, std::path::PathBuf) {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    common::write_index(
+        &repo,
+        "alpha",
+        r#"schema_version: '1'
+terms:
+  - term: Device
+    corrections:
+      - original: 机器
+        correct: 装置
+"#,
+    );
+    (repo, project)
+}
+
+/// T053/FR-020: a held-back finding is visibly distinguished from an
+/// auto-applicable one in text output — never rendered identically to a
+/// plain standalone match.
+#[test]
+fn lint_text_visibly_marks_a_held_back_finding() {
+    let (repo, project) = setup_held_back_repo();
+    write_doc(&project, "demo", "机器 很常见。\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("装置"), "the advisory finding must still be reported: {stdout}");
+    assert!(stdout.contains("held back"), "a held-back finding must be visibly marked: {stdout}");
+}
+
+/// T054/FR-020/FR-023: the JSON finding carries held-back status alongside
+/// its existing `safety_reason`.
+#[test]
+fn lint_json_finding_carries_held_back_status() {
+    let (repo, project) = setup_held_back_repo();
+    write_doc(&project, "demo", "机器 很常见。\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let findings = v["data"]["findings"].as_array().unwrap();
+    assert_eq!(findings.len(), 1, "{stdout}");
+    assert_eq!(findings[0]["safety_reason"], "short-cjk-advisory", "{stdout}");
+    assert_eq!(findings[0]["held_back"], true, "{stdout}");
+}

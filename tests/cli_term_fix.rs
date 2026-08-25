@@ -659,3 +659,120 @@ terms:
     let after = fs::read_to_string(&doc_path).unwrap();
     assert!(after.contains("装置"), "explicit --term opt-in must apply the advisory finding: {after}");
 }
+
+// ---------------------------------------------------------------------------
+// Spec 075 US3: bulk fix tells the truth about what it held back.
+// ---------------------------------------------------------------------------
+
+fn setup_held_back_and_applicable() -> (common::TempDir, std::path::PathBuf) {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    common::write_index(
+        &repo,
+        "alpha",
+        r#"schema_version: '1'
+terms:
+  - term: Device
+    corrections:
+      - original: 机器
+        correct: 装置
+  - term: English
+    corrections:
+      - original: teh
+        correct: the
+"#,
+    );
+    (repo, project)
+}
+
+/// T055/FR-021: a bulk fix summary reports both applied and held-back
+/// counts, and names the scoped invocation that applies the held-back one.
+#[test]
+fn fix_summary_reports_applied_and_held_back_counts() {
+    let (repo, project) = setup_held_back_and_applicable();
+    let doc_path = project.join("docs/demo.md");
+    fs::write(&doc_path, "机器 很常见, teh cat sat.\n").unwrap();
+
+    let output = mf(&repo).args(["term", "fix", "--project", "alpha", "--yes"]).output().unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    assert!(stdout.contains("1 fixed"), "the applicable correction must apply: {stdout}");
+    assert!(stdout.contains("1 finding held back"), "the held-back count must be reported: {stdout}");
+    assert!(
+        stdout.contains("--term Device"),
+        "the summary must name the scoped invocation that applies the held-back finding: {stdout}"
+    );
+
+    let after = fs::read_to_string(&doc_path).unwrap();
+    assert!(after.contains("the cat sat"), "the eligible correction must be applied");
+    assert!(after.contains("机器"), "the held-back correction must not be applied automatically");
+}
+
+/// T056/FR-022, edge case: a file whose only findings are held back must
+/// never report a bare zero-applied result.
+#[test]
+fn fix_never_reports_bare_zero_when_findings_are_held_back() {
+    let (repo, project) = setup_held_back_repo_for_fix();
+    let doc_path = project.join("docs/demo.md");
+    fs::write(&doc_path, "机器 很常见。\n").unwrap();
+
+    let output = mf(&repo).args(["term", "fix", "--project", "alpha", "--yes"]).output().unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    assert!(stdout.contains("0 fixed"), "{stdout}");
+    assert!(
+        stdout.contains("1 finding held back"),
+        "a zero-applied result must not look bare when a finding was held back instead of absent: {stdout}"
+    );
+}
+
+/// T057/FR-021: no held-back line appears when the count is zero.
+#[test]
+fn fix_summary_omits_held_back_line_when_none() {
+    let (repo, project) = setup_with_term();
+    let doc_path = project.join("docs/demo.md");
+    fs::write(&doc_path, "mindrepo setup\n").unwrap();
+
+    let output = mf(&repo).args(["term", "fix", "--project", "alpha", "--yes"]).output().unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(!stdout.contains("held back"), "no held-back line when nothing was held back: {stdout}");
+}
+
+/// T058/FR-023: JSON carries the held-back count alongside the applied count.
+#[test]
+fn fix_json_carries_held_back_count() {
+    let (repo, project) = setup_held_back_repo_for_fix();
+    let doc_path = project.join("docs/demo.md");
+    fs::write(&doc_path, "机器 很常见。\n").unwrap();
+
+    let output = mf(&repo).args(["term", "fix", "--project", "alpha", "--yes", "--output", "json"]).output().unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(v["data"]["fixed_count"], 0, "{stdout}");
+    assert_eq!(v["data"]["held_back_count"], 1, "{stdout}");
+}
+
+fn setup_held_back_repo_for_fix() -> (common::TempDir, std::path::PathBuf) {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    common::write_index(
+        &repo,
+        "alpha",
+        r#"schema_version: '1'
+terms:
+  - term: Device
+    corrections:
+      - original: 机器
+        correct: 装置
+"#,
+    );
+    (repo, project)
+}
