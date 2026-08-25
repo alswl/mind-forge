@@ -204,7 +204,19 @@ pub fn add_registration(
     let existing_by_name =
         rows.iter().find(|row| row.project_path == project_rel && row.source_identity == source.name);
     if existing_by_name.is_some() && !args.force {
-        return Err(MfError::file_exists(project_path.join("mind-index.yaml")));
+        // Spec 075 US6/FR-033/FR-034: name the taken source and, only when
+        // the name was auto-derived, suggest a concrete alternative — never
+        // the generic file-conflict error, whose only hint (`--force`) is a
+        // dead end under `--register-only` (D6).
+        let suggestion = args.name.is_none().then(|| {
+            let sources_dir =
+                crate::service::config::effective_layout(project_path).map(|l| project_path.join(&l.sources));
+            crate::service::source::add::suggest_unique_name(
+                &project_path.join(location),
+                sources_dir.as_deref().unwrap_or(project_path),
+            )
+        });
+        return Err(crate::service::source::add::name_collision_error(&source.name, suggestion));
     }
     if let Some(existing) = rows.iter().find(|row| {
         row.project_path == project_rel && row.registered_location == *location && row.source_identity != source.name
