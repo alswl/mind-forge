@@ -228,3 +228,91 @@ terms:
     // With boundary: loose, identifier-internal match works
     assert!(doc.contains("AIDC-internal"), "explicit boundary:loose should match inside identifiers: {doc}");
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Spec 075 US4: longest match wins — the fix side must not apply a
+// correction that is a strict prefix of a longer, more specific one at the
+// same position, in any scoping mode (FR-025 to FR-028).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fn setup_overlapping(repo: &common::TempDir) {
+    write_index(
+        repo,
+        r#"schema_version: '1'
+terms:
+  - term: Device
+    corrections:
+      - original: 机器
+        correct: 装置
+        match: substring
+        boundary: loose
+  - term: Machinery
+    corrections:
+      - original: 机器人
+        correct: 机械装置
+        match: substring
+        boundary: loose
+"#,
+    );
+}
+
+/// T066/FR-026/FR-027: scoping a fix to the shorter correction's term must
+/// leave the longer form intact — no prefix rewrite, even though the user
+/// explicitly named the shorter term.
+#[test]
+fn fix_scoped_to_shorter_term_leaves_longer_form_intact() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    fs::create_dir_all(repo.path().join("alpha/docs")).unwrap();
+    setup_overlapping(&repo);
+    write_doc(&repo, "cjk", "机器人\n");
+
+    let output = mf(&repo)
+        .args(["term", "fix", "--project", "alpha", "docs/cjk.md", "--term", "Device", "-y"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let doc = fs::read_to_string(repo.path().join("alpha/docs/cjk.md")).unwrap();
+    assert_eq!(doc, "机器人\n", "scoping to the shorter term must not partially rewrite the longer form: {doc}");
+}
+
+/// T067/FR-028: scoping a fix to the longer correction's term applies it.
+#[test]
+fn fix_scoped_to_longer_term_applies_it() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    fs::create_dir_all(repo.path().join("alpha/docs")).unwrap();
+    setup_overlapping(&repo);
+    write_doc(&repo, "cjk", "机器人\n");
+
+    let output = mf(&repo)
+        .args(["term", "fix", "--project", "alpha", "docs/cjk.md", "--term", "Machinery", "-y"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let doc = fs::read_to_string(repo.path().join("alpha/docs/cjk.md")).unwrap();
+    assert_eq!(doc, "机械装置\n", "scoping to the longer term must apply it: {doc}");
+}
+
+/// T069/FR-025, edge case: at a position with several matches the longest
+/// wins, exact ties break by declaration order, and applied replacements
+/// never overlap — a bulk (unscoped) fix must produce the same outcome.
+#[test]
+fn bulk_fix_applies_only_the_longest_overlapping_correction() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    fs::create_dir_all(repo.path().join("alpha/docs")).unwrap();
+    setup_overlapping(&repo);
+    write_doc(&repo, "cjk", "机器人, 机器很旧了。\n");
+
+    let output = mf(&repo).args(["term", "fix", "--project", "alpha", "docs/cjk.md", "-y"]).output().unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let doc = fs::read_to_string(repo.path().join("alpha/docs/cjk.md")).unwrap();
+    assert_eq!(
+        doc, "机械装置, 装置很旧了。\n",
+        "the longer match wins where it overlaps, and the shorter one still applies standing alone: {doc}"
+    );
+}

@@ -271,7 +271,20 @@ pub(crate) fn scan_file_for_corrections(
     claimed: &mut BTreeSet<(String, usize, usize)>,
     jieba: Option<&JiebaBoundaries>,
 ) {
-    for c in corrections {
+    // Spec 075 US4/FR-025/FR-027: the most specific (longest) registered
+    // correction must win at any position, regardless of declaration order.
+    // Scanning corrections in declaration order let a shorter correction
+    // (e.g. 机器→装置) claim a start offset before a longer, more specific one
+    // (机器人→机械装置) was ever tried at the same position, so the longer
+    // correction was silently never reported. Scanning longest-original-first
+    // — ties broken by declaration order, matching `deduplicate_spans`'
+    // `(start ASC, end DESC, correction_order ASC)` rule on the fix side —
+    // means the longer correction claims the position first and the shorter
+    // one is later rejected by the overlap check below.
+    let mut ordered: Vec<&CorrectionRef<'_>> = corrections.iter().collect();
+    ordered.sort_by(|a, b| b.original.len().cmp(&a.original.len()).then(a.yaml_index.cmp(&b.yaml_index)));
+
+    for c in ordered {
         // Pinyin matches are handled by the pinyin scanner; literal scan never emits pinyin.
         if c.match_kind == MatchKind::Pinyin {
             continue;
@@ -292,7 +305,14 @@ pub(crate) fn scan_file_for_corrections(
                 break;
             };
             let abs_offset = search_start + rel_offset;
-            if claimed.iter().any(|(path, off, _)| path == rel_path && *off == abs_offset) {
+            // A longer correction scanned earlier may have claimed a byte
+            // range that only *overlaps* this candidate's start (not
+            // necessarily starts at the same offset) — reject on any overlap,
+            // not just an exact-start match, so a shorter correction cannot
+            // partially eat the tail of an already-claimed longer one either.
+            if claimed.iter().any(|(path, off, len)| {
+                path == rel_path && abs_offset < *off + *len && *off < abs_offset + orig_bytes.len()
+            }) {
                 search_start = abs_offset + 1;
                 continue;
             }
