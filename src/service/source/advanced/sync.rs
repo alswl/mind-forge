@@ -238,6 +238,7 @@ fn sync_lance_catalog(
     // prompt/thinking siblings) and persist it with the new rows (spec 071).
     super::catalog::enrich_single_owner_contexts(repo_root, &mut articles);
     if !dry_run && !articles.is_empty() {
+        let new_row_timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
         let rows = articles
             .iter()
             .map(|r| crate::model::source_advanced::SourceRegistration {
@@ -257,6 +258,9 @@ fn sync_lance_catalog(
                 state: crate::model::source_advanced::RegistrationState::Live,
                 context_json: r.context_json.clone(),
                 imported_by_json: r.imported_by_json.clone(),
+                added_at: Some(new_row_timestamp.clone()),
+                updated_at: Some(new_row_timestamp.clone()),
+                extras_json: r.extras_json.clone(),
             })
             .collect::<Vec<_>>();
         store.append_registrations(&rows)?;
@@ -967,9 +971,8 @@ mod tests {
         let config = ResolvedSourceConfig {
             backend: crate::model::manifest::SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,
@@ -987,9 +990,8 @@ mod tests {
         let config = ResolvedSourceConfig {
             backend: crate::model::manifest::SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,
@@ -1048,9 +1050,8 @@ mod tests {
         let config = ResolvedSourceConfig {
             backend: crate::model::manifest::SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,
@@ -1079,9 +1080,8 @@ mod tests {
         let config = ResolvedSourceConfig {
             backend: crate::model::manifest::SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,
@@ -1114,9 +1114,8 @@ mod tests {
         let config = ResolvedSourceConfig {
             backend: crate::model::manifest::SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,
@@ -1145,9 +1144,8 @@ mod tests {
         let legacy = ResolvedSourceConfig {
             backend: crate::model::manifest::SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,
@@ -1282,9 +1280,8 @@ mod tests {
         let legacy = ResolvedSourceConfig {
             backend: crate::model::manifest::SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,
@@ -1339,9 +1336,8 @@ mod tests {
         let legacy = ResolvedSourceConfig {
             backend: crate::model::manifest::SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,
@@ -1381,9 +1377,8 @@ mod tests {
         let legacy = ResolvedSourceConfig {
             backend: crate::model::manifest::SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,
@@ -1421,9 +1416,8 @@ mod tests {
         let legacy = ResolvedSourceConfig {
             backend: crate::model::manifest::SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,

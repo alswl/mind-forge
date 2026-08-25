@@ -85,3 +85,47 @@ fn offline_sync_makes_no_provider_requests() {
         "--offline must not contact the embedding provider\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
 }
+
+// ── Spec 075 US1 T015/T016: machine-local state is minimal, registration is unconditional ──
+
+/// T015 (FR-001): machine-local state carries only activation status — no
+/// snapshot id, catalog fingerprint, or schema version.
+#[test]
+fn local_state_carries_only_activation_status() {
+    let repo = provider_repo();
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
+    assert_eq!(code, 0, "sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+
+    let state = std::fs::read_to_string(repo.path().join(".mind-forge/state.yaml")).unwrap();
+    assert!(state.contains("activated"), "local state must record activation:\n{state}");
+    assert!(!state.contains("activation_snapshot_id"), "no snapshot id may be recorded locally:\n{state}");
+    assert!(
+        !state.contains("activation_catalog_fingerprint"),
+        "no catalog fingerprint may be recorded locally:\n{state}"
+    );
+    assert!(!state.contains("storage_schema_version"), "no schema version may be recorded locally:\n{state}");
+}
+
+/// T016 (#37 regression guard): registration commands never depend on
+/// activation state — they must not emit the old "activation marker is
+/// incomplete" refusal, with or without local state present.
+#[test]
+fn registration_commands_never_emit_the_incomplete_marker_error() {
+    let repo = provider_repo();
+    std::fs::remove_file(repo.path().join(".mind-forge/state.yaml")).unwrap();
+
+    let f = repo.path().join("projects/alpha/sources/file/extra.md");
+    std::fs::write(&f, "extra content\n").unwrap();
+    let (stdout, stderr, code) =
+        run(&repo, &["source", "new", f.to_str().unwrap(), "--project", "alpha", "--register-only"], &[]);
+    assert!(!format!("{stdout}{stderr}").contains("activation marker is incomplete"), "{stdout}\n{stderr}");
+    assert_eq!(code, 0, "register-only must succeed without local state\nstdout:\n{stdout}\nstderr:\n{stderr}");
+
+    let (stdout, stderr, code) = run(&repo, &["source", "index", "--project", "alpha"], &[]);
+    assert!(!format!("{stdout}{stderr}").contains("activation marker is incomplete"), "{stdout}\n{stderr}");
+    assert_eq!(code, 0, "index must succeed without local state\nstdout:\n{stdout}\nstderr:\n{stderr}");
+
+    let (stdout, stderr, code) = run(&repo, &["source", "list", "--project", "alpha"], &[]);
+    assert!(!format!("{stdout}{stderr}").contains("activation marker is incomplete"), "{stdout}\n{stderr}");
+    assert_eq!(code, 0, "list must succeed without local state\nstdout:\n{stdout}\nstderr:\n{stderr}");
+}

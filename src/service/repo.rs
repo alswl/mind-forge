@@ -243,11 +243,7 @@ mod local_state_tests {
         let manifest_path = dir.path().join("minds.yaml");
         fs::write(&manifest_path, "schema: '1'\nprojects: []\n").unwrap();
         let before = fs::read(&manifest_path).unwrap();
-        let state = LocalSourceState {
-            activation_snapshot_id: Some("snap".to_string()),
-            activation_catalog_fingerprint: Some("fp".to_string()),
-            storage_schema_version: Some("2".to_string()),
-        };
+        let state = LocalSourceState { activated: true };
         save_local_state(dir.path(), &state).unwrap();
         assert_eq!(load_local_state(dir.path()).unwrap(), state);
         assert_eq!(fs::read(&manifest_path).unwrap(), before);
@@ -255,15 +251,12 @@ mod local_state_tests {
     }
 
     #[test]
-    fn save_manifest_keeps_backend_but_omits_activation_marker() {
+    fn save_manifest_keeps_backend_and_carries_no_activation_marker() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("minds.yaml");
         let mut manifest = MindsManifest::create_default();
         manifest.source = Some(crate::model::manifest::RepositorySourceConfig {
             backend: crate::model::manifest::SourceBackend::Lance,
-            activation_snapshot_id: Some("snap".into()),
-            activation_catalog_fingerprint: Some("fp".into()),
-            storage_schema_version: Some("2".into()),
             search: None,
             advanced: None,
         });

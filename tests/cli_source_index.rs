@@ -463,3 +463,112 @@ fn index_discovers_top_level_sources_files() {
     let index_content = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
     assert!(index_content.contains("notes"), "index must include top-level file");
 }
+
+// ---------------------------------------------------------------------------
+// Spec 075 US2: Lance-mode `source index` is a disk-adoption/reconcile pass,
+// not a `sources:`-list replay. T031-T040.
+// ---------------------------------------------------------------------------
+
+mod lance_index {
+    use crate::common::embedding_provider::{provider_repo, run};
+
+    /// T031/FR-015/FR-017: files present on disk but absent from the store are
+    /// imported, and the pre-existing entry survives with its timestamps intact.
+    #[test]
+    fn index_imports_new_disk_files_and_keeps_existing_timestamps() {
+        let repo = provider_repo();
+        let project = repo.path().join("projects/alpha");
+        std::fs::write(project.join("sources/file/second.md"), "A second note about tectonic plates.\n").unwrap();
+
+        let before = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+        // The value alone, not the raw line: `mind-index.yaml` may hold
+        // `sources:` as either a path-keyed mapping or a flat sequence, and
+        // the two shapes indent an `added_at:` line differently even when
+        // the timestamp itself is unchanged.
+        let added_at_value = before
+            .lines()
+            .find(|l| l.trim_start().starts_with("added_at:"))
+            .map(|l| l.trim_start().trim_start_matches("added_at:").trim().to_string())
+            .expect("precondition: the pre-existing entry has an added_at");
+
+        let (stdout, stderr, code) = run(&repo, &["source", "index", "--project", "alpha"], &[]);
+        assert_eq!(code, 0, "index failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        let added = v["data"]["added"].as_array().unwrap();
+        assert_eq!(added.len(), 1, "the new disk file must be imported\n{stdout}");
+        assert_eq!(added[0]["path"], "sources/file/second.md");
+
+        let after = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+        assert!(after.contains("second"), "new entry must be mirrored into the index\n{after}");
+        assert!(after.contains(&added_at_value), "the pre-existing entry's added_at must survive untouched\n{after}");
+    }
+
+    /// T035/FR-016: a registration whose file is gone is reported, never
+    /// removed by `source index` — only `mf source remove` may drop it.
+    #[test]
+    fn index_reports_missing_file_without_removing_the_registration() {
+        let repo = provider_repo();
+        let project = repo.path().join("projects/alpha");
+        std::fs::remove_file(project.join("sources/file/notes.md")).unwrap();
+
+        let (stdout, stderr, code) = run(&repo, &["source", "index", "--project", "alpha"], &[]);
+        assert_eq!(code, 0, "index failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        let removed = v["data"]["removed"].as_array().unwrap();
+        assert_eq!(removed.len(), 1, "the missing file must be reported\n{stdout}");
+        assert_eq!(removed[0]["name"], "notes");
+
+        let after = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+        assert!(after.contains("notes"), "a missing-file entry must not be deleted by index\n{after}");
+
+        // Confirm it is still in the store, not just the YAML mirror.
+        let (search_out, _, search_code) = run(&repo, &["source", "list", "--project", "alpha"], &[]);
+        assert_eq!(search_code, 0, "{search_out}");
+        assert!(search_out.contains("notes"), "the registration itself must survive\n{search_out}");
+    }
+
+    /// T034/FR-017: `--dry-run` reports exactly what the real run would do and
+    /// writes nothing.
+    #[test]
+    fn index_dry_run_matches_real_run_and_writes_nothing() {
+        let repo = provider_repo();
+        let project = repo.path().join("projects/alpha");
+        std::fs::write(project.join("sources/file/third.md"), "Notes on continental drift.\n").unwrap();
+
+        let before = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+        let (dry_out, dry_err, dry_code) = run(&repo, &["source", "index", "--project", "alpha", "--dry-run"], &[]);
+        assert_eq!(dry_code, 0, "dry-run failed\nstdout:\n{dry_out}\nstderr:\n{dry_err}");
+        let after_dry = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+        assert_eq!(before, after_dry, "--dry-run must write nothing");
+
+        let (real_out, real_err, real_code) = run(&repo, &["source", "index", "--project", "alpha"], &[]);
+        assert_eq!(real_code, 0, "real run failed\nstdout:\n{real_out}\nstderr:\n{real_err}");
+
+        let dv: serde_json::Value = serde_json::from_str(&dry_out).unwrap();
+        let rv: serde_json::Value = serde_json::from_str(&real_out).unwrap();
+        assert_eq!(dv["data"]["added"], rv["data"]["added"], "dry-run and real counts must agree");
+    }
+
+    /// T040/FR-019: a name collision during adoption raises the actionable
+    /// naming error, not a generic file-conflict error.
+    #[test]
+    fn index_adoption_collision_is_actionable() {
+        let repo = provider_repo();
+        let project = repo.path().join("projects/alpha");
+        // "notes" is already registered (from provider_repo); a second disk
+        // file that would derive the same name must not silently clobber it.
+        std::fs::create_dir_all(project.join("sources/file/nested")).unwrap();
+        std::fs::write(project.join("sources/file/nested/notes.md"), "duplicate stem\n").unwrap();
+
+        let (stdout, stderr, code) = run(&repo, &["source", "index", "--project", "alpha"], &[]);
+        assert_ne!(code, 0, "a name collision during adoption must fail\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        assert!(
+            stderr.contains("already registered") || stdout.contains("already registered"),
+            "the actionable naming error must name the taken source\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        );
+        assert!(
+            !stderr.contains("overwrite existing file") && !stdout.contains("overwrite existing file"),
+            "must not surface the generic file-conflict error\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        );
+    }
+}

@@ -27,9 +27,14 @@ use crate::service::source::advanced::publication::{
 };
 
 /// Current authoritative storage schema version. Bumped 1→2 for spec 071
-/// (per-registration `context_json` + source `imported_by`). A v1 snapshot must
-/// be rebuilt (`mf source sync --rebuild`) before search/sync will serve it.
-pub const STORAGE_SCHEMA_VERSION: &str = "2";
+/// (per-registration `context_json` + source `imported_by`); bumped 2→3 for
+/// spec 075 (`added_at`/`updated_at`/`extras_json`, completing the record so
+/// the project-index mirror is lossless). An older snapshot must be rebuilt
+/// (`mf source sync --rebuild`) before search/sync will serve it — compatibility
+/// is determined by inspecting the tables' actual structure, not this constant
+/// (see `ResolvedSourceConfig::schema_status`); this value only names what the
+/// build requires in diagnostics.
+pub const STORAGE_SCHEMA_VERSION: &str = "3";
 
 /// Result of an activation dry-run: lists every registration that would be imported.
 #[derive(Debug, Serialize)]
@@ -54,6 +59,14 @@ pub struct ActivationItem {
     pub labels_json: String,
     #[serde(default = "empty_json_object")]
     pub annotations_json: String,
+    /// The legacy entry's own creation/modification timestamps, when present
+    /// (spec 075 FR-011). Activation must not stamp a fresh time over
+    /// history a user has already accrued; only a legacy entry with no
+    /// timestamp at all falls back to the activation moment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub added_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
 }
 
 fn empty_json_object() -> String {
@@ -131,6 +144,9 @@ pub fn preview_activation(repo_root: &Path, _config: &ResolvedSourceConfig) -> R
                         .unwrap_or_default();
 
                     let rk = identity::registration_key(&pk, kind, location);
+                    let non_empty = |value: Option<&str>| value.filter(|v| !v.is_empty()).map(str::to_string);
+                    let added_at = non_empty(source.get("added_at").and_then(|v| v.as_str()));
+                    let updated_at = non_empty(source.get("updated_at").and_then(|v| v.as_str()));
 
                     items.push(ActivationItem {
                         project_identity: project_identity.clone(),
@@ -143,6 +159,8 @@ pub fn preview_activation(repo_root: &Path, _config: &ResolvedSourceConfig) -> R
                         registration_key: rk,
                         labels_json: "{}".to_string(),
                         annotations_json: "{}".to_string(),
+                        added_at,
+                        updated_at,
                     });
                 }
             }
@@ -183,6 +201,7 @@ pub fn activate(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<Activ
     // the primary catalog.  Previously this created an empty table while
     // reporting the preview count, which made Lance mode look ready without
     // any registrations to query or sync.
+    let activated_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let registrations = preview
         .items
         .iter()
@@ -212,6 +231,9 @@ pub fn activate(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<Activ
             state: crate::model::source_advanced::RegistrationState::Live,
             context_json: None,
             imported_by_json: None,
+            added_at: Some(item.added_at.clone().unwrap_or_else(|| activated_at.clone())),
+            updated_at: Some(item.updated_at.clone().unwrap_or_else(|| activated_at.clone())),
+            extras_json: None,
         })
         .collect::<Vec<_>>();
     store.append_registrations(&registrations)?;
@@ -277,9 +299,9 @@ pub fn activate(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<Activ
     };
     publication::write_pointer(&advanced_dir, &pointer)?;
 
-    // 5. Keep backend selection in tracked config; activation identity is
-    // machine-local state for this worktree.
-    patch_backend_marker(repo_root, &snapshot_id, &catalog_fp)?;
+    // 5. Keep backend selection in tracked config; this machine's activation
+    // status is machine-local state (spec 075 FR-001).
+    patch_backend_marker(repo_root)?;
 
     publication::release_writer_lock(lock_file);
 
@@ -293,7 +315,7 @@ pub fn activate(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<Activ
 
 /// Atomically patch `minds.yaml` to set `source.backend: lance`, then persist
 /// the activation marker in the gitignored local state file.
-fn patch_backend_marker(repo_root: &Path, snapshot_id: &str, catalog_fingerprint: &str) -> Result<()> {
+fn patch_backend_marker(repo_root: &Path) -> Result<()> {
     let minds_yaml = repo_root.join("minds.yaml");
     let original = if minds_yaml.exists() {
         fs::read_to_string(&minds_yaml)?
@@ -308,7 +330,9 @@ fn patch_backend_marker(repo_root: &Path, snapshot_id: &str, catalog_fingerprint
     if let serde_yaml::Value::Mapping(ref mut map) = root {
         let source_key = serde_yaml::Value::String("source".to_string());
         // Preserve any existing `source` sub-blocks (e.g. `advanced`, `search`)
-        // and overlay only the backend + activation marker fields.
+        // and overlay only the backend field. No activation marker is written
+        // here at all (spec 075 FR-001) — the three legacy keys are stripped
+        // defensively in case a pre-075 binary left them behind.
         if !matches!(map.get(&source_key), Some(serde_yaml::Value::Mapping(_))) {
             map.insert(source_key.clone(), serde_yaml::Value::Mapping(serde_yaml::Mapping::new()));
         }
@@ -332,39 +356,10 @@ fn patch_backend_marker(repo_root: &Path, snapshot_id: &str, catalog_fingerprint
         dir.sync_all()?;
     }
 
-    crate::service::repo::save_local_state(
-        repo_root,
-        &crate::model::manifest::LocalSourceState {
-            activation_snapshot_id: Some(snapshot_id.to_string()),
-            activation_catalog_fingerprint: Some(catalog_fingerprint.to_string()),
-            storage_schema_version: Some(STORAGE_SCHEMA_VERSION.to_string()),
-        },
-    )?;
+    // This machine has completed activation. That is the only fact recorded
+    // locally — no snapshot id, fingerprint, or schema version (FR-001).
+    crate::service::repo::save_local_state(repo_root, &crate::model::manifest::LocalSourceState { activated: true })?;
 
-    Ok(())
-}
-
-/// Adopt the current storage schema after rebuilding the derived tables.
-/// Legacy tracked marker fields are removed so local state is authoritative.
-pub fn upgrade_storage_schema_version(repo_root: &Path) -> Result<()> {
-    let mut state = crate::service::repo::load_local_state(repo_root)?;
-    state.storage_schema_version = Some(STORAGE_SCHEMA_VERSION.to_string());
-    crate::service::repo::save_local_state(repo_root, &state)?;
-
-    let minds_yaml = repo_root.join("minds.yaml");
-    if minds_yaml.exists() {
-        let original = fs::read_to_string(&minds_yaml)?;
-        let mut root: serde_yaml::Value = serde_yaml::from_str(&original)
-            .map_err(|e| MfError::advanced_store(format!("cannot parse minds.yaml: {e}"), None))?;
-        if let Some(source) = root.get_mut("source").and_then(serde_yaml::Value::as_mapping_mut) {
-            for field in ["activation_snapshot_id", "activation_catalog_fingerprint", "storage_schema_version"] {
-                source.remove(serde_yaml::Value::String(field.to_string()));
-            }
-            let updated = serde_yaml::to_string(&root)
-                .map_err(|e| MfError::advanced_store(format!("cannot serialize minds.yaml: {e}"), None))?;
-            crate::service::util::atomic_write(&minds_yaml, &updated)?;
-        }
-    }
     Ok(())
 }
 
@@ -416,9 +411,8 @@ mod tests {
         let config = ResolvedSourceConfig {
             backend: SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,
@@ -440,12 +434,16 @@ mod tests {
             "schema: '1'\nprojects: []\nsource:\n  advanced:\n    embedding_endpoint: http://x/v1/embeddings\n    embedding_model: m\n    embedding_dimension: 1024\n",
         )
         .unwrap();
-        patch_backend_marker(dir.path(), "snap-1", "fp-1").unwrap();
+        patch_backend_marker(dir.path()).unwrap();
         let updated = fs::read_to_string(dir.path().join("minds.yaml")).unwrap();
         assert!(updated.contains("backend: lance"), "marker must be written: {updated}");
         // The advanced block (embedding config) must survive the marker patch.
         assert!(updated.contains("embedding_endpoint"), "advanced block dropped: {updated}");
         assert!(updated.contains("embedding_dimension: 1024"), "advanced block dropped: {updated}");
+        // No activation marker fields are written at all (FR-001).
+        assert!(!updated.contains("activation_snapshot_id"));
+        let state = crate::service::repo::load_local_state(dir.path()).unwrap();
+        assert!(state.activated, "local state must record this machine as activated");
     }
 
     #[test]
@@ -454,9 +452,8 @@ mod tests {
         let config = ResolvedSourceConfig {
             backend: SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,
@@ -489,9 +486,8 @@ sources:
         let config = ResolvedSourceConfig {
             backend: SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,
@@ -527,9 +523,8 @@ sources:
         let config = ResolvedSourceConfig {
             backend: SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,
@@ -574,9 +569,8 @@ sources:
         let config = ResolvedSourceConfig {
             backend: SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,

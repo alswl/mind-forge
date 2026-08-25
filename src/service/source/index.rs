@@ -67,10 +67,13 @@ fn scan_recursive_dir(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(entries)
 }
 
+/// One file found on disk under a project's `sources/` layout during a scan.
+/// Reused by both the legacy [`reconcile`] and the Lance-mode adoption pass
+/// (spec 075 US2) so there is exactly one directory walk per project.
 #[derive(Debug, Clone)]
-struct DiskSource {
-    path: String,
-    source_kind: Option<SourceKind>,
+pub(crate) struct DiskSource {
+    pub(crate) path: String,
+    pub(crate) source_kind: Option<SourceKind>,
 }
 
 fn source_kind_dir_name(source_kind: &SourceKind) -> String {
@@ -82,7 +85,7 @@ fn source_kind_dir_name(source_kind: &SourceKind) -> String {
     }
 }
 
-fn scan_disk_sources(project_path: &Path) -> Result<Vec<DiskSource>> {
+pub(crate) fn scan_disk_sources(project_path: &Path) -> Result<Vec<DiskSource>> {
     let layout = config_svc::effective_layout(project_path)?;
     let sources_dir = project_path.join(&layout.sources);
     let mut files = Vec::new();

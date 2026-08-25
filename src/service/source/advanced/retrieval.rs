@@ -239,12 +239,12 @@ pub fn search_repository(
 /// reader opens LanceDB.  Legacy repositories intentionally return no store.
 fn open_active_store(repo_root: &Path) -> Result<Option<super::lance_store::LanceStore>> {
     let config = super::config::load_repository_config(repo_root)?;
-    config.require_current_schema()?;
-    if config.is_marker_corrupt {
+    config.require_current_schema(repo_root)?;
+    if config.corpus_missing {
         return Err(MfError::missing_lance_pointer(
             "missing",
-            "Lance activation state exists but its current store cannot be resolved".to_string(),
-            Some("run `mf source sync` to rebuild the missing local store".to_string()),
+            "Lance backend is selected but no corpus has been activated yet".to_string(),
+            Some("run `mf source sync` to activate it".to_string()),
         ));
     }
     if config.is_legacy() {

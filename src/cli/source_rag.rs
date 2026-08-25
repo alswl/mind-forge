@@ -123,13 +123,14 @@ pub fn handle_sync(args: AdvancedSyncArgs, ctx: &mut CommandCtx) -> Result<Comma
     // It reuses the admin-rebuild sequence so there is no second rebuild impl.
     if args.rebuild {
         let report = svc::source::advanced::sync::rebuild_repository(repo, &config, dry_run, args.offline)?;
-        if !dry_run && report.registrations_failed == 0 {
-            svc::source::advanced::activation::upgrade_storage_schema_version(repo)?;
-        }
+        // Schema compatibility is read from the tables themselves (FR-002), and
+        // the migration inside `sync_repository` already ran unconditionally on
+        // every non-dry-run rebuild. There is nothing left to gate on
+        // `registrations_failed` (spec 075 dissolves #36).
         let json = serde_json::to_value(&report).unwrap_or_default();
         let mut warnings: Vec<String> = if report.registrations_failed > 0 {
             vec![format!(
-                "{} of {} registration(s) failed rebuild",
+                "{} of {} registration(s) failed rebuild; fix them and re-run `mf source sync --rebuild` to refresh their derived context",
                 report.registrations_failed, report.registrations_total
             )]
         } else {
@@ -147,7 +148,7 @@ pub fn handle_sync(args: AdvancedSyncArgs, ctx: &mut CommandCtx) -> Result<Comma
 
     // An out-of-date snapshot must be rebuilt before incremental sync; fresh
     // activation below writes the current schema, so gate only existing indexes.
-    config.require_current_schema()?;
+    config.require_current_schema(repo)?;
 
     if !config.is_lance() {
         if dry_run {
@@ -161,6 +162,13 @@ pub fn handle_sync(args: AdvancedSyncArgs, ctx: &mut CommandCtx) -> Result<Comma
         }
         svc::source::advanced::activation::activate(repo, &config)?;
         config = svc::source::advanced::config::load_repository_config(repo)?;
+    } else if !dry_run && !config.activated_here {
+        // The corpus pointer already resolved (e.g. shared by another
+        // worktree, or this machine's state was lost and self-healed) without
+        // this machine ever running `activate()`. Record activation here too,
+        // so `status` reports this machine accurately from now on (FR-001)
+        // — purely informational, never a precondition for anything above.
+        crate::service::repo::save_local_state(repo, &crate::model::manifest::LocalSourceState { activated: true })?;
     }
 
     let report = svc::source::advanced::sync::sync_repository(
@@ -203,16 +211,14 @@ pub fn handle_rebuild(args: AdvancedRebuildArgs, ctx: &mut CommandCtx) -> Result
     let repo = ctx.require_repo_path()?;
     let config = svc::source::advanced::config::load_repository_config(repo)?;
     let report = svc::source::advanced::sync::rebuild_repository(repo, &config, args.dry_run.dry_run, args.offline)?;
-    // Rebuild is the schema migration path: after regenerating the context-
-    // enriched index, adopt the current storage schema version so subsequent
-    // search/sync stop reporting the v1→v2 incompatibility.
-    if !args.dry_run.dry_run && report.registrations_failed == 0 {
-        svc::source::advanced::activation::upgrade_storage_schema_version(repo)?;
-    }
+    // Rebuild is the schema migration path: the table migration inside
+    // `sync_repository` already ran unconditionally, and schema compatibility
+    // is read from the tables themselves — nothing to gate here (spec 075
+    // dissolves #36).
     let json = serde_json::to_value(&report).unwrap_or_default();
     let warnings: Vec<String> = if report.registrations_failed > 0 {
         vec![format!(
-            "{} of {} registration(s) failed rebuild",
+            "{} of {} registration(s) failed rebuild; fix them and re-run `mf source sync --rebuild` to refresh their derived context",
             report.registrations_failed, report.registrations_total
         )]
     } else {

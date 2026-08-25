@@ -170,81 +170,51 @@ impl Default for AdvancedSourceConfig {
 
 /// Repository-level Source configuration (`minds.yaml.source`).
 ///
-/// Controls backend selection, activation marker, and advanced search/content
-/// policy. The three activation fields (`activation_snapshot_id`,
-/// `activation_catalog_fingerprint`, `storage_schema_version`) form the Lance
-/// marker; a partial marker is corrupt and the system must fail closed.
+/// Controls backend selection and advanced search/content policy. `backend`
+/// is the user's declared intent, tracked in version control. Whether Lance
+/// is actually usable on this machine (a corpus exists on disk with a
+/// resolvable pointer) is a disk fact resolved separately — see
+/// `service::source::advanced::config::ResolvedSourceConfig`. This struct
+/// deliberately carries no activation marker: a declared backend can never be
+/// "corrupt", only "not yet activated here".
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepositorySourceConfig {
     #[serde(default)]
     pub backend: SourceBackend,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub activation_snapshot_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub activation_catalog_fingerprint: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub storage_schema_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub search: Option<SourceSearchConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub advanced: Option<AdvancedSourceConfig>,
 }
 
-/// Machine-local Lance activation state. This is deliberately separate from
-/// tracked `minds.yaml`: the active generation is a per-worktree cache fact,
-/// not human-authored repository configuration.
+/// Machine-local Lance activation status. Deliberately separate from tracked
+/// `minds.yaml` and deliberately minimal: it carries only whether this
+/// machine has completed activation, never snapshot identity, catalog
+/// fingerprints, or a schema version — those are read from the corpus and
+/// its tables on disk, which cannot go stale the way a duplicated
+/// declaration can (spec 075 FR-001).
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LocalSourceState {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub activation_snapshot_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub activation_catalog_fingerprint: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub storage_schema_version: Option<String>,
+    #[serde(default)]
+    pub activated: bool,
 }
 
 impl Default for RepositorySourceConfig {
     fn default() -> Self {
-        Self {
-            backend: SourceBackend::Legacy,
-            activation_snapshot_id: None,
-            activation_catalog_fingerprint: None,
-            storage_schema_version: None,
-            search: None,
-            advanced: None,
-        }
+        Self { backend: SourceBackend::Legacy, search: None, advanced: None }
     }
 }
 
 impl RepositorySourceConfig {
-    /// Returns true when the backend is `lance` and all three marker fields are present.
-    pub fn is_lance_active(&self) -> bool {
-        self.backend == SourceBackend::Lance
-            && self.activation_snapshot_id.is_some()
-            && self.activation_catalog_fingerprint.is_some()
-            && self.storage_schema_version.is_some()
-    }
-
-    /// Returns true when `backend` is `lance` but the marker is incomplete (corrupt).
-    pub fn is_lance_marker_corrupt(&self) -> bool {
-        self.backend == SourceBackend::Lance
-            && (self.activation_snapshot_id.is_none()
-                || self.activation_catalog_fingerprint.is_none()
-                || self.storage_schema_version.is_none())
-    }
-
-    /// Effective backend: `legacy` unless a complete Lance marker is present.
-    pub fn effective_backend(&self) -> SourceBackend {
-        if self.is_lance_active() { SourceBackend::Lance } else { SourceBackend::Legacy }
-    }
-
-    /// Resolved search mode given an optional CLI override.
+    /// Resolved search mode given an optional CLI override. Backend-declared
+    /// intent only; callers needing actual Lance usability must consult
+    /// `ResolvedSourceConfig`.
     #[allow(dead_code)]
     pub fn resolved_search_mode(&self, cli_mode: Option<SearchDefaultMode>) -> SearchDefaultMode {
         if let Some(m) = cli_mode {
             return m;
         }
-        if self.effective_backend() == SourceBackend::Lance {
+        if self.backend == SourceBackend::Lance {
             self.search.as_ref().map(|s| s.default_mode).unwrap_or_default()
         } else {
             SearchDefaultMode::Basic
@@ -284,88 +254,24 @@ impl MindsManifest {
 mod tests {
     use super::*;
 
-    // ── Source config marker validation ───────────────────────────────────
+    // ── Source config: declared backend intent, no marker ─────────────────
 
     #[test]
     fn legacy_backend_by_default() {
-        let config = RepositorySourceConfig {
-            backend: SourceBackend::Legacy,
-            activation_snapshot_id: None,
-            activation_catalog_fingerprint: None,
-            storage_schema_version: None,
-            search: None,
-            advanced: None,
-        };
-        assert_eq!(config.effective_backend(), SourceBackend::Legacy);
-        assert!(!config.is_lance_active());
-        assert!(!config.is_lance_marker_corrupt());
+        let config = RepositorySourceConfig { backend: SourceBackend::Legacy, search: None, advanced: None };
+        assert_eq!(config.backend, SourceBackend::Legacy);
     }
 
     #[test]
-    fn lance_backend_with_complete_marker_is_active() {
-        let config = RepositorySourceConfig {
-            backend: SourceBackend::Lance,
-            activation_snapshot_id: Some("snap-1".into()),
-            activation_catalog_fingerprint: Some("fp-1".into()),
-            storage_schema_version: Some("1".into()),
-            search: None,
-            advanced: None,
-        };
-        assert!(config.is_lance_active());
-        assert!(!config.is_lance_marker_corrupt());
-        assert_eq!(config.effective_backend(), SourceBackend::Lance);
-    }
-
-    #[test]
-    fn lance_backend_with_missing_snapshot_is_corrupt_not_active() {
-        let config = RepositorySourceConfig {
-            backend: SourceBackend::Lance,
-            activation_snapshot_id: None,
-            activation_catalog_fingerprint: Some("fp-1".into()),
-            storage_schema_version: Some("1".into()),
-            search: None,
-            advanced: None,
-        };
-        assert!(!config.is_lance_active());
-        assert!(config.is_lance_marker_corrupt());
-        assert_eq!(config.effective_backend(), SourceBackend::Legacy);
-    }
-
-    #[test]
-    fn lance_backend_with_missing_fingerprint_is_corrupt_not_active() {
-        let config = RepositorySourceConfig {
-            backend: SourceBackend::Lance,
-            activation_snapshot_id: Some("snap-1".into()),
-            activation_catalog_fingerprint: None,
-            storage_schema_version: Some("1".into()),
-            search: None,
-            advanced: None,
-        };
-        assert!(!config.is_lance_active());
-        assert!(config.is_lance_marker_corrupt());
-    }
-
-    #[test]
-    fn lance_backend_with_missing_schema_version_is_corrupt_not_active() {
-        let config = RepositorySourceConfig {
-            backend: SourceBackend::Lance,
-            activation_snapshot_id: Some("snap-1".into()),
-            activation_catalog_fingerprint: Some("fp-1".into()),
-            storage_schema_version: None,
-            search: None,
-            advanced: None,
-        };
-        assert!(!config.is_lance_active());
-        assert!(config.is_lance_marker_corrupt());
+    fn lance_backend_is_a_plain_declaration() {
+        let config = RepositorySourceConfig { backend: SourceBackend::Lance, search: None, advanced: None };
+        assert_eq!(config.backend, SourceBackend::Lance);
     }
 
     #[test]
     fn resolved_mode_prefers_cli_override() {
         let config = RepositorySourceConfig {
             backend: SourceBackend::Lance,
-            activation_snapshot_id: Some("s".into()),
-            activation_catalog_fingerprint: Some("f".into()),
-            storage_schema_version: Some("1".into()),
             search: Some(SourceSearchConfig { default_mode: SearchDefaultMode::Both }),
             advanced: None,
         };
@@ -401,19 +307,15 @@ source:
         let manifest: MindsManifest = serde_yaml::from_str(yaml).unwrap();
         let source = manifest.source.unwrap();
         assert_eq!(source.backend, SourceBackend::Legacy);
-        assert!(!source.is_lance_active());
     }
 
     #[test]
-    fn minds_manifest_deserializes_with_full_lance_marker() {
+    fn minds_manifest_deserializes_with_lance_backend() {
         let yaml = r#"
 schema_version: '1'
 projects: []
 source:
   backend: lance
-  activation_snapshot_id: "snap-abc"
-  activation_catalog_fingerprint: "fp-def"
-  storage_schema_version: "1"
   search:
     default_mode: both
   advanced:
@@ -424,13 +326,29 @@ source:
 "#;
         let manifest: MindsManifest = serde_yaml::from_str(yaml).unwrap();
         let source = manifest.source.unwrap();
-        assert!(source.is_lance_active());
-        assert!(!source.is_lance_marker_corrupt());
-        assert_eq!(source.activation_snapshot_id.as_deref(), Some("snap-abc"));
-        assert_eq!(source.storage_schema_version.as_deref(), Some("1"));
+        assert_eq!(source.backend, SourceBackend::Lance);
         let adv = source.advanced.unwrap();
         assert_eq!(adv.chunk_tokens, 384);
         assert_eq!(adv.chunk_overlap, 48);
+    }
+
+    #[test]
+    fn minds_manifest_ignores_legacy_activation_marker_fields() {
+        // Repositories upgraded from the pre-075 tracked-marker format may
+        // still carry these keys on disk; they must not fail deserialization
+        // and must not surface anywhere in the resolved config.
+        let yaml = r#"
+schema_version: '1'
+projects: []
+source:
+  backend: lance
+  activation_snapshot_id: "snap-abc"
+  activation_catalog_fingerprint: "fp-def"
+  storage_schema_version: "1"
+"#;
+        let manifest: MindsManifest = serde_yaml::from_str(yaml).unwrap();
+        let source = manifest.source.unwrap();
+        assert_eq!(source.backend, SourceBackend::Lance);
     }
 
     #[test]

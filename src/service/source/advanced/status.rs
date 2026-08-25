@@ -19,30 +19,33 @@ use super::publication;
 pub fn build_status(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<AdvancedSourceStatusReport> {
     let advanced_dir = super::advanced_store_dir(repo_root);
 
-    let (index_status, activation_snapshot_id, primary_fp, retained_snapshots, pending_intents) = if config.is_lance() {
-        let pointer = publication::read_pointer(&advanced_dir).unwrap_or(None);
-        let snapshots = publication::list_snapshots(&advanced_dir).unwrap_or_default();
-        let intents = lifecycle::list_pending_intents(&advanced_dir).unwrap_or_default();
+    // Report on disk reality regardless of whether *this machine* has
+    // activated: a corpus found by another machine/worktree is still worth
+    // reporting as recoverable via `sync`, never as an error (spec 075
+    // FR-006). `is_lance_active` covers the found case; `corpus_missing`
+    // covers the declared-but-not-yet-found case; anything else is legacy.
+    let (index_status, activation_snapshot_id, primary_fp, retained_snapshots, pending_intents) =
+        if config.is_lance_active || config.corpus_missing {
+            let pointer = publication::read_pointer(&advanced_dir).unwrap_or(None);
+            let snapshots = publication::list_snapshots(&advanced_dir).unwrap_or_default();
+            let intents = lifecycle::list_pending_intents(&advanced_dir).unwrap_or_default();
 
-        match pointer {
-            Some(p) => (
-                IndexStatus::Ready,
-                Some(p.snapshot_path),
-                Some(p.generation_id),
-                snapshots.len() as u32,
-                intents.len() as u32,
-            ),
-            None => (
-                IndexStatus::Missing,
-                config.activation_snapshot_id.clone(),
-                None,
-                snapshots.len() as u32,
-                intents.len() as u32,
-            ),
-        }
-    } else {
-        (IndexStatus::Inactive, None, None, 0, 0)
-    };
+            match pointer {
+                Some(p) => (
+                    IndexStatus::Ready,
+                    Some(p.snapshot_path),
+                    Some(p.generation_id),
+                    snapshots.len() as u32,
+                    intents.len() as u32,
+                ),
+                // No recorded fallback value here: nothing on disk confirms a
+                // snapshot id, so none is reported (FR-002 — no self-declared
+                // value substitutes for what disk cannot show).
+                None => (IndexStatus::Missing, None, None, snapshots.len() as u32, intents.len() as u32),
+            }
+        } else {
+            (IndexStatus::Inactive, None, None, 0, 0)
+        };
 
     // Enumerate project-level stats
     let mut projects = Vec::new();
@@ -143,8 +146,13 @@ pub fn build_status(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<A
         enrichments_pending,
         enrichments_failed,
         projects,
-        warnings: if config.is_lance() && index_status == IndexStatus::Missing {
-            vec!["Lance backend is active but no index pointer found — run `mf source sync` first".to_string()]
+        // Lance is declared but no corpus pointer resolves yet: a recoverable
+        // state, reported here, never an error (spec 075 FR-006).
+        warnings: if index_status == IndexStatus::Missing {
+            vec![
+                "Lance backend is selected but no corpus has been activated yet — run `mf source sync` to activate it"
+                    .to_string(),
+            ]
         } else {
             vec![]
         },
@@ -169,9 +177,8 @@ mod tests {
         let config = ResolvedSourceConfig {
             backend: SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,
@@ -192,10 +199,12 @@ mod tests {
         fs::create_dir_all(dir.path().join("projects")).unwrap();
         let config = ResolvedSourceConfig {
             backend: SourceBackend::Lance,
-            is_lance_active: true,
-            is_marker_corrupt: false,
-            activation_snapshot_id: Some("s".into()),
-            storage_schema_version: Some("1".into()),
+            // A declared-but-not-yet-found corpus: build_status must probe
+            // the pointer itself and report Missing, never rely on a
+            // recorded flag (spec 075 FR-002, FR-006).
+            is_lance_active: false,
+            corpus_missing: true,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,

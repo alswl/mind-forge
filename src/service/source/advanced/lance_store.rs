@@ -78,6 +78,12 @@ pub fn registrations_schema() -> SchemaRef {
         // Schema v2 (spec 071): per-registration derived context + source provenance.
         utf8_field("context_json", true),
         utf8_field("imported_by_json", true),
+        // Schema v3 (spec 075): complete the record so the project-index
+        // mirror can be lossless — creation/modification timestamps and a
+        // passthrough for fields this store does not otherwise interpret.
+        utf8_field("added_at", true),
+        utf8_field("updated_at", true),
+        utf8_field("extras_json", true),
     ]))
 }
 
@@ -306,7 +312,7 @@ impl LanceStore {
             .rt()
             .block_on(async { table.schema().await })
             .map_err(|e| MfError::advanced_store(format!("cannot read registrations schema: {e}"), None))?;
-        if schema.field_with_name("context_json").is_ok() {
+        if schema.field_with_name("added_at").is_ok() {
             return Ok(());
         }
         let rows = self.read_all_registrations()?;
@@ -319,6 +325,31 @@ impl LanceStore {
         self.create_table(TABLE_REGISTRATIONS, registrations_schema())?;
         self.append_registrations(&rows)?;
         Ok(())
+    }
+
+    /// Determine schema compatibility by inspecting the `registrations` table's
+    /// actual on-disk structure against what this build declares as current
+    /// (`registrations_schema()`) — never by a recorded self-declared version
+    /// (spec 075 FR-002). Field-name-set comparison: missing an expected field
+    /// means the table predates this build; carrying fields this build does not
+    /// declare means the table is newer than this build supports.
+    pub fn registrations_schema_status(&self) -> Result<super::config::SchemaStatus> {
+        use super::config::SchemaStatus;
+        let table = self.open_table(TABLE_REGISTRATIONS)?;
+        let actual = self
+            .rt()
+            .block_on(async { table.schema().await })
+            .map_err(|e| MfError::advanced_store(format!("cannot read registrations schema: {e}"), None))?;
+        let expected = registrations_schema();
+        let actual_names: BTreeSet<&str> = actual.fields().iter().map(|f| f.name().as_str()).collect();
+        let expected_names: BTreeSet<&str> = expected.fields().iter().map(|f| f.name().as_str()).collect();
+        if actual_names == expected_names {
+            Ok(SchemaStatus::Current)
+        } else if expected_names.is_subset(&actual_names) {
+            Ok(SchemaStatus::Newer)
+        } else {
+            Ok(SchemaStatus::Older)
+        }
     }
 
     /// Read every registration row into [`SourceRegistration`]. Schema-v2 columns
@@ -356,6 +387,9 @@ impl LanceStore {
                     },
                     context_json: opt("context_json", row),
                     imported_by_json: opt("imported_by_json", row),
+                    added_at: opt("added_at", row),
+                    updated_at: opt("updated_at", row),
+                    extras_json: opt("extras_json", row),
                 });
             }
         }
@@ -428,6 +462,9 @@ impl LanceStore {
                 Arc::new(StringArray::from(
                     registrations.iter().map(|r| r.imported_by_json.as_deref()).collect::<Vec<_>>(),
                 )),
+                Arc::new(StringArray::from(registrations.iter().map(|r| r.added_at.as_deref()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(registrations.iter().map(|r| r.updated_at.as_deref()).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(registrations.iter().map(|r| r.extras_json.as_deref()).collect::<Vec<_>>())),
             ],
         )
         .map_err(|e| MfError::advanced_store(format!("failed to build registrations batch: {e}"), None))?;
@@ -1005,13 +1042,16 @@ mod tests {
             state: RegistrationState::Live,
             context_json: Some("{\"repository\":\"r\"}".into()),
             imported_by_json: None,
+            added_at: Some("2026-01-01T00:00:00Z".into()),
+            updated_at: Some("2026-01-01T00:00:00Z".into()),
+            extras_json: None,
         };
         assert!(
             store.append_registrations(std::slice::from_ref(&ctx_row)).is_err(),
             "v1 table must reject context row"
         );
 
-        // Migration recreates the table with the v2 schema, preserving rows.
+        // Migration recreates the table with the current schema, preserving rows.
         store.migrate_registrations_schema().unwrap();
         assert_eq!(store.read_all_registrations().unwrap().len(), 1, "existing row preserved through migration");
 
@@ -1023,6 +1063,43 @@ mod tests {
         assert_eq!(rows.len(), 2, "context row appended after migration");
         let migrated = rows.iter().find(|r| r.registration_key == "rk-2").unwrap();
         assert_eq!(migrated.context_json.as_deref(), Some("{\"repository\":\"r\"}"), "context persisted round-trip");
+    }
+
+    #[test]
+    fn registrations_schema_status_reads_actual_table_structure() {
+        // Spec 075 FR-002: compatibility must come from what is actually on
+        // disk, never a recorded declaration. A genuinely v1-shaped table
+        // (missing context_json/imported_by_json) reports Older; the current
+        // shape reports Current. No string anywhere drives this decision.
+        use crate::service::source::advanced::config::SchemaStatus;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = LanceStore::create(&dir.path().join("db")).unwrap().with_dimension(1024);
+
+        store.create_table(TABLE_REGISTRATIONS, registrations_schema_v1()).unwrap();
+        assert_eq!(store.registrations_schema_status().unwrap(), SchemaStatus::Older);
+
+        store.migrate_registrations_schema().unwrap();
+        assert_eq!(store.registrations_schema_status().unwrap(), SchemaStatus::Current);
+    }
+
+    #[test]
+    fn registrations_schema_status_reports_newer_for_a_table_with_unrecognised_columns() {
+        // Spec 075 T012 (edge case): a table carrying every field this build
+        // requires, plus a column it does not recognise, is a future build's
+        // shape — reported distinctly from `Older` so an old binary refuses
+        // rather than silently misreading it.
+        use crate::service::source::advanced::config::SchemaStatus;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = LanceStore::create(&dir.path().join("db")).unwrap().with_dimension(1024);
+
+        let mut fields: Vec<Field> = registrations_schema().fields().iter().map(|f| f.as_ref().clone()).collect();
+        fields.push(utf8_field("future_field", true));
+        let newer_schema: SchemaRef = Arc::new(Schema::new(fields));
+        store.create_table(TABLE_REGISTRATIONS, newer_schema).unwrap();
+
+        assert_eq!(store.registrations_schema_status().unwrap(), SchemaStatus::Newer);
     }
 
     #[test]

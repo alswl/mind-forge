@@ -38,14 +38,17 @@ fn sync_idempotent_no_error() {
 
 #[test]
 fn sync_keeps_minds_yaml_stable_and_writes_local_marker() {
+    // Spec 075 FR-001: machine-local state carries only this machine's
+    // activation status — no snapshot id, fingerprint, or schema version.
     let repo = provider_repo();
     let minds_before = std::fs::read(repo.path().join("minds.yaml")).unwrap();
     let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "sync failed\nstdout:{stdout}\nstderr:{stderr}");
     assert_eq!(minds_before, std::fs::read(repo.path().join("minds.yaml")).unwrap());
     let state = std::fs::read_to_string(repo.path().join(".mind-forge/state.yaml")).unwrap();
-    assert!(state.contains("activation_snapshot_id"));
-    assert!(state.contains("storage_schema_version"));
+    assert!(state.contains("activated: true"), "local state must record activation:\n{state}");
+    assert!(!state.contains("activation_snapshot_id"), "local state must carry no snapshot id:\n{state}");
+    assert!(!state.contains("storage_schema_version"), "local state must carry no schema version:\n{state}");
 }
 
 #[test]

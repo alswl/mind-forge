@@ -1,14 +1,21 @@
-//! CLI contract tests for storage schema migration (spec 071).
+//! CLI contract tests for storage schema compatibility (spec 071, spec 075).
 //!
-//! Activating writes the current schema version. A snapshot pinned at an older
-//! version must produce an actionable rebuild diagnostic (exit 1) rather than
-//! being read silently under the old schema; `rebuild` then restores service.
+//! Spec 075 moved compatibility from a self-declared `minds.yaml` value to the
+//! actual on-disk table structure (FR-002). These tests assert the consequence
+//! directly: hand-editing the declared version has no effect at all — it is
+//! not read, so it cannot lie (FR-010, SC-002). Coverage of an actually-stale
+//! table (missing v2 columns) lives at the unit level in
+//! `src/service/source/advanced/lance_store.rs`, where a genuine v1-shaped
+//! table can be constructed directly; the CLI/subprocess boundary here has no
+//! way to fake real table structure, which is the point.
 
 mod common;
 use common::embedding_provider::{provider_repo, run};
 
-/// Rewrite `minds.yaml.source.storage_schema_version` to simulate a v1 snapshot.
-fn downgrade_schema_to_v1(repo: &std::path::Path) {
+/// Rewrite `minds.yaml.source.storage_schema_version`. Spec 075: this value is
+/// no longer part of `RepositorySourceConfig` at all, so writing it is inert —
+/// it round-trips as an unknown key and is ignored by every code path.
+fn declare_stale_schema_version_in_yaml(repo: &std::path::Path) {
     let minds = repo.join("minds.yaml");
     let text = std::fs::read_to_string(&minds).expect("read minds.yaml");
     let mut root: serde_yaml::Value = serde_yaml::from_str(&text).expect("parse minds.yaml");
@@ -22,45 +29,42 @@ fn downgrade_schema_to_v1(repo: &std::path::Path) {
 }
 
 #[test]
-fn v1_snapshot_rejects_search_with_rebuild_diagnostic() {
+fn hand_edited_schema_version_does_not_affect_search() {
     let repo = provider_repo();
     let (o, e, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "activation sync failed\n{o}\n{e}");
 
-    downgrade_schema_to_v1(repo.path());
+    declare_stale_schema_version_in_yaml(repo.path());
 
+    // FR-010/SC-002: the declared value is not read, so search is unaffected —
+    // the previously-documented hand-edit workaround has nothing left to do.
     let (stdout, stderr, code) = run(&repo, &["source", "search", "notes"], &[]);
-    assert_eq!(code, 1, "v1 snapshot search must exit 1\nstdout:\n{stdout}\nstderr:\n{stderr}");
-    assert!(stderr.contains("rebuild"), "diagnostic must direct the operator to rebuild\nstderr:\n{stderr}");
-    assert!(stderr.contains("schema"), "diagnostic must name the schema mismatch\nstderr:\n{stderr}");
+    assert_eq!(code, 0, "search must be unaffected by a hand-edited declaration\nstdout:\n{stdout}\nstderr:\n{stderr}");
 }
 
 #[test]
-fn v1_snapshot_rejects_incremental_sync() {
+fn hand_edited_schema_version_does_not_affect_incremental_sync() {
     let repo = provider_repo();
     let (o, e, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "activation sync failed\n{o}\n{e}");
 
-    downgrade_schema_to_v1(repo.path());
+    declare_stale_schema_version_in_yaml(repo.path());
 
     let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
-    assert_eq!(code, 1, "v1 snapshot incremental sync must exit 1\nstdout:\n{stdout}\nstderr:\n{stderr}");
-    assert!(stderr.contains("rebuild"), "sync diagnostic must direct to rebuild\nstderr:\n{stderr}");
+    assert_eq!(code, 0, "sync must be unaffected by a hand-edited declaration\nstdout:\n{stdout}\nstderr:\n{stderr}");
 }
 
 #[test]
-fn rebuild_upgrades_v1_snapshot_and_restores_service() {
+fn rebuild_succeeds_regardless_of_declared_schema_version() {
     let repo = provider_repo();
     let (o, e, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "activation sync failed\n{o}\n{e}");
 
-    downgrade_schema_to_v1(repo.path());
+    declare_stale_schema_version_in_yaml(repo.path());
 
-    // Rebuild is the migration path: it must run on a v1 snapshot.
     let (stdout, stderr, code) = run(&repo, &["source", "admin", "rebuild", "--offline"], &[]);
-    assert_eq!(code, 0, "rebuild must succeed on a v1 snapshot\nstdout:\n{stdout}\nstderr:\n{stderr}");
+    assert_eq!(code, 0, "rebuild must succeed\nstdout:\n{stdout}\nstderr:\n{stderr}");
 
-    // After rebuild the marker is v2 and search serves again.
     let (stdout, stderr, code) = run(&repo, &["source", "search", "notes"], &[]);
     assert_eq!(code, 0, "search must succeed after rebuild\nstdout:\n{stdout}\nstderr:\n{stderr}");
 }
