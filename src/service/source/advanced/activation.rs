@@ -313,8 +313,8 @@ pub fn activate(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<Activ
     })
 }
 
-/// Atomically patch `minds.yaml` to set `source.backend: lance`, then persist
-/// the activation marker in the gitignored local state file.
+/// Atomically patch `minds.yaml` to set `source.backend: lance`, then record
+/// this machine's activation status in the gitignored local state file.
 fn patch_backend_marker(repo_root: &Path) -> Result<()> {
     let minds_yaml = repo_root.join("minds.yaml");
     let original = if minds_yaml.exists() {

@@ -52,7 +52,11 @@ fn find_shadowing_conflict<'a>(
 }
 
 fn shadowing_warning(original: &str, colliding_term: &str) -> String {
-    format!("original '{original}' is also a prefix of term '{colliding_term}'; lint may map it to that term instead")
+    // The relationship is symmetric (either string may be the prefix), so the
+    // message must not claim a direction it did not check.
+    format!(
+        "original '{original}' overlaps term '{colliding_term}' (one is a prefix of the other); lint may map it to that term instead"
+    )
 }
 
 // ── Project-scoped correction operations ──────────────────────────────────────
@@ -344,4 +348,49 @@ pub fn remove_correction_global(repo_root: &Path, term_name: &str, original: &st
     validate_terms_before_global_save(&terms)?;
     crate::service::term::global::save_terms(repo_root, &terms)?;
     Ok(removed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::term::Term;
+
+    fn term(name: &str, originals: &[&str]) -> Term {
+        Term {
+            term: name.to_string(),
+            definition: None,
+            description: None,
+            confidence: None,
+            aliases: Vec::new(),
+            tags: Vec::new(),
+            corrections: originals.iter().map(|o| Correction::misrecognition(*o, format!("{o}-fixed"))).collect(),
+        }
+    }
+
+    #[test]
+    fn shadowing_conflict_is_found_in_both_prefix_directions() {
+        let terms = vec![term("API", &[])];
+        // The new original extends the other term's name...
+        assert_eq!(find_shadowing_conflict(&terms, "gateway", "API网关"), Some("API"));
+        // ...and the other term's name extends the new original.
+        let terms = vec![term("API网关", &[])];
+        assert_eq!(find_shadowing_conflict(&terms, "gateway", "API"), Some("API网关"));
+    }
+
+    #[test]
+    fn shadowing_warning_does_not_claim_a_direction_it_did_not_check() {
+        // `is_prefix_or_equal_ci` matches either way round, so the message must
+        // state the relationship symmetrically: here the *term* is the prefix.
+        let msg = shadowing_warning("API网关", "API");
+        assert!(msg.contains("API网关"), "got {msg}");
+        assert!(msg.contains("term 'API'"), "got {msg}");
+        assert!(!msg.contains("is also a prefix of term"), "got {msg}");
+        assert!(msg.contains("one is a prefix of the other"), "got {msg}");
+    }
+
+    #[test]
+    fn the_term_being_edited_is_never_its_own_conflict() {
+        let terms = vec![term("API", &["API网关"])];
+        assert_eq!(find_shadowing_conflict(&terms, "API", "API网关"), None);
+    }
 }

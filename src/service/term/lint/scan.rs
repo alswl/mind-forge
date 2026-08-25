@@ -339,6 +339,9 @@ pub(crate) fn scan_file_for_corrections(
         // they lint but are not auto-applied (a future segmentation miss must
         // not corrupt prose). Longer CJK and ASCII corrections are unaffected.
         let short_cjk_advisory = matches!(check, WordCheck::Cjk) && is_short_cjk_correction(c.original);
+        // Depends only on this correction, so compute it once rather than
+        // once per matched occurrence.
+        let competing = competing_terms(corrections, all_term_names, c.term_name, c.original);
         let mut search_start = 0;
         while search_start < sanitized.len() {
             let Some(rel_offset) = find_subseq(&sanitized[search_start..], orig_bytes) else {
@@ -373,8 +376,6 @@ pub(crate) fn scan_file_for_corrections(
                 && (char_before(content, abs_offset).is_some_and(is_word_continuation)
                     || char_after(content, abs_offset + orig_bytes.len()).is_some_and(is_word_continuation));
 
-            let competing = competing_terms(corrections, all_term_names, c.term_name, c.original);
-
             findings.push(TermFinding {
                 path: rel_path.to_string(),
                 line,
@@ -402,7 +403,7 @@ pub(crate) fn scan_file_for_corrections(
                 context: context_excerpt(content, abs_offset, orig_bytes.len()),
                 // Overwritten by `apply_selection` once the fix scope is known.
                 held_back: false,
-                competing_terms: competing,
+                competing_terms: competing.clone(),
             });
 
             internal_findings.push(InternalFinding {

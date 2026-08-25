@@ -124,19 +124,17 @@ fn project_entry(registration: &CatalogRegistration, existing: Option<&serde_yam
     Value::Mapping(source)
 }
 
-/// Merge store registrations into the existing `sources:` value. Returns the
-/// merged sequence and the number of entries kept only because the store
-/// does not (yet) know about them — divergence that resolves by import, never
-/// by deletion (spec 075 I-1), except for names the caller explicitly names
-/// in `permitted_removals` because it just performed a real removal.
+/// Merge store registrations into the existing `sources:` value. An entry the
+/// store does not (yet) know about is kept — divergence that resolves by
+/// import, never by deletion (spec 075 I-1) — except for names the caller
+/// explicitly lists in `permitted_removals` because it just performed a real
+/// removal.
 fn merge_sources(
     sources_value: Option<&Value>,
     registrations: &[CatalogRegistration],
     permitted_removals: &[String],
-) -> (Vec<Value>, usize) {
+) -> Vec<Value> {
     let (order, by_name) = read_existing_sources(sources_value);
-    let store_names: HashSet<&str> = registrations.iter().map(|r| r.source_identity.as_str()).collect();
-
     let mut result = Vec::with_capacity(order.len().max(registrations.len()));
     let mut emitted: HashSet<String> = HashSet::new();
 
@@ -163,8 +161,7 @@ fn merge_sources(
         emitted.insert(registration.source_identity.clone());
     }
 
-    let kept_yaml_only = order.iter().filter(|name| !store_names.contains(name.as_str())).count();
-    (result, kept_yaml_only)
+    result
 }
 
 /// Byte range of a top-level (column-0) YAML key's block within `text`,
@@ -182,7 +179,12 @@ fn top_level_key_span(text: &str, key: &str) -> Option<(usize, usize)> {
     let bare = format!("{key}:");
     let prefixed = format!("{key}: ");
     let mut start = None;
-    let mut end = text.len();
+    let mut end = None;
+    // Start of the current run of blank/comment lines. Such a run that
+    // immediately precedes the next top-level key (or EOF) belongs to what
+    // follows, so it must stay outside the replaced span — otherwise the
+    // blank line separating `sources:` from `terms:` is silently deleted.
+    let mut trailer: Option<usize> = None;
     let mut offset = 0usize;
     for line in text.split_inclusive('\n') {
         let trimmed = line.trim_end_matches(['\n', '\r']);
@@ -193,18 +195,23 @@ fn top_level_key_span(text: &str, key: &str) -> Option<(usize, usize)> {
                 }
             }
             Some(_) => {
-                // A column-0 `- item` is a valid, and exactly serde_yaml's
-                // own, style for a sequence directly under its parent key —
-                // it continues the block, it is not a new top-level key.
-                if !trimmed.is_empty() && !trimmed.starts_with([' ', '\t', '-']) {
-                    end = offset;
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    trailer.get_or_insert(offset);
+                } else if trimmed.starts_with([' ', '\t', '-']) {
+                    // A column-0 `- item` is a valid, and exactly serde_yaml's
+                    // own, style for a sequence directly under its parent key —
+                    // it continues the block, it is not a new top-level key.
+                    // Anything indented continues it too.
+                    trailer = None;
+                } else {
+                    end = Some(trailer.unwrap_or(offset));
                     break;
                 }
             }
         }
         offset += line.len();
     }
-    start.map(|s| (s, end))
+    start.map(|s| (s, end.unwrap_or_else(|| trailer.unwrap_or(text.len()))))
 }
 
 /// Replace (or append) a single top-level key's block in raw YAML text,
@@ -332,7 +339,7 @@ pub fn export_project_with_removals(
     let existing_sources = legacy.get("sources").cloned();
     // FR-014/I-1: entries with no store row yet are kept, not dropped — `mf
     // source index` is what imports them into the store.
-    let (merged, _kept_yaml_only) = merge_sources(existing_sources.as_ref(), &registrations, permitted_removals);
+    let merged = merge_sources(existing_sources.as_ref(), &registrations, permitted_removals);
     // FR-013/I-2: splice only the `sources:` block into the raw text so every
     // other key (`terms:`, `articles:`, `prompts:`, `thinking:`, ...) stays
     // byte-identical — see `splice_top_level_key`.
@@ -362,9 +369,13 @@ pub fn export_project_with_removals(
             },
         });
     }
-    let tmp = index_path.with_extension("yaml.tmp");
-    fs::write(&tmp, &rendered)?;
-    fs::rename(&tmp, &index_path)?;
+    // Nothing to write when the mirror already matches: rewriting an
+    // identical file only churns its mtime on every registration mutation.
+    if expected_fp != observed_fp {
+        let tmp = index_path.with_extension("yaml.tmp");
+        fs::write(&tmp, &rendered)?;
+        fs::rename(&tmp, &index_path)?;
+    }
     Ok(ProjectionComparison {
         project_key: project_name.to_string(),
         project_identity: legacy.get("project").and_then(|v| v.as_str()).unwrap_or(project_name).to_string(),
@@ -421,5 +432,60 @@ mod tests {
         .unwrap();
 
         assert!(export_project(dir.path(), "alpha", true).is_err());
+    }
+
+    // Spec 075 FR-013/I-2 regressions: the projection writer is confined to the
+    // `sources:` block and must leave every byte outside it untouched.
+
+    const INDEX_WITH_INNER_COMMENT: &str = concat!(
+        "project: alpha\n",
+        "sources:\n",
+        "  - name: notes\n",
+        "    path: sources/notes.md\n",
+        "# hand-added note about the entries above\n",
+        "  - name: other\n",
+        "    path: sources/other.md\n",
+        "\n",
+        "terms:\n",
+        "  - term: API\n",
+    );
+
+    #[test]
+    fn key_span_spans_past_a_column_zero_comment_inside_the_block() {
+        let (start, end) = top_level_key_span(INDEX_WITH_INNER_COMMENT, "sources").unwrap();
+        let span = &INDEX_WITH_INNER_COMMENT[start..end];
+        // A comment at column 0 does not end the block: everything down to the
+        // next real top-level key belongs to `sources:`.
+        assert!(span.starts_with("sources:\n"), "span was {span:?}");
+        assert!(span.contains("name: other"), "span was {span:?}");
+        assert!(!span.contains("terms:"), "span was {span:?}");
+    }
+
+    #[test]
+    fn splice_over_a_block_with_an_inner_comment_leaves_no_leftover_tail() {
+        let spliced = splice_top_level_key(
+            INDEX_WITH_INNER_COMMENT,
+            "sources",
+            "sources:\n  - name: notes\n    path: sources/notes.md\n",
+        );
+        // The old block, comment and all, is gone rather than re-appended
+        // after the freshly rendered one.
+        assert_eq!(spliced.matches("sources:").count(), 1, "got {spliced:?}");
+        assert!(!spliced.contains("name: other"), "got {spliced:?}");
+        assert!(!spliced.contains("hand-added note"), "got {spliced:?}");
+        // Untouched keys survive byte-identically, and the result still parses.
+        assert!(spliced.starts_with("project: alpha\n"), "got {spliced:?}");
+        assert!(spliced.ends_with("\nterms:\n  - term: API\n"), "got {spliced:?}");
+        serde_yaml::from_str::<Value>(&spliced).expect("spliced index must stay parseable");
+    }
+
+    #[test]
+    fn key_span_leaves_the_blank_line_before_the_next_key_outside() {
+        let text = "sources:\n  - name: notes\n\nterms:\n  - term: API\n";
+        let (_, end) = top_level_key_span(text, "sources").unwrap();
+        assert_eq!(&text[end..], "\nterms:\n  - term: API\n");
+
+        let spliced = splice_top_level_key(text, "sources", "sources:\n  - name: renamed\n");
+        assert_eq!(spliced, "sources:\n  - name: renamed\n\nterms:\n  - term: API\n");
     }
 }
