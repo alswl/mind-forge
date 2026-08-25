@@ -1129,3 +1129,49 @@ fn lint_json_finding_carries_held_back_status() {
     assert_eq!(findings[0]["safety_reason"], "short-cjk-advisory", "{stdout}");
     assert_eq!(findings[0]["held_back"], true, "{stdout}");
 }
+
+/// T078/FR-032 (spec 075 US5): a lint finding whose original is claimed by
+/// more than one term (via the prefix-or-equal shadowing relationship, not
+/// the narrower "identical original" ambiguity test) discloses the
+/// competing terms.
+#[test]
+fn lint_discloses_competing_terms_for_a_prefix_shadowed_finding() {
+    let (repo, project) = setup_with_term();
+    // "ARCA Serverless" has no correction of its own registered — the
+    // narrower `build_ambiguous_originals` (same-original-text) test would
+    // not see any collision here, which is exactly why it doesn't cover #42.
+    common::write_index(
+        &repo,
+        "alpha",
+        r#"schema_version: '1'
+terms:
+  - term: Mind Repo
+    corrections:
+      - original: mindrepo
+        correct: Mind Repo
+      - original: arca
+        correct: Arca
+  - term: ARCA Serverless
+    corrections: []
+"#,
+    );
+    write_doc(&project, "demo", "arca deployment notes\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let findings = v["data"]["findings"].as_array().unwrap();
+    assert_eq!(findings.len(), 1, "{stdout}");
+    let competing = findings[0]["competing_terms"].as_array().expect("competing_terms present");
+    assert!(
+        competing.iter().any(|t| t == "ARCA Serverless"),
+        "the finding must disclose the term it could be misdirected to: {stdout}"
+    );
+
+    let text_output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let text_stdout = String::from_utf8(text_output.stdout).unwrap();
+    assert!(
+        text_stdout.contains("ARCA Serverless"),
+        "text output must also disclose the competing term: {text_stdout}"
+    );
+}

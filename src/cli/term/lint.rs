@@ -321,6 +321,14 @@ fn format_lint_text_with_target(
                     boundary_mark,
                     held_back_mark
                 ));
+                // Spec 075 US5/FR-032: a finding whose original is claimed
+                // by more than one term (via the prefix-or-equal shadowing
+                // relationship, not just an identical-original collision)
+                // discloses the competing terms so the misdirection is
+                // diagnosable from the finding alone.
+                if !f.competing_terms.is_empty() {
+                    lines.push(format!("  also claimed by: {}", f.competing_terms.join(", ")));
+                }
             }
         }
     }
@@ -396,6 +404,7 @@ mod tests {
                 selection: FindingSelection::Selected,
                 context: "context with old token".into(),
                 held_back: false,
+                competing_terms: vec![],
             }],
             scanned_files: 1,
             skipped_files: vec![],

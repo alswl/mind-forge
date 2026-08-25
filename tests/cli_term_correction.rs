@@ -414,3 +414,50 @@ fn correction_list_global() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("gx"), "stdout: {stdout}");
 }
+
+// ---------------------------------------------------------------------------
+// Spec 075 US5: registering a correction warns about cross-term shadowing.
+// ---------------------------------------------------------------------------
+
+/// T077/FR-031: a non-colliding original warns about nothing; adding an
+/// identical pair again stays idempotent and silent.
+#[test]
+fn correction_add_non_colliding_warns_nothing_and_identical_pair_is_silent() {
+    let (repo, _project) = setup_repo();
+
+    let output =
+        mf(&repo).args(["term", "correction", "add", "RAG", "ragg", "RAG", "--project", "alpha"]).output().unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(!stderr.contains("warning:"), "a non-colliding original must warn about nothing: {stderr}");
+
+    // Re-adding the identical pair stays idempotent and silent.
+    let output =
+        mf(&repo).args(["term", "correction", "add", "RAG", "ragg", "RAG", "--project", "alpha"]).output().unwrap();
+    assert!(output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(!stderr.contains("warning:"), "an identical pair must stay silent: {stderr}");
+}
+
+/// T076/FR-030: adding a correction whose original is a prefix of another
+/// term's name warns naming that term, exits 0, and still registers.
+#[test]
+fn correction_add_prefix_of_another_terms_name_warns_and_still_registers() {
+    let (repo, project) = setup_repo();
+    mf(&repo)
+        .args(["term", "new", "ARCA Serverless", "--definition", "a platform", "--project", "alpha"])
+        .assert()
+        .success();
+
+    let output =
+        mf(&repo).args(["term", "correction", "add", "RAG", "arca", "RAG", "--project", "alpha"]).output().unwrap();
+    assert!(output.status.success(), "a shadowing collision must still exit 0: {}", output.status);
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("warning:") && stderr.contains("ARCA Serverless"),
+        "must warn naming the shadowed term: {stderr}"
+    );
+
+    let index = fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert!(index.contains("arca"), "the correction must still be registered despite the warning: {index}");
+}

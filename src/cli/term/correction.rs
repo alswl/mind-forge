@@ -23,9 +23,8 @@ fn correction_scope(root: &std::path::Path, ctx: &CommandCtx) -> Result<(String,
 fn handle_correction_add(args: TermCorrectionAddArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     let root = ctx.require_repo_path()?;
     let (scope, scope_path) = correction_scope(root, ctx)?;
-    let warnings: Vec<String> = Vec::new();
 
-    let (corr, created) = if scope == "project" {
+    let (corr, created, shadow_warning) = if scope == "project" {
         term_svc::correction::add_correction(
             &scope_path,
             &args.term,
@@ -50,6 +49,10 @@ fn handle_correction_add(args: TermCorrectionAddArgs, ctx: &CommandCtx) -> Resul
             args.dry_run.dry_run,
         )?
     };
+    // Spec 075 US5/FR-030: a shadowing collision warns on the standard
+    // warnings channel (stderr in text mode, the JSON envelope's warnings
+    // array otherwise); it never fails the command (exit 0).
+    let warnings: Vec<String> = shadow_warning.into_iter().collect();
 
     let data = serde_json::json!({
         "term": args.term,

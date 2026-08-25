@@ -308,6 +308,7 @@ pub(crate) fn lint_single_file_with_selection(
     let ambiguous = build_ambiguous_originals(&corrections);
     let candidates = build_candidates(&corrections, &ambiguous);
     let correction_refs = build_correction_refs(&corrections, &ambiguous, &candidates);
+    let all_term_names: Vec<&str> = index.terms.as_deref().unwrap_or(&[]).iter().map(|t| t.term.as_str()).collect();
     let mut findings: Vec<TermFinding> = Vec::new();
     let mut internal_findings: Vec<InternalFinding> = Vec::new();
     let mut claimed: BTreeSet<(String, usize, usize)> = BTreeSet::new();
@@ -323,7 +324,16 @@ pub(crate) fn lint_single_file_with_selection(
         }
     };
 
-    scan_content(&content, None, &correction_refs, &rel_path, &mut findings, &mut internal_findings, &mut claimed);
+    scan_content(
+        &content,
+        None,
+        &correction_refs,
+        &all_term_names,
+        &rel_path,
+        &mut findings,
+        &mut internal_findings,
+        &mut claimed,
+    );
     let counts = apply_selection(&mut findings, &internal_findings, selection);
 
     if !fix {
@@ -431,6 +441,7 @@ pub(crate) fn lint_walk_with_selection(
     let ambiguous = build_ambiguous_originals(&corrections);
     let candidates = build_candidates(&corrections, &ambiguous);
     let correction_refs = build_correction_refs(&corrections, &ambiguous, &candidates);
+    let all_term_names: Vec<&str> = index.terms.as_deref().unwrap_or(&[]).iter().map(|t| t.term.as_str()).collect();
     let mut findings: Vec<TermFinding> = Vec::new();
     let mut internal_findings: Vec<InternalFinding> = Vec::new();
     let mut scanned_files: u64 = 0;
@@ -470,6 +481,7 @@ pub(crate) fn lint_walk_with_selection(
                     &content,
                     Some(end_byte_offset),
                     &correction_refs,
+                    &all_term_names,
                     &rel_path,
                     &mut findings,
                     &mut internal_findings,
@@ -482,6 +494,7 @@ pub(crate) fn lint_walk_with_selection(
                     &content,
                     None,
                     &correction_refs,
+                    &all_term_names,
                     &rel_path,
                     &mut findings,
                     &mut internal_findings,
@@ -528,10 +541,12 @@ pub(crate) fn lint_walk_with_selection(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn scan_content(
     content: &str,
     fm_end: Option<usize>,
     correction_refs: &[scan::CorrectionRef<'_>],
+    all_term_names: &[&str],
     rel_path: &str,
     findings: &mut Vec<TermFinding>,
     internal_findings: &mut Vec<InternalFinding>,
@@ -545,6 +560,7 @@ pub(crate) fn scan_content(
         content,
         &sanitized,
         correction_refs,
+        all_term_names,
         rel_path,
         findings,
         internal_findings,

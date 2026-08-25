@@ -242,6 +242,45 @@ pub(super) fn byte_offset_to_line_col(content: &str, byte_offset: usize) -> (u32
     (line, col)
 }
 
+/// Spec 075 US5/FR-032: `a` and `b` are in a prefix-or-equal relationship,
+/// case-insensitively for ASCII — the same relationship checked at
+/// registration time (`correction.rs::is_prefix_or_equal_ci`), applied here
+/// per-finding so a misdirected match discloses the terms it could have gone
+/// to instead of only the one it happened to match.
+fn is_prefix_or_equal_ci(a: &str, b: &str) -> bool {
+    let a = a.to_ascii_lowercase();
+    let b = b.to_ascii_lowercase();
+    a == b || a.starts_with(&b) || b.starts_with(&a)
+}
+
+/// Other terms (by name) whose name or registered original is in a
+/// prefix-or-equal relationship with `original` — every term this finding's
+/// match could plausibly have been claimed by instead of `own_term`.
+///
+/// `all_term_names` covers terms with zero registered corrections (which
+/// have no `CorrectionRef` at all and so would otherwise be invisible here);
+/// `corrections` covers every other term's registered originals.
+fn competing_terms(
+    corrections: &[CorrectionRef<'_>],
+    all_term_names: &[&str],
+    own_term: &str,
+    original: &str,
+) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    let mut out = Vec::new();
+    for &name in all_term_names {
+        if name != own_term && is_prefix_or_equal_ci(original, name) && seen.insert(name) {
+            out.push(name.to_string());
+        }
+    }
+    for c in corrections {
+        if c.term_name != own_term && is_prefix_or_equal_ci(original, c.original) && seen.insert(c.term_name) {
+            out.push(c.term_name.to_string());
+        }
+    }
+    out
+}
+
 pub(crate) struct CorrectionRef<'a> {
     /// Position in the YAML `corrections:` list. Threaded through to
     /// `InternalFinding.yaml_index` so dedup can break ties by declaration
@@ -265,6 +304,7 @@ pub(crate) fn scan_file_for_corrections(
     content: &str,
     sanitized: &[u8],
     corrections: &[CorrectionRef<'_>],
+    all_term_names: &[&str],
     rel_path: &str,
     findings: &mut Vec<TermFinding>,
     internal_findings: &mut Vec<InternalFinding>,
@@ -333,6 +373,8 @@ pub(crate) fn scan_file_for_corrections(
                 && (char_before(content, abs_offset).is_some_and(is_word_continuation)
                     || char_after(content, abs_offset + orig_bytes.len()).is_some_and(is_word_continuation));
 
+            let competing = competing_terms(corrections, all_term_names, c.term_name, c.original);
+
             findings.push(TermFinding {
                 path: rel_path.to_string(),
                 line,
@@ -360,6 +402,7 @@ pub(crate) fn scan_file_for_corrections(
                 context: context_excerpt(content, abs_offset, orig_bytes.len()),
                 // Overwritten by `apply_selection` once the fix scope is known.
                 held_back: false,
+                competing_terms: competing,
             });
 
             internal_findings.push(InternalFinding {
@@ -710,6 +753,7 @@ mod tests {
             content,
             content.as_bytes(),
             &[correction],
+            &[],
             "synthetic.md",
             &mut findings,
             &mut internal,

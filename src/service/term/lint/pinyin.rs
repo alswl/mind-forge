@@ -102,6 +102,7 @@ pub(crate) fn scan_for_pinyin(
                     context: context_excerpt(content, window_byte_start, window_byte_len),
                     // Overwritten by `apply_selection` once the fix scope is known.
                     held_back: false,
+                    competing_terms: vec![],
                 });
 
                 internal_findings.push(InternalFinding {
