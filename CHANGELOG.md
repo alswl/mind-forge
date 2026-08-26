@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.
   self-heal missing pointers through `mf source sync`.
 
 ### Bug Fixes
+- Make quiet successful commands byte-silent while preserving warnings and exit
+  outcomes; align term-lint JSON on `issues`; and make mutation previews
+  prospective and write-safe for term corrections and asset updates (spec 076).
 - Preserve unknown source kinds and all index sections during registration;
   reject unsupported index schemas without silent migration.
 - Make article creation dry-run safe and warn when a derived non-ASCII slug

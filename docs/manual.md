@@ -86,7 +86,7 @@ Global flags:
 | `-p`, `--project <PROJECT>` | Project selector for project-scoped commands |
 | `-o`, `--output <text|json>` | Output format (default: `text`) |
 | `--json` | Shorthand for `--output json` |
-| `-q`, `--quiet` | Suppress successful non-list output |
+| `-q`, `--quiet` | Suppress successful output (diagnostics and exit codes remain) |
 | `--no-color` | Disable colored output |
 
 Shared mutating flags:
@@ -381,7 +381,7 @@ was not applied.
 Corrections are a first-class subresource of a term:
 
 ```bash
-mf term correction add API api API --match word
+mf term correction add API api API --match word --dry-run
 mf term correction list API
 mf term correction show API api
 mf term correction update API api --fix suggested

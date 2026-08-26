@@ -50,7 +50,7 @@ fn external_directory_scans_same_files_as_individual_paths() {
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(value["data"]["scanned_files"], 2);
     let paths: Vec<&str> =
-        value["data"]["findings"].as_array().unwrap().iter().filter_map(|finding| finding["path"].as_str()).collect();
+        value["data"]["issues"].as_array().unwrap().iter().filter_map(|finding| finding["path"].as_str()).collect();
     assert_eq!(paths, vec!["one.md", "two.md"]);
 }
 

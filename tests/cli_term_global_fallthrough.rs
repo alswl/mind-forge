@@ -261,7 +261,7 @@ fn lint_applies_global_corrections_under_project() {
         .unwrap();
 
     let v: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    let findings = v["data"]["findings"].as_array().unwrap();
+    let findings = v["data"]["issues"].as_array().unwrap();
 
     // The global correction "gt → GlobalTerm" should be found.
     assert!(!findings.is_empty(), "global corrections must apply under -p: {v}");

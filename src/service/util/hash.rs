@@ -36,6 +36,7 @@ impl Sha256 {
         }
     }
 
+    #[allow(clippy::chunks_exact_to_as_chunks)]
     fn update(&mut self, mut input: &[u8]) {
         self.len_bits = self.len_bits.wrapping_add((input.len() as u64) * 8);
 
@@ -86,6 +87,7 @@ impl Sha256 {
         out
     }
 
+    #[allow(clippy::chunks_exact_to_as_chunks)]
     fn compress(&mut self, block: &[u8]) {
         const K: [u32; 64] = [
             0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98,

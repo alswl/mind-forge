@@ -58,10 +58,6 @@ impl<'a> CommandCtx<'a> {
         self.app.project()
     }
 
-    pub fn quiet(&self) -> bool {
-        self.app.quiet()
-    }
-
     pub fn require_repo_path(&self) -> Result<&PathBuf> {
         self.app.require_repo_path()
     }
@@ -208,18 +204,6 @@ impl RootCli {
             Some(TopLevelCommand::Render(command)) => render::dispatch(command, ctx),
             Some(TopLevelCommand::Init(args)) => dispatch_init(args),
         }?;
-        // FR-080: in quiet mode, suppress success stdout (non-error data).
-        if ctx.quiet() {
-            match &outcome {
-                CommandOutcome::Success(_, _, _) => {
-                    return Ok(CommandOutcome::Success(serde_json::Value::String(String::new()), Vec::new(), None));
-                }
-                CommandOutcome::Raw(_, _) => {
-                    return Ok(CommandOutcome::Raw(String::new(), None));
-                }
-                _ => {}
-            }
-        }
         Ok(outcome)
     }
 }

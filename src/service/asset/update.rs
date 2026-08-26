@@ -61,7 +61,17 @@ fn resolve_asset_path(project_root: &Path, cwd: &Path, input: &Path) -> Result<P
 }
 
 /// Update the size and hash for a single asset identified by `input`.
+#[allow(dead_code)]
 pub fn update_one(project_path: &Path, cwd: &Path, input: &Path) -> Result<AssetUpdateResult> {
+    update_one_with_dry_run(project_path, cwd, input, false)
+}
+
+pub fn update_one_with_dry_run(
+    project_path: &Path,
+    cwd: &Path,
+    input: &Path,
+    dry_run: bool,
+) -> Result<AssetUpdateResult> {
     let resolved = resolve_asset_path(project_path, cwd, input)?;
 
     let project_canonical = project_path.canonicalize().map_err(MfError::Io)?;
@@ -105,7 +115,9 @@ pub fn update_one(project_path: &Path, cwd: &Path, input: &Path) -> Result<Asset
             entry.size = new_size;
             entry.hash = new_hash.clone();
         }
-        index::save(project_path, &index)?;
+        if !dry_run {
+            index::save(project_path, &index)?;
+        }
     }
 
     Ok(AssetUpdateResult { path: rel_path, changed, old_size, new_size, old_hash, new_hash, error: None })
@@ -113,6 +125,11 @@ pub fn update_one(project_path: &Path, cwd: &Path, input: &Path) -> Result<Asset
 
 /// Update size and hash for all registered assets.
 pub fn update_all(project_path: &Path) -> Result<Vec<AssetUpdateResult>> {
+    update_all_with_dry_run(project_path, false)
+}
+
+/// Update all registered assets, optionally returning the prospective result without saving.
+pub fn update_all_with_dry_run(project_path: &Path, dry_run: bool) -> Result<Vec<AssetUpdateResult>> {
     let mut index = index::load(project_path)?;
     let assets = index.assets.get_or_insert_with(Vec::new);
     let mut results = Vec::new();
@@ -189,7 +206,7 @@ pub fn update_all(project_path: &Path) -> Result<Vec<AssetUpdateResult>> {
 
     results.sort_by(|a, b| a.path.cmp(&b.path));
 
-    if any_changed {
+    if any_changed && !dry_run {
         index::save(project_path, &index)?;
     }
 

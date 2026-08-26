@@ -23,6 +23,7 @@ fn validate_terms_before_global_save(terms: &[crate::model::term::Term]) -> Resu
 /// Add a correction to an existing project-scoped term.
 /// Idempotent: returns Ok if the identical (original, correct) pair already exists.
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub fn add_correction(
     project_root: &Path,
     term_name: &str,
@@ -32,6 +33,31 @@ pub fn add_correction(
     fix_kind: Option<FixKind>,
     boundary: Option<Boundary>,
     pinyin: Option<Option<String>>,
+) -> Result<(Correction, bool)> {
+    add_correction_with_dry_run(
+        project_root,
+        term_name,
+        original,
+        correct,
+        match_kind,
+        fix_kind,
+        boundary,
+        pinyin,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn add_correction_with_dry_run(
+    project_root: &Path,
+    term_name: &str,
+    original: &str,
+    correct: &str,
+    match_kind: Option<MatchKind>,
+    fix_kind: Option<FixKind>,
+    boundary: Option<Boundary>,
+    pinyin: Option<Option<String>>,
+    dry_run: bool,
 ) -> Result<(Correction, bool)> {
     let mut index = index::load(project_root)?;
     let terms = index.terms.as_mut().ok_or_else(|| {
@@ -65,7 +91,9 @@ pub fn add_correction(
     t.corrections.push(corr.clone());
     sort_terms_by_name(terms);
     validate_terms_before_project_save(terms)?;
-    index::save(project_root, &index)?;
+    if !dry_run {
+        index::save(project_root, &index)?;
+    }
     Ok((corr, true))
 }
 
@@ -100,6 +128,7 @@ pub fn show_correction(project_root: &Path, term_name: &str, original: &str) -> 
 
 /// Update attributes on a correction of a project-scoped term.
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub fn update_correction(
     project_root: &Path,
     term_name: &str,
@@ -109,6 +138,31 @@ pub fn update_correction(
     fix_kind: Option<FixKind>,
     boundary: Option<Boundary>,
     pinyin: Option<Option<String>>,
+) -> Result<Correction> {
+    update_correction_with_dry_run(
+        project_root,
+        term_name,
+        original,
+        correct,
+        match_kind,
+        fix_kind,
+        boundary,
+        pinyin,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn update_correction_with_dry_run(
+    project_root: &Path,
+    term_name: &str,
+    original: &str,
+    correct: Option<String>,
+    match_kind: Option<MatchKind>,
+    fix_kind: Option<FixKind>,
+    boundary: Option<Boundary>,
+    pinyin: Option<Option<String>>,
+    dry_run: bool,
 ) -> Result<Correction> {
     let mut index = index::load_lenient(project_root)?;
     let terms =
@@ -141,7 +195,9 @@ pub fn update_correction(
     let result = c.clone();
     sort_terms_by_name(terms);
     validate_terms_before_project_save(terms)?;
-    index::save(project_root, &index)?;
+    if !dry_run {
+        index::save(project_root, &index)?;
+    }
     Ok(result)
 }
 
@@ -168,6 +224,7 @@ pub fn remove_correction(project_root: &Path, term_name: &str, original: &str) -
 
 /// Add a correction to an existing global-scoped term.
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub fn add_correction_global(
     repo_root: &Path,
     term_name: &str,
@@ -177,6 +234,23 @@ pub fn add_correction_global(
     fix_kind: Option<FixKind>,
     boundary: Option<Boundary>,
     pinyin: Option<Option<String>>,
+) -> Result<(Correction, bool)> {
+    add_correction_global_with_dry_run(
+        repo_root, term_name, original, correct, match_kind, fix_kind, boundary, pinyin, false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn add_correction_global_with_dry_run(
+    repo_root: &Path,
+    term_name: &str,
+    original: &str,
+    correct: &str,
+    match_kind: Option<MatchKind>,
+    fix_kind: Option<FixKind>,
+    boundary: Option<Boundary>,
+    pinyin: Option<Option<String>>,
+    dry_run: bool,
 ) -> Result<(Correction, bool)> {
     let mut terms = crate::service::term::global::load_terms(repo_root)?;
     let t = terms.iter_mut().find(|t| t.term == term_name).ok_or_else(|| {
@@ -203,7 +277,9 @@ pub fn add_correction_global(
     t.corrections.push(corr.clone());
     sort_terms_by_name(&mut terms);
     validate_terms_before_global_save(&terms)?;
-    crate::service::term::global::save_terms(repo_root, &terms)?;
+    if !dry_run {
+        crate::service::term::global::save_terms(repo_root, &terms)?;
+    }
     Ok((corr, true))
 }
 
@@ -228,6 +304,7 @@ pub fn show_correction_global(repo_root: &Path, term_name: &str, original: &str)
 
 /// Update attributes on a correction of a global-scoped term.
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub fn update_correction_global(
     repo_root: &Path,
     term_name: &str,
@@ -237,6 +314,23 @@ pub fn update_correction_global(
     fix_kind: Option<FixKind>,
     boundary: Option<Boundary>,
     pinyin: Option<Option<String>>,
+) -> Result<Correction> {
+    update_correction_global_with_dry_run(
+        repo_root, term_name, original, correct, match_kind, fix_kind, boundary, pinyin, false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn update_correction_global_with_dry_run(
+    repo_root: &Path,
+    term_name: &str,
+    original: &str,
+    correct: Option<String>,
+    match_kind: Option<MatchKind>,
+    fix_kind: Option<FixKind>,
+    boundary: Option<Boundary>,
+    pinyin: Option<Option<String>>,
+    dry_run: bool,
 ) -> Result<Correction> {
     let mut terms = crate::service::term::repo_format::load_lenient(repo_root)?;
     let t = terms
@@ -266,7 +360,9 @@ pub fn update_correction_global(
     let result = c.clone();
     sort_terms_by_name(&mut terms);
     validate_terms_before_global_save(&terms)?;
-    crate::service::term::global::save_terms(repo_root, &terms)?;
+    if !dry_run {
+        crate::service::term::global::save_terms(repo_root, &terms)?;
+    }
     Ok(result)
 }
 

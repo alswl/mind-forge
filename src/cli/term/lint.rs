@@ -169,8 +169,9 @@ pub(super) fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<Comman
             // Flatten report fields into data
             if let serde_json::Value::Object(obj) = report_value {
                 for (k, v) in obj {
-                    if k != "kind" && k != "dry_run" {
-                        data.insert(k, v);
+                    let key = if k == "findings" { "issues".to_string() } else { k };
+                    if key != "kind" && key != "dry_run" {
+                        data.insert(key, v);
                     }
                 }
             }
