@@ -572,6 +572,110 @@ mod lance_index {
         );
     }
 
+    /// T038/FR-018: untouched entries keep their position in the `sources:`
+    /// list; newly imported entries are appended after, not interleaved.
+    #[test]
+    fn index_keeps_existing_entry_order_and_appends_new_ones_after() {
+        let repo = provider_repo();
+        let project = repo.path().join("projects/alpha");
+        std::fs::write(project.join("sources/file/zzz-early-alphabetically.md"), "z\n").unwrap();
+        std::fs::write(project.join("sources/file/aaa-late-alphabetically.md"), "a\n").unwrap();
+
+        let before = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+        let names_before: Vec<String> = serde_yaml::from_str::<serde_yaml::Value>(&before).unwrap()["sources"]
+            .as_mapping()
+            .expect("Lance projection keeps the path-keyed mapping shape")
+            .keys()
+            .filter_map(|key| key.as_str().map(str::to_string))
+            .collect();
+
+        let (stdout, stderr, code) = run(&repo, &["source", "index", "--project", "alpha"], &[]);
+        assert_eq!(code, 0, "index failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+
+        let after = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+        let names_after: Vec<String> = serde_yaml::from_str::<serde_yaml::Value>(&after).unwrap()["sources"]
+            .as_mapping()
+            .expect("Lance projection keeps the path-keyed mapping shape")
+            .keys()
+            .filter_map(|key| key.as_str().map(str::to_string))
+            .collect();
+
+        assert_eq!(
+            &names_after[..names_before.len()],
+            names_before,
+            "pre-existing entries must keep their original relative order: {names_after:?}"
+        );
+        let new_tail = &names_after[names_before.len()..];
+        let projected: serde_yaml::Value = serde_yaml::from_str(&after).unwrap();
+        let new_names =
+            new_tail.iter().filter_map(|path| projected["sources"][path]["name"].as_str()).collect::<Vec<_>>();
+        assert_eq!(
+            new_names,
+            new_names.iter().copied().collect::<std::collections::BTreeSet<_>>().into_iter().collect::<Vec<_>>(),
+            "newly imported entries are appended after, sorted by identity, not disk-scan order: {names_after:?}"
+        );
+        assert!(
+            new_tail.contains(&"sources/file/aaa-late-alphabetically.md".to_string()),
+            "missing aaa: {names_after:?}"
+        );
+        assert!(
+            new_tail.contains(&"sources/file/zzz-early-alphabetically.md".to_string()),
+            "missing zzz: {names_after:?}"
+        );
+    }
+
+    /// T039/FR-014 edge case: an absent `sources:` key imports every disk file.
+    #[test]
+    fn index_with_absent_sources_key_imports_everything() {
+        let repo = provider_repo();
+        let project = repo.path().join("projects/alpha");
+        let index_path = project.join("mind-index.yaml");
+        let content = std::fs::read_to_string(&index_path).unwrap();
+        let without_sources =
+            content.lines().collect::<Vec<_>>().split(|l| *l == "sources:").next().unwrap().join("\n");
+        // The store still has "notes" registered; only the YAML mirror's
+        // `sources:` key is removed, simulating a from-scratch legacy file.
+        std::fs::write(&index_path, without_sources).unwrap();
+
+        let (stdout, stderr, code) = run(&repo, &["source", "index", "--project", "alpha"], &[]);
+        assert_eq!(code, 0, "index failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        let after = std::fs::read_to_string(&index_path).unwrap();
+        assert!(after.contains("notes"), "the store's existing registration must be re-exported: {after}");
+    }
+
+    /// T039/FR-014 edge case: indexing outside a project fails with the
+    /// existing project-resolution error rather than a Lance-specific one.
+    #[test]
+    fn index_outside_a_project_fails_with_project_resolution_error() {
+        let repo = provider_repo();
+        let (stdout, stderr, code) = run(&repo, &["source", "index", "--project", "does-not-exist"], &[]);
+        assert_ne!(code, 0, "indexing a nonexistent project must fail\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        assert!(
+            stderr.contains("does-not-exist") || stdout.contains("does-not-exist"),
+            "the error must name the unresolved project\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        );
+    }
+
+    /// T039/FR-014 edge case: a file placed in an unrecognised subdirectory of
+    /// `sources/` (not `file/`, `pdf/`, `yuque/`, `meeting/`, or `misc/`) is
+    /// still seen by the scan, not treated as absent.
+    #[test]
+    fn index_sees_files_in_an_unrecognised_subdirectory() {
+        let repo = provider_repo();
+        let project = repo.path().join("projects/alpha");
+        std::fs::create_dir_all(project.join("sources/custom-drop-zone")).unwrap();
+        std::fs::write(project.join("sources/custom-drop-zone/deep.md"), "deep note\n").unwrap();
+
+        let (stdout, stderr, code) = run(&repo, &["source", "index", "--project", "alpha"], &[]);
+        assert_eq!(code, 0, "index failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        let added = v["data"]["added"].as_array().unwrap();
+        assert!(
+            added.iter().any(|a| a["path"] == "sources/custom-drop-zone/deep.md"),
+            "a file in an unrecognised subdirectory must be imported, not invisible: {stdout}"
+        );
+    }
+
     /// T036/FR-013/I-2: a source-side write leaves `terms:` byte-identical —
     /// not just semantically unchanged. The compatibility mirror used to
     /// round-trip the *whole* document through `serde_yaml::Value`, which

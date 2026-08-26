@@ -113,8 +113,11 @@ pub(crate) fn scan_disk_sources(project_path: &Path) -> Result<Vec<DiskSource>> 
     // Bug #7 fix: also scan top-level files and any unrecognised subdirectories
     // under sources/ so that files placed directly there (or in custom layouts)
     // are not invisible to the scanner. This prevents full-index wipe when a
-    // rescan cannot surface previously-indexed paths.
-    for abs_path in scan_shallow_dir(&sources_dir)? {
+    // rescan cannot surface previously-indexed paths. Must recurse — a
+    // shallow scan skips directories entirely, so a file nested inside an
+    // unrecognised subdirectory (spec 075 edge case) was invisible to the
+    // scan and reported neither present nor missing.
+    for abs_path in scan_recursive_dir(&sources_dir)? {
         let portable = util::rel_posix_path(project_path, &abs_path)?;
         // Skip files already covered by the named scans above.
         if files.iter().any(|f| f.path == portable) {

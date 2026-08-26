@@ -859,15 +859,20 @@ pub fn reconcile_and_adopt(repo_root: &Path, project_path: &Path, dry_run: bool)
     // Preserve a name already chosen in the legacy index for a path the store
     // does not yet know about (I-1: the index is never overridden, only the
     // store is taught). Files never previously named default to a derived one.
-    let index_entries_by_path: std::collections::HashMap<String, (String, Option<String>)> = {
+    let index_entries_by_path: std::collections::HashMap<String, (String, Option<String>, Option<String>)> = {
         let mut map = std::collections::HashMap::new();
         if let Ok(index) = crate::service::index::load(project_path)
             && let Some(sources) = index.sources
         {
+            let extras_by_path = std::fs::read_to_string(project_path.join("mind-index.yaml"))
+                .ok()
+                .and_then(|yaml| serde_yaml::from_str(&yaml).ok())
+                .map(|yaml| super::compatibility::source_extras_by_location(&yaml))
+                .unwrap_or_default();
             for source in sources {
                 if let Some(path) = &source.path {
                     let added_at = (!source.added_at.is_empty()).then(|| source.added_at.clone());
-                    map.insert(path.clone(), (source.name.clone(), added_at));
+                    map.insert(path.clone(), (source.name.clone(), added_at, extras_by_path.get(path).cloned()));
                 }
             }
         }
@@ -905,7 +910,7 @@ pub fn reconcile_and_adopt(repo_root: &Path, project_path: &Path, dry_run: bool)
         let full_path = project_path.join(&disk.path);
         let preserved = index_entries_by_path.get(&disk.path);
         let name = match preserved {
-            Some((name, _)) => name.clone(),
+            Some((name, _, _)) => name.clone(),
             None => crate::service::source::derive_name_from_path(&full_path)?,
         };
         if existing_names.contains(&name) {
@@ -941,9 +946,9 @@ pub fn reconcile_and_adopt(repo_root: &Path, project_path: &Path, dry_run: bool)
                 // A file already named in the legacy index keeps the
                 // creation time recorded there (spec 075 FR-011); only a
                 // genuinely new file gets a fresh one.
-                added_at: Some(preserved.and_then(|(_, added_at)| added_at.clone()).unwrap_or_else(|| now.clone())),
+                added_at: Some(preserved.and_then(|(_, added_at, _)| added_at.clone()).unwrap_or_else(|| now.clone())),
                 updated_at: Some(now.clone()),
-                extras_json: None,
+                extras_json: preserved.and_then(|(_, _, extras_json)| extras_json.clone()),
             });
         }
         existing_names.insert(name);
@@ -959,9 +964,10 @@ pub fn reconcile_and_adopt(repo_root: &Path, project_path: &Path, dry_run: bool)
     if !new_rows.is_empty() {
         store.append_registrations(&new_rows)?;
     }
-    if !new_rows.is_empty() || project_rows.iter().any(|row| row.added_at.is_none()) {
-        super::compatibility::export_project(repo_root, &project_identity, false)?;
-    }
+    // Reconcile is also the explicit repair path for a missing/drifted
+    // `sources:` mirror. `export_project` avoids a write when it is already
+    // current, so this keeps that recovery guarantee without mtime churn.
+    super::compatibility::export_project(repo_root, &project_identity, false)?;
 
     let kept_count = project_rows.len() as u64 - missing.len() as u64;
     Ok(SourceIndexReport { added: imported, removed: missing, kept_count, dry_run: false })

@@ -27,6 +27,51 @@ fn name_key() -> Value {
     Value::String("name".to_string())
 }
 
+/// Fields whose representation is owned by the source registration schema.
+/// Everything else in a legacy entry is opaque user/future-schema data and
+/// must travel with the registration when it is adopted into Lance.
+const OWNED_SOURCE_FIELDS: &[&str] =
+    &["name", "kind", "type", "path", "url", "source_kind", "tags", "added_at", "updated_at"];
+
+/// Extract source-entry fields which the catalog does not model.  Keeping
+/// them as JSON in `extras_json` makes an activate/adopt → project mirror
+/// round trip lossless without making the catalog schema chase every future
+/// YAML field.
+pub(crate) fn source_entry_extras(entry: &Value) -> Option<String> {
+    let Value::Mapping(entry) = entry else {
+        return None;
+    };
+    let extras = entry
+        .iter()
+        .filter(|(key, _)| !key.as_str().is_some_and(|key| OWNED_SOURCE_FIELDS.contains(&key)))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<serde_yaml::Mapping>();
+    (!extras.is_empty()).then(|| serde_json::to_string(&Value::Mapping(extras)).ok()).flatten()
+}
+
+/// Return opaque source-entry fields keyed by their registered path or URL.
+/// Both list and mapping forms are accepted because older project indexes use
+/// lists while the current serializer uses a path-keyed mapping.
+pub(crate) fn source_extras_by_location(index: &Value) -> HashMap<String, String> {
+    let Some(sources) = index.get("sources") else {
+        return HashMap::new();
+    };
+    let entries: Vec<(&Value, Option<&Value>)> = match sources {
+        Value::Sequence(entries) => entries.iter().map(|entry| (entry, None)).collect(),
+        Value::Mapping(entries) => entries.iter().map(|(key, entry)| (entry, Some(key))).collect(),
+        _ => return HashMap::new(),
+    };
+
+    entries
+        .into_iter()
+        .filter_map(|(entry, fallback_location)| {
+            let location =
+                entry.get("path").or_else(|| entry.get("url")).or(fallback_location).and_then(Value::as_str)?;
+            source_entry_extras(entry).map(|extras| (location.to_string(), extras))
+        })
+        .collect()
+}
+
 /// Read the current `sources:` value into an ordered `(name -> mapping)`
 /// view, accepting both the sequence-of-mappings shape this module writes
 /// and the mapping-keyed-by-name shape some legacy/hand-edited files use.
@@ -133,7 +178,7 @@ fn merge_sources(
     sources_value: Option<&Value>,
     registrations: &[CatalogRegistration],
     permitted_removals: &[String],
-) -> Vec<Value> {
+) -> Value {
     let (order, by_name) = read_existing_sources(sources_value);
     let mut result = Vec::with_capacity(order.len().max(registrations.len()));
     let mut emitted: HashSet<String> = HashSet::new();
@@ -161,7 +206,24 @@ fn merge_sources(
         emitted.insert(registration.source_identity.clone());
     }
 
-    result
+    if matches!(sources_value, Some(Value::Mapping(_))) {
+        let mut mapped = serde_yaml::Mapping::new();
+        for entry in result {
+            let Value::Mapping(fields) = &entry else {
+                continue;
+            };
+            let key = fields
+                .get("path")
+                .or_else(|| fields.get("url"))
+                .or_else(|| fields.get(name_key()))
+                .cloned()
+                .unwrap_or(Value::Null);
+            mapped.insert(key, entry);
+        }
+        Value::Mapping(mapped)
+    } else {
+        Value::Sequence(result)
+    }
 }
 
 /// Byte range of a top-level (column-0) YAML key's block within `text`,
@@ -322,7 +384,11 @@ pub fn export_project_with_removals(
     let legacy: serde_yaml::Value = serde_yaml::from_str(&yaml_data)
         .map_err(|e| MfError::advanced_store(format!("cannot parse legacy index: {e}"), None))?;
 
-    let legacy_count = legacy.get("sources").and_then(|s| s.as_sequence()).map(|s| s.len()).unwrap_or(0);
+    // Project indexes may use either the historical sequence or the current
+    // path-keyed mapping form. Count through the same reader used by the
+    // merge so status/reporting does not claim a mapping-form index is empty.
+    let existing_sources = legacy.get("sources").cloned();
+    let legacy_count = read_existing_sources(existing_sources.as_ref()).0.len();
     let config = super::config::load_repository_config(repo_root)?;
     if !config.is_lance() {
         return Err(MfError::usage("legacy export requires an active Lance backend".to_string(), None));
@@ -336,7 +402,6 @@ pub fn export_project_with_removals(
         .filter(|registration| registration.project_path == expected_path)
         .collect::<Vec<_>>();
     let primary_count = registrations.len();
-    let existing_sources = legacy.get("sources").cloned();
     // FR-014/I-1: entries with no store row yet are kept, not dropped — `mf
     // source index` is what imports them into the store.
     let merged = merge_sources(existing_sources.as_ref(), &registrations, permitted_removals);
@@ -344,7 +409,7 @@ pub fn export_project_with_removals(
     // other key (`terms:`, `articles:`, `prompts:`, `thinking:`, ...) stays
     // byte-identical — see `splice_top_level_key`.
     let mut sources_block_map = serde_yaml::Mapping::new();
-    sources_block_map.insert(Value::String("sources".to_string()), Value::Sequence(merged));
+    sources_block_map.insert(Value::String("sources".to_string()), merged);
     let sources_block = serde_yaml::to_string(&Value::Mapping(sources_block_map))
         .map_err(|e| MfError::advanced_store(format!("cannot serialize sources projection: {e}"), None))?;
     let rendered = splice_top_level_key(&yaml_data, "sources", &sources_block);
@@ -418,6 +483,75 @@ mod tests {
         fs::create_dir_all(dir.path().join("projects")).unwrap();
         let result = export_project(dir.path(), "nonexistent", false).unwrap();
         assert_eq!(result.state, ProjectionStatus::Missing);
+    }
+
+    fn sample_registration(extras_json: Option<&str>) -> CatalogRegistration {
+        CatalogRegistration {
+            registration_key: "key-1".to_string(),
+            project_key: "alpha".to_string(),
+            project_identity: "alpha".to_string(),
+            project_path: "alpha".to_string(),
+            source_identity: "notes".to_string(),
+            source_type: "file".to_string(),
+            source_kind: None,
+            registered_location: "sources/notes.md".to_string(),
+            tags_json: "[]".to_string(),
+            labels_json: "{}".to_string(),
+            annotations_json: "{}".to_string(),
+            state: "live".to_string(),
+            context_json: None,
+            imported_by_json: None,
+            added_at: Some("2026-01-01T00:00:00Z".to_string()),
+            updated_at: Some("2026-01-01T00:00:00Z".to_string()),
+            extras_json: extras_json.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn project_entry_passes_through_an_unrecognised_field() {
+        let registration = sample_registration(Some(r#"{"custom_field": "keep me"}"#));
+        let entry = project_entry(&registration, None);
+        let Value::Mapping(m) = entry else { panic!("expected a mapping") };
+        assert_eq!(
+            m.get(Value::String("custom_field".to_string())),
+            Some(&Value::String("keep me".to_string())),
+            "an extras_json field the store does not itself interpret must survive into the projected entry: {m:?}"
+        );
+    }
+
+    #[test]
+    fn source_extras_are_keyed_by_location_for_both_index_shapes() {
+        let sequence: Value =
+            serde_yaml::from_str("sources:\n  - name: notes\n    path: sources/notes.md\n    review_state: approved\n")
+                .unwrap();
+        let mapping: Value =
+            serde_yaml::from_str("sources:\n  sources/notes.md:\n    name: notes\n    review_state: approved\n")
+                .unwrap();
+
+        for index in [&sequence, &mapping] {
+            let extras = source_extras_by_location(index);
+            assert_eq!(
+                extras.get("sources/notes.md"),
+                Some(&r#"{"review_state":"approved"}"#.to_string()),
+                "opaque fields must be retained regardless of legacy index shape"
+            );
+        }
+    }
+
+    #[test]
+    fn project_entry_survives_a_full_merge_and_splice_round_trip() {
+        let registration = sample_registration(Some(r#"{"custom_field": "keep me"}"#));
+        let merged = merge_sources(None, std::slice::from_ref(&registration), &[]);
+        let rendered = serde_yaml::to_string(&merged).unwrap();
+        let block = format!("sources:\n{rendered}");
+        let original = "project: alpha\nsources:\n  - name: placeholder\nterms:\n  - term: API\n";
+        let spliced = splice_top_level_key(original, "sources", &block);
+        assert!(
+            spliced.contains("custom_field: keep me"),
+            "the unrecognised field must survive a merge + splice write: {spliced:?}"
+        );
+        assert!(spliced.starts_with("project: alpha\n"), "untouched keys stay in place: {spliced:?}");
+        assert!(spliced.ends_with("terms:\n  - term: API\n"), "untouched keys stay in place: {spliced:?}");
     }
 
     #[test]

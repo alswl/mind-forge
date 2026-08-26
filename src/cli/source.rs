@@ -541,7 +541,7 @@ fn handle_update(args: SourceUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutc
 
 fn handle_index(args: SourceIndexArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     let repo_root = ctx.require_repo_path()?;
-    let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
+    let project_path = crate::service::project::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
     let config = svc_source::advanced::config::load_repository_config(repo_root)?;
     let report = if config.is_lance() {
         // Spec 075 US2: indexing is a disk-adoption and reconcile pass — files

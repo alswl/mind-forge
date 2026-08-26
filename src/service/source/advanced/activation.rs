@@ -67,6 +67,10 @@ pub struct ActivationItem {
     pub added_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
+    /// Legacy fields outside the catalog's source schema. They are persisted
+    /// verbatim so activation does not make the first later projection lossy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extras_json: Option<String>,
 }
 
 fn empty_json_object() -> String {
@@ -147,6 +151,7 @@ pub fn preview_activation(repo_root: &Path, _config: &ResolvedSourceConfig) -> R
                     let non_empty = |value: Option<&str>| value.filter(|v| !v.is_empty()).map(str::to_string);
                     let added_at = non_empty(source.get("added_at").and_then(|v| v.as_str()));
                     let updated_at = non_empty(source.get("updated_at").and_then(|v| v.as_str()));
+                    let extras_json = super::compatibility::source_entry_extras(source);
 
                     items.push(ActivationItem {
                         project_identity: project_identity.clone(),
@@ -161,6 +166,7 @@ pub fn preview_activation(repo_root: &Path, _config: &ResolvedSourceConfig) -> R
                         annotations_json: "{}".to_string(),
                         added_at,
                         updated_at,
+                        extras_json,
                     });
                 }
             }
@@ -233,7 +239,7 @@ pub fn activate(repo_root: &Path, config: &ResolvedSourceConfig) -> Result<Activ
             imported_by_json: None,
             added_at: Some(item.added_at.clone().unwrap_or_else(|| activated_at.clone())),
             updated_at: Some(item.updated_at.clone().unwrap_or_else(|| activated_at.clone())),
-            extras_json: None,
+            extras_json: item.extras_json.clone(),
         })
         .collect::<Vec<_>>();
     store.append_registrations(&registrations)?;
