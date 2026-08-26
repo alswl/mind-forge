@@ -26,7 +26,7 @@ fn handle_correction_add(args: TermCorrectionAddArgs, ctx: &CommandCtx) -> Resul
     let warnings: Vec<String> = Vec::new();
 
     let (corr, created) = if scope == "project" {
-        term_svc::correction::add_correction_with_dry_run(
+        term_svc::correction::add_correction(
             &scope_path,
             &args.term,
             &args.original,
@@ -38,7 +38,7 @@ fn handle_correction_add(args: TermCorrectionAddArgs, ctx: &CommandCtx) -> Resul
             args.dry_run.dry_run,
         )?
     } else {
-        term_svc::correction::add_correction_global_with_dry_run(
+        term_svc::correction::add_correction_global(
             &scope_path,
             &args.term,
             &args.original,
@@ -158,7 +158,7 @@ fn handle_correction_update(args: TermCorrectionUpdateArgs, ctx: &CommandCtx) ->
     let pinyin_val = args.pinyin.map(|s| if s.is_empty() { None } else { Some(s) });
 
     let corr = if scope == "project" {
-        term_svc::correction::update_correction_with_dry_run(
+        term_svc::correction::update_correction(
             &scope_path,
             &args.term,
             &args.original,
@@ -170,7 +170,7 @@ fn handle_correction_update(args: TermCorrectionUpdateArgs, ctx: &CommandCtx) ->
             args.dry_run.dry_run,
         )?
     } else {
-        term_svc::correction::update_correction_global_with_dry_run(
+        term_svc::correction::update_correction_global(
             &scope_path,
             &args.term,
             &args.original,

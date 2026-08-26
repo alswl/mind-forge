@@ -61,17 +61,7 @@ fn resolve_asset_path(project_root: &Path, cwd: &Path, input: &Path) -> Result<P
 }
 
 /// Update the size and hash for a single asset identified by `input`.
-#[allow(dead_code)]
-pub fn update_one(project_path: &Path, cwd: &Path, input: &Path) -> Result<AssetUpdateResult> {
-    update_one_with_dry_run(project_path, cwd, input, false)
-}
-
-pub fn update_one_with_dry_run(
-    project_path: &Path,
-    cwd: &Path,
-    input: &Path,
-    dry_run: bool,
-) -> Result<AssetUpdateResult> {
+pub fn update_one(project_path: &Path, cwd: &Path, input: &Path, dry_run: bool) -> Result<AssetUpdateResult> {
     let resolved = resolve_asset_path(project_path, cwd, input)?;
 
     let project_canonical = project_path.canonicalize().map_err(MfError::Io)?;

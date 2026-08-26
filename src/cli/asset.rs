@@ -368,7 +368,7 @@ fn handle_update(
     }
 
     if let Some(path) = args.path {
-        let update_result = asset_svc::update_one_with_dry_run(&project_path, cwd, &path, args.dry_run.dry_run)?;
+        let update_result = asset_svc::update_one(&project_path, cwd, &path, args.dry_run.dry_run)?;
         let changes = if update_result.changed {
             serde_json::json!({
                 "size": {"from": update_result.old_size, "to": update_result.new_size},
