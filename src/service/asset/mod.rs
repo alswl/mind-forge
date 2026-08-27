@@ -7,7 +7,7 @@ pub use self::list::list;
 pub use self::r#move::move_asset;
 pub use self::remove::remove_asset;
 pub use self::rename::rename_asset;
-pub use self::update::{set_publish_url, update_all, update_one};
+pub use self::update::{set_publish_url, update_all, update_all_with_dry_run, update_one};
 
 // ── Extension-based asset kind inference ─────────────────────────────────────
 

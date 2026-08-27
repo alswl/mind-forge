@@ -322,7 +322,7 @@ fn e2e_boundary_term_lint_rule_filter_actually_filters() {
         &["--project", "alpha", "--json", "term", "lint", "--severity", "info", "--max-warnings", "999"],
     );
     let data = decode_data(&stdout);
-    let findings = data.get("findings").and_then(|v| v.as_array()).expect("findings array");
+    let findings = data.get("issues").and_then(|v| v.as_array()).expect("issues array");
     assert!(!findings.is_empty(), "fixture should produce ≥1 finding, got: {stdout}");
     let baseline_count = findings.len();
 
@@ -333,7 +333,7 @@ fn e2e_boundary_term_lint_rule_filter_actually_filters() {
         &["--project", "alpha", "--json", "term", "lint", "--rule", "definitely-not-a-rule", "--max-warnings", "999"],
     );
     let data = decode_data(&stdout);
-    let findings = data.get("findings").and_then(|v| v.as_array()).expect("findings array");
+    let findings = data.get("issues").and_then(|v| v.as_array()).expect("issues array");
     assert!(
         findings.len() < baseline_count,
         "--rule with unknown rule must filter findings (baseline {baseline_count}, got {}): {stdout}",
@@ -351,7 +351,7 @@ fn e2e_boundary_term_lint_severity_filter_actually_filters() {
         &["--project", "alpha", "--json", "term", "lint", "--severity", "info", "--max-warnings", "999"],
     );
     let baseline = decode_data(&stdout);
-    let baseline_count = baseline.get("findings").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+    let baseline_count = baseline.get("issues").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
     assert!(baseline_count > 0, "baseline must produce findings");
 
     // --severity error: term findings have no severity field. Spec T092 ("apply
@@ -364,7 +364,7 @@ fn e2e_boundary_term_lint_severity_filter_actually_filters() {
         &["--project", "alpha", "--json", "term", "lint", "--severity", "error", "--max-warnings", "999"],
     );
     let data = decode_data(&stdout);
-    let filtered_count = data.get("findings").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+    let filtered_count = data.get("issues").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
     assert!(
         filtered_count < baseline_count,
         "--severity error must change finding count (baseline {baseline_count}, got {filtered_count}): {stdout}"

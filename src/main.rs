@@ -131,11 +131,17 @@ fn render_outcome(
             for warning in &warnings {
                 writeln!(stderr, "warning: {warning}")?;
             }
+            if context.quiet() {
+                return Ok(ExitCode::from(exit_code.unwrap_or(0)));
+            }
             let data = inject_warnings(data, &warnings);
             render(stdout, context.format(), context.color(), Payload::Success(&data))?;
             Ok(ExitCode::from(exit_code.unwrap_or(0)))
         }
         CommandOutcome::Raw(content, exit_code) => {
+            if context.quiet() {
+                return Ok(ExitCode::from(exit_code.unwrap_or(0)));
+            }
             render(stdout, context.format(), context.color(), Payload::Raw(content.as_str()))?;
             Ok(ExitCode::from(exit_code.unwrap_or(0)))
         }

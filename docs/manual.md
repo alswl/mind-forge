@@ -86,7 +86,7 @@ Global flags:
 | `-p`, `--project <PROJECT>` | Project selector for project-scoped commands |
 | `-o`, `--output <text|json>` | Output format (default: `text`) |
 | `--json` | Shorthand for `--output json` |
-| `-q`, `--quiet` | Suppress successful non-list output |
+| `-q`, `--quiet` | Suppress successful output (diagnostics and exit codes remain) |
 | `--no-color` | Disable colored output |
 
 Shared mutating flags:
@@ -301,12 +301,23 @@ mf asset new diagram.png --project blog
 mf asset new logo.png --copy --project blog
 mf asset list --project blog
 mf asset show diagram.png --project blog
-mf asset update diagram.png --set-url https://cdn.example.com/diagram.png --project blog
+mf asset update diagram.png --dry-run --project blog
+mf asset update --all --project blog
+mf asset update --set-url https://cdn.example.com/diagram.png --project blog
 mf asset rename diagram.png diagrams/system.png --project blog
 mf asset remove diagrams/system.png --project blog
 mf asset index --refresh-metadata --project blog
 mf asset clean --project blog
 ```
+
+`asset update` recomputes each asset's size and hash from the file on disk.
+Pass `<PATH>` to refresh a single asset — a path always selects this metadata
+contract, even when the legacy `--set-url`/`--channel` options are also
+supplied — or `--all` to refresh every registered asset. Both forms honor
+`--dry-run` and report the prospective changes without writing (the `--all`
+JSON output carries `kind: "asset"` and a `{ total, changed, missing }`
+summary). The legacy publish-URL form (`--set-url`/`--channel`, no path) stores
+a project-level publish setting instead.
 
 ## 9. Terms
 
@@ -381,17 +392,19 @@ was not applied.
 Corrections are a first-class subresource of a term:
 
 ```bash
-mf term correction add API api API --match word
+mf term correction add API api API --match word --dry-run
 mf term correction list API
 mf term correction show API api
-mf term correction update API api --fix suggested
+mf term correction update API api --fix suggested --dry-run
 mf term correction remove API api --dry-run
 ```
 
 `correction add` is idempotent on an exact `(original, correct)` pair. A first
 add reports `added` (JSON `created: true`); repeating the same pair reports
 `already exists, skipped` (JSON `created: false`) and leaves storage untouched.
-For boundary and pinyin matching details, see [term-lint.md](term-lint.md).
+`add`, `update`, and `remove` all accept `--dry-run` to validate and preview
+without writing (JSON `dry_run: true`). For boundary and pinyin matching
+details, see [term-lint.md](term-lint.md).
 
 ### Moving between scopes
 

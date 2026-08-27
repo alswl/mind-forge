@@ -273,6 +273,8 @@ pub struct TermCorrectionAddArgs {
     pub pinyin: Option<String>,
     #[arg(long)]
     pub boundary: Option<String>,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
@@ -304,6 +306,8 @@ pub struct TermCorrectionUpdateArgs {
     pub pinyin: Option<String>,
     #[arg(long)]
     pub boundary: Option<String>,
+    #[command(flatten)]
+    pub dry_run: DryRunFlag,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]

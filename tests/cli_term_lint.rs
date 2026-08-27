@@ -320,7 +320,7 @@ fn lint_json_shape() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(parsed["status"], "ok");
-    let findings = parsed["data"]["findings"].as_array().unwrap();
+    let findings = parsed["data"]["issues"].as_array().unwrap();
     assert_eq!(findings.len(), 1);
     let f = &findings[0];
     assert!(f.get("match_kind").is_some(), "finding must have match_kind");
@@ -748,7 +748,7 @@ terms:
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
-    let findings = v["data"]["findings"].as_array().expect("findings array");
+    let findings = v["data"]["issues"].as_array().expect("issues array");
     assert_eq!(findings.len(), 1, "exactly one finding expected, got: {stdout}");
     assert_eq!(findings[0]["boundary"].as_str().expect("boundary field"), "standalone");
 }
@@ -818,7 +818,7 @@ fn us2_relative_path_in_prose_suppressed() {
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
-    let findings = v["data"]["findings"].as_array().expect("findings array");
+    let findings = v["data"]["issues"].as_array().expect("issues array");
     assert_eq!(findings.len(), 1, "only standalone aidc should match, path-internal suppressed: {stdout}");
     assert_eq!(findings[0]["line"].as_u64(), Some(2), "finding must be on line 2 (standalone)");
 }
@@ -831,7 +831,7 @@ fn us2_bare_url_still_exempt() {
     let output = mf(&repo).args(["term", "lint", "--json", "--project", "alpha"]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
-    let findings = v["data"]["findings"].as_array().expect("findings array");
+    let findings = v["data"]["issues"].as_array().expect("issues array");
     assert_eq!(findings.len(), 0, "bare URL aidc must be exempt, got: {stdout}");
 }
 
@@ -852,7 +852,7 @@ fn us2_combined_url_path_standalone_one_finding() {
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
-    let findings = v["data"]["findings"].as_array().expect("findings array");
+    let findings = v["data"]["issues"].as_array().expect("issues array");
     assert_eq!(findings.len(), 1, "exactly one finding (standalone) expected, got: {stdout}");
     assert_eq!(findings[0]["line"].as_u64(), Some(3), "finding must be on line 3 (standalone)");
 }
@@ -882,7 +882,7 @@ fn us3_code_span_and_fenced_blocks_suppressed() {
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
-    let findings = v["data"]["findings"].as_array().expect("findings array");
+    let findings = v["data"]["issues"].as_array().expect("issues array");
     assert_eq!(findings.len(), 1, "only prose aidc should be found, got: {stdout}");
     assert_eq!(findings[0]["line"].as_u64(), Some(7), "finding must be on prose line");
 }
@@ -908,7 +908,7 @@ terms:
     let output = mf(&repo).args(["term", "lint", "--json", "--project", "alpha"]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
-    let findings = v["data"]["findings"].as_array().expect("findings array");
+    let findings = v["data"]["issues"].as_array().expect("issues array");
     assert_eq!(findings.len(), 1, "code-span must be exempt; only prose should match: {stdout}");
 }
 

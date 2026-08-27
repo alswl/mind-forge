@@ -35,6 +35,7 @@ fn handle_correction_add(args: TermCorrectionAddArgs, ctx: &CommandCtx) -> Resul
             parse_opt_fix(args.fix.as_deref())?,
             parse_opt_boundary(args.boundary.as_deref())?,
             args.pinyin.map(|s| if s.is_empty() { None } else { Some(s) }),
+            args.dry_run.dry_run,
         )?
     } else {
         term_svc::correction::add_correction_global(
@@ -46,6 +47,7 @@ fn handle_correction_add(args: TermCorrectionAddArgs, ctx: &CommandCtx) -> Resul
             parse_opt_fix(args.fix.as_deref())?,
             parse_opt_boundary(args.boundary.as_deref())?,
             args.pinyin.map(|s| if s.is_empty() { None } else { Some(s) }),
+            args.dry_run.dry_run,
         )?
     };
 
@@ -56,11 +58,37 @@ fn handle_correction_add(args: TermCorrectionAddArgs, ctx: &CommandCtx) -> Resul
         "correction": serde_json::to_value(&corr).unwrap_or_default(),
     });
 
+    if args.dry_run.dry_run {
+        let result = VerbResult {
+            verb: Verb::Add,
+            kind: "term_correction",
+            identity: format!("{}::{}", args.term, corr.original),
+            old_identity: None,
+            path: None,
+            dry_run: true,
+            details: data,
+        };
+        return match ctx.format() {
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
+            Format::Text => Ok(CommandOutcome::Success(
+                serde_json::Value::String(verb_text(&result, &VerbOpts::default())),
+                warnings,
+                None,
+            )),
+        };
+    }
+
     match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(data, warnings, None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(if created {
-                format!("added correction \"{}\" → \"{}\" to term \"{}\"", corr.original, corr.correct, args.term)
+                format!(
+                    "{} correction \"{}\" → \"{}\" to term \"{}\"",
+                    if args.dry_run.dry_run { "would add" } else { "added" },
+                    corr.original,
+                    corr.correct,
+                    args.term
+                )
             } else {
                 format!(
                     "correction \"{}\" → \"{}\" already exists on term \"{}\", skipped",
@@ -159,6 +187,7 @@ fn handle_correction_update(args: TermCorrectionUpdateArgs, ctx: &CommandCtx) ->
             parse_opt_fix(args.fix.as_deref())?,
             parse_opt_boundary(args.boundary.as_deref())?,
             pinyin_val,
+            args.dry_run.dry_run,
         )?
     } else {
         term_svc::correction::update_correction_global(
@@ -170,17 +199,23 @@ fn handle_correction_update(args: TermCorrectionUpdateArgs, ctx: &CommandCtx) ->
             parse_opt_fix(args.fix.as_deref())?,
             parse_opt_boundary(args.boundary.as_deref())?,
             pinyin_val,
+            args.dry_run.dry_run,
         )?
     };
 
     match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(
-            serde_json::json!({"term": args.term, "scope": scope, "correction": serde_json::to_value(&corr).unwrap_or_default()}),
+            serde_json::json!({"term": args.term, "scope": scope, "dry_run": args.dry_run.dry_run, "correction": serde_json::to_value(&corr).unwrap_or_default()}),
             Vec::new(),
             None,
         )),
         Format::Text => Ok(CommandOutcome::Success(
-            serde_json::Value::String(format!("updated correction \"{}\" on term \"{}\"", args.original, args.term)),
+            serde_json::Value::String(format!(
+                "{} correction \"{}\" on term \"{}\"",
+                if args.dry_run.dry_run { "would update" } else { "updated" },
+                args.original,
+                args.term
+            )),
             Vec::new(),
             None,
         )),

@@ -102,7 +102,7 @@ fn index_dry_run() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("[dry-run]"));
-    assert!(stdout.contains("indexed asset:"));
+    assert!(stdout.contains("would index asset:"));
 
     // Index should NOT have been modified
     let after = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();

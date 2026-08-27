@@ -51,8 +51,10 @@ impl Sha256 {
             }
         }
 
-        for chunk in input.chunks_exact(64) {
-            self.compress(chunk);
+        for chunk in input.chunks(64) {
+            if chunk.len() == 64 {
+                self.compress(chunk);
+            }
         }
 
         let remainder = input.len() % 64;
@@ -99,7 +101,7 @@ impl Sha256 {
         ];
 
         let mut w = [0u32; 64];
-        for (i, chunk) in block.chunks_exact(4).take(16).enumerate() {
+        for (i, chunk) in block.chunks(4).take(16).enumerate() {
             w[i] = u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
         }
         for i in 16..64 {

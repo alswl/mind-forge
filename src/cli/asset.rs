@@ -327,8 +327,10 @@ fn handle_update(
 ) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, project, cwd)?;
 
-    // Mind form: --set-url + --channel (set publish URL)
-    if args.set_url.is_some() || args.channel.is_some() {
+    // Mind form: --set-url + --channel (set publish URL). A path selects the
+    // asset metadata update contract, even when a caller also supplies the
+    // legacy publish options.
+    if args.path.is_none() && (args.set_url.is_some() || args.channel.is_some()) {
         let url = args.set_url.as_deref().unwrap_or_default();
         let channel = args.channel.as_deref().unwrap_or_default();
         let result = asset_svc::set_publish_url(&project_path, url, channel)?;
@@ -368,30 +370,7 @@ fn handle_update(
     }
 
     if let Some(path) = args.path {
-        if args.dry_run.dry_run {
-            let result = VerbResult {
-                verb: Verb::Update,
-                kind: "asset",
-                identity: path.to_string_lossy().to_string(),
-                old_identity: None,
-                path: None,
-                dry_run: true,
-                details: serde_json::json!({"changes": {}}),
-            };
-            return match format {
-                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
-                Format::Text => Ok(CommandOutcome::Success(
-                    serde_json::Value::String(verb_text(
-                        &result,
-                        &VerbOpts::from_repo_root(Some(project_path.as_path())),
-                    )),
-                    Vec::new(),
-                    None,
-                )),
-            };
-        }
-
-        let update_result = asset_svc::update_one(&project_path, cwd, &path)?;
+        let update_result = asset_svc::update_one(&project_path, cwd, &path, args.dry_run.dry_run)?;
         let changes = if update_result.changed {
             serde_json::json!({
                 "size": {"from": update_result.old_size, "to": update_result.new_size},
@@ -407,7 +386,7 @@ fn handle_update(
             identity: path_str.clone(),
             old_identity: None,
             path: Some(path_str),
-            dry_run: false,
+            dry_run: args.dry_run.dry_run,
             details: serde_json::json!({"changes": changes, "changed": update_result.changed}),
         };
         match format {
@@ -420,7 +399,7 @@ fn handle_update(
         }
     } else {
         // --all mode
-        let results = asset_svc::update_all(&project_path)?;
+        let results = asset_svc::update_all_with_dry_run(&project_path, args.dry_run.dry_run)?;
         match format {
             Format::Json => {
                 let items = serde_json::to_value(&results).map_err(MfError::Json)?;
@@ -428,6 +407,8 @@ fn handle_update(
                 let changed = results.iter().filter(|r| r.changed).count();
                 let missing = results.iter().filter(|r| r.error.is_some()).count();
                 let data = serde_json::json!({
+                    "kind": "asset",
+                    "dry_run": args.dry_run.dry_run,
                     "items": items,
                     "summary": { "total": total, "changed": changed, "missing": missing }
                 });
@@ -435,6 +416,9 @@ fn handle_update(
             }
             Format::Text => {
                 let mut lines = Vec::new();
+                if args.dry_run.dry_run {
+                    lines.push("[dry-run] would update assets:".to_string());
+                }
                 for r in &results {
                     if r.error.is_some() {
                         lines.push(format!("✗ missing  {}", r.path));

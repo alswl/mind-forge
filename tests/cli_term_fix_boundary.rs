@@ -62,7 +62,7 @@ terms:
         .unwrap();
 
     let v: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON envelope");
-    let findings = v["data"]["findings"].as_array().cloned().unwrap_or_default();
+    let findings = v["data"]["issues"].as_array().cloned().unwrap_or_default();
     assert!(findings.is_empty(), "foo dr must NOT match inside foo drill, but found: {findings:#?}");
 }
 

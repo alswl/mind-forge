@@ -25,7 +25,7 @@ fn fixture() -> common::TempDir {
     std::fs::write(repo.path().join("external.bin"), b"external").unwrap();
     std::fs::write(
         alpha.join("mind-index.yaml"),
-        "schema_version: '1'\narticles:\n  - title: Post\n    project: alpha\n    type: blank\n    article_path: docs/post\n    status: draft\n    created_at: ''\n    updated_at: ''\nsources:\n  - name: note\n    type: file\n    path: sources/file/note.md\nassets:\n  - name: diagram\n    type: image\n    path: assets/diagram.png\n    size: 5\n    hash: ''\n    tags: []\n    added_at: ''\n",
+        "schema_version: '1'\narticles:\n  - title: Post\n    project: alpha\n    type: blank\n    article_path: docs/post\n    status: draft\n    created_at: ''\n    updated_at: ''\nsources:\n  - name: note\n    type: file\n    path: sources/file/note.md\nassets:\n  - name: diagram\n    type: image\n    path: assets/diagram.png\n    size: 5\n    hash: ''\n    tags: []\n    added_at: ''\nterms:\n  - term: API\n    definition: Application interface\n    corrections:\n      - original: api\n        correct: API\n        match: word\n        fix: required\n        boundary: standalone\n",
     )
     .unwrap();
     repo
@@ -86,6 +86,8 @@ fn every_mutating_surface_in_the_matrix_is_read_only_under_dry_run() {
         ("source clean", &["source", "clean", "--project", "alpha", "--dry-run"]),
         ("asset new", &["asset", "new", "external.bin", "--name", "incoming", "--project", "alpha", "--dry-run"]),
         ("asset index", &["asset", "index", "--project", "alpha", "--dry-run"]),
+        ("asset update single", &["asset", "update", "assets/diagram.png", "--project", "alpha", "--dry-run"]),
+        ("asset update all", &["asset", "update", "--all", "--project", "alpha", "--dry-run"]),
         (
             "asset rename",
             &["asset", "rename", "assets/diagram.png", "assets/renamed.png", "--project", "alpha", "--dry-run"],
@@ -94,6 +96,11 @@ fn every_mutating_surface_in_the_matrix_is_read_only_under_dry_run() {
         ("asset move", &["asset", "move", "diagram", "--to-project", "beta", "--project", "alpha", "--dry-run"]),
         ("asset clean", &["asset", "clean", "--project", "alpha", "--dry-run"]),
         ("term new", &["term", "new", "Preview", "--project", "alpha", "--dry-run"]),
+        ("term correction add", &["term", "correction", "add", "API", "sdk", "SDK", "--project", "alpha", "--dry-run"]),
+        (
+            "term correction update",
+            &["term", "correction", "update", "API", "api", "--correct", "API2", "--project", "alpha", "--dry-run"],
+        ),
         ("build", &["build", "docs/post", "--project", "alpha", "--dry-run"]),
     ];
 

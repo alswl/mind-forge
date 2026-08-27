@@ -42,7 +42,7 @@ Every command honors these uniform contracts:
 - **Show layout:** Aligned `Key:  Value` block with optional sub-sections.
 - **Create family envelope:** `{ kind, identity, created_at, path?, dry_run, details }` plus text `✓ created {kind}: {identity}`.
 - **Modify family envelope:** Per-verb `{ kind, identity, ... }`; rename adds `old_identity`/`new_identity`; remove adds `removed: bool`; update adds `changes: { field: {from, to} }`; index adds `{ added, removed, kept_count, scanned_count }`.
-- **Lint envelope:** `{ kind, issues, summary: { errors, warnings, info }, dry_run }`.
+- **Lint envelope:** `{ kind, issues, summary: { errors, warnings, info, fixed? }, dry_run }`. Term lint adds `summary.fixed` plus top-level `scanned_files`, `fixed_count`, `modified_files`, `failures`, and `would_apply_count`.
 - **TTY adaptation:** Pipes drop ANSI and headers, preserve row shape; `NO_COLOR` env disables color.
 - **Confirmation protocol:** `remove` and `archive` open `/dev/tty` for a `[y/N]` prompt on stderr. Non-TTY without `--yes` exits 1 with a confirmation hint. `--force` bypasses safety checks but does not replace confirmation.
 
@@ -56,7 +56,7 @@ Most commands accept these flags:
 | `--config <PATH>` | Config file path |
 | `-p`, `--project <PROJECT>` | Project selector for project-scoped commands |
 | `-v`, `--verbose...` | Verbose output (repeatable) |
-| `-q`, `--quiet` | Silence non-error output on success |
+| `-q`, `--quiet` | Suppress successful output (diagnostics and exit codes remain) |
 | `-o`, `--output <text\|json>` | Output format (default: `text`) |
 | `--json` | Shorthand for `--output json` |
 | `--no-color` | Disable colored output |
@@ -67,7 +67,7 @@ Shared flag families (uniform across all commands they apply to):
 
 | Flag family | Applies to | Description |
 |---|---|---|
-| `--dry-run` | every mutating command (`new`, `rename`, `remove`, `archive`, `update`, `index`, lint `--fix`) | Preview without writing; JSON envelope sets `dry_run: true` |
+| `--dry-run` | every mutating command (`new`, `add`, `rename`, `remove`, `archive`, `update`, `index`, lint `--fix`) | Preview without writing; JSON envelope sets `dry_run: true` |
 | `-f`, `--force` | every `new` / `rename` / `remove` / `archive` | Overwrite a target or bypass safety checks; it does not confirm remove/archive |
 | `-y`, `--yes` | every `remove` and `archive` | Confirm destructive action non-interactively |
 | `--no-headers`, `--no-trunc` | every `list` | Suppress table header / disable column truncation |
@@ -326,9 +326,10 @@ Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `move`, `re
 **`mf asset show <PATH>`** — Show asset details.
 
 **`mf asset update [PATH]`**
-`--set-url <URL>` — Set publish URL
-`--channel <CHANNEL>` — Set publish channel
-`--all` — Update all assets (mutually exclusive with `PATH`)
+With `<PATH>`, recompute the asset's size/hash from disk; with `--all`, recompute every registered asset. A `<PATH>` always selects this metadata contract, even when the legacy publish options are also supplied. Both forms honor `--dry-run` (prospective and write-safe; `--all` JSON adds `kind: "asset"` and a `{ total, changed, missing }` summary).
+`--set-url <URL>` — Set project publish URL (legacy publish form; only without `<PATH>`)
+`--channel <CHANNEL>` — Set project publish channel (legacy publish form; only without `<PATH>`)
+`--all` — Update all assets (mutually exclusive with `<PATH>`)
 
 **`mf asset rename <OLD_PATH> <NEW_PATH>`** — Rename an asset.
 
@@ -386,9 +387,10 @@ Update term metadata and corrections.
   `--fix required|suggested` — Fix kind (default: required)
   `--boundary loose|standalone` — Boundary mode (default: standalone)
   `--pinyin <TEXT>` — Pinyin string
+  `--dry-run` — Validate and preview without writing (JSON `dry_run: true`)
 `list <TERM>` — List all corrections for a term
 `show <TERM> <ORIGINAL>` — Show one correction
-`update <TERM> <ORIGINAL>` — Update correction attributes (same flags as `add` minus positionals)
+`update <TERM> <ORIGINAL>` — Update correction attributes (same flags as `add` minus positionals, including `--dry-run`)
 `remove <TERM> <ORIGINAL>` — Remove a correction (`--dry-run` to preview)
 
 **`mf term move <TERM>`** (alias `mv`) — Move a term between project and global scopes.
@@ -529,6 +531,7 @@ mf asset list --project my-project
 mf asset show image.png --project my-project
 mf asset rename old.png new.png --project my-project
 mf asset update --all --project my-project
+mf asset update --all --dry-run --project my-project      # preview size/hash refresh, no writes
 mf asset index --refresh-metadata --project my-project
 mf asset remove diagram.png --project my-project
 mf asset clean --project my-project
@@ -592,8 +595,10 @@ mf term update "API" --correction-match "api:pinyin"                   # set mat
 mf term update "API" --correction-fix "api:suggested"                  # set fix kind
 mf term update "API" --delete-correction "api"                         # remove correction
 mf term correction add "API" "api" "API"                     # add correction (subcommand)
+mf term correction add "API" "api" "API" --dry-run           # validate correction add without writing
 mf term correction list "API"                                # list corrections
 mf term correction update "API" "api" --fix suggested        # update correction attribute
+mf term correction update "API" "api" --fix suggested --dry-run   # preview update without writing
 mf term correction remove "API" "api"                        # remove correction (subcommand)
 mf term move "API" --to-global                               # project → global
 mf term mv "API" --from-global --to-project my-project       # global → project (alias)

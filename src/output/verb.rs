@@ -100,7 +100,8 @@ fn count_changes(details: &serde_json::Value) -> usize {
 fn render_index_text(result: &VerbResult) -> String {
     let prefix = if result.dry_run { "[dry-run] " } else { "" };
     let (added, removed, kept) = extract_index_counts(&result.details);
-    format!("{prefix}indexed {}: +{added} ={kept} -{removed}", result.kind)
+    let action = if result.dry_run { "would index" } else { "indexed" };
+    format!("{prefix}{action} {}: +{added} ={kept} -{removed}", result.kind)
 }
 
 fn render_lint_text(result: &VerbResult, opts: &VerbOpts) -> String {

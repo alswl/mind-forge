@@ -32,6 +32,7 @@ pub fn add_correction(
     fix_kind: Option<FixKind>,
     boundary: Option<Boundary>,
     pinyin: Option<Option<String>>,
+    dry_run: bool,
 ) -> Result<(Correction, bool)> {
     let mut index = index::load(project_root)?;
     let terms = index.terms.as_mut().ok_or_else(|| {
@@ -65,7 +66,9 @@ pub fn add_correction(
     t.corrections.push(corr.clone());
     sort_terms_by_name(terms);
     validate_terms_before_project_save(terms)?;
-    index::save(project_root, &index)?;
+    if !dry_run {
+        index::save(project_root, &index)?;
+    }
     Ok((corr, true))
 }
 
@@ -109,6 +112,7 @@ pub fn update_correction(
     fix_kind: Option<FixKind>,
     boundary: Option<Boundary>,
     pinyin: Option<Option<String>>,
+    dry_run: bool,
 ) -> Result<Correction> {
     let mut index = index::load_lenient(project_root)?;
     let terms =
@@ -141,7 +145,9 @@ pub fn update_correction(
     let result = c.clone();
     sort_terms_by_name(terms);
     validate_terms_before_project_save(terms)?;
-    index::save(project_root, &index)?;
+    if !dry_run {
+        index::save(project_root, &index)?;
+    }
     Ok(result)
 }
 
@@ -177,6 +183,7 @@ pub fn add_correction_global(
     fix_kind: Option<FixKind>,
     boundary: Option<Boundary>,
     pinyin: Option<Option<String>>,
+    dry_run: bool,
 ) -> Result<(Correction, bool)> {
     let mut terms = crate::service::term::global::load_terms(repo_root)?;
     let t = terms.iter_mut().find(|t| t.term == term_name).ok_or_else(|| {
@@ -203,7 +210,9 @@ pub fn add_correction_global(
     t.corrections.push(corr.clone());
     sort_terms_by_name(&mut terms);
     validate_terms_before_global_save(&terms)?;
-    crate::service::term::global::save_terms(repo_root, &terms)?;
+    if !dry_run {
+        crate::service::term::global::save_terms(repo_root, &terms)?;
+    }
     Ok((corr, true))
 }
 
@@ -237,6 +246,7 @@ pub fn update_correction_global(
     fix_kind: Option<FixKind>,
     boundary: Option<Boundary>,
     pinyin: Option<Option<String>>,
+    dry_run: bool,
 ) -> Result<Correction> {
     let mut terms = crate::service::term::repo_format::load_lenient(repo_root)?;
     let t = terms
@@ -266,7 +276,9 @@ pub fn update_correction_global(
     let result = c.clone();
     sort_terms_by_name(&mut terms);
     validate_terms_before_global_save(&terms)?;
-    crate::service::term::global::save_terms(repo_root, &terms)?;
+    if !dry_run {
+        crate::service::term::global::save_terms(repo_root, &terms)?;
+    }
     Ok(result)
 }
 

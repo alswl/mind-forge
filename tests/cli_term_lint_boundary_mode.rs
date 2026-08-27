@@ -29,7 +29,7 @@ fn seed(repo: &common::TempDir, index_yaml: &str, doc: &str) {
 fn lint_findings(repo: &common::TempDir) -> Vec<serde_json::Value> {
     let output = mf(repo).args(["term", "lint", "--project", "alpha", "--json"]).output().unwrap();
     let v: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON envelope");
-    v["data"]["findings"].as_array().cloned().unwrap_or_default()
+    v["data"]["issues"].as_array().cloned().unwrap_or_default()
 }
 
 // ── #24: substring-loose adjacency warning (spec 069 US4) ────────────────────
@@ -217,7 +217,7 @@ terms:
         .unwrap();
 
     let v: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON envelope");
-    let findings = v["data"]["findings"].as_array().cloned().unwrap_or_default();
+    let findings = v["data"]["issues"].as_array().cloned().unwrap_or_default();
     assert_eq!(findings.len(), 1, "expected exactly one finding for standalone 'the foo dr site', got {findings:#?}");
     let finding = &findings[0];
     assert_eq!(finding["match_kind"].as_str().unwrap(), "word", "expected match_kind=word, got {finding:#?}");

@@ -58,7 +58,7 @@ fn mf(repo: &common::TempDir) -> Command {
 
 fn findings(stdout: &str) -> Vec<Value> {
     let v: Value = serde_json::from_str(stdout).expect("valid JSON envelope");
-    v["data"]["findings"].as_array().cloned().unwrap_or_default()
+    v["data"]["issues"].as_array().cloned().unwrap_or_default()
 }
 
 // ── Canonical term protection (FR-G1) ──────────────────────────────────────
