@@ -349,7 +349,36 @@ pub fn save_dry_run(project_root: &Path, index: &IndexFile, dry_run: bool) -> Re
     validate_schema_version(&index.schema_version, &path)?;
     let yaml = serialize_mind_index(index)
         .map_err(|e| MfError::Internal(anyhow::anyhow!("serialize {}: {e}", path.display())))?;
+    let yaml = preserve_unchanged_top_level_keys(project_root, &path, index, yaml);
     crate::service::util::atomic_write_dry_run(&path, &yaml, dry_run)
+}
+
+/// Spec 075 FR-013: a writer that never touched `sources:`/`terms:` (e.g.
+/// article-side commands, which do not mutate them) must leave those keys
+/// byte-identical, not merely semantically unchanged. `serialize_mind_index`
+/// re-renders the whole document, which reformats every key's
+/// indentation/quoting style — and drops any field the typed model does not
+/// recognise — even when only a different field's content changed. When the
+/// value about to be written for `sources`/`terms` is identical to what is
+/// already on disk, splice the original raw bytes for that key back in
+/// place of the fresh render.
+fn preserve_unchanged_top_level_keys(project_root: &Path, path: &Path, index: &IndexFile, yaml: String) -> String {
+    use crate::service::util::yaml_splice::{extract_top_level_key, splice_top_level_key};
+
+    let Ok(original_text) = fs::read_to_string(path) else {
+        return yaml;
+    };
+    let Ok(original) = load_lenient(project_root) else {
+        return yaml;
+    };
+
+    let mut yaml = yaml;
+    for (key, unchanged) in [("sources", index.sources == original.sources), ("terms", index.terms == original.terms)] {
+        if unchanged && let Some(original_block) = extract_top_level_key(&original_text, key) {
+            yaml = splice_top_level_key(&yaml, key, original_block);
+        }
+    }
+    yaml
 }
 
 pub fn serialize_mind_index(index: &IndexFile) -> std::result::Result<String, serde_yaml::Error> {

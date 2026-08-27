@@ -6,6 +6,7 @@ pub mod markdown;
 pub mod net;
 pub mod path;
 pub mod path_template;
+pub mod yaml_splice;
 
 use std::fs;
 use std::path::{Path, PathBuf};

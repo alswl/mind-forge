@@ -20,6 +20,9 @@ use serde_yaml::Value;
 
 use crate::error::{MfError, Result};
 use crate::model::source_advanced::ProjectionStatus;
+use crate::service::util::yaml_splice::splice_top_level_key;
+#[cfg(test)]
+use crate::service::util::yaml_splice::top_level_key_span;
 
 use super::catalog::CatalogRegistration;
 
@@ -223,78 +226,6 @@ fn merge_sources(
         Value::Mapping(mapped)
     } else {
         Value::Sequence(result)
-    }
-}
-
-/// Byte range of a top-level (column-0) YAML key's block within `text`,
-/// spanning from its `key:` line through the line before the next top-level
-/// key (or end of file). `None` when the key is absent.
-///
-/// Spec 075 FR-013/I-2: a writer confined to one key must leave every other
-/// key byte-identical. Parsing the whole document into a `serde_yaml::Value`
-/// and re-serializing it — even touching only one key of the resulting
-/// mapping — reformats every *other* key too (list-item indent style,
-/// scalar quoting), because the reformatting happens at serialize time for
-/// the whole tree, not per key. Splicing at the raw-text level is the only
-/// way to leave untouched keys byte-for-byte identical.
-fn top_level_key_span(text: &str, key: &str) -> Option<(usize, usize)> {
-    let bare = format!("{key}:");
-    let prefixed = format!("{key}: ");
-    let mut start = None;
-    let mut end = None;
-    // Start of the current run of blank/comment lines. Such a run that
-    // immediately precedes the next top-level key (or EOF) belongs to what
-    // follows, so it must stay outside the replaced span — otherwise the
-    // blank line separating `sources:` from `terms:` is silently deleted.
-    let mut trailer: Option<usize> = None;
-    let mut offset = 0usize;
-    for line in text.split_inclusive('\n') {
-        let trimmed = line.trim_end_matches(['\n', '\r']);
-        match start {
-            None => {
-                if trimmed == bare || trimmed.starts_with(&prefixed) {
-                    start = Some(offset);
-                }
-            }
-            Some(_) => {
-                if trimmed.is_empty() || trimmed.starts_with('#') {
-                    trailer.get_or_insert(offset);
-                } else if trimmed.starts_with([' ', '\t', '-']) {
-                    // A column-0 `- item` is a valid, and exactly serde_yaml's
-                    // own, style for a sequence directly under its parent key —
-                    // it continues the block, it is not a new top-level key.
-                    // Anything indented continues it too.
-                    trailer = None;
-                } else {
-                    end = Some(trailer.unwrap_or(offset));
-                    break;
-                }
-            }
-        }
-        offset += line.len();
-    }
-    start.map(|s| (s, end.unwrap_or_else(|| trailer.unwrap_or(text.len()))))
-}
-
-/// Replace (or append) a single top-level key's block in raw YAML text,
-/// leaving every byte outside that block untouched.
-fn splice_top_level_key(original: &str, key: &str, rendered_block: &str) -> String {
-    match top_level_key_span(original, key) {
-        Some((start, end)) => {
-            let mut out = String::with_capacity(original.len() + rendered_block.len());
-            out.push_str(&original[..start]);
-            out.push_str(rendered_block);
-            out.push_str(&original[end..]);
-            out
-        }
-        None => {
-            let mut out = original.to_string();
-            if !out.is_empty() && !out.ends_with('\n') {
-                out.push('\n');
-            }
-            out.push_str(rendered_block);
-            out
-        }
     }
 }
 
@@ -552,6 +483,85 @@ mod tests {
         );
         assert!(spliced.starts_with("project: alpha\n"), "untouched keys stay in place: {spliced:?}");
         assert!(spliced.ends_with("terms:\n  - term: API\n"), "untouched keys stay in place: {spliced:?}");
+    }
+
+    /// T030/FR-014/I-1: an existing YAML entry the store does not know about
+    /// (divergence) is kept, not dropped — `merge_sources` has no removal
+    /// path for it, only the caller-supplied `permitted_removals` allowlist.
+    #[test]
+    fn merge_sources_keeps_entries_the_store_does_not_know_about() {
+        let existing: Value =
+            serde_yaml::from_str("sources:\n  - name: orphan\n    path: sources/orphan.md\n").unwrap();
+        let sources_value = existing.get("sources").cloned();
+
+        let merged = merge_sources(sources_value.as_ref(), &[], &[]);
+        let Value::Sequence(seq) = &merged else { panic!("expected a sequence: {merged:?}") };
+        assert_eq!(seq.len(), 1, "an entry the store does not know about must be kept, not dropped: {merged:?}");
+        assert_eq!(
+            seq[0].get(name_key()),
+            Some(&Value::String("orphan".to_string())),
+            "the kept entry must be the untouched original: {merged:?}"
+        );
+    }
+
+    /// T030/FR-014: the only way an unexplained-divergence entry disappears
+    /// is the caller explicitly naming it in `permitted_removals` — because
+    /// it just performed a real removal, not because the store failed to
+    /// mention it.
+    #[test]
+    fn merge_sources_drops_only_names_the_caller_explicitly_permits() {
+        let existing: Value = serde_yaml::from_str(
+            "sources:\n  - name: orphan\n    path: sources/orphan.md\n  - name: removed\n    path: sources/removed.md\n",
+        )
+        .unwrap();
+        let sources_value = existing.get("sources").cloned();
+
+        let merged = merge_sources(sources_value.as_ref(), &[], &["removed".to_string()]);
+        let Value::Sequence(seq) = &merged else { panic!("expected a sequence: {merged:?}") };
+        let names: Vec<&str> = seq.iter().filter_map(|e| e.get(name_key()).and_then(|v| v.as_str())).collect();
+        assert_eq!(names, vec!["orphan"], "only the explicitly permitted name may be dropped: {names:?}");
+    }
+
+    /// T030/FR-011: an entry present on both sides is reconciled by
+    /// overwriting only the fields the store owns, while unrecognised
+    /// fields survive from the existing entry — the store never
+    /// wholesale-replaces a kept entry.
+    #[test]
+    fn merge_sources_reconciles_a_kept_entry_store_wins_owned_fields_extras_survive() {
+        let existing: Value = serde_yaml::from_str(
+            "sources:\n  - name: notes\n    path: sources/notes.md\n    kind: file\n    review_state: approved\n",
+        )
+        .unwrap();
+        let sources_value = existing.get("sources").cloned();
+        let mut registration = sample_registration(None);
+        registration.source_identity = "notes".to_string();
+        registration.registered_location = "sources/notes.md".to_string();
+
+        let merged = merge_sources(sources_value.as_ref(), std::slice::from_ref(&registration), &[]);
+        let Value::Sequence(seq) = &merged else { panic!("expected a sequence: {merged:?}") };
+        assert_eq!(seq.len(), 1, "one name present on both sides must reconcile to one entry: {merged:?}");
+        let entry = seq[0].as_mapping().unwrap();
+        assert_eq!(
+            entry.get(Value::String("kind".to_string())),
+            Some(&Value::String(registration.source_type.clone())),
+            "the store is authoritative for kind: {entry:?}"
+        );
+        assert_eq!(
+            entry.get(Value::String("review_state".to_string())),
+            Some(&Value::String("approved".to_string())),
+            "a field the store does not own must survive reconciliation: {entry:?}"
+        );
+    }
+
+    /// T030/FR-015: a registration the existing YAML has never seen is
+    /// imported as a new entry, appended after the kept ones.
+    #[test]
+    fn merge_sources_imports_a_registration_absent_from_the_existing_yaml() {
+        let registration = sample_registration(None);
+        let merged = merge_sources(None, std::slice::from_ref(&registration), &[]);
+        let Value::Sequence(seq) = &merged else { panic!("expected a sequence: {merged:?}") };
+        assert_eq!(seq.len(), 1, "the new registration must be imported: {merged:?}");
+        assert_eq!(seq[0].get(name_key()), Some(&Value::String("notes".to_string())));
     }
 
     #[test]

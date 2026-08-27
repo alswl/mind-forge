@@ -676,6 +676,34 @@ mod lance_index {
         );
     }
 
+    /// T033/FR-011/FR-012: a field the store does not itself model (e.g. a
+    /// hand-added `review_state`) survives a mirror write that touches
+    /// other entries — the store only overwrites the fields it owns.
+    #[test]
+    fn index_preserves_an_unrecognised_field_on_a_kept_entry() {
+        let repo = provider_repo();
+        let project = repo.path().join("projects/alpha");
+        let index_path = project.join("mind-index.yaml");
+
+        // Hand-annotate the existing "notes" entry with a field the store
+        // does not model, simulating a human/other-tool annotation.
+        let content = std::fs::read_to_string(&index_path).unwrap();
+        let annotated = content.replacen("    name: notes\n", "    name: notes\n    review_state: approved\n", 1);
+        assert_ne!(annotated, content, "precondition: the notes entry must exist to be annotated");
+        std::fs::write(&index_path, &annotated).unwrap();
+
+        // Trigger a real mirror write via an unrelated new file.
+        std::fs::write(project.join("sources/file/second.md"), "second\n").unwrap();
+        let (stdout, stderr, code) = run(&repo, &["source", "index", "--project", "alpha"], &[]);
+        assert_eq!(code, 0, "index failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+
+        let after = std::fs::read_to_string(&index_path).unwrap();
+        assert!(
+            after.contains("review_state: approved"),
+            "a field the store does not own must survive a mirror write that touches other entries: {after}"
+        );
+    }
+
     /// T036/FR-013/I-2: a source-side write leaves `terms:` byte-identical —
     /// not just semantically unchanged. The compatibility mirror used to
     /// round-trip the *whole* document through `serde_yaml::Value`, which
