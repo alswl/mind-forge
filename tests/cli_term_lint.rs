@@ -1124,7 +1124,7 @@ fn lint_json_finding_carries_held_back_status() {
     let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    let findings = v["data"]["findings"].as_array().unwrap();
+    let findings = v["data"]["issues"].as_array().unwrap();
     assert_eq!(findings.len(), 1, "{stdout}");
     assert_eq!(findings[0]["safety_reason"], "short-cjk-advisory", "{stdout}");
     assert_eq!(findings[0]["held_back"], true, "{stdout}");
@@ -1160,7 +1160,7 @@ terms:
     let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    let findings = v["data"]["findings"].as_array().unwrap();
+    let findings = v["data"]["issues"].as_array().unwrap();
     assert_eq!(findings.len(), 1, "{stdout}");
     let competing = findings[0]["competing_terms"].as_array().expect("competing_terms present");
     assert!(
