@@ -58,6 +58,26 @@ fn handle_correction_add(args: TermCorrectionAddArgs, ctx: &CommandCtx) -> Resul
         "correction": serde_json::to_value(&corr).unwrap_or_default(),
     });
 
+    if args.dry_run.dry_run {
+        let result = VerbResult {
+            verb: Verb::Add,
+            kind: "term_correction",
+            identity: format!("{}::{}", args.term, corr.original),
+            old_identity: None,
+            path: None,
+            dry_run: true,
+            details: data,
+        };
+        return match ctx.format() {
+            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
+            Format::Text => Ok(CommandOutcome::Success(
+                serde_json::Value::String(verb_text(&result, &VerbOpts::default())),
+                warnings,
+                None,
+            )),
+        };
+    }
+
     match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(data, warnings, None)),
         Format::Text => Ok(CommandOutcome::Success(

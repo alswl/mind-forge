@@ -519,9 +519,7 @@ mod tests {
 
     #[test]
     fn is_identifier_neighbour_excludes_whitespace_and_punct() {
-        for b in
-            [b' ', b'\t', b'\n', b'\r', b',', b';', b':', b'!', b'?', b'(', b')', b'[', b']', b'{', b'}', b'"', b'\'']
-        {
+        for b in *b" \t\n\r,;:!?()[]{}\"'" {
             assert!(!is_identifier_neighbour(b), "{:?} must not be identifier byte", b as char);
         }
     }

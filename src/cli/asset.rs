@@ -327,8 +327,10 @@ fn handle_update(
 ) -> Result<CommandOutcome> {
     let project_path = svc_util::resolve_project(root, project, cwd)?;
 
-    // Mind form: --set-url + --channel (set publish URL)
-    if args.set_url.is_some() || args.channel.is_some() {
+    // Mind form: --set-url + --channel (set publish URL). A path selects the
+    // asset metadata update contract, even when a caller also supplies the
+    // legacy publish options.
+    if args.path.is_none() && (args.set_url.is_some() || args.channel.is_some()) {
         let url = args.set_url.as_deref().unwrap_or_default();
         let channel = args.channel.as_deref().unwrap_or_default();
         let result = asset_svc::set_publish_url(&project_path, url, channel)?;

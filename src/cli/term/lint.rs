@@ -175,6 +175,15 @@ pub(super) fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<Comman
                     }
                 }
             }
+            data.insert(
+                "summary".to_string(),
+                serde_json::json!({
+                    "errors": 0,
+                    "warnings": report.findings.len(),
+                    "info": 0,
+                    "fixed": report.fixed_count,
+                }),
+            );
             Ok(CommandOutcome::Success(serde_json::Value::Object(data), warnings, exit_code))
         }
         Format::Text => {
