@@ -288,7 +288,9 @@ JSON commands use `{ "status", "command", "data" }` envelopes. Exit codes are:
 - `2` invalid input or rejected operation.
 
 Read-only retrieval does not modify authored files. Destructive operations
-require explicit confirmation; use `--dry-run` before changing unfamiliar data.
+require explicit confirmation; use `--dry-run` to preview what would change
+(`would index`, `would update`) before writing. `-q` silences successful output
+while preserving diagnostics and exit codes, for byte-silent automation.
 
 ## Development
 
