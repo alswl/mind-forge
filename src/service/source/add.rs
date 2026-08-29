@@ -157,6 +157,7 @@ pub fn register_only(
         tags: vec![],
         added_at: now.clone(),
         updated_at: now,
+        extra: Default::default(),
     };
     if !dry_run {
         sources.push(source.clone());
@@ -329,6 +330,7 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
                 tags: prior.tags.clone(),
                 added_at: prior.added_at.clone(),
                 updated_at: now,
+                extra: prior.extra.clone(),
             };
             replace_in_sources(sources, idx, source.clone());
             (AddMode::Url, source, true)
@@ -343,6 +345,7 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
                 tags: vec![],
                 added_at: now.clone(),
                 updated_at: now,
+                extra: Default::default(),
             };
             sources.push(source.clone());
             sources.sort_by(|a, b| a.name.cmp(&b.name));
@@ -458,6 +461,7 @@ fn add_path(repo_root: &Path, project_path: &Path, cwd: &Path, args: &AddArgs) -
                 tags: prior.tags.clone(),
                 added_at: prior.added_at.clone(),
                 updated_at: now,
+                extra: prior.extra.clone(),
             };
             let mode = if args.link { AddMode::Link } else { AddMode::Copy };
             replace_in_sources(sources, idx, source.clone());
@@ -477,6 +481,7 @@ fn add_path(repo_root: &Path, project_path: &Path, cwd: &Path, args: &AddArgs) -
                 tags: vec![],
                 added_at: now.clone(),
                 updated_at: now,
+                extra: Default::default(),
             };
             let mode = if args.link { AddMode::Link } else { AddMode::Copy };
             sources.push(source.clone());

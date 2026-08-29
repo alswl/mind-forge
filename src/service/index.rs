@@ -1113,6 +1113,7 @@ terms:
             tags: vec![],
             added_at: String::new(),
             updated_at: String::new(),
+            extra: Default::default(),
         });
         save(dir.path(), &index).unwrap();
         let written = std::fs::read_to_string(dir.path().join("mind-index.yaml")).unwrap();

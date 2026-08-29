@@ -414,6 +414,7 @@ fn handle_list(args: SourceListArgs, ctx: &CommandCtx) -> Result<CommandOutcome>
                     tags: serde_json::from_str(&registration.tags_json).unwrap_or_default(),
                     added_at: String::new(),
                     updated_at: String::new(),
+                    extra: svc_source::advanced::compatibility::extras_from_json(registration.extras_json.as_ref()),
                 })
             })
             .filter(|source| {
@@ -844,6 +845,7 @@ fn handle_source_show(args: SourceShowArgs, ctx: &CommandCtx) -> Result<CommandO
                     tags: serde_json::from_str(&registration.tags_json).unwrap_or_default(),
                     added_at: String::new(),
                     updated_at: String::new(),
+                    extra: svc_source::advanced::compatibility::extras_from_json(registration.extras_json.as_ref()),
                 })
             })
             .collect()

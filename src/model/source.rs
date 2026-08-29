@@ -1,4 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::collections::BTreeMap;
 
 // ---------------------------------------------------------------------------
 // SourceKind — source channel/origin (mind primary)
@@ -113,6 +114,13 @@ pub struct Source {
     pub added_at: String,
     #[serde(default)]
     pub updated_at: String,
+    /// Spec 075 FR-011: fields the system does not otherwise interpret must
+    /// round-trip through every load → save cycle instead of being dropped
+    /// by the typed rebuild. The Lance-side registration already stores them
+    /// as `extras_json` (see `compatibility::source_entry_extras`); this
+    /// catch-all keeps the YAML projection lossless too.
+    #[serde(flatten, default)]
+    pub extra: BTreeMap<String, serde_yaml::Value>,
 }
 
 // ---------------------------------------------------------------------------

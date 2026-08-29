@@ -93,7 +93,7 @@ fn retained_snapshots_count_increases_after_multiple_syncs() {
     // Status must report at least 1 retained snapshot.
     let (status_out, _, _) = run(&repo, &["source", "status"], &[]);
     let v: serde_json::Value = serde_json::from_str(&status_out).expect("valid JSON");
-    let snapshots = v["data"]["data"]["retained_snapshots"].as_u64().unwrap_or(0);
+    let snapshots = v["data"]["retained_snapshots"].as_u64().unwrap_or(0);
     assert!(snapshots >= 1, "must have retained snapshots after syncs, got {snapshots}\n{status_out}");
 }
 
@@ -108,7 +108,7 @@ fn project_intents_created_as_json_files() {
     // Either way, the status must report zero pending intents.
     let (status_out, _, _) = run(&repo, &["source", "status"], &[]);
     let v: serde_json::Value = serde_json::from_str(&status_out).expect("valid JSON");
-    let intents = v["data"]["data"]["pending_intents"].as_u64().unwrap_or(0);
+    let intents = v["data"]["pending_intents"].as_u64().unwrap_or(0);
     assert_eq!(intents, 0, "clean sync must have zero pending intents, got {intents}\n{status_out}");
     // The transactions directory is created on demand by lifecycle operations.
     // Since no project lifecycle mutation happened in this test, it may not exist.

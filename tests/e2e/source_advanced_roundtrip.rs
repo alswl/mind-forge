@@ -15,7 +15,7 @@ use crate::helpers::run_in;
 fn report(stdout: &str) -> Value {
     let envelope: Value =
         serde_json::from_str(stdout).unwrap_or_else(|e| panic!("stdout must be pure JSON: {e}\n{stdout}"));
-    envelope["data"]["data"].clone()
+    envelope["data"].clone()
 }
 
 /// Build a repo with one project, one source, Lance activated and synced.

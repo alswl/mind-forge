@@ -27,7 +27,7 @@ fn status_lists_retained_snapshots() {
     let (stdout, stderr, code) = run(&repo, &["source", "status"], &[]);
     assert_eq!(code, 0, "status failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
-    let snapshots = v["data"]["data"]["retained_snapshots"].as_u64().unwrap_or(0);
+    let snapshots = v["data"]["retained_snapshots"].as_u64().unwrap_or(0);
     // After one sync there should be at least one snapshot.
     assert!(snapshots >= 1, "must have at least one retained snapshot\n{stdout}");
 }
@@ -54,7 +54,7 @@ fn sync_adopts_existing_corpus_after_local_state_is_lost() {
     let (before_stdout, before_stderr, before_code) = run(&repo, &["source", "status"], &[]);
     assert_eq!(before_code, 0, "precondition: status must succeed\n{before_stdout}\n{before_stderr}");
     let before: serde_json::Value = serde_json::from_str(&before_stdout).unwrap();
-    let generation_before = before["data"]["data"]["primary_catalog_fingerprint"].clone();
+    let generation_before = before["data"]["primary_catalog_fingerprint"].clone();
 
     let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "sync must adopt the existing corpus, not refuse\nstdout:\n{stdout}\nstderr:\n{stderr}");
@@ -64,7 +64,7 @@ fn sync_adopts_existing_corpus_after_local_state_is_lost() {
     let (status_stdout, _, _) = run(&repo, &["source", "status"], &[]);
     let after: serde_json::Value = serde_json::from_str(&status_stdout).unwrap();
     assert_eq!(
-        generation_before, after["data"]["data"]["primary_catalog_fingerprint"],
+        generation_before, after["data"]["primary_catalog_fingerprint"],
         "adoption must reuse the existing generation, not create a new one"
     );
 
@@ -109,7 +109,7 @@ fn missing_corpus_with_stale_local_state_is_reported_then_healed() {
     let (stdout, stderr, code) = run(&repo, &["source", "status"], &[]);
     assert_eq!(code, 0, "status must not error on a stale local state\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(v["data"]["data"]["index_status"], "missing", "corpus is genuinely gone\n{stdout}");
+    assert_eq!(v["data"]["index_status"], "missing", "corpus is genuinely gone\n{stdout}");
 
     let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "sync must self-heal from a stale local state\nstdout:\n{stdout}\nstderr:\n{stderr}");
@@ -126,7 +126,7 @@ fn project_intents_are_visible_in_status() {
     assert_eq!(code, 0, "status failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     // pending_intents must be reported (even if zero).
-    let intents = v["data"]["data"]["pending_intents"].as_u64().unwrap_or(0);
+    let intents = v["data"]["pending_intents"].as_u64().unwrap_or(0);
     // After a clean sync there should be zero pending intents.
     assert_eq!(intents, 0, "clean sync must have zero pending intents, got {intents}\n{stdout}");
 }

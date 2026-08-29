@@ -57,7 +57,7 @@ fn status_reports_corpus_after_local_state_is_lost() {
         "the old marker-incomplete refusal must never surface\nstdout:\n{stdout}"
     );
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
-    assert_eq!(v["data"]["data"]["index_status"], "ready", "the on-disk corpus must still be found\n{stdout}");
+    assert_eq!(v["data"]["index_status"], "ready", "the on-disk corpus must still be found\n{stdout}");
 
     // Read-only: status must not create the state file it just reported around.
     assert!(!state_path.exists(), "status must not write machine-local state");

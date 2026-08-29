@@ -197,10 +197,13 @@ pub fn reconcile(project_path: &Path, dry_run: bool) -> Result<SourceIndexReport
 
         let by_name: std::collections::HashMap<&str, &Source> =
             index_sources.iter().map(|s| (s.name.as_str(), s)).collect();
-        for (name, ip, _kind) in &indexed_files {
-            if kept_file_paths.contains(ip)
-                && let Some(orig) = by_name.get(name.as_str())
-            {
+        // Spec 075 FR-014/FR-016: an entry whose recorded file went missing is
+        // *reported* in `removed` but stays in the index — only the explicit
+        // removal command (`mf source remove`) may drop it (I-1). The
+        // pre-existing entry is spliced back verbatim so its timestamps and
+        // uninterpreted fields survive untouched.
+        for (name, _ip, _kind) in &indexed_files {
+            if let Some(orig) = by_name.get(name.as_str()) {
                 new_sources.push((*orig).clone());
             }
         }
@@ -216,6 +219,7 @@ pub fn reconcile(project_path: &Path, dry_run: bool) -> Result<SourceIndexReport
                 tags: vec![],
                 added_at: now.clone(),
                 updated_at: now.clone(),
+                extra: Default::default(),
             });
         }
 
@@ -256,5 +260,39 @@ mod tests {
         let sources = index::load(project).unwrap().sources.unwrap();
         assert_eq!(sources.len(), 2);
         assert!(sources.iter().any(|source| source.name == "kept" && source.added_at == "old"));
+    }
+
+    /// Spec 075 FR-014/FR-016: an entry whose file went missing is reported
+    /// in `removed` but must survive the rewrite (only `source remove` may
+    /// drop it), and FR-011 requires uninterpreted fields (`provenance_note`)
+    /// to round-trip instead of being dropped by the typed rebuild.
+    #[test]
+    fn reconcile_keeps_missing_file_entries_and_uninterpreted_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path();
+        std::fs::write(project.join("mind.yaml"), "schema_version: '1'\n").unwrap();
+        std::fs::create_dir_all(project.join("sources/file")).unwrap();
+        std::fs::write(project.join("sources/file/kept.md"), "kept\n").unwrap();
+        std::fs::write(
+            project.join("mind-index.yaml"),
+            "schema_version: '1'\nsources:\n  sources/kept.md:\n    name: kept\n    type: file\n    url: null\n    path: sources/file/kept.md\n    tags: []\n    added_at: old\n    updated_at: old\n    provenance_note: keep-me-verbatim\n  sources/ghost.md:\n    name: ghost\n    type: file\n    url: null\n    path: sources/file/ghost.md\n    tags: []\n    added_at: gone\n    updated_at: gone\n",
+        )
+        .unwrap();
+
+        let report = reconcile(project, false).unwrap();
+        assert_eq!(report.removed.len(), 1, "the missing file must be reported");
+        assert_eq!(report.removed[0].name, "ghost");
+
+        let raw = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+        assert!(raw.contains("sources/file/ghost.md"), "ghost entry must stay in the index: {raw}");
+        assert!(raw.contains("added_at: gone"), "ghost timestamps must be untouched: {raw}");
+        assert!(raw.contains("provenance_note: keep-me-verbatim"), "extras must round-trip: {raw}");
+
+        let sources = index::load(project).unwrap().sources.unwrap();
+        assert_eq!(sources.len(), 2, "kept + ghost, nothing dropped");
+        let ghost = sources.iter().find(|s| s.name == "ghost").unwrap();
+        assert_eq!(ghost.added_at, "gone");
+        let kept = sources.iter().find(|s| s.name == "kept").unwrap();
+        assert_eq!(kept.extra.get("provenance_note").and_then(|v| v.as_str()), Some("keep-me-verbatim"));
     }
 }

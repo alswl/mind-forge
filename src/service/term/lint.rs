@@ -6,7 +6,7 @@ use crate::defaults;
 use crate::error::{MfError, Result};
 use crate::model::index::IndexFile;
 use crate::model::term::{
-    Boundary, CandidateTerm, FindingSelection, FixSelection, Term, TermFinding, TermLintFailure, TermLintReport,
+    Boundary, FindingSelection, FixSelection, Term, TermFinding, TermLintFailure, TermLintReport,
 };
 use crate::service::config as config_svc;
 use crate::service::index;
@@ -53,33 +53,6 @@ pub(crate) fn collect_corrections(index: &IndexFile) -> Vec<CorrectionEntry> {
                     pinyin: c.pinyin.clone(),
                 });
             }
-        }
-    }
-    result
-}
-
-/// Build a set of original texts that map to more than one term.
-pub(crate) fn build_ambiguous_originals(corrections: &[CorrectionEntry]) -> BTreeSet<String> {
-    let mut term_counts: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
-    for c in corrections {
-        term_counts.entry(&c.original).or_default().insert(&c.term_name);
-    }
-    term_counts.into_iter().filter(|(_, terms)| terms.len() > 1).map(|(orig, _)| orig.to_string()).collect()
-}
-
-/// Build candidate lists for ambiguous originals.
-pub(crate) fn build_candidates(
-    corrections: &[CorrectionEntry],
-    ambiguous: &BTreeSet<String>,
-) -> BTreeMap<String, Vec<CandidateTerm>> {
-    let mut result: BTreeMap<String, Vec<CandidateTerm>> = BTreeMap::new();
-    for c in corrections {
-        if ambiguous.contains(&c.original) {
-            result.entry(c.original.clone()).or_default().push(CandidateTerm {
-                term: c.term_name.clone(),
-                correct: c.correct.clone(),
-                confidence: c.confidence,
-            });
         }
     }
     result
@@ -305,9 +278,7 @@ pub(crate) fn lint_single_file_with_selection(
     }
 
     let corrections = collect_corrections(index);
-    let ambiguous = build_ambiguous_originals(&corrections);
-    let candidates = build_candidates(&corrections, &ambiguous);
-    let correction_refs = build_correction_refs(&corrections, &ambiguous, &candidates);
+    let correction_refs = build_correction_refs(&corrections);
     let all_term_names: Vec<&str> = index.terms.as_deref().unwrap_or(&[]).iter().map(|t| t.term.as_str()).collect();
     let mut findings: Vec<TermFinding> = Vec::new();
     let mut internal_findings: Vec<InternalFinding> = Vec::new();
@@ -438,9 +409,7 @@ pub(crate) fn lint_walk_with_selection(
     selection: &FixSelection,
 ) -> Result<TermLintReport> {
     let corrections = collect_corrections(index);
-    let ambiguous = build_ambiguous_originals(&corrections);
-    let candidates = build_candidates(&corrections, &ambiguous);
-    let correction_refs = build_correction_refs(&corrections, &ambiguous, &candidates);
+    let correction_refs = build_correction_refs(&corrections);
     let all_term_names: Vec<&str> = index.terms.as_deref().unwrap_or(&[]).iter().map(|t| t.term.as_str()).collect();
     let mut findings: Vec<TermFinding> = Vec::new();
     let mut internal_findings: Vec<InternalFinding> = Vec::new();
@@ -570,16 +539,16 @@ pub(crate) fn scan_content(
     pinyin::scan_for_pinyin(content, &sanitized, rel_path, correction_refs, findings, internal_findings, claimed);
 }
 
-pub(crate) fn build_correction_refs<'a>(
-    corrections: &'a [CorrectionEntry],
-    ambiguous: &'a BTreeSet<String>,
-    candidates: &'a BTreeMap<String, Vec<CandidateTerm>>,
-) -> Vec<scan::CorrectionRef<'a>> {
+pub(crate) fn build_correction_refs<'a>(corrections: &'a [CorrectionEntry]) -> Vec<scan::CorrectionRef<'a>> {
     corrections
         .iter()
         .enumerate()
         .map(|(yaml_index, c)| {
-            let is_ambiguous = ambiguous.contains(&c.original);
+            // Spec 075 FR-025: an original registered by several terms is an
+            // exact tie, resolved by declaration order (`yaml_index`) in the
+            // scan's claimed-span check — not suppressed as ambiguous. The
+            // competing terms are disclosed on the winning finding instead
+            // (FR-032 `competing_terms`).
             scan::CorrectionRef {
                 yaml_index,
                 original: &c.original,
@@ -587,12 +556,8 @@ pub(crate) fn build_correction_refs<'a>(
                 term_name: &c.term_name,
                 description: c.description.as_deref(),
                 confidence: c.confidence,
-                is_ambiguous,
-                candidates: if is_ambiguous {
-                    candidates.get(&c.original).map(|v| v.as_slice()).unwrap_or(&[])
-                } else {
-                    &[]
-                },
+                is_ambiguous: false,
+                candidates: &[],
                 match_kind: c.match_kind,
                 fix_kind: c.fix_kind,
                 boundary: c.boundary,

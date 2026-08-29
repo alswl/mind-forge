@@ -126,6 +126,7 @@ pub fn update_registration(
         tags: serde_json::from_str(&current.tags_json).unwrap_or_default(),
         added_at: String::new(),
         updated_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        extra: super::compatibility::extras_from_json(current.extras_json.as_ref()),
     })
 }
 
@@ -393,6 +394,7 @@ fn add_url_source(
             tags: vec![],
             added_at: now.clone(),
             updated_at: now,
+            extra: Default::default(),
         },
         AddMode::Url,
         Some(dest),
@@ -483,6 +485,7 @@ fn add_local_source(
             tags: vec![],
             added_at: now.clone(),
             updated_at: now,
+            extra: Default::default(),
         },
         if register_only {
             AddMode::Register
@@ -748,6 +751,7 @@ pub fn remove_registration(
         tags: serde_json::from_str(&row.tags_json).unwrap_or_default(),
         added_at: String::new(),
         updated_at: String::new(),
+        extra: super::compatibility::extras_from_json(row.extras_json.as_ref()),
     };
     let index = crate::service::index::load(project_path)?;
     let references = crate::service::lifecycle::scan_references(

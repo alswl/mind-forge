@@ -11,7 +11,7 @@
 //! (FR-013). Projection failure reports degraded state without changing the
 //! primary operation's exit code.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
@@ -50,6 +50,13 @@ pub(crate) fn source_entry_extras(entry: &Value) -> Option<String> {
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect::<serde_yaml::Mapping>();
     (!extras.is_empty()).then(|| serde_json::to_string(&Value::Mapping(extras)).ok()).flatten()
+}
+
+/// Restore the opaque fields of a source entry from a registration row's
+/// `extras_json` (the inverse of [`source_entry_extras`]). Rows written by
+/// older schemas carry no extras and yield an empty map.
+pub(crate) fn extras_from_json(json: Option<&String>) -> BTreeMap<String, serde_yaml::Value> {
+    json.and_then(|json| serde_json::from_str(json).ok()).unwrap_or_default()
 }
 
 /// Return opaque source-entry fields keyed by their registered path or URL.

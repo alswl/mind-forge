@@ -282,7 +282,8 @@ fn lint_conflict_first_term_claims() {
     let project = repo.path().join("alpha");
     fs::create_dir_all(project.join("docs")).unwrap();
     // Two terms both correcting "conflict" → "Correct-A" and "conflict" → "Correct-B"
-    // creates an ambiguous finding — neither should auto-replace.
+    // is an exact tie: spec 075 FR-025 breaks it by declaration order, so the
+    // first-declared term wins the finding and FR-032 discloses the other.
     let index_yaml = r#"schema_version: '1'
 terms:
   - term: Correct-A
@@ -299,10 +300,9 @@ terms:
 
     let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
-    // Ambiguous: both terms should be reported, not silently won by first
-    assert!(stdout.contains("ambiguous"), "should be ambiguous: {stdout}");
-    assert!(stdout.contains("Correct-A"), "should mention Correct-A: {stdout}");
-    assert!(stdout.contains("Correct-B"), "should mention Correct-B: {stdout}");
+    assert!(stdout.contains("→ \"Correct-A\" [Correct-A]"), "first-declared term wins the tie: {stdout}");
+    assert!(stdout.contains("also claimed by: Correct-B"), "competing term must be disclosed: {stdout}");
+    assert!(!stdout.contains("ambiguous"), "exact ties are resolved, not reported ambiguous: {stdout}");
 }
 
 // ---------------------------------------------------------------------------

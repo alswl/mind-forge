@@ -69,7 +69,18 @@ pub(super) fn render_success_inner(
             other => writeln!(writer, "{other}")?,
         },
         Format::Json => {
-            let envelope = serde_json::json!({ "status": "ok", "command": "mf", "data": data });
+            // Some handlers (source sync/status/admin/search) emit their own
+            // `{ status, command, data }` envelope. Emitting it as-is keeps
+            // the contract fields at the documented level; wrapping again
+            // would push them into `data.data` (spec 075 defect: `source
+            // status` rendered a double envelope).
+            let already_enveloped = matches!(data, serde_json::Value::Object(map)
+                if map.contains_key("status") && map.contains_key("command") && map.contains_key("data"));
+            let envelope = if already_enveloped {
+                data.clone()
+            } else {
+                serde_json::json!({ "status": "ok", "command": "mf", "data": data })
+            };
             serde_json::to_writer(&mut *writer, &envelope)?;
             writeln!(writer)?;
         }

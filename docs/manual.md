@@ -120,10 +120,10 @@ mf project list
 mf project show blog
 mf project update blog --description "Writing workspace"
 mf project update blog --clear-description
-mf project rename blog writing/blog
-mf project remove writing/blog --yes
-mf project archive writing/blog --yes
-mf project lint --project writing/blog --fix
+mf project rename blog writing
+mf project remove writing --yes
+mf project archive writing --yes
+mf project lint --project writing --fix
 mf project index
 mf project import /path/to/existing --force
 ```
@@ -482,7 +482,7 @@ correct in the built artifact.
 
 ```bash
 mf build first-post --project blog
-mf build @projects/blog/docs/first-post/ --output ./_build/first-post.md
+mf build @projects/blog/docs/first-post/ --out ./_build/first-post.md
 mf build first-post --dry-run --project blog
 ```
 
