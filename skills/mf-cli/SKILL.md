@@ -265,6 +265,16 @@ re-index ran. It is the schema-drift recovery path: when a build requires a
 newer storage schema than the persisted one, plain `mf source sync` and the
 read-only advanced commands refuse with a hint to `run `mf source sync --rebuild``
 — use that flag instead of detouring to `mf source admin rebuild`.
+The current RAG storage schema is `v3`. Compatibility is determined from the
+actual `registrations` table shape, never from a mutable version marker. The
+Lance registration store is authoritative for Sources; `mind-index.yaml`'s
+`sources:` section is a lossless compatibility projection, while its `terms:`
+section remains authoritative for terms. Source-side writers never touch
+`terms:`, and article/prompt/thinking writers never touch `sources:`. On
+Lance, `mf source index` adopts files present on disk and reports vanished
+registrations as missing without deleting them; explicit remove/clean is
+required for deletion. Machine-local activation state stores only activation
+status and can be rebuilt from the corpus on disk.
 Use `mf search` for content retrieval; it has no `--mode` switch and returns
 the repository-wide RAG result set. A Prompt or Thinking hit supplies intent
 or reasoning context, not factual evidence by itself; verify factual claims
