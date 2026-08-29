@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
+### Changes
+- **Breaking (spec 075)**: the `registrations` storage schema is bumped `2`→`3` to add `added_at`, `updated_at`, and an `extras_json` passthrough column, completing the record so the project-index mirror is lossless. Existing repositories need one `mf source sync --rebuild`; no migration shim is provided (single-maintainer system).
+- **Breaking (spec 075)**: machine-local activation state is reduced to a single activation-status field — the previous `activation_snapshot_id`, `activation_catalog_fingerprint`, and `storage_schema_version` are gone. Schema compatibility is now read from the tables' actual on-disk structure, never a recorded value; a repository whose local state is deleted self-heals via `mf source status`/`mf source sync` with no manual file edits (dissolves prior issues #36, #37, #39).
+- `mf source index` on the Lance backend is now a real disk-adoption and reconcile pass: files present on disk but unknown to the store are imported (with populated paths), and registrations whose file has vanished are reported as `removed` but never deleted — removal stays exclusive to `mf source remove`/`mf source clean`.
+
+### Bug Fixes
+- `mf term lint`/`fix` now report held-back short-CJK advisory findings instead of rendering them identically to auto-applied ones: lint marks them `, held back` and the bulk fix summary reports a held-back count alongside the applied count, naming the scoped `--term` invocation that applies them. JSON gains additive `held_back`/`held_back_count` fields (spec 075 #40).
+- The most specific (longest) registered correction now wins at every position in every mode: a shorter correction that is a prefix of a longer one (e.g. `机器`→`装置` vs `机器人`→`机械装置`) no longer claims the position first just because it was declared earlier, in both lint reporting and scoped/bulk fix (spec 075 #41).
+- Registering a term correction now warns when its original is a prefix of, or equal to, another term's name or registered original, naming the shadowed term — still registers (warn-and-proceed). Lint findings likewise disclose competing terms even when no other correction shares the exact same original text (spec 075 #42).
+- A source-name collision on the Lance registration path now reports the actionable "already registered" error with a concrete `-n` suggestion (matching the legacy backend), instead of the generic file-conflict error whose only hint (`--force`) was a dead end under `--register-only` (spec 075 #35).
+- `mf project rename` no longer fails on a project whose files were never committed: trackedness is probed via `git ls-files` before choosing `git mv` vs `fs::rename`. A path-prefixed new name now shows the bare form of what was supplied in its hint.
+- `mf build` names `--out` as the flag that accepts an output path when a path-like value is passed to the global `--output` (text/json) flag by mistake, in addition to listing the valid format values.
+
 ### Features
 - Add transactional cross-project `source`, `asset`, and `article move`
   commands, including directory article blocks, prompt/thinking projections,

@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::defaults;
@@ -47,9 +45,12 @@ pub struct IndexFile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub publish_records: Option<Vec<PublishRecord>>,
     /// Extra top-level fields preserved from original YAML (e.g. `project`,
-    /// `updated`, `docs`, `prompts`). Populated on deserialization.
+    /// `updated`, `docs`, `prompts`). Populated on deserialization. Ordered
+    /// so re-serialization is deterministic (spec 075 FR-018, Constitution
+    /// IV) — a `HashMap` here previously made key order vary run to run for
+    /// any project index carrying unrecognised top-level keys.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub extra: Option<HashMap<String, serde_json::Value>>,
+    pub extra: Option<Vec<(String, serde_json::Value)>>,
 }
 
 impl IndexFile {
@@ -365,11 +366,11 @@ impl IndexFile {
 
         let extra = map.get(yaml_key("extra")).and_then(|v| v.as_mapping()).map(|m| {
             m.iter()
-                .map(|(k, v)| {
+                .map(|(k, v)| -> (String, serde_json::Value) {
                     let key = k.as_str().map(|s| s.to_string()).unwrap_or_default();
                     (key, yaml_to_json(v))
                 })
-                .collect::<HashMap<_, _>>()
+                .collect::<Vec<_>>()
         });
 
         Ok(IndexFile { schema_version, sources, assets, articles, prompts, thinking, terms, publish_records, extra })
@@ -579,9 +580,9 @@ docs: active
 "#;
         let index: IndexFile = serde_yaml::from_str(yaml).unwrap();
         let extra = index.extra.expect("extra should be populated");
-        assert!(extra.contains_key("project"), "extra should contain project");
-        assert!(extra.contains_key("updated"), "extra should contain updated");
-        assert!(extra.contains_key("docs"), "extra should contain docs");
+        assert!(extra.iter().any(|(k, _)| k == "project"), "extra should contain project");
+        assert!(extra.iter().any(|(k, _)| k == "updated"), "extra should contain updated");
+        assert!(extra.iter().any(|(k, _)| k == "docs"), "extra should contain docs");
     }
 
     /// FR-011: a legacy opaque `prompts:`/`thinking:` scalar value (pre-dating
@@ -601,9 +602,28 @@ thinking: active
         assert!(index.prompts.is_none(), "legacy scalar should degrade to no projection, not error");
         assert!(index.thinking.is_none(), "legacy scalar should degrade to no projection, not error");
         let extra = index.extra.expect("extra should be populated");
-        assert!(extra.contains_key("updated"), "unrelated unknown field should still round-trip via extra");
-        assert!(!extra.contains_key("prompts"), "prompts is now a known key, not an extra field");
-        assert!(!extra.contains_key("thinking"), "thinking is now a known key, not an extra field");
+        assert!(extra.iter().any(|(k, _)| k == "updated"), "unrelated unknown field should still round-trip via extra");
+        assert!(!extra.iter().any(|(k, _)| k == "prompts"), "prompts is now a known key, not an extra field");
+        assert!(!extra.iter().any(|(k, _)| k == "thinking"), "thinking is now a known key, not an extra field");
+    }
+
+    /// Spec 075 FR-018 / Constitution IV: re-serializing an unchanged index
+    /// must be byte-identical every time. `extra`'s order previously came
+    /// from a `HashMap`, which does not guarantee iteration order — a real
+    /// non-determinism bug for any index with unrecognised top-level keys,
+    /// independent of anything else in this feature.
+    #[test]
+    fn extra_fields_round_trip_in_original_order_deterministically() {
+        let yaml = "schema_version: '1'\nalpha: 1\nzulu: 2\nmiddle: 3\n";
+        let mut renders = std::collections::BTreeSet::new();
+        for _ in 0..20 {
+            let index: IndexFile = serde_yaml::from_str(yaml).unwrap();
+            let extra = index.extra.as_ref().expect("extra should be populated");
+            let order: Vec<&str> = extra.iter().map(|(k, _)| k.as_str()).collect();
+            assert_eq!(order, vec!["alpha", "zulu", "middle"], "extra must preserve original document order");
+            renders.insert(crate::service::index::serialize_mind_index(&index).unwrap());
+        }
+        assert_eq!(renders.len(), 1, "re-serializing the same content must be byte-identical every run");
     }
 
     #[test]

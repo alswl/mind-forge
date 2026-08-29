@@ -24,8 +24,8 @@ fn status_json_output_has_required_fields() {
     assert_eq!(code, 0, "status failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     // Check core fields exist.
-    assert!(v["data"]["data"]["index_status"].as_str().is_some(), "must have index_status");
-    assert!(v["data"]["data"]["retained_snapshots"].as_u64().is_some(), "must have retained_snapshots");
+    assert!(v["data"]["index_status"].as_str().is_some(), "must have index_status");
+    assert!(v["data"]["retained_snapshots"].as_u64().is_some(), "must have retained_snapshots");
 }
 
 #[test]
@@ -34,7 +34,7 @@ fn status_on_enabled_but_unsynced_repo_reports_ready_or_missing() {
     let (stdout, stderr, code) = run(&repo, &["source", "status"], &[]);
     assert_eq!(code, 0, "status failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
-    let status = v["data"]["data"]["index_status"].as_str().unwrap_or("unknown");
+    let status = v["data"]["index_status"].as_str().unwrap_or("unknown");
     assert!(
         status == "ready" || status == "missing",
         "unsynced repo status must be ready or missing, got '{status}'\n{stdout}"

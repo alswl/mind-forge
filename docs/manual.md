@@ -120,10 +120,10 @@ mf project list
 mf project show blog
 mf project update blog --description "Writing workspace"
 mf project update blog --clear-description
-mf project rename blog writing/blog
-mf project remove writing/blog --yes
-mf project archive writing/blog --yes
-mf project lint --project writing/blog --fix
+mf project rename blog writing
+mf project remove writing --yes
+mf project archive writing --yes
+mf project lint --project writing --fix
 mf project index
 mf project import /path/to/existing --force
 ```
@@ -265,10 +265,45 @@ mf source export|import|trace
 auditable and nothing is silently dropped. `--dry-run` reports without writing
 or fetching.
 
-The RAG storage schema is `v2`. A repository last indexed under `v1` refuses
-`search`/`sync` with an actionable diagnostic pointing at `mf source sync --rebuild`;
-run that once to regenerate the context-enriched index and adopt `v2` (no
-migration shim, and no detour through `source admin rebuild`).
+The RAG storage schema is `v3`. Schema compatibility is read from the
+`registrations` table's actual on-disk structure — never a recorded value —
+so it cannot go stale or be hand-edited. A repository whose tables predate
+what the build requires refuses `search`/`sync` with an actionable
+diagnostic pointing at `mf source sync --rebuild`; run that once to
+regenerate the index and adopt the current schema (no migration shim, and
+no detour through `source admin rebuild`).
+
+Machine-local activation state (gitignored, per-worktree) carries only this
+machine's activation status — nothing else. It cannot go stale relative to
+the corpus on disk: `mf source status`/`mf source sync` read the corpus
+directly, so deleting the local state file self-heals with zero manual
+edits — `status` reports what it finds and `sync` adopts an existing corpus
+or activates from scratch, whichever applies.
+
+**Storage authority** — who owns what, and what that implies for recovery:
+
+| Dataset | Authority | Notes |
+|---|---|---|
+| Files on disk (`sources/**`, docs, prompts, thinking) | Fact | Recoverable only from version control |
+| `mind-index.yaml` → `terms:` | Fact, permanently | The store never owns terms |
+| `mind-index.yaml` → `sources:` | Lossless mirror of the store | Reproduces every field, including timestamps and unrecognised ones |
+| Registration store (LanceDB) | Authoritative store | Holds the full source record: identity, location, tags, `added_at`/`updated_at`, and an `extras_json` passthrough for anything it does not itself interpret |
+| Machine-local state | This machine's activation status only | A single field; everything else is read from the corpus on disk |
+| Corpus generations, snapshots, pointer | Authoritative record on disk | The source of generation and schema facts |
+
+Two invariants hold across every intermediate state:
+
+- **Divergence resolves by import, never by deletion.** When the index and
+  the store disagree, the store learns the index's content; an index entry
+  the store doesn't (yet) know about is never dropped to force agreement.
+  `mf source index` is a disk-adoption and reconcile pass on this backend:
+  files present on disk but unknown to the store are imported (reported
+  under `imported`, with populated paths); registrations whose file has
+  vanished are reported as `missing`, never deleted — removal happens only
+  through the explicit `mf source remove` / `mf source clean`.
+- **A writer may only project a key it fully holds.** Source-side commands
+  never touch `terms:`; article/prompt/thinking commands never touch
+  `sources:`. Each writer stays confined to the subtree it owns.
 
 #### Embedding provider
 
@@ -447,7 +482,7 @@ correct in the built artifact.
 
 ```bash
 mf build first-post --project blog
-mf build @projects/blog/docs/first-post/ --output ./_build/first-post.md
+mf build @projects/blog/docs/first-post/ --out ./_build/first-post.md
 mf build first-post --dry-run --project blog
 ```
 

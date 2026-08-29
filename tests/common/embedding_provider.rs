@@ -73,7 +73,7 @@ pub fn run(repo: &TempDir, args: &[&str], envs: &[(&str, &str)]) -> (String, Str
 pub fn report(stdout: &str) -> Value {
     let envelope: Value =
         serde_json::from_str(stdout).unwrap_or_else(|e| panic!("stdout must be pure JSON: {e}\n{stdout}"));
-    envelope["data"]["data"].clone()
+    envelope["data"].clone()
 }
 
 /// Merge the given keys into `source.advanced` in `minds.yaml`, preserving

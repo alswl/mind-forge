@@ -51,11 +51,11 @@ fn indexed_repo() -> Dataset {
 /// Parse the inner command report from the `mf --output json` envelope.
 ///
 /// stdout is a machine-readable JSON contract: dependency logs (LanceDB) go to
-/// stderr, so stdout must parse cleanly with the report at `data.data`.
+/// stderr, so stdout must parse cleanly with the report at `data`.
 fn report(stdout: &str) -> Value {
     let envelope: Value =
         serde_json::from_str(stdout).unwrap_or_else(|e| panic!("stdout must be pure JSON: {e}\n{stdout}"));
-    envelope["data"]["data"].clone()
+    envelope["data"].clone()
 }
 
 #[test]

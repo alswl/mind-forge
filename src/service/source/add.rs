@@ -58,7 +58,7 @@ pub struct AddArgs<'a> {
 /// `sources/<seg>/…/<stem>.<ext>` → `<seg>-<stem>` (e.g. `sources/dima/2026-07/
 /// 0731.md` → `dima-0731`). Falls back to the immediate parent directory name
 /// when the layout is flat (spec 074 #32).
-fn suggest_unique_name(source_path: &Path, sources_dir: &Path) -> String {
+pub(crate) fn suggest_unique_name(source_path: &Path, sources_dir: &Path) -> String {
     let stem = source_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
     let rel = source_path.strip_prefix(sources_dir).unwrap_or(source_path);
     let mut components = rel.components();
@@ -77,7 +77,7 @@ fn suggest_unique_name(source_path: &Path, sources_dir: &Path) -> String {
 /// Actionable duplicate-source-name error (spec 074 #32): names the taken
 /// source and — when the collision came from an auto-derived name — suggests a
 /// concrete unique `-n` value. No automatic renaming is introduced.
-fn name_collision_error(taken: &str, suggestion: Option<String>) -> MfError {
+pub(crate) fn name_collision_error(taken: &str, suggestion: Option<String>) -> MfError {
     let hint =
         suggestion.map_or_else(|| "choose a unique --name".to_string(), |suggestion| format!("try -n {suggestion}"));
     MfError::usage(format!("source name '{taken}' is already registered"), Some(hint))
@@ -157,6 +157,7 @@ pub fn register_only(
         tags: vec![],
         added_at: now.clone(),
         updated_at: now,
+        extra: Default::default(),
     };
     if !dry_run {
         sources.push(source.clone());
@@ -329,6 +330,7 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
                 tags: prior.tags.clone(),
                 added_at: prior.added_at.clone(),
                 updated_at: now,
+                extra: prior.extra.clone(),
             };
             replace_in_sources(sources, idx, source.clone());
             (AddMode::Url, source, true)
@@ -343,6 +345,7 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
                 tags: vec![],
                 added_at: now.clone(),
                 updated_at: now,
+                extra: Default::default(),
             };
             sources.push(source.clone());
             sources.sort_by(|a, b| a.name.cmp(&b.name));
@@ -458,6 +461,7 @@ fn add_path(repo_root: &Path, project_path: &Path, cwd: &Path, args: &AddArgs) -
                 tags: prior.tags.clone(),
                 added_at: prior.added_at.clone(),
                 updated_at: now,
+                extra: prior.extra.clone(),
             };
             let mode = if args.link { AddMode::Link } else { AddMode::Copy };
             replace_in_sources(sources, idx, source.clone());
@@ -477,6 +481,7 @@ fn add_path(repo_root: &Path, project_path: &Path, cwd: &Path, args: &AddArgs) -
                 tags: vec![],
                 added_at: now.clone(),
                 updated_at: now,
+                extra: Default::default(),
             };
             let mode = if args.link { AddMode::Link } else { AddMode::Copy };
             sources.push(source.clone());

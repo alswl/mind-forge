@@ -38,14 +38,17 @@ fn sync_idempotent_no_error() {
 
 #[test]
 fn sync_keeps_minds_yaml_stable_and_writes_local_marker() {
+    // Spec 075 FR-001: machine-local state carries only this machine's
+    // activation status — no snapshot id, fingerprint, or schema version.
     let repo = provider_repo();
     let minds_before = std::fs::read(repo.path().join("minds.yaml")).unwrap();
     let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "sync failed\nstdout:{stdout}\nstderr:{stderr}");
     assert_eq!(minds_before, std::fs::read(repo.path().join("minds.yaml")).unwrap());
     let state = std::fs::read_to_string(repo.path().join(".mind-forge/state.yaml")).unwrap();
-    assert!(state.contains("activation_snapshot_id"));
-    assert!(state.contains("storage_schema_version"));
+    assert!(state.contains("activated: true"), "local state must record activation:\n{state}");
+    assert!(!state.contains("activation_snapshot_id"), "local state must carry no snapshot id:\n{state}");
+    assert!(!state.contains("storage_schema_version"), "local state must carry no schema version:\n{state}");
 }
 
 #[test]
@@ -90,7 +93,7 @@ fn retained_snapshots_count_increases_after_multiple_syncs() {
     // Status must report at least 1 retained snapshot.
     let (status_out, _, _) = run(&repo, &["source", "status"], &[]);
     let v: serde_json::Value = serde_json::from_str(&status_out).expect("valid JSON");
-    let snapshots = v["data"]["data"]["retained_snapshots"].as_u64().unwrap_or(0);
+    let snapshots = v["data"]["retained_snapshots"].as_u64().unwrap_or(0);
     assert!(snapshots >= 1, "must have retained snapshots after syncs, got {snapshots}\n{status_out}");
 }
 
@@ -105,7 +108,7 @@ fn project_intents_created_as_json_files() {
     // Either way, the status must report zero pending intents.
     let (status_out, _, _) = run(&repo, &["source", "status"], &[]);
     let v: serde_json::Value = serde_json::from_str(&status_out).expect("valid JSON");
-    let intents = v["data"]["data"]["pending_intents"].as_u64().unwrap_or(0);
+    let intents = v["data"]["pending_intents"].as_u64().unwrap_or(0);
     assert_eq!(intents, 0, "clean sync must have zero pending intents, got {intents}\n{status_out}");
     // The transactions directory is created on demand by lifecycle operations.
     // Since no project lifecycle mutation happened in this test, it may not exist.

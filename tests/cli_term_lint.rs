@@ -282,7 +282,8 @@ fn lint_conflict_first_term_claims() {
     let project = repo.path().join("alpha");
     fs::create_dir_all(project.join("docs")).unwrap();
     // Two terms both correcting "conflict" → "Correct-A" and "conflict" → "Correct-B"
-    // creates an ambiguous finding — neither should auto-replace.
+    // is an exact tie: spec 075 FR-025 breaks it by declaration order, so the
+    // first-declared term wins the finding and FR-032 discloses the other.
     let index_yaml = r#"schema_version: '1'
 terms:
   - term: Correct-A
@@ -299,10 +300,9 @@ terms:
 
     let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
-    // Ambiguous: both terms should be reported, not silently won by first
-    assert!(stdout.contains("ambiguous"), "should be ambiguous: {stdout}");
-    assert!(stdout.contains("Correct-A"), "should mention Correct-A: {stdout}");
-    assert!(stdout.contains("Correct-B"), "should mention Correct-B: {stdout}");
+    assert!(stdout.contains("→ \"Correct-A\" [Correct-A]"), "first-declared term wins the tie: {stdout}");
+    assert!(stdout.contains("also claimed by: Correct-B"), "competing term must be disclosed: {stdout}");
+    assert!(!stdout.contains("ambiguous"), "exact ties are resolved, not reported ambiguous: {stdout}");
 }
 
 // ---------------------------------------------------------------------------
@@ -1075,4 +1075,103 @@ terms:
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("identifier-character edges"), "got: {stderr}");
+}
+
+// ---------------------------------------------------------------------------
+// Spec 075 US3: held-back corrections are visible, not silently discarded.
+// ---------------------------------------------------------------------------
+
+fn setup_held_back_repo() -> (common::TempDir, std::path::PathBuf) {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    common::write_index(
+        &repo,
+        "alpha",
+        r#"schema_version: '1'
+terms:
+  - term: Device
+    corrections:
+      - original: 机器
+        correct: 装置
+"#,
+    );
+    (repo, project)
+}
+
+/// T053/FR-020: a held-back finding is visibly distinguished from an
+/// auto-applicable one in text output — never rendered identically to a
+/// plain standalone match.
+#[test]
+fn lint_text_visibly_marks_a_held_back_finding() {
+    let (repo, project) = setup_held_back_repo();
+    write_doc(&project, "demo", "机器 很常见。\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("装置"), "the advisory finding must still be reported: {stdout}");
+    assert!(stdout.contains("held back"), "a held-back finding must be visibly marked: {stdout}");
+}
+
+/// T054/FR-020/FR-023: the JSON finding carries held-back status alongside
+/// its existing `safety_reason`.
+#[test]
+fn lint_json_finding_carries_held_back_status() {
+    let (repo, project) = setup_held_back_repo();
+    write_doc(&project, "demo", "机器 很常见。\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let findings = v["data"]["issues"].as_array().unwrap();
+    assert_eq!(findings.len(), 1, "{stdout}");
+    assert_eq!(findings[0]["safety_reason"], "short-cjk-advisory", "{stdout}");
+    assert_eq!(findings[0]["held_back"], true, "{stdout}");
+}
+
+/// T078/FR-032 (spec 075 US5): a lint finding whose original is claimed by
+/// more than one term (via the prefix-or-equal shadowing relationship, not
+/// the narrower "identical original" ambiguity test) discloses the
+/// competing terms.
+#[test]
+fn lint_discloses_competing_terms_for_a_prefix_shadowed_finding() {
+    let (repo, project) = setup_with_term();
+    // "ARCA Serverless" has no correction of its own registered — the
+    // narrower `build_ambiguous_originals` (same-original-text) test would
+    // not see any collision here, which is exactly why it doesn't cover #42.
+    common::write_index(
+        &repo,
+        "alpha",
+        r#"schema_version: '1'
+terms:
+  - term: Mind Repo
+    corrections:
+      - original: mindrepo
+        correct: Mind Repo
+      - original: arca
+        correct: Arca
+  - term: ARCA Serverless
+    corrections: []
+"#,
+    );
+    write_doc(&project, "demo", "arca deployment notes\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let findings = v["data"]["issues"].as_array().unwrap();
+    assert_eq!(findings.len(), 1, "{stdout}");
+    let competing = findings[0]["competing_terms"].as_array().expect("competing_terms present");
+    assert!(
+        competing.iter().any(|t| t == "ARCA Serverless"),
+        "the finding must disclose the term it could be misdirected to: {stdout}"
+    );
+
+    let text_output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let text_stdout = String::from_utf8(text_output.stdout).unwrap();
+    assert!(
+        text_stdout.contains("ARCA Serverless"),
+        "text output must also disclose the competing term: {text_stdout}"
+    );
 }

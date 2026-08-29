@@ -18,7 +18,7 @@ fn search_json_output_has_envelope() {
     assert_eq!(code, 0, "search failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
     assert_eq!(v["status"], "ok");
-    // Search uses the report() helper which expects envelope.data.data.
+    // Search uses the report() helper which expects envelope.data.
     let r = report(&stdout);
     assert!(r["results"].as_array().is_some(), "results must be an array\n{stdout}");
 }

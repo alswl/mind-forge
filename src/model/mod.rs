@@ -143,6 +143,7 @@ mod resource_tests {
             tags: vec![],
             added_at: String::new(),
             updated_at: String::new(),
+            extra: Default::default(),
         };
         assert_eq!(source.identity(), "report");
     }

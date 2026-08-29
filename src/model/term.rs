@@ -152,6 +152,21 @@ pub struct TermFinding {
     pub substring_adjacent_word: bool,
     pub selection: FindingSelection,
     pub context: String,
+    /// Spec 075 US3/FR-020: true when this finding will not be applied
+    /// automatically because it is an unopted-in advisory finding (e.g.
+    /// short-CJK) — distinct from a genuinely ambiguous finding (multiple
+    /// competing terms), which `selection` also reports as `Ambiguous` but
+    /// which is not "held back" in the choice-channel sense. Computed by
+    /// selection classification, not at scan time.
+    #[serde(default)]
+    pub held_back: bool,
+    /// Spec 075 US5/FR-032: names of other terms whose name or registered
+    /// original is a prefix of, or equal to, this finding's `original` — the
+    /// same cross-term shadowing relationship checked at registration time
+    /// (FR-030), disclosed here so a misdirected finding is diagnosable from
+    /// the finding alone, not just by inspecting terms one by one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub competing_terms: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -396,6 +411,10 @@ pub struct TermLintReport {
     pub excluded_count: u64,
     pub below_confidence_count: u64,
     pub ineligible_count: u64,
+    /// Spec 075 US3/FR-021/FR-023: findings held back only because they are
+    /// unopted-in advisory findings — a narrower subset of `ineligible_count`
+    /// that excludes genuinely ambiguous findings (see `TermFinding::held_back`).
+    pub held_back_count: u64,
 }
 
 #[cfg(test)]

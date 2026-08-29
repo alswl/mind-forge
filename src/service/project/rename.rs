@@ -49,7 +49,11 @@ pub fn rename_project(repo_root: &Path, old_name: &str, new_name: &str) -> Resul
         return Err(MfError::file_exists(new_path));
     }
 
-    // Use git mv when inside a git repo, otherwise fall back to fs::rename
+    // Use git mv only when the project's files are actually tracked;
+    // otherwise fall back to fs::rename. Spec 075 US7/D10: git mv always
+    // ran whenever inside a work tree, regardless of trackedness — on an
+    // untracked project that fails with a raw "source directory is empty"
+    // error, since git has nothing to move.
     let from_rel = old_path.strip_prefix(repo_root).unwrap_or(&old_path);
     let to_rel = new_path.strip_prefix(repo_root).unwrap_or(&new_path);
 
@@ -58,20 +62,36 @@ pub fn rename_project(repo_root: &Path, old_name: &str, new_name: &str) -> Resul
 
     match git_check {
         Ok(output) if output.status.success() => {
-            let mv_output = std::process::Command::new("git")
-                .args(["mv", from_rel.to_string_lossy().as_ref(), to_rel.to_string_lossy().as_ref()])
+            // The project is a directory: `git ls-files <dir>` lists any
+            // tracked file under it (non-empty stdout), which is a better
+            // trackedness probe than `--error-unmatch` (built for single
+            // file pathspecs, not directories).
+            let tracked = std::process::Command::new("git")
+                .args(["ls-files"])
+                .arg(from_rel)
                 .current_dir(repo_root)
                 .output()
-                .map_err(|e| {
-                    MfError::usage(format!("git mv failed: {e}"), Some("ensure git is installed".to_string()))
-                })?;
+                .map(|out| out.status.success() && !out.stdout.is_empty())
+                .unwrap_or(false);
 
-            if !mv_output.status.success() {
-                let stderr = String::from_utf8_lossy(&mv_output.stderr);
-                return Err(MfError::usage(
-                    format!("git mv failed: {stderr}"),
-                    Some("check that there are no unstaged changes blocking the move".to_string()),
-                ));
+            if tracked {
+                let mv_output = std::process::Command::new("git")
+                    .args(["mv", from_rel.to_string_lossy().as_ref(), to_rel.to_string_lossy().as_ref()])
+                    .current_dir(repo_root)
+                    .output()
+                    .map_err(|e| {
+                        MfError::usage(format!("git mv failed: {e}"), Some("ensure git is installed".to_string()))
+                    })?;
+
+                if !mv_output.status.success() {
+                    let stderr = String::from_utf8_lossy(&mv_output.stderr);
+                    return Err(MfError::usage(
+                        format!("git mv failed: {stderr}"),
+                        Some("check that there are no unstaged changes blocking the move".to_string()),
+                    ));
+                }
+            } else {
+                std::fs::rename(&old_path, &new_path).map_err(MfError::Io)?;
             }
         }
         Ok(_) => {

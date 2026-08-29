@@ -242,6 +242,45 @@ pub(super) fn byte_offset_to_line_col(content: &str, byte_offset: usize) -> (u32
     (line, col)
 }
 
+/// Spec 075 US5/FR-032: `a` and `b` are in a prefix-or-equal relationship,
+/// case-insensitively for ASCII — the same relationship checked at
+/// registration time (`correction.rs::is_prefix_or_equal_ci`), applied here
+/// per-finding so a misdirected match discloses the terms it could have gone
+/// to instead of only the one it happened to match.
+fn is_prefix_or_equal_ci(a: &str, b: &str) -> bool {
+    let a = a.to_ascii_lowercase();
+    let b = b.to_ascii_lowercase();
+    a == b || a.starts_with(&b) || b.starts_with(&a)
+}
+
+/// Other terms (by name) whose name or registered original is in a
+/// prefix-or-equal relationship with `original` — every term this finding's
+/// match could plausibly have been claimed by instead of `own_term`.
+///
+/// `all_term_names` covers terms with zero registered corrections (which
+/// have no `CorrectionRef` at all and so would otherwise be invisible here);
+/// `corrections` covers every other term's registered originals.
+fn competing_terms(
+    corrections: &[CorrectionRef<'_>],
+    all_term_names: &[&str],
+    own_term: &str,
+    original: &str,
+) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    let mut out = Vec::new();
+    for &name in all_term_names {
+        if name != own_term && is_prefix_or_equal_ci(original, name) && seen.insert(name) {
+            out.push(name.to_string());
+        }
+    }
+    for c in corrections {
+        if c.term_name != own_term && is_prefix_or_equal_ci(original, c.original) && seen.insert(c.term_name) {
+            out.push(c.term_name.to_string());
+        }
+    }
+    out
+}
+
 pub(crate) struct CorrectionRef<'a> {
     /// Position in the YAML `corrections:` list. Threaded through to
     /// `InternalFinding.yaml_index` so dedup can break ties by declaration
@@ -265,13 +304,27 @@ pub(crate) fn scan_file_for_corrections(
     content: &str,
     sanitized: &[u8],
     corrections: &[CorrectionRef<'_>],
+    all_term_names: &[&str],
     rel_path: &str,
     findings: &mut Vec<TermFinding>,
     internal_findings: &mut Vec<InternalFinding>,
     claimed: &mut BTreeSet<(String, usize, usize)>,
     jieba: Option<&JiebaBoundaries>,
 ) {
-    for c in corrections {
+    // Spec 075 US4/FR-025/FR-027: the most specific (longest) registered
+    // correction must win at any position, regardless of declaration order.
+    // Scanning corrections in declaration order let a shorter correction
+    // (e.g. 机器→装置) claim a start offset before a longer, more specific one
+    // (机器人→机械装置) was ever tried at the same position, so the longer
+    // correction was silently never reported. Scanning longest-original-first
+    // — ties broken by declaration order, matching `deduplicate_spans`'
+    // `(start ASC, end DESC, correction_order ASC)` rule on the fix side —
+    // means the longer correction claims the position first and the shorter
+    // one is later rejected by the overlap check below.
+    let mut ordered: Vec<&CorrectionRef<'_>> = corrections.iter().collect();
+    ordered.sort_by(|a, b| b.original.len().cmp(&a.original.len()).then(a.yaml_index.cmp(&b.yaml_index)));
+
+    for c in ordered {
         // Pinyin matches are handled by the pinyin scanner; literal scan never emits pinyin.
         if c.match_kind == MatchKind::Pinyin {
             continue;
@@ -286,13 +339,23 @@ pub(crate) fn scan_file_for_corrections(
         // they lint but are not auto-applied (a future segmentation miss must
         // not corrupt prose). Longer CJK and ASCII corrections are unaffected.
         let short_cjk_advisory = matches!(check, WordCheck::Cjk) && is_short_cjk_correction(c.original);
+        // Depends only on this correction, so compute it once rather than
+        // once per matched occurrence.
+        let competing = competing_terms(corrections, all_term_names, c.term_name, c.original);
         let mut search_start = 0;
         while search_start < sanitized.len() {
             let Some(rel_offset) = find_subseq(&sanitized[search_start..], orig_bytes) else {
                 break;
             };
             let abs_offset = search_start + rel_offset;
-            if claimed.iter().any(|(path, off, _)| path == rel_path && *off == abs_offset) {
+            // A longer correction scanned earlier may have claimed a byte
+            // range that only *overlaps* this candidate's start (not
+            // necessarily starts at the same offset) — reject on any overlap,
+            // not just an exact-start match, so a shorter correction cannot
+            // partially eat the tail of an already-claimed longer one either.
+            if claimed.iter().any(|(path, off, len)| {
+                path == rel_path && abs_offset < *off + *len && *off < abs_offset + orig_bytes.len()
+            }) {
                 search_start = abs_offset + 1;
                 continue;
             }
@@ -338,6 +401,9 @@ pub(crate) fn scan_file_for_corrections(
                 substring_adjacent_word,
                 selection: if is_ambiguous { FindingSelection::Ambiguous } else { FindingSelection::Selected },
                 context: context_excerpt(content, abs_offset, orig_bytes.len()),
+                // Overwritten by `apply_selection` once the fix scope is known.
+                held_back: false,
+                competing_terms: competing.clone(),
             });
 
             internal_findings.push(InternalFinding {
@@ -688,6 +754,7 @@ mod tests {
             content,
             content.as_bytes(),
             &[correction],
+            &[],
             "synthetic.md",
             &mut findings,
             &mut internal,

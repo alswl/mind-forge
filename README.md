@@ -233,10 +233,20 @@ mf source trace
 The old `source advanced` command tree and terminal enrichment workflow are
 removed. Existing enrichment data is not deleted by sync or maintenance.
 
-The RAG storage schema is `v2` (per-registration context). A repository indexed
-under `v1` refuses `search`/`sync` with a diagnostic; run `mf source admin
-rebuild` once to regenerate the context-enriched index and adopt `v2`. No
-migration shim is provided.
+The RAG storage schema is `v3`. Schema compatibility is read from the
+`registrations` table's actual on-disk structure rather than a recorded
+version, so it cannot go stale or be hand-edited. A repository whose tables
+predate the current schema refuses `search`/`sync` with a diagnostic; run
+`mf source sync --rebuild` once to regenerate the index. No migration shim is
+provided.
+
+The Lance registration store is authoritative for Sources; the
+`mind-index.yaml` `sources:` section is a lossless compatibility projection.
+Terms remain authoritative in `mind-index.yaml`, while source, article, and
+prompt/thinking commands stay within the sections they own. Disk-adoption and
+reconcile operations import missing registrations and never delete them
+implicitly. Machine-local activation state contains only activation status;
+the corpus on disk remains the source of truth for recovery.
 
 Optional semantic embeddings use an OpenAI-compatible `/v1/embeddings`
 provider. Credentials belong in environment variables or the gitignored

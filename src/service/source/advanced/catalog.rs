@@ -50,6 +50,12 @@ pub struct CatalogRegistration {
     pub context_json: Option<String>,
     /// Serialized `ImportProvenance` for source bindings (schema v2).
     pub imported_by_json: Option<String>,
+    /// RFC 3339 creation timestamp (schema v3).
+    pub added_at: Option<String>,
+    /// RFC 3339 last-modified timestamp (schema v3).
+    pub updated_at: Option<String>,
+    /// Unrecognised project-index fields, as a serialized JSON object (schema v3).
+    pub extras_json: Option<String>,
 }
 
 impl SourceCatalog {
@@ -120,6 +126,9 @@ impl SourceCatalog {
             };
             let contexts = optional("context_json");
             let imported = optional("imported_by_json");
+            let added_ats = optional("added_at");
+            let updated_ats = optional("updated_at");
+            let extras = optional("extras_json");
             let read_opt = |array: Option<&StringArray>, row: usize| -> Option<String> {
                 array.and_then(|a| (!a.is_null(row)).then(|| a.value(row).to_string()))
             };
@@ -139,6 +148,9 @@ impl SourceCatalog {
                     state: states.value(row).to_string(),
                     context_json: read_opt(contexts, row),
                     imported_by_json: read_opt(imported, row),
+                    added_at: read_opt(added_ats, row),
+                    updated_at: read_opt(updated_ats, row),
+                    extras_json: read_opt(extras, row),
                 });
             }
         }
@@ -244,6 +256,9 @@ pub fn discover_article_registrations(repo_root: &Path) -> Vec<CatalogRegistrati
                     state: "live".into(),
                     context_json: None,
                     imported_by_json: None,
+                    added_at: None,
+                    updated_at: None,
+                    extras_json: None,
                 });
             }
         }
@@ -282,6 +297,9 @@ pub fn discover_project_registrations(repo_root: &Path) -> Vec<CatalogRegistrati
             state: "live".into(),
             context_json: None,
             imported_by_json: None,
+            added_at: None,
+            updated_at: None,
+            extras_json: None,
         });
     }
     out.sort_by(|a, b| a.registration_key.cmp(&b.registration_key));
@@ -311,6 +329,9 @@ pub fn discover_term_registrations(repo_root: &Path) -> Vec<CatalogRegistration>
             state: "live".into(),
             context_json: None,
             imported_by_json: None,
+            added_at: None,
+            updated_at: None,
+            extras_json: None,
         });
     }
     out.sort_by(|a, b| a.registration_key.cmp(&b.registration_key));
@@ -353,6 +374,9 @@ fn collect_article_files(
             state: "live".into(),
             context_json: None,
             imported_by_json: None,
+            added_at: None,
+            updated_at: None,
+            extras_json: None,
         });
     }
 }
@@ -497,9 +521,8 @@ mod tests {
         let config = ResolvedSourceConfig {
             backend: SourceBackend::Legacy,
             is_lance_active: false,
-            is_marker_corrupt: false,
-            activation_snapshot_id: None,
-            storage_schema_version: None,
+            corpus_missing: false,
+            activated_here: false,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,
@@ -534,9 +557,8 @@ mod tests {
         let config = ResolvedSourceConfig {
             backend: SourceBackend::Lance,
             is_lance_active: true,
-            is_marker_corrupt: false,
-            activation_snapshot_id: Some("s".into()),
-            storage_schema_version: Some("1".into()),
+            corpus_missing: false,
+            activated_here: true,
             chunk_tokens: 384,
             chunk_overlap: 48,
             fetch_max_bytes: 64 * 1024 * 1024,

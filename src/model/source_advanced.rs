@@ -114,6 +114,20 @@ pub struct SourceRegistration {
     /// `source add`/`source new` (schema v2). `None` for non-source or legacy rows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub imported_by_json: Option<String>,
+    /// RFC 3339 creation timestamp (schema v3, spec 075 FR-011). Set once at
+    /// first registration and preserved across every later mutation — this is
+    /// what makes the project-index mirror lossless.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub added_at: Option<String>,
+    /// RFC 3339 last-modified timestamp (schema v3). Refreshed on every
+    /// mutation of this registration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    /// Serialized JSON object carrying any project-index field this store does
+    /// not otherwise interpret (schema v3). Round-tripped verbatim so the
+    /// mirror never silently drops a field it does not understand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extras_json: Option<String>,
 }
 
 fn empty_json_object() -> String {

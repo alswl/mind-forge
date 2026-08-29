@@ -335,3 +335,91 @@ terms:
     assert_eq!(output.status.code(), Some(1), "loose substring should emit a finding");
     assert!(String::from_utf8(output.stdout).unwrap().contains("开机"));
 }
+
+// ---------------------------------------------------------------------------
+// Spec 075 US4: longest match wins in every mode.
+// ---------------------------------------------------------------------------
+
+fn setup_overlapping_corrections_repo() -> (common::TempDir, std::path::PathBuf) {
+    let repo = setup_cjk_repo();
+    let project = repo.path().join("alpha");
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: Device
+    corrections:
+      - original: 机器
+        correct: 装置
+  - term: Machinery
+    corrections:
+      - original: 机器人
+        correct: 机械装置
+"#;
+    write_cjk_index(&repo, "alpha", index_yaml);
+    (repo, project)
+}
+
+/// T065/FR-025: with a short correction ("机器") registered as a prefix of a
+/// longer one ("机器人"), linting text containing the longer form must report
+/// the longer correction and NOT the shorter one at that position.
+#[test]
+fn lint_reports_longest_match_not_the_shorter_prefix() {
+    let (repo, project) = setup_overlapping_corrections_repo();
+    write_cjk_doc(&project, "cjk", "机器人\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("→ \"机械装置\""), "the longer correction must be reported: {stdout}");
+    assert!(!stdout.contains("→ \"装置\""), "the shorter correction must not fire at the same position: {stdout}");
+}
+
+/// T068/FR-029: the short correction still fires when standing alone outside
+/// any longer match.
+#[test]
+fn lint_still_reports_short_correction_when_standing_alone() {
+    let (repo, project) = setup_overlapping_corrections_repo();
+    write_cjk_doc(&project, "cjk", "这个机器很旧了。\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("→ \"装置\""), "standalone shorter form must still be reported: {stdout}");
+}
+
+/// T070 (research U1 resolution attempt): the CJK word-boundary check (jieba
+/// tokenization) already keeps a short correction from firing *inside* a
+/// longer jieba-recognized word, which is why the two tests above pass
+/// without any change. But `match: substring, boundary: loose` has no word
+/// boundary at all (`WordCheck::SubstringLoose` is unconditional) — that is
+/// where declaration-order claiming, not length, decides the winner. This
+/// reproduces the actual U1 defect: the *shorter* correction is declared
+/// first, so `scan_content`'s per-correction claimed-offset loop lets it
+/// claim the position before the longer correction is ever tried.
+#[test]
+fn lint_loose_substring_reports_longest_match_regardless_of_declaration_order() {
+    let repo = setup_cjk_repo();
+    let project = repo.path().join("alpha");
+    let index_yaml = r#"schema_version: '1'
+terms:
+  - term: Device
+    corrections:
+      - original: 机器
+        correct: 装置
+        match: substring
+        boundary: loose
+  - term: Machinery
+    corrections:
+      - original: 机器人
+        correct: 机械装置
+        match: substring
+        boundary: loose
+"#;
+    write_cjk_index(&repo, "alpha", index_yaml);
+    write_cjk_doc(&project, "cjk", "机器人\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("→ \"机械装置\""), "the longer correction must win at this position: {stdout}");
+    assert!(
+        !stdout.contains("→ \"装置\""),
+        "the shorter correction (declared first) must not win by declaration order: {stdout}"
+    );
+}

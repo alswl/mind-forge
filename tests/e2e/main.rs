@@ -1,3 +1,4 @@
+mod archive_workflow;
 mod article_blank_default;
 mod boundary_contracts;
 mod build_worktree_paths;

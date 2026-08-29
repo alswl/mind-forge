@@ -1,16 +1,19 @@
-//! CLI contract tests for `source sync --rebuild` (spec 074 #33).
+//! CLI contract tests for `source sync --rebuild` (spec 074 #33, spec 075).
 //!
-//! On a schema-drifted Lance repo, plain `sync` refuses with a hint pointing at
-//! `mf source sync --rebuild`; `sync --rebuild` regenerates the index to the
-//! current storage schema in the same command family and restores read-only
-//! advanced commands. `--help` lists the new flag.
+//! Spec 075 moved schema compatibility to the actual on-disk table structure
+//! (FR-002): a hand-edited `minds.yaml.source.storage_schema_version` is no
+//! longer read by anything, so it can no longer trigger — or fake escaping —
+//! a drift refusal. Genuine drift (a real v1-shaped table) is covered at the
+//! unit level in `src/service/source/advanced/lance_store.rs`, where a real
+//! table can be constructed directly. `sync --rebuild` still succeeds and
+//! restores search unconditionally; `--help` still lists the flag.
 
 mod common;
 use common::embedding_provider::{provider_repo, run};
 
-/// Rewrite `minds.yaml.source.storage_schema_version` to simulate a v1 snapshot
-/// (schema drift from the current v2 build).
-fn downgrade_schema_to_v1(repo: &std::path::Path) {
+/// Rewrite `minds.yaml.source.storage_schema_version`. Spec 075: this key is
+/// no longer part of `RepositorySourceConfig`, so writing it is inert.
+fn declare_stale_schema_version_in_yaml(repo: &std::path::Path) {
     let minds = repo.join("minds.yaml");
     let text = std::fs::read_to_string(&minds).expect("read minds.yaml");
     let mut root: serde_yaml::Value = serde_yaml::from_str(&text).expect("parse minds.yaml");
@@ -23,35 +26,29 @@ fn downgrade_schema_to_v1(repo: &std::path::Path) {
     std::fs::write(&minds, serde_yaml::to_string(&root).unwrap()).expect("write minds.yaml");
 }
 
-/// T009: plain `source sync` on a schema-drifted repo refuses with a hint naming
-/// `mf source sync --rebuild` (not the old `admin rebuild`).
+/// FR-010/SC-002: a hand-edited declaration cannot fake a drift refusal —
+/// there is nothing left reading it.
 #[test]
-fn plain_sync_refuses_with_rebuild_hint() {
+fn plain_sync_ignores_hand_edited_schema_declaration() {
     let repo = provider_repo();
     let (o, e, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "activation sync failed\n{o}\n{e}");
 
-    downgrade_schema_to_v1(repo.path());
+    declare_stale_schema_version_in_yaml(repo.path());
 
     let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
-    assert_eq!(code, 1, "drifted sync must refuse\nstdout:\n{stdout}\nstderr:\n{stderr}");
-    assert!(
-        stderr.contains("mf source sync --rebuild"),
-        "hint must name `mf source sync --rebuild`\nstderr:\n{stderr}"
-    );
-    assert!(!stderr.contains("admin rebuild"), "hint must not point at `admin rebuild`\nstderr:\n{stderr}");
+    assert_eq!(code, 0, "sync must be unaffected by a hand-edited declaration\nstdout:\n{stdout}\nstderr:\n{stderr}");
 }
 
-/// T010: `source sync --rebuild` on the drifted repo regenerates the index,
-/// warns about the full re-index, and a subsequent read-only advanced command
-/// (search) succeeds.
+/// `source sync --rebuild` succeeds and search remains available afterward,
+/// regardless of what the declared (and now-inert) schema value claims.
 #[test]
-fn sync_rebuild_recovers_drifted_repo() {
+fn sync_rebuild_succeeds_and_search_stays_available() {
     let repo = provider_repo();
     let (o, e, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "activation sync failed\n{o}\n{e}");
 
-    downgrade_schema_to_v1(repo.path());
+    declare_stale_schema_version_in_yaml(repo.path());
 
     let (stdout, stderr, code) = run(&repo, &["source", "sync", "--rebuild", "--offline"], &[]);
     assert_eq!(code, 0, "sync --rebuild must succeed\nstdout:\n{stdout}\nstderr:\n{stderr}");
@@ -59,32 +56,27 @@ fn sync_rebuild_recovers_drifted_repo() {
     assert_eq!(envelope["status"], "ok", "status must be ok\n{stdout}");
     assert!(stderr.contains("full re-index"), "stderr must warn about the full re-index\nstderr:\n{stderr}");
 
-    // The index is now queryable again without an admin detour.
     let (stdout, stderr, code) = run(&repo, &["source", "search", "notes"], &[]);
     assert_eq!(code, 0, "search must succeed after sync --rebuild\nstdout:\n{stdout}\nstderr:\n{stderr}");
 }
 
-/// T010b: `--rebuild --dry-run` reports without writing and without upgrading
-/// the persisted schema marker.
+/// FR-013: `--rebuild --dry-run` reports without writing content, the store,
+/// or `minds.yaml` at all.
 #[test]
 fn sync_rebuild_dry_run_does_not_write() {
     let repo = provider_repo();
     let (o, e, code) = run(&repo, &["source", "sync", "--offline"], &[]);
     assert_eq!(code, 0, "activation sync failed\n{o}\n{e}");
 
-    downgrade_schema_to_v1(repo.path());
+    let minds = repo.path().join("minds.yaml");
+    let before = std::fs::read(&minds).unwrap();
 
     let (stdout, stderr, code) = run(&repo, &["source", "sync", "--rebuild", "--offline", "--dry-run"], &[]);
     assert_eq!(code, 0, "sync --rebuild --dry-run must succeed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     assert!(!stderr.contains("full re-index ran"), "dry-run must not claim a real re-index ran\nstderr:\n{stderr}");
 
-    // The drift marker is still v1 (dry-run must not upgrade).
-    let minds = repo.path().join("minds.yaml");
-    let text = std::fs::read_to_string(&minds).unwrap();
-    assert!(
-        text.contains("storage_schema_version: \"1\"") || text.contains("storage_schema_version: '1'"),
-        "dry-run must not upgrade the schema marker\n{text}"
-    );
+    let after = std::fs::read(&minds).unwrap();
+    assert_eq!(before, after, "dry-run must not write minds.yaml at all");
 }
 
 /// T011: `source sync --help` lists the `--rebuild` flag.

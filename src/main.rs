@@ -73,6 +73,20 @@ fn handle_parse_error(
             write!(stdout, "{err}")?;
             Ok(ExitCode::Ok)
         }
+        ErrorKind::InvalidValue if build_output_flag_confusion(&err, args) => {
+            // Spec 075 US7/FR-037: `--output <FORMAT>` (text/json) and
+            // `mf build`'s `--out <PATH>` are easy to confuse by name; clap's
+            // stock enum-validation error lists the valid formats but never
+            // mentions that `--out` is the flag that accepts a path.
+            let message = err.to_string().trim().trim_start_matches("error:").trim().to_string();
+            let mf_error = MfError::usage(message, Some("to set the build output path, use --out instead".to_string()));
+            if wants_json_output(args) {
+                render(stderr, output::Format::Json, true, Payload::Error(&mf_error))?;
+            } else {
+                render(stderr, output::Format::Text, true, Payload::Error(&mf_error))?;
+            }
+            Ok(ExitCode::UsageError)
+        }
         _ => {
             if wants_json_output(args) {
                 let mf_error = MfError::usage(err.to_string().trim().to_string(), None);
@@ -83,6 +97,16 @@ fn handle_parse_error(
             Ok(ExitCode::UsageError)
         }
     }
+}
+
+/// Best-effort detection of the `--output <FORMAT>` / `mf build --out <PATH>`
+/// naming confusion: the failing flag is the global `--output` (not `--out`),
+/// and the invocation is `mf build ...`. Clap's error text is the only signal
+/// available here since parsing never completed.
+fn build_output_flag_confusion(err: &clap::Error, args: &[OsString]) -> bool {
+    let is_build = args.iter().any(|a| a.to_str() == Some("build"));
+    let is_output_flag = err.to_string().contains("--output <FORMAT>");
+    is_build && is_output_flag
 }
 /// Best-effort scan of raw args to decide whether a parse error should still be
 /// emitted as a JSON envelope. Clap never parsed these args, so we recognize every

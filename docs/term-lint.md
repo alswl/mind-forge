@@ -47,6 +47,70 @@ false` with `safety_reason: "short-cjk-advisory"`, so `term fix` never
 auto-applies them. Opt in explicitly with `--term <NAME>` or
 `--term <NAME:ORIGINAL>` to apply such a finding.
 
+### Held-back corrections (spec 075 #40)
+
+An advisory finding is never silently discarded. `mf term lint` marks it
+`, held back` in text output and sets `held_back: true` alongside its
+existing `safety_reason` in JSON. `mf term fix` reports a held-back count
+next to the applied count and names the scoped remedy:
+
+```text
+2 findings in 1 files (1 fixed, 0 failures)
+1 finding held back; apply with `mf term fix <PATH> --term <NAME>`
+```
+
+The held-back line never appears when nothing was held back, and a
+zero-applied result is never reported bare when something was held back
+instead of genuinely absent. Apply a held-back finding explicitly with
+`--term <NAME>` or `--term <NAME:ORIGINAL>` — the choice channel described
+above. No corrections change which ones are applied automatically; this is
+purely a reporting completeness fix.
+
+### Longest match wins (spec 075 #41)
+
+When two registered corrections overlap at the same text position — one's
+`original` is a prefix of the other's — the longer, more specific
+correction always wins, in every mode:
+
+```yaml
+terms:
+  - term: Device
+    corrections:
+      - original: 机器
+        correct: 装置
+  - term: Machinery
+    corrections:
+      - original: 机器人
+        correct: 机械装置
+```
+
+Linting `机器人` reports only `机器人 → 机械装置`; `机器 → 装置` is
+suppressed at that position and never applied, even when a fix is
+explicitly scoped to `--term Device`. Scoping to `--term Machinery` applies
+the longer correction. The shorter correction still fires normally when it
+appears standing alone, outside any longer match. Exact ties (same span
+length) break by declaration order in `mind-index.yaml`.
+
+### Cross-term shadowing warning (spec 075 #42)
+
+Registering a correction whose `original` is a prefix of — or equal to —
+another term's name or one of its registered originals warns and names the
+shadowed term, but still registers:
+
+```text
+$ mf term correction add Widget widget Widget --project alpha
+warning: original 'widget' is also a prefix of term 'Widget Cloud'; lint may map it to that term instead
+```
+
+A lint finding whose original could be claimed by more than one term
+discloses the competing term(s) so the misdirection is diagnosable from the
+finding alone, without inspecting every term individually:
+
+```text
+docs/t.md:1:1: "机器" → "装置" [Device], standalone, held back
+  also claimed by: Machinery
+```
+
 ### When to Use
 
 Use `boundary: standalone` when a short ASCII acronym (`aidc`, `ob`, `ats`) was previously demoted to `fix: suggested` because of identifier-collision risk. Pairing `boundary: standalone` with `fix: required` restores automatic rewriting while respecting identifier boundaries.

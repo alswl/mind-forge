@@ -168,6 +168,49 @@ fn test_index_prune_preserves_template_origin_articles_outside_docs() {
 }
 
 // ---------------------------------------------------------------------------
+// Spec 075 T037/FR-013: article-side writes leave `sources:` and `terms:`
+// byte-identical, including fields the typed model does not itself
+// recognise (e.g. a hand-added `review_state`), when neither key was
+// touched by the write.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_article_new_leaves_sources_and_terms_byte_identical() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "demo");
+    common::write_index(
+        &dir,
+        "demo",
+        r#"schema: '1'
+sources:
+  - path: 'sources/notes.md'
+    name: "notes"
+    review_state: approved
+terms:
+  - term: API
+    corrections: []
+"#,
+    );
+
+    Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["article", "new", "-p", "demo", "hello"])
+        .assert()
+        .code(0);
+
+    let after = fs::read_to_string(dir.path().join("demo/mind-index.yaml")).unwrap();
+    assert!(
+        after.contains("sources:\n  - path: 'sources/notes.md'\n    name: \"notes\"\n    review_state: approved\n"),
+        "an unrelated write must not reformat sources: or drop a field it does not model: {after}"
+    );
+    assert!(
+        after.contains("terms:\n  - term: API\n    corrections: []\n"),
+        "an unrelated write must not reformat terms:: {after}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Duplicate key lint tests (US1)
 // ---------------------------------------------------------------------------
 
