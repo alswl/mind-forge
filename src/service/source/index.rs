@@ -223,8 +223,11 @@ pub fn reconcile(project_path: &Path, dry_run: bool) -> Result<SourceIndexReport
             });
         }
 
-        new_sources.sort_by(|a, b| a.name.cmp(&b.name));
-
+        // Spec 075 FR-018: entries the operation did not change must keep
+        // their existing order — pre-existing entries stay in index order
+        // (url entries first, then file entries as indexed) and freshly
+        // scanned files are appended after. Sorting the merged list here
+        // reordered untouched entries on every run, even a no-op.
         index.sources = Some(new_sources);
         index::save(project_path, &index)?;
     }
@@ -294,5 +297,39 @@ mod tests {
         assert_eq!(ghost.added_at, "gone");
         let kept = sources.iter().find(|s| s.name == "kept").unwrap();
         assert_eq!(kept.extra.get("provenance_note").and_then(|v| v.as_str()), Some("keep-me-verbatim"));
+    }
+
+    /// Spec 075 FR-018: entries the operation did not change must not be
+    /// reordered — not on a no-op run and not when new files are adopted.
+    #[test]
+    fn reconcile_keeps_entry_order_and_appends_new_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path();
+        std::fs::write(project.join("mind.yaml"), "schema_version: '1'\n").unwrap();
+        std::fs::create_dir_all(project.join("sources/file")).unwrap();
+        std::fs::write(project.join("sources/file/zzz.md"), "z\n").unwrap();
+        std::fs::write(project.join("sources/file/aaa.md"), "a\n").unwrap();
+        // Registered zzz before aaa — deliberately anti-alphabetical.
+        std::fs::write(
+            project.join("mind-index.yaml"),
+            "schema_version: '1'\nsources:\n  sources/zzz.md:\n    name: zzz\n    type: file\n    url: null\n    path: sources/file/zzz.md\n    tags: []\n    added_at: t\n    updated_at: t\n  sources/aaa.md:\n    name: aaa\n    type: file\n    url: null\n    path: sources/file/aaa.md\n    tags: []\n    added_at: t\n    updated_at: t\n",
+        )
+        .unwrap();
+
+        // No-op run: zero diff, order untouched.
+        let report = reconcile(project, false).unwrap();
+        assert!(report.added.is_empty() && report.removed.is_empty());
+        let order = |index: &crate::model::index::IndexFile| -> Vec<String> {
+            index.sources.as_ref().unwrap().iter().map(|s| s.name.clone()).collect()
+        };
+        let index = index::load(project).unwrap();
+        assert_eq!(order(&index), vec!["zzz", "aaa"], "no-op must not reorder: {index:?}");
+
+        // A new on-disk file is adopted after the existing entries.
+        std::fs::write(project.join("sources/file/mmm.md"), "m\n").unwrap();
+        let report = reconcile(project, false).unwrap();
+        assert_eq!(report.added.len(), 1);
+        let index = index::load(project).unwrap();
+        assert_eq!(order(&index), vec!["zzz", "aaa", "mmm"], "new entries append after existing: {index:?}");
     }
 }
