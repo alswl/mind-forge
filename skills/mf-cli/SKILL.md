@@ -36,7 +36,7 @@ Use `mind` 0.3.0-compatible YAML as the canonical on-disk format:
 
 Every command honors these uniform contracts:
 
-- **JSON envelope:** `{ status, command, data }`. `data` is always a JSON object (never a bare array, string, or `null`).
+- **JSON envelope:** `{ status, command, data }`. `data` is always a JSON object (never a bare array, string, or `null`). The envelope is always single-level: `source status`/`sync`/`search`/`admin`/`export`/`import`/`trace` name their subcommand in `command` (e.g. `source.status`) and their report sits directly in `data` — never in `data.data`.
 - **Identity round-trip:** Every list emits `data.<plural-noun>[].identity`; that exact value is accepted as input by the matching `show`/`rename`/`remove`/etc.
 - **List layout:** Header row + two-space gap between columns; missing values rendered as `-`; long values truncated with `…` (ASCII fallback `...`).
 - **Show layout:** Aligned `Key:  Value` block with optional sub-sections.
@@ -270,10 +270,13 @@ actual `registrations` table shape, never from a mutable version marker. The
 Lance registration store is authoritative for Sources; `mind-index.yaml`'s
 `sources:` section is a lossless compatibility projection, while its `terms:`
 section remains authoritative for terms. Source-side writers never touch
-`terms:`, and article/prompt/thinking writers never touch `sources:`. On
-Lance, `mf source index` adopts files present on disk and reports vanished
-registrations as missing without deleting them; explicit remove/clean is
-required for deletion. Machine-local activation state stores only activation
+`terms:`, and article/prompt/thinking writers never touch `sources:`.
+`mf source index` adopts files present on disk and reports vanished
+registrations in `removed` without deleting them (Lance and legacy backends
+alike); explicit remove/clean is required for deletion. Entries the pass did
+not change keep their order, and every field of a `sources:` entry —
+including hand-added ones the system does not interpret — round-trips every
+rewrite. Machine-local activation state stores only activation
 status and can be rebuilt from the corpus on disk.
 Use `mf search` for content retrieval; it has no `--mode` switch and returns
 the repository-wide RAG result set. A Prompt or Thinking hit supplies intent
@@ -355,7 +358,7 @@ With `<PATH>`, recompute the asset's size/hash from disk; with `--all`, recomput
 
 Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `remove` (alias `rm`), `correction`, `move` (alias `mv`), `lint`, `fix`.
 
-**Correction model.** `mf term lint`/`fix` deterministically applies *declared* glossary corrections (closed-set, recurring domain terms) under guardrails: it never edits inside a protected term occurrence, honors declared-correction precedence, keeps edits non-overlapping, and writes atomically after diff/confirm. Open-domain ASR errors that no fixed list can enumerate (near-homophone, context-dependent) are yours to correct directly; when one recurs, persist it with `mf term correction add` so the rules path handles it next time. `mf` is the guardrail; you are the open-domain corrector.
+**Correction model.** `mf term lint`/`fix` deterministically applies *declared* glossary corrections (closed-set, recurring domain terms) under guardrails: it never edits inside a protected term occurrence, honors declared-correction precedence, keeps edits non-overlapping, and writes atomically after diff/confirm. When several corrections match at one position only the longest is reported; exact ties (the same original registered by several terms) resolve by declaration order, and the finding discloses the competing terms (`also claimed by:`). Open-domain ASR errors that no fixed list can enumerate (near-homophone, context-dependent) are yours to correct directly; when one recurs, persist it with `mf term correction add` so the rules path handles it next time. `mf` is the guardrail; you are the open-domain corrector.
 
 **`mf term new <TERM>`**
 Create a term (mf extension).

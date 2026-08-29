@@ -57,6 +57,7 @@ Writing deserves the same engineering discipline as software:
 - Markdown and YAML are the durable interfaces;
 - schemas and lint rules make structure explicit;
 - deterministic builds turn sources into outputs;
+- reconciliation never reorders or drops entries it did not change;
 - Git records the history of both content and decisions.
 
 If a code change can be reviewed as a diff, a chapter should be reviewable the
@@ -65,8 +66,9 @@ same way. Derived indexes and build products must never replace authored files.
 ### AI Native CLI
 
 An Agent should not need to scrape colorful terminal prose or guess whether a
-command succeeded. `mf` exposes stable JSON envelopes, predictable exit codes,
-canonical identities, dry-run support, and explicit confirmation boundaries.
+command succeeded. `mf` exposes stable, always single-level JSON envelopes,
+predictable exit codes, canonical identities, dry-run support, and explicit
+confirmation boundaries.
 
 This is more than “CLI automation.” The command surface is an API for reasoning
 systems: deterministic enough to compose, inspect, retry, and audit.

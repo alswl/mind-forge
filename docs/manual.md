@@ -298,9 +298,13 @@ Two invariants hold across every intermediate state:
   the store doesn't (yet) know about is never dropped to force agreement.
   `mf source index` is a disk-adoption and reconcile pass on this backend:
   files present on disk but unknown to the store are imported (reported
-  under `imported`, with populated paths); registrations whose file has
-  vanished are reported as `missing`, never deleted — removal happens only
-  through the explicit `mf source remove` / `mf source clean`.
+  under `added`, with populated paths); entries whose file has vanished are
+  reported in `removed`, never deleted, and keep their place in the index —
+  removal happens only through the explicit `mf source remove` /
+  `mf source clean`. Entries the pass did not change are never reordered,
+  and the `sources:` projection round-trips every field, including
+  unrecognised ones (a hand-added `provenance_note` survives every
+  load/save cycle).
 - **A writer may only project a key it fully holds.** Source-side commands
   never touch `terms:`; article/prompt/thinking commands never touch
   `sources:`. Each writer stays confined to the subtree it owns.
@@ -363,7 +367,11 @@ Corrections follow two paths. **Rules** are the declared glossary corrections
 that `mf` applies deterministically: `mf term lint`/`fix` rewrites recurring,
 closed-set domain terms in project docs under guardrails — it never edits inside
 a protected term occurrence, honors declared-correction precedence, keeps edits
-non-overlapping, and writes atomically after diff/confirm. **Open-domain** errors
+non-overlapping, and writes atomically after diff/confirm. When several
+corrections match at one position only the longest is reported; exact ties —
+the same original registered by several terms — resolve by declaration order,
+and the finding discloses the competing terms (`also claimed by:`) so the
+misdirection is diagnosable from the finding alone. **Open-domain** errors
 that no fixed list can enumerate — near-homophone or context-dependent ASR
 mistakes — are corrected by the agent driving `mf`; once such an error recurs,
 persist it with `mf term correction add` so the rules path catches it next time.
