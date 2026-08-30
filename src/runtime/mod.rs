@@ -99,6 +99,7 @@ mod tests {
     #[test]
     fn from_global_opts_populates_context_fields() {
         let global = GlobalOpts {
+            generate_manual: false,
             root: None,
             config: None,
             verbose: 0,

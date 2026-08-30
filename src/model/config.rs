@@ -100,6 +100,10 @@ pub struct BuildConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub banner: Option<BannerConfig>,
     #[serde(default)]
+    pub strip_first_h1: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pipeline: Vec<BuildPipelineRule>,
+    #[serde(default)]
     pub articles: HashMap<String, ArticleBuildConfig>,
 }
 
@@ -110,9 +114,22 @@ impl Default for BuildConfig {
             merge_order: Vec::new(),
             format: default_build_format(),
             banner: None,
+            strip_first_h1: false,
+            pipeline: Vec::new(),
             articles: HashMap::new(),
         }
     }
+}
+
+/// One project-configured external asset transformation.
+#[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
+pub struct BuildPipelineRule {
+    pub name: String,
+    pub input_extension: String,
+    pub output_extension: String,
+    pub command: String,
+    #[serde(default)]
+    pub dark: bool,
 }
 
 fn default_output_dir() -> String {
@@ -554,6 +571,22 @@ another_unknown: 42
         let config: MindConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.schema_version, "1");
         // These fields are just silently accepted
+    }
+
+    #[test]
+    fn build_new_options_default_off_and_pipeline_empty() {
+        let config: MindConfig = serde_yaml::from_str("schema_version: '1'\n").unwrap();
+        assert!(!config.build.strip_first_h1);
+        assert!(config.build.pipeline.is_empty());
+    }
+
+    #[test]
+    fn build_pipeline_rule_deserializes_dark_default() {
+        let config: MindConfig = serde_yaml::from_str(
+            "build:\n  pipeline:\n    - name: svg-to-png\n      input_extension: svg\n      output_extension: png\n      command: cp {input} {output}\n",
+        )
+        .unwrap();
+        assert!(!config.build.pipeline[0].dark);
     }
 
     #[test]

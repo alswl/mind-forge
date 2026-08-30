@@ -384,6 +384,57 @@ pub fn validate_new_fields(config: &MindConfig) -> Result<()> {
             Some("provide banner text or remove the banner section".to_string()),
         ));
     }
+    validate_pipeline(&config.build.pipeline)?;
+    Ok(())
+}
+
+fn validate_pipeline(rules: &[crate::model::config::BuildPipelineRule]) -> Result<()> {
+    use std::collections::{BTreeMap, BTreeSet};
+    let mut names = BTreeSet::new();
+    let mut edges = BTreeMap::<&str, &str>::new();
+    for rule in rules {
+        if rule.name.trim().is_empty() || !names.insert(rule.name.as_str()) {
+            return Err(crate::error::MfError::usage(
+                format!("build.pipeline rule names must be unique and non-empty: '{}'", rule.name),
+                None,
+            ));
+        }
+        for (label, ext) in [("input_extension", &rule.input_extension), ("output_extension", &rule.output_extension)] {
+            if ext.is_empty()
+                || ext.starts_with('.')
+                || ext.contains('/')
+                || ext.contains('\\')
+                || ext.chars().any(char::is_whitespace)
+            {
+                return Err(crate::error::MfError::usage(
+                    format!("build.pipeline.{label} must be a safe extension without a dot, separator, or whitespace"),
+                    None,
+                ));
+            }
+        }
+        if rule.command.trim().is_empty() || !rule.command.contains("{input}") || !rule.command.contains("{output}") {
+            return Err(crate::error::MfError::usage(
+                format!("build.pipeline rule '{}' command must contain {{input}} and {{output}}", rule.name),
+                None,
+            ));
+        }
+        if edges.insert(rule.input_extension.as_str(), rule.output_extension.as_str()).is_some() {
+            return Err(crate::error::MfError::usage(
+                format!("build.pipeline has multiple rules for input extension '{}'", rule.input_extension),
+                None,
+            ));
+        }
+    }
+    for start in edges.keys() {
+        let mut seen = BTreeSet::new();
+        let mut current = *start;
+        while let Some(next) = edges.get(current) {
+            if !seen.insert(current) {
+                return Err(crate::error::MfError::usage("build.pipeline extension graph contains a cycle", None));
+            }
+            current = next;
+        }
+    }
     Ok(())
 }
 

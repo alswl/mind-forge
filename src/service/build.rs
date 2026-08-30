@@ -9,6 +9,8 @@ use crate::model::config::{BannerConfig, BannerLevel};
 use crate::service::util::markdown;
 use crate::service::{config as config_svc, index, util};
 
+pub mod pipeline;
+
 /// A single article file entry in a build plan.
 #[derive(Debug, Serialize)]
 pub struct ArticleInputEntry {
@@ -38,6 +40,8 @@ pub struct BuildPlan {
     pub size_bytes: u64,
     pub estimated_size: u64,
     pub dry_run: bool,
+    pub strip_first_h1: bool,
+    pub pipeline: Vec<pipeline::PipelineStage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub banner: Option<BannerInfo>,
 }
@@ -84,6 +88,40 @@ fn insert_banner_into_content(content: &str, banner_text: &str) -> String {
     let mut result = banner_text.to_string();
     result.push_str(content);
     result
+}
+
+fn strip_first_h1(content: &str) -> String {
+    let body_start = if content.starts_with("---\n") || content.starts_with("---\r\n") {
+        content[4..]
+            .find("\n---")
+            .map(|end| {
+                let closing_end = 4 + end + 4;
+                if content[closing_end..].starts_with('\n') { closing_end + 1 } else { closing_end }
+            })
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    if body_start == 0 && (content.starts_with("---\n") || content.starts_with("---\r\n")) {
+        return content.to_string();
+    }
+
+    let mut offset = body_start;
+    while offset < content.len() {
+        let line_end = content[offset..].find('\n').map_or(content.len(), |n| offset + n + 1);
+        let line = &content[offset..line_end];
+        let trimmed = line.trim_end_matches(['\r', '\n']);
+        if trimmed.trim().is_empty() {
+            offset = line_end;
+            continue;
+        }
+        let heading = trimmed.trim_start();
+        if heading.starts_with("# ") || heading == "#" || heading.starts_with("#\t") {
+            return format!("{}{}", &content[..offset], &content[line_end..]);
+        }
+        break;
+    }
+    content.to_string()
 }
 
 /// Build an article: load config, resolve sources, render to output.
@@ -169,6 +207,8 @@ fn build_article_content(
         MfError::usage("project missing mind.yaml".to_string(), Some("run `mf config init` to create one".to_string()))
     })?;
     let build_cfg = &config.build;
+    let layout = config_svc::effective_layout(project_path)?;
+    let assets_root = project_path.join(&layout.assets);
 
     // 1b. Validate new config fields (e.g. empty banner text)
     config_svc::validate_new_fields(&config)?;
@@ -245,6 +285,8 @@ fn build_article_content(
         .collect();
 
     if dry_run {
+        let (pipeline_plan, _pipeline_warnings) =
+            pipeline::execute(project_path, &assets_root, &build_cfg.pipeline, true)?;
         return Ok(BuildOutput::Plan(BuildPlan {
             article: article.to_string(),
             project: util::dir_name(project_path),
@@ -255,6 +297,8 @@ fn build_article_content(
             size_bytes: total_size,
             estimated_size: total_size + banner_size,
             dry_run: true,
+            strip_first_h1: build_cfg.strip_first_h1,
+            pipeline: pipeline_plan,
             banner: banner_info,
         }));
     }
@@ -315,7 +359,12 @@ fn build_article_content(
     let mut warnings = Vec::new();
     content = rewrite_relative_paths(&content, &source_dir, output_dir, &mut warnings);
 
-    // 9. Inject banner into content if configured
+    // 9. Strip an optional duplicate title before banner injection.
+    if build_cfg.strip_first_h1 {
+        content = strip_first_h1(&content);
+    }
+
+    // 10. Inject banner into content if configured
     if let Some(ref banner) = banner_text {
         content = insert_banner_into_content(&content, banner);
     }
@@ -326,6 +375,9 @@ fn build_article_content(
     }
 
     util::atomic_write(&output_path, &content)?;
+    let (_pipeline_plan, pipeline_warnings) =
+        pipeline::execute(project_path, &assets_root, &build_cfg.pipeline, false)?;
+    warnings.extend(pipeline_warnings);
     let result = BuildResult {
         output_path: output_path.to_string_lossy().to_string(),
         size_bytes: content.len() as u64,

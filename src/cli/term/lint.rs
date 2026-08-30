@@ -6,8 +6,18 @@ fn build_fix_selection(args: &TermLintArgs) -> Result<crate::model::term::FixSel
         excluded_originals: args.exclude_original.iter().cloned().collect(),
         include_suggested: args.lint.include_suggested,
         min_confidence: args.lint.min_confidence,
+        include_quotes: args.include_quotes,
         ..Default::default()
     };
+    for raw in &args.ad_hoc {
+        selection.ad_hoc.push(parse_ad_hoc(raw)?);
+    }
+    if let Some(path) = &args.ad_hoc_from {
+        let content = std::fs::read_to_string(path).map_err(MfError::Io)?;
+        for line in content.lines().map(str::trim).filter(|line| !line.is_empty() && !line.starts_with('#')) {
+            selection.ad_hoc.push(parse_ad_hoc(line)?);
+        }
+    }
     for raw in &args.term {
         if let Some((term, original)) = raw.split_once(':') {
             if term.is_empty() || original.is_empty() {
@@ -25,6 +35,17 @@ fn build_fix_selection(args: &TermLintArgs) -> Result<crate::model::term::FixSel
     }
     selection.validate().map_err(|message| MfError::usage(message, None))?;
     Ok(selection)
+}
+
+fn parse_ad_hoc(raw: &str) -> Result<crate::model::term::AdHocRule> {
+    let Some((original, correct)) = raw.split_once("=>") else {
+        return Err(MfError::usage(format!("invalid ad-hoc correction '{raw}': expected ORIGINAL=>CORRECT"), None));
+    };
+    let (original, correct) = (original.trim(), correct.trim());
+    if original.is_empty() || correct.is_empty() {
+        return Err(MfError::usage(format!("invalid ad-hoc correction '{raw}': both sides must be non-empty"), None));
+    }
+    Ok(crate::model::term::AdHocRule { original: original.to_string(), correct: correct.to_string() })
 }
 
 pub(super) fn handle_lint(args: TermLintArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {

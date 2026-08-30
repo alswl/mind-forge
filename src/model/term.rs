@@ -196,6 +196,15 @@ pub struct FixSelection {
     pub excluded_originals: BTreeSet<String>,
     pub include_suggested: bool,
     pub min_confidence: Option<f64>,
+    /// Include blockquotes and CJK corner-quoted spans in lint/fix scans.
+    pub include_quotes: bool,
+    pub ad_hoc: Vec<AdHocRule>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdHocRule {
+    pub original: String,
+    pub correct: String,
 }
 
 impl FixSelection {

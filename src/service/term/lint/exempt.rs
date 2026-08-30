@@ -8,11 +8,18 @@ enum ScanCursor {
     LinkUrl,
     BareUrl,
     BlockExempt,
+    Blockquote,
+    CjkQuote,
 }
 
 /// Single-pass byte-level state machine that replaces exempt regions with `\0`.
 /// Output is the same length as `content.as_bytes()`.
+#[allow(dead_code)]
 pub(crate) fn strip_exempt_regions(content: &str, fm_end: Option<usize>) -> Vec<u8> {
+    strip_exempt_regions_with_quotes(content, fm_end, false)
+}
+
+pub(crate) fn strip_exempt_regions_with_quotes(content: &str, fm_end: Option<usize>, include_quotes: bool) -> Vec<u8> {
     let bytes = content.as_bytes();
     let len = bytes.len();
     let mut out = vec![0u8; len];
@@ -24,6 +31,19 @@ pub(crate) fn strip_exempt_regions(content: &str, fm_end: Option<usize>) -> Vec<
     while i < len {
         match state {
             ScanCursor::Body => {
+                if !include_quotes && is_blockquote_start(bytes, i, start_offset) {
+                    state = ScanCursor::Blockquote;
+                    continue;
+                }
+                if !include_quotes && bytes[i..].starts_with("「".as_bytes()) {
+                    // UTF-8 punctuation is handled by the byte helper below;
+                    // zero the complete span while retaining line structure.
+                    let width = '「'.len_utf8();
+                    out[i..i + width].fill(0);
+                    i += width;
+                    state = ScanCursor::CjkQuote;
+                    continue;
+                }
                 if i + 3 < len
                     && bytes[i] == b'<'
                     && bytes[i + 1] == b'!'
@@ -191,10 +211,43 @@ pub(crate) fn strip_exempt_regions(content: &str, fm_end: Option<usize>) -> Vec<
                 }
                 i += 1;
             }
+            ScanCursor::Blockquote => {
+                if bytes[i] == b'\n' {
+                    out[i] = bytes[i];
+                    state = ScanCursor::Body;
+                } else if bytes[i] == b'\r' {
+                    out[i] = bytes[i];
+                }
+                i += 1;
+            }
+            ScanCursor::CjkQuote => {
+                if bytes[i..].starts_with("」".as_bytes()) {
+                    let width = '」'.len_utf8();
+                    out[i..i + width].fill(0);
+                    i += width;
+                    state = ScanCursor::Body;
+                } else if bytes[i] == b'\n' || bytes[i] == b'\r' {
+                    out[i] = bytes[i];
+                    i += 1;
+                } else {
+                    i += content[i..].chars().next().map(char::len_utf8).unwrap_or(1);
+                }
+            }
         }
     }
 
     out
+}
+
+fn is_blockquote_start(bytes: &[u8], i: usize, start_offset: usize) -> bool {
+    if !is_line_start_pos(bytes, i, start_offset) {
+        return false;
+    }
+    let mut cursor = i;
+    while cursor < bytes.len() && cursor - i < 3 && bytes[cursor] == b' ' {
+        cursor += 1;
+    }
+    cursor < bytes.len() && bytes[cursor] == b'>'
 }
 
 fn starts_with_url_scheme(bytes: &[u8], i: usize, scheme: &[u8]) -> bool {
@@ -371,5 +424,24 @@ mod tests {
                 panic!("expected zeroed content in tilde-fenced block");
             }
         }
+    }
+
+    #[test]
+    fn blockquotes_and_cjk_quotes_are_exempt_by_default() {
+        let content = "> quoted mindrepo\n>> nested mindrepo\nplain mindrepo 「verbatim mindrepo";
+        let result = strip_exempt_regions(content, None);
+        assert!(result[..content.find("plain").unwrap()].iter().all(|&b| b == 0 || b == b'\n'));
+        let plain = content.find("plain").unwrap();
+        assert!(result[plain..].contains(&b'm'));
+        let quote = content.find('「').unwrap();
+        let end = content.len();
+        assert!(result[quote..end].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn include_quotes_restores_scannable_text() {
+        let content = "> quoted mindrepo 「verbatim mindrepo」";
+        let result = strip_exempt_regions_with_quotes(content, None, true);
+        assert_eq!(result, content.as_bytes());
     }
 }

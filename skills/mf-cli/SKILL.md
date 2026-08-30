@@ -5,6 +5,14 @@ description: Use the mf Rust CLI to manage mind 0.3.0-compatible local knowledge
 
 # mf-cli — Knowledge Repo CLI
 
+## Generated manual
+
+`docs/manual.md` is generated from the built CLI help surface. Do not edit it
+by hand: after changing command definitions, run
+`scripts/generate-manual.sh` from the repository root and review the generated
+diff. Keep workflow guidance in this skill, the README, or focused documents
+under `docs/`.
+
 ## Overview
 
 `mf` manages local mind-format knowledge repos. Sources preserve evidence,
@@ -297,7 +305,7 @@ Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `move`, `re
 `--source-kind <yuque|meeting|misc>` — Source channel type (mind primary)
 `-t`, `--type <KIND>` — Deprecated: use `--file-kind` or `--source-kind` instead
 `--link` — Symlink instead of copy (local files)
-`--register-only` — Index a file that already lives inside the project's `sources/` directory without copying its bytes. Idempotent (re-registering the same path is a no-op). Accepts project-, sources-, and repo-relative paths as well as absolute. Rejects paths outside `sources/`, URLs, and combination with `--link` or `--force`.
+`--register-only` — Register a file that already lives inside the project's `sources/` directory without copying its bytes. Idempotent by default; `--force` replaces the matching registration. Accepts project-, sources-, and repo-relative paths as well as absolute. Rejects paths outside `sources/`, URLs, `--link`, and a location already owned by another source identity.
 `--no-index` — Register only, without indexing the source into RAG (Lance backend). By default a new source is chunked and embedded so it is searchable at once.
 `--article <PATH>` — Capture the originating article (project-relative) that introduced this source, persisted as authoritative `imported_by` provenance. Must stay within the project; an escaping path is a usage error (exit 2).
 
@@ -426,6 +434,9 @@ Short (≤2 Han-character) pure-CJK `word` corrections are **advisory** (spec 07
 `--term <NAME>` or `--term <NAME:ORIGINAL>` — Repeatable; scope to one or more named terms (case-sensitive exact canonical name match) or, with the `NAME:ORIGINAL` form, one specific correction pair. When omitted, all terms are scanned. Unknown name/pair exits 2 with no edits.
 `--exclude-term <NAME>` — Repeatable; skip corrections for the named term(s).
 `--exclude-original <ORIGINAL>` — Repeatable; drop one exact original text across every term.
+`--include-quotes` — Opt back into scanning blockquotes and CJK `「…」` spans; these are protected by default.
+`--ad-hoc <ORIGINAL=>CORRECT>` — Repeatable invocation-only correction; never writes the glossary.
+`--ad-hoc-from <PATH>` — Read one invocation-only `ORIGINAL=>CORRECT` rule per non-comment line.
 `--article <SLUG>` — Set `target_type: "article"` in JSON output; scope hint for downstream tooling.
 `--include-suggested` — Apply suggested fixes (pinyin matches) in addition to required corrections.
 `--min-confidence <0.0..1.0>` — Apply only suggested corrections at or above the threshold. Requires `--include-suggested`; out-of-range or standalone use exits 2.
@@ -450,6 +461,8 @@ Accepts a repeatable `--term <NAME>` (canonical name, case-sensitive exact match
 - **Block front matter**: a block whose front matter sets `mind-forge-visibility: private` is skipped entirely. The closed vocabulary is `public` | `private`.
 
 The build **fails** (rather than emit a titleless artifact) if the first/title block is marked private, or if `mind-forge-visibility` carries any value other than `public`/`private`. Private content is still indexed for the author's own RAG retrieval; only build/publish output excludes it.
+
+`build.strip_first_h1: true` removes the first content H1 after front matter and before banner injection. The default is `false`. An optional ordered `build.pipeline` registry runs configured external sibling-asset transformations (for example `d2 → svg → png`) only for missing or stale outputs. A successfully regenerated intermediate makes its downstream stage stale in the same build, even if the downstream artifact has a future mtime. `mf build --dry-run` reports the ordered stages without executing them. Inputs, outputs, and parents must remain under the configured asset directory; symlinks are refused. Failed optional tools warn, preserve existing outputs, skip only dependents, and do not fail the article build.
 
 ### `mf publish` — Publish articles and manage targets
 
@@ -630,6 +643,7 @@ mf term fix --project my-project --term RAG:rag              # scope to one corr
 mf term fix --project my-project --exclude-term RAG          # apply everything except RAG
 mf term fix --project my-project --exclude-original apis     # skip one original across terms
 mf term fix --project my-project --include-suggested --min-confidence 0.8  # suggested ≥ 0.8
+mf term fix --project my-project --ad-hoc 'listnode=>Release Note' -y # one-time correction
 
 # Config
 mf config show
@@ -657,7 +671,7 @@ mf version --json
 - Destructive verbs (`remove`, `archive`) prompt on `/dev/tty` in interactive shells. In scripts/CI pass `--yes` to confirm; add `--force` separately only when bypassing overwrite or referential-integrity checks is intended.
 - `term lint --fix` and `term fix` treat `--force` as an alias for `--yes`; do not generalize that exception to entity removal.
 - `term fix` and `term lint --fix` accept `--term <NAME>` or `--term <NAME:ORIGINAL>` (repeatable) to scope corrections to named terms or a specific correction pair, plus `--exclude-term`/`--exclude-original` to narrow, and `--include-suggested`/`--min-confidence <0.0..1.0>` for suggested corrections (`--min-confidence` requires `--include-suggested`). Matching is case-sensitive exact on canonical name. Unknown term names exit 2 with no edits. Run `mf term correction remove <TERM> <ORIGINAL>` to delete a single correction.
-- `mf source new --register-only` indexes a file already inside the project's `sources/` directory without copying its bytes. It is idempotent and cannot combine with `--link` or `--force`; paths outside `sources/` or URL inputs exit 2.
+- `mf source new --register-only` registers a file already inside the project's `sources/` directory without copying its bytes. It is idempotent by default; use `--force` to replace the matching registration. It cannot combine with `--link`; paths outside `sources/`, URL inputs, and another identity's registered location exit 2.
 - `term update` manages corrections through `--add-correction`, `--correction-match`, `--correction-fix`, `--correction-pinyin`, and `--delete-correction`. Match kinds are `word`, `substring`, and `pinyin`; substring defaults to `standalone` and supports explicit `loose` matching.
 - `term show`, `term update`, and `term remove` operate on the selected correction without requiring sibling substring entries to be migrated first.
 - `article convert` evaluates eligible articles project-wide; it does not take an article selector.

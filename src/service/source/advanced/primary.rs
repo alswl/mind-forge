@@ -176,9 +176,6 @@ pub fn add_registration(
     if register_only && args.link {
         return Err(MfError::usage("--register-only cannot be combined with --link", None));
     }
-    if register_only && args.force {
-        return Err(MfError::usage("--register-only cannot be combined with --force", None));
-    }
     let config = super::config::load_repository_config(repo_root)?;
     if !config.is_lance() {
         return Err(MfError::usage("Lance primary mutation requires an active Lance backend".to_string(), None));

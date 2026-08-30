@@ -107,7 +107,51 @@ mf article index --project notes
 mf build "First Note" --project notes
 ```
 
-See [docs/manual.md](docs/manual.md) for the full manual.
+See the generated [docs/manual.md](docs/manual.md) for the exact command
+reference. After changing CLI definitions, regenerate it with:
+
+```bash
+scripts/generate-manual.sh
+```
+
+## Build pipeline and safe corrections
+
+`mf build` can also maintain derived assets declared in a project's
+`mind.yaml`. A pipeline is opt-in, deterministic, and runs only stale outputs;
+its commands stay outside the Rust binary so each project can choose its local
+tools.
+
+```yaml
+build:
+  strip_first_h1: true
+  pipeline:
+    - name: d2-to-svg
+      input_extension: d2
+      output_extension: svg
+      command: "d2 {input} {output}"
+    - name: svg-to-png
+      input_extension: svg
+      output_extension: png
+      command: "rsvg-convert {input} --output {output}"
+```
+
+`mf build article --dry-run` shows the ordered asset plan without running a
+tool. In a chain, rebuilding `diagram.d2 → diagram.svg` also rebuilds the
+dependent `diagram.png`, even when the latter has an artificially newer mtime.
+Missing or failing optional tools emit warnings and leave existing outputs in
+place. See the [build manual](docs/manual.md#mf-build) for path,
+staleness, and safety rules.
+
+For one-off transcription cleanup, keep the shared glossary untouched:
+
+```bash
+mf term fix --project notes --ad-hoc 'listnode=>Release Note' --yes
+```
+
+Term lint/fix protects blockquotes, inline code, and `「verbatim spans」` by
+default. Use `--include-quotes` only when quoted evidence is intentionally in
+scope. The [term lint guide](docs/term-lint.md) documents matching and safety
+rules.
 
 ## Mind Repo model
 

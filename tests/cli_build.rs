@@ -121,6 +121,40 @@ fn build_dry_run_shows_plan() {
 }
 
 #[test]
+fn build_strip_first_h1_is_default_off_and_runs_before_banner() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "h1-order");
+    common::write_doc(&repo, "my-project", "h1-order", "---\nlayout: default\n---\n\n# Duplicate title\n\nBody.\n");
+    common::write_mind_yaml(
+        &repo,
+        "my-project",
+        "schema: '1'\nbuild:\n  strip_first_h1: true\n  banner:\n    text: 'BANNER'\n",
+    );
+
+    Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "h1-order"])
+        .assert()
+        .success();
+    let output = fs::read_to_string(repo.path().join("my-project/outputs/h1-order.md")).unwrap();
+    assert!(!output.contains("# Duplicate title"), "leading H1 should be stripped: {output:?}");
+    assert!(output.contains("BANNER"), "banner should remain after stripping: {output:?}");
+    assert!(output.contains("Body."));
+
+    common::write_mind_yaml(&repo, "my-project", "schema: '1'\nbuild:\n  strip_first_h1: false\n");
+    Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "h1-order"])
+        .assert()
+        .success();
+    let output = fs::read_to_string(repo.path().join("my-project/outputs/h1-order.md")).unwrap();
+    assert!(output.contains("# Duplicate title"), "default-off path should retain H1: {output:?}");
+}
+
+#[test]
 fn build_accepts_repo_relative_directory_article_path() {
     let repo = tempfile::TempDir::new().unwrap();
     fs::write(repo.path().join("minds.yaml"), "schema: '1'\nprojects:\n  - projects/2026-blogs\n").unwrap();

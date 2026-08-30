@@ -113,6 +113,8 @@ pub struct GlobalOpts {
     pub no_color: bool,
     #[arg(short = 'p', long, global = true, value_name = "NAME", help = "Project name for project-scoped operations")]
     pub project: Option<String>,
+    #[arg(long = "generate-manual", global = true, hide = true)]
+    pub generate_manual: bool,
 }
 
 impl GlobalOpts {

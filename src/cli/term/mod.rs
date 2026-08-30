@@ -130,6 +130,15 @@ pub struct TermLintArgs {
     /// Exclude this exact original text across terms (repeatable)
     #[arg(long = "exclude-original", value_name = "ORIGINAL")]
     pub exclude_original: Vec<String>,
+    /// Scan quoted text and blockquotes as well as ordinary prose.
+    #[arg(long = "include-quotes")]
+    pub include_quotes: bool,
+    /// Apply an invocation-only correction (repeatable): ORIGINAL=>CORRECT.
+    #[arg(long = "ad-hoc", value_name = "ORIGINAL=>CORRECT")]
+    pub ad_hoc: Vec<String>,
+    /// Read invocation-only corrections, one ORIGINAL=>CORRECT per line.
+    #[arg(long = "ad-hoc-from", value_name = "PATH")]
+    pub ad_hoc_from: Option<String>,
     #[command(flatten)]
     pub lint: LintFlags,
     #[command(flatten)]
@@ -151,6 +160,15 @@ pub struct TermFixArgs {
     /// Exclude this exact original text across terms (repeatable)
     #[arg(long = "exclude-original", value_name = "ORIGINAL")]
     pub exclude_original: Vec<String>,
+    /// Scan quoted text and blockquotes as well as ordinary prose.
+    #[arg(long = "include-quotes")]
+    pub include_quotes: bool,
+    /// Apply an invocation-only correction (repeatable): ORIGINAL=>CORRECT.
+    #[arg(long = "ad-hoc", value_name = "ORIGINAL=>CORRECT")]
+    pub ad_hoc: Vec<String>,
+    /// Read invocation-only corrections, one ORIGINAL=>CORRECT per line.
+    #[arg(long = "ad-hoc-from", value_name = "PATH")]
+    pub ad_hoc_from: Option<String>,
     #[command(flatten)]
     pub lint: LintFlags,
     #[command(flatten)]
@@ -375,6 +393,9 @@ pub fn dispatch(command: TermCmd, ctx: &mut CommandCtx) -> Result<CommandOutcome
                 term: args.term,
                 exclude_term: args.exclude_term,
                 exclude_original: args.exclude_original,
+                include_quotes: args.include_quotes,
+                ad_hoc: args.ad_hoc,
+                ad_hoc_from: args.ad_hoc_from,
                 lint: args.lint,
                 yes: args.yes.clone(),
             };

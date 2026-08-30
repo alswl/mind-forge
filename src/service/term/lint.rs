@@ -19,7 +19,7 @@ mod pinyin;
 mod scan;
 mod segment;
 
-use self::exempt::strip_exempt_regions;
+use self::exempt::strip_exempt_regions_with_quotes;
 pub(crate) use self::fix::{FixSpan, apply_fixes};
 pub(crate) use self::front_matter::{FrontMatterDecision, parse_front_matter_skip_flag};
 pub(crate) use self::scan::{InternalFinding, scan_file_for_corrections};
@@ -36,7 +36,7 @@ pub(crate) struct CorrectionEntry {
     pub(crate) pinyin: Option<String>,
 }
 
-pub(crate) fn collect_corrections(index: &IndexFile) -> Vec<CorrectionEntry> {
+pub(crate) fn collect_corrections(index: &IndexFile, selection: &FixSelection) -> Vec<CorrectionEntry> {
     let mut result = Vec::new();
     if let Some(ref terms) = index.terms {
         for t in terms {
@@ -54,6 +54,19 @@ pub(crate) fn collect_corrections(index: &IndexFile) -> Vec<CorrectionEntry> {
                 });
             }
         }
+    }
+    for rule in &selection.ad_hoc {
+        result.push(CorrectionEntry {
+            original: rule.original.clone(),
+            correct: rule.correct.clone(),
+            term_name: "ad-hoc".to_string(),
+            description: Some("invocation-only correction".to_string()),
+            confidence: None,
+            match_kind: crate::model::term::MatchKind::Word,
+            fix_kind: crate::model::term::FixKind::Required,
+            boundary: Boundary::Standalone,
+            pinyin: None,
+        });
     }
     result
 }
@@ -277,7 +290,7 @@ pub(crate) fn lint_single_file_with_selection(
         ));
     }
 
-    let corrections = collect_corrections(index);
+    let corrections = collect_corrections(index, selection);
     let correction_refs = build_correction_refs(&corrections);
     let all_term_names: Vec<&str> = index.terms.as_deref().unwrap_or(&[]).iter().map(|t| t.term.as_str()).collect();
     let mut findings: Vec<TermFinding> = Vec::new();
@@ -304,6 +317,7 @@ pub(crate) fn lint_single_file_with_selection(
         &mut findings,
         &mut internal_findings,
         &mut claimed,
+        selection.include_quotes,
     );
     let counts = apply_selection(&mut findings, &internal_findings, selection);
 
@@ -319,7 +333,16 @@ pub(crate) fn lint_single_file_with_selection(
         spans.push(FixSpan {
             start: ifind.byte_offset,
             end: ifind.byte_offset + ifind.original_len,
-            replacement: ifind.correct.clone(),
+            replacement: if ifind.substring_adjacent_word {
+                ifind.correct.clone()
+            } else {
+                scan::padded_replacement(
+                    &content,
+                    ifind.byte_offset,
+                    ifind.byte_offset + ifind.original_len,
+                    &ifind.correct,
+                )
+            },
             correction_order: ifind.yaml_index,
         });
     }
@@ -408,7 +431,7 @@ pub(crate) fn lint_walk_with_selection(
     dry_run: bool,
     selection: &FixSelection,
 ) -> Result<TermLintReport> {
-    let corrections = collect_corrections(index);
+    let corrections = collect_corrections(index, selection);
     let correction_refs = build_correction_refs(&corrections);
     let all_term_names: Vec<&str> = index.terms.as_deref().unwrap_or(&[]).iter().map(|t| t.term.as_str()).collect();
     let mut findings: Vec<TermFinding> = Vec::new();
@@ -455,6 +478,7 @@ pub(crate) fn lint_walk_with_selection(
                     &mut findings,
                     &mut internal_findings,
                     &mut claimed,
+                    selection.include_quotes,
                 );
             }
             FrontMatterDecision::None => {
@@ -468,6 +492,7 @@ pub(crate) fn lint_walk_with_selection(
                     &mut findings,
                     &mut internal_findings,
                     &mut claimed,
+                    selection.include_quotes,
                 );
             }
         }
@@ -520,8 +545,9 @@ pub(crate) fn scan_content(
     findings: &mut Vec<TermFinding>,
     internal_findings: &mut Vec<InternalFinding>,
     claimed: &mut BTreeSet<(String, usize, usize)>,
+    include_quotes: bool,
 ) {
-    let sanitized = strip_exempt_regions(content, fm_end);
+    let sanitized = strip_exempt_regions_with_quotes(content, fm_end, include_quotes);
     // Compute jieba token boundaries once per document for CJK word-boundary
     // checks (Bug #5/#8 fix). Deterministic, O(n) over document length.
     let jieba = segment::JiebaBoundaries::segment(content);
@@ -626,7 +652,16 @@ fn apply_term_fixes(
             spans.push(FixSpan {
                 start: ifind.byte_offset,
                 end: ifind.byte_offset + ifind.original_len,
-                replacement: ifind.correct.clone(),
+                replacement: if ifind.substring_adjacent_word {
+                    ifind.correct.clone()
+                } else {
+                    scan::padded_replacement(
+                        &content_orig,
+                        ifind.byte_offset,
+                        ifind.byte_offset + ifind.original_len,
+                        &ifind.correct,
+                    )
+                },
                 correction_order: ifind.yaml_index,
             });
             per_file_fixed += 1;
