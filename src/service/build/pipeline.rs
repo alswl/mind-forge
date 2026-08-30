@@ -33,8 +33,16 @@ pub fn execute(
     let mut stages = Vec::new();
     let mut collisions = BTreeMap::<PathBuf, String>::new();
     let mut failed_outputs = BTreeSet::new();
+    // A downstream stage must run after its input was regenerated during this
+    // build, even if a manually adjusted output mtime is still in the future.
+    // In dry-run mode this tracks planned regeneration so the reported chain
+    // matches the non-dry execution plan.
+    let mut regenerated_outputs = BTreeSet::new();
     let mut warnings = Vec::new();
-    let mut virtual_files: BTreeSet<PathBuf> = files_with_extension(assets_root, "")?.into_iter().collect();
+    let mut virtual_files = BTreeSet::new();
+    for path in files_with_extension(assets_root, "")? {
+        virtual_files.insert(canonical_asset_path(assets_root, &path)?);
+    }
 
     for index in order {
         let rule = &rules[index];
@@ -59,7 +67,7 @@ pub fn execute(
                     None,
                 ));
             }
-            let stale = !output.exists() || modified_after(&input, &output)?;
+            let stale = regenerated_outputs.contains(&input) || !output.exists() || modified_after(&input, &output)?;
             let blocked = failed_outputs.contains(&input);
             let action = if blocked {
                 "skipped (dependency failed)"
@@ -76,7 +84,11 @@ pub fn execute(
                 action: action.to_string(),
             });
             virtual_files.insert(output.clone());
-            if blocked || !stale || dry_run {
+            if blocked || !stale {
+                continue;
+            }
+            if dry_run {
+                regenerated_outputs.insert(output);
                 continue;
             }
             let prior_output = output.exists().then(|| fs::read(&output)).transpose().map_err(MfError::Io)?;
@@ -94,6 +106,8 @@ pub fn execute(
                     rule.name,
                     output.display()
                 ));
+            } else {
+                regenerated_outputs.insert(output);
             }
         }
     }
@@ -234,6 +248,36 @@ mod tests {
         let (stages, _) = execute(root.path(), &assets, &rules, true).unwrap();
         assert_eq!(stages.iter().map(|s| s.rule.as_str()).collect::<Vec<_>>(), vec!["d2-to-svg", "svg-to-png"]);
         assert!(!assets.join("diagram.svg").exists());
+    }
+
+    #[test]
+    fn regenerated_intermediate_makes_downstream_stage_stale() {
+        use std::fs::{File, FileTimes};
+        use std::time::{Duration, SystemTime};
+
+        let root = tempfile::tempdir().unwrap();
+        let assets = root.path().join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        let source = assets.join("flow.d2");
+        fs::write(&source, "initial\n").unwrap();
+        let rules = vec![
+            rule("d2-to-svg", "d2", "svg", "cp {input} {output}"),
+            rule("svg-to-png", "svg", "png", "cp {input} {output}"),
+        ];
+        execute(root.path(), &assets, &rules, false).unwrap();
+
+        let now = SystemTime::now();
+        File::open(assets.join("flow.png"))
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(now + Duration::from_secs(120)))
+            .unwrap();
+        fs::write(&source, "stale input\n").unwrap();
+        File::open(&source).unwrap().set_times(FileTimes::new().set_modified(now + Duration::from_secs(240))).unwrap();
+
+        let (stages, warnings) = execute(root.path(), &assets, &rules, false).unwrap();
+        assert!(warnings.is_empty());
+        assert_eq!(stages.iter().map(|stage| stage.action.as_str()).collect::<Vec<_>>(), vec!["run", "run"]);
+        assert_eq!(fs::read_to_string(assets.join("flow.png")).unwrap(), "stale input\n");
     }
 
     #[cfg(unix)]
