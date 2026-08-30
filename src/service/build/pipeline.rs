@@ -127,6 +127,11 @@ fn modified_after(input: &Path, output: &Path) -> Result<bool> {
 
 fn canonical_asset_path(root: &Path, target: &Path) -> Result<PathBuf> {
     let root = root.canonicalize().map_err(MfError::Io)?;
+    if let Ok(metadata) = fs::symlink_metadata(target)
+        && metadata.file_type().is_symlink()
+    {
+        return Err(MfError::usage(format!("pipeline path '{}' must not be a symlink", target.display()), None));
+    }
     if target.exists() {
         let path = target.canonicalize().map_err(MfError::Io)?;
         if path.starts_with(&root) {
@@ -229,5 +234,22 @@ mod tests {
         let (stages, _) = execute(root.path(), &assets, &rules, true).unwrap();
         assert_eq!(stages.iter().map(|s| s.rule.as_str()).collect::<Vec<_>>(), vec!["d2-to-svg", "svg-to-png"]);
         assert!(!assets.join("diagram.svg").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_broken_output_symlink_before_running_command() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let assets = root.path().join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        fs::write(assets.join("diagram.svg"), "svg").unwrap();
+        symlink(root.path().join("outside.png"), assets.join("diagram.png")).unwrap();
+        let rules = vec![rule("svg-to-png", "svg", "png", "cp {input} {output}")];
+
+        let error = execute(root.path(), &assets, &rules, false).unwrap_err();
+        assert!(error.to_string().contains("must not be a symlink"));
+        assert!(!root.path().join("outside.png").exists());
     }
 }
