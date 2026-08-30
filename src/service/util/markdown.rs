@@ -318,6 +318,18 @@ pub fn strip_private_callouts(content: &str) -> String {
                     break;
                 }
             }
+            // A removed callout can leave one blank line on either side. Keep
+            // the surrounding paragraph separation, but consume surplus blank
+            // lines at this removal site only.
+            while result.ends_with("\n\n\n") {
+                result.pop();
+            }
+            while i < lines.len() && lines[i].trim_end_matches(['\r', '\n']).trim().is_empty() {
+                i += 1;
+            }
+            if !result.is_empty() && !result.ends_with("\n\n") && i < lines.len() {
+                result.push('\n');
+            }
             continue;
         }
 
@@ -927,19 +939,19 @@ mod tests {
     #[test]
     fn strip_private_callouts_removes_short_form() {
         let content = "Before.\n\n> [!mf-private]\n> Secret note.\n\nAfter.\n";
-        assert_eq!(strip_private_callouts(content), "Before.\n\n\nAfter.\n");
+        assert_eq!(strip_private_callouts(content), "Before.\n\nAfter.\n");
     }
 
     #[test]
     fn strip_private_callouts_removes_explicit_alias() {
         let content = "Before.\n\n> [!mind-forge-private]\n> Secret note.\n\nAfter.\n";
-        assert_eq!(strip_private_callouts(content), "Before.\n\n\nAfter.\n");
+        assert_eq!(strip_private_callouts(content), "Before.\n\nAfter.\n");
     }
 
     #[test]
     fn strip_private_callouts_is_case_insensitive() {
         let content = "Before.\n\n> [!MF-Private]\n> Secret.\n\nAfter.\n";
-        assert_eq!(strip_private_callouts(content), "Before.\n\n\nAfter.\n");
+        assert_eq!(strip_private_callouts(content), "Before.\n\nAfter.\n");
     }
 
     #[test]
@@ -955,7 +967,7 @@ mod tests {
 > > still private\n\
 \n\
 After.\n";
-        assert_eq!(strip_private_callouts(content), "Before.\n\n\nAfter.\n");
+        assert_eq!(strip_private_callouts(content), "Before.\n\nAfter.\n");
     }
 
     #[test]

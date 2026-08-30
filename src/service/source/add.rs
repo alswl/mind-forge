@@ -93,9 +93,6 @@ pub fn register_only(
     if args.link {
         return Err(MfError::usage("--register-only cannot be combined with --link", None));
     }
-    if args.force {
-        return Err(MfError::usage("--register-only cannot be combined with --force", None));
-    }
     if matches!(classify_input(args.input), InputForm::Url) {
         return Err(MfError::usage("--register-only requires a local file path", None));
     }
@@ -133,18 +130,21 @@ pub fn register_only(
                 Some("use the existing source name or update it explicitly".to_string()),
             ));
         }
-        return Ok(AddOutcome {
-            source: existing.clone(),
-            mode: AddMode::Register,
-            replaced: false,
-            registration_key: None,
-            projection_degraded: false,
-            indexing: None,
-        });
+        if !args.force {
+            return Ok(AddOutcome {
+                source: existing.clone(),
+                mode: AddMode::Register,
+                replaced: false,
+                registration_key: None,
+                projection_degraded: false,
+                indexing: None,
+            });
+        }
     }
-    if let Some(taken) = sources.iter().find(|source| source.name == name) {
+    let existing_index = sources.iter().position(|source| source.name == name);
+    if existing_index.is_some() && !args.force {
         let suggestion = if args.name.is_none() { Some(suggest_unique_name(&source_path, &sources_dir)) } else { None };
-        return Err(name_collision_error(&taken.name, suggestion));
+        return Err(name_collision_error(&name, suggestion));
     }
 
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
@@ -159,15 +159,20 @@ pub fn register_only(
         updated_at: now,
         extra: Default::default(),
     };
+    let replaced = existing_index.is_some();
     if !dry_run {
-        sources.push(source.clone());
-        sources.sort_by(|left, right| left.name.cmp(&right.name));
+        if let Some(index) = existing_index {
+            replace_in_sources(sources, index, source.clone());
+        } else {
+            sources.push(source.clone());
+            sources.sort_by(|left, right| left.name.cmp(&right.name));
+        }
         index::save(project_path, &index)?;
     }
     Ok(AddOutcome {
         source,
         mode: AddMode::Register,
-        replaced: false,
+        replaced,
         registration_key: None,
         projection_degraded: false,
         indexing: None,

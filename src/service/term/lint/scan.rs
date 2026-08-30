@@ -93,6 +93,29 @@ fn char_after(content: &str, byte_offset: usize) -> Option<char> {
     content[byte_offset..].chars().next()
 }
 
+/// Add spacing only at the outer boundaries of a replacement. Existing
+/// whitespace and punctuation are left untouched; internal replacement text is
+/// deliberately not inspected.
+pub(crate) fn padded_replacement(content: &str, start: usize, end: usize, replacement: &str) -> String {
+    let first = replacement.chars().next();
+    let last = replacement.chars().next_back();
+    let before = char_before(content, start);
+    let after = char_after(content, end);
+    let left = before.is_some_and(is_cjk_ideograph) && first.is_some_and(|c| c.is_ascii_alphanumeric())
+        || before.is_some_and(|c| c.is_ascii_alphanumeric()) && first.is_some_and(is_cjk_ideograph);
+    let right = last.is_some_and(|c| c.is_ascii_alphanumeric()) && after.is_some_and(is_cjk_ideograph)
+        || last.is_some_and(is_cjk_ideograph) && after.is_some_and(|c| c.is_ascii_alphanumeric());
+    let mut result = String::with_capacity(replacement.len() + 2);
+    if left && !replacement.chars().next().is_some_and(char::is_whitespace) {
+        result.push(' ');
+    }
+    result.push_str(replacement);
+    if right && !replacement.chars().next_back().is_some_and(char::is_whitespace) {
+        result.push(' ');
+    }
+    result
+}
+
 /// Per-correction word-boundary policy. Computed once per correction so the
 /// match-kind + boundary + ASCII-ness decision is not redone for every
 /// candidate offset in the scan loop.
@@ -219,6 +242,7 @@ pub(crate) struct InternalFinding {
     /// True for a short-CJK advisory finding: it may lint but is skipped by
     /// auto-apply unless the user explicitly opts in (`--term NAME[:ORIGINAL]`).
     pub(crate) advisory: bool,
+    pub(crate) substring_adjacent_word: bool,
     /// Position of the source Correction in the YAML `corrections:` list.
     /// Used by `deduplicate_spans` as the tie-breaker when two corrections
     /// share the same byte span: lower wins (i.e., the earlier-declared rule).
@@ -417,6 +441,7 @@ pub(crate) fn scan_file_for_corrections(
                 confidence: c.confidence,
                 replacement_eligible: !is_ambiguous && !short_cjk_advisory,
                 advisory: short_cjk_advisory,
+                substring_adjacent_word,
                 yaml_index: c.yaml_index,
             });
 
@@ -556,6 +581,14 @@ mod tests {
     #[should_panic(expected = "pinyin matches are dispatched through the pinyin scanner")]
     fn word_check_for_pinyin_panics() {
         let _ = WordCheck::for_correction(MatchKind::Pinyin, Boundary::Loose, "ji-qi-ren");
+    }
+
+    #[test]
+    fn padded_replacement_only_adds_outer_cjk_ascii_spaces() {
+        assert_eq!(padded_replacement("甲旧乙", 3, 6, "ASCII"), " ASCII ");
+        assert_eq!(padded_replacement("甲旧，", 3, 6, "装置"), "装置");
+        assert_eq!(padded_replacement("甲旧乙", 3, 6, "DD 站点"), " DD 站点");
+        assert_eq!(padded_replacement("甲旧 乙", 3, 6, "ASCII"), " ASCII");
     }
 
     // ── is_identifier_neighbour byte class (FR-002 helper) ───────────────────

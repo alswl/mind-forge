@@ -85,6 +85,8 @@ pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome>
                 "estimated_size": plan.estimated_size,
                 "dry_run": true,
                 "banner": plan.banner,
+                "strip_first_h1": plan.strip_first_h1,
+                "pipeline": plan.pipeline,
             });
 
             match format {
@@ -104,6 +106,12 @@ pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome>
                     if let Some(ref banner) = plan.banner {
                         let level_str = banner.level.as_deref().unwrap_or("raw");
                         lines.push(format!("  Banner: enabled, level={}", level_str));
+                    }
+                    for stage in &plan.pipeline {
+                        lines.push(format!(
+                            "  Pipeline: {} {} -> {} [{}]",
+                            stage.rule, stage.input, stage.output, stage.action
+                        ));
                     }
                     Ok(CommandOutcome::Raw(lines.join("\n"), None))
                 }
@@ -127,6 +135,10 @@ pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome>
             match format {
                 crate::output::Format::Json => Ok(CommandOutcome::Success(data, warnings, None)),
                 crate::output::Format::Text => {
+                    let mut emitted_warnings = Vec::new();
+                    for warning in &result.warnings {
+                        emit_warning(warning, &mut emitted_warnings);
+                    }
                     let size_kb = format!("{:.1}", result.size_bytes as f64 / 1024.0);
                     let msg = format!(
                         "Article built: {}\n  Output: {}\n  Size: {} KB",

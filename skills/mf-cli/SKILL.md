@@ -426,6 +426,9 @@ Short (≤2 Han-character) pure-CJK `word` corrections are **advisory** (spec 07
 `--term <NAME>` or `--term <NAME:ORIGINAL>` — Repeatable; scope to one or more named terms (case-sensitive exact canonical name match) or, with the `NAME:ORIGINAL` form, one specific correction pair. When omitted, all terms are scanned. Unknown name/pair exits 2 with no edits.
 `--exclude-term <NAME>` — Repeatable; skip corrections for the named term(s).
 `--exclude-original <ORIGINAL>` — Repeatable; drop one exact original text across every term.
+`--include-quotes` — Opt back into scanning blockquotes and CJK `「…」` spans; these are protected by default.
+`--ad-hoc <ORIGINAL=>CORRECT>` — Repeatable invocation-only correction; never writes the glossary.
+`--ad-hoc-from <PATH>` — Read one invocation-only `ORIGINAL=>CORRECT` rule per non-comment line.
 `--article <SLUG>` — Set `target_type: "article"` in JSON output; scope hint for downstream tooling.
 `--include-suggested` — Apply suggested fixes (pinyin matches) in addition to required corrections.
 `--min-confidence <0.0..1.0>` — Apply only suggested corrections at or above the threshold. Requires `--include-suggested`; out-of-range or standalone use exits 2.
@@ -450,6 +453,8 @@ Accepts a repeatable `--term <NAME>` (canonical name, case-sensitive exact match
 - **Block front matter**: a block whose front matter sets `mind-forge-visibility: private` is skipped entirely. The closed vocabulary is `public` | `private`.
 
 The build **fails** (rather than emit a titleless artifact) if the first/title block is marked private, or if `mind-forge-visibility` carries any value other than `public`/`private`. Private content is still indexed for the author's own RAG retrieval; only build/publish output excludes it.
+
+`build.strip_first_h1: true` removes the first content H1 after front matter and before banner injection. The default is `false`. An optional ordered `build.pipeline` registry can run configured external asset transformations (for example `d2 → svg → png`) only for missing or stale sibling outputs; `mf build --dry-run` reports the ordered stages without executing them. Failed optional tools warn and do not fail the article build.
 
 ### `mf publish` — Publish articles and manage targets
 
@@ -630,6 +635,7 @@ mf term fix --project my-project --term RAG:rag              # scope to one corr
 mf term fix --project my-project --exclude-term RAG          # apply everything except RAG
 mf term fix --project my-project --exclude-original apis     # skip one original across terms
 mf term fix --project my-project --include-suggested --min-confidence 0.8  # suggested ≥ 0.8
+mf term fix --project my-project --ad-hoc 'listnode=>Release Note' -y # one-time correction
 
 # Config
 mf config show

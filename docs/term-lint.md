@@ -2,6 +2,11 @@
 
 `mf term lint` scans project documents for term inconsistencies and, with `--fix`, rewrites them in place.
 
+Quoted text is protected by default: blockquotes and CJK verbatim spans (`「…」`)
+are not scanned. Use `--include-quotes` to opt in for one invocation. One-time
+rules can be supplied with repeatable `--ad-hoc 'ORIGINAL=>CORRECT'` or
+`--ad-hoc-from PATH`; they never modify the glossary.
+
 ## Correction Fields
 
 Each correction in `mind-index.yaml` supports these fields:
