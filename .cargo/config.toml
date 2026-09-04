@@ -1,0 +1,21 @@
+# Repository-local cargo configuration. Merged with (not replacing) the user's
+# global ~/.cargo/config.toml.
+#
+# These aliases exist because the edit loop's cost is dominated by how much of
+# the `mf` crate cargo is asked to rebuild, not by dependencies — those are
+# cached. Measured after a one-line source edit:
+#
+#   cargo check                  2.0s   /   —      CPU
+#   cargo test --test <name>     5.2s   /   6.0s   CPU
+#   cargo test  (whole suite)   30.2s   /  84.9s   CPU
+#
+# The full suite compiles the 50k-line crate twice (once as the binary, once as
+# the `cfg(test)` unit-test target) and links a ~490MB artifact each time. Use
+# it as the pre-push gate, not as the inner loop. See docs/build-workflow.md.
+
+[alias]
+# Inner loop: type-check only, no codegen, no link.
+ck = "check"
+# Verify one integration test target, e.g. `cargo t1 cli_article`.
+# Skips the unit-test compilation and the other ~111 test binaries.
+t1 = ["test", "--test"]

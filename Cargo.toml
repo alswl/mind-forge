@@ -47,3 +47,9 @@ assert_cmd = "2"
 insta = "1"
 predicates = "3"
 tempfile = "3"
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
