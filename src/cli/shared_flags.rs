@@ -3,7 +3,7 @@ use serde::Serialize;
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct DryRunFlag {
-    #[arg(long = "dry-run", help = "Preview changes without writing")]
+    #[arg(short = 'n', long = "dry-run", help = "Preview changes without writing")]
     pub dry_run: bool,
 }
 
@@ -49,7 +49,11 @@ pub struct LintFlags {
     pub severity: Option<String>,
     #[arg(long = "max-warnings", value_name = "N", help = "Exit 1 when warnings exceed this count")]
     pub max_warnings: Option<i32>,
-    #[arg(long = "dry-run", help = "Preview fixes without writing (only with --fix)")]
+    // T060 (spec 079): `term lint`/`term fix` expose `--dry-run` through this
+    // struct, not `DryRunFlag` — a separate definition discovered during
+    // implementation planning (T002). Both need `short = 'n'` for FR-020's
+    // "all --dry-run commands accept -n" to actually hold for these two.
+    #[arg(short = 'n', long = "dry-run", help = "Preview fixes without writing (only with --fix)")]
     pub dry_run: bool,
     #[arg(long = "include-suggested", help = "Apply all corrections including suggested")]
     pub include_suggested: bool,

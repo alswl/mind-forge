@@ -311,3 +311,30 @@ fn init_help_snapshot() {
     assert_eq!(code, 0);
     assert_snapshot!("init_help", stdout);
 }
+
+// ---------------------------------------------------------------------------
+// Spec 079 US8 (#51) T059: `-n, --dry-run` must actually show up in help,
+// on both the `DryRunFlag` path and the independent `LintFlags` path
+// (`term fix`/`term lint`).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn dry_run_help_shows_short_n_flag() {
+    for args in [["article", "index"], ["asset", "index"], ["build", "--help"], ["term", "fix"]] {
+        let mut full: Vec<&str> = args.to_vec();
+        if full.last() != Some(&"--help") {
+            full.push("--help");
+        }
+        let (stdout, _, code) = run(&full);
+        assert_eq!(code, 0, "args={full:?}");
+        assert!(stdout.contains("-n, --dry-run"), "args={full:?} should show '-n, --dry-run':\n{stdout}");
+    }
+}
+
+#[test]
+fn source_add_help_no_longer_shows_short_n_for_name() {
+    let (stdout, _, code) = run(&["source", "new", "--help"]);
+    assert_eq!(code, 0);
+    assert!(!stdout.contains("-n, --name"), "source add's -n must be freed for dry-run, not --name:\n{stdout}");
+    assert!(stdout.contains("--name <NAME>"), "--name must still work as a long flag:\n{stdout}");
+}

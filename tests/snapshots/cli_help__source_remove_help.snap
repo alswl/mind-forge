@@ -17,7 +17,7 @@ Options:
                          entity referenced by others
   -v, --verbose...       Verbose output
   -y, --yes              Skip interactive confirmation prompt
-      --dry-run          Preview changes without writing
+  -n, --dry-run          Preview changes without writing
   -q, --quiet            Silence non-error output
   -o, --output <FORMAT>  Output format [default: text] [possible values: text, json]
       --json             Shorthand for --output json

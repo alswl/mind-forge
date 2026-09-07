@@ -310,6 +310,10 @@ fn build_article_content(
     // every included block. Fails before any artifact is written if a
     // visibility value is unrecognized or the title block is marked private.
     let mut content = String::new();
+    // Moved ahead of the file loop (spec 079 T021) so private-callout strip
+    // warnings, discovered per-file below, land in the same vec as the
+    // path-rewrite warnings from step 8b.
+    let mut warnings = Vec::new();
     for (idx, file) in article_files.iter().enumerate() {
         let raw_content = fs::read_to_string(file).map_err(MfError::Io)?;
 
@@ -342,7 +346,14 @@ fn build_article_content(
 
         let file_content = markdown::strip_typora_front_matter(&raw_content);
         let file_content = markdown::strip_mind_forge_front_matter(&file_content);
-        let file_content = markdown::strip_private_callouts(&file_content);
+        let (file_content, strip_warnings) = markdown::strip_private_callouts(&file_content);
+        let file_rel = file.strip_prefix(project_path).unwrap_or(file).display();
+        for w in strip_warnings {
+            warnings.push(format!(
+                "{file_rel}:{}: mf-private callout merged across a bare blank line — content after the blank line was stripped along with it",
+                w.start_line
+            ));
+        }
         content.push_str(&file_content);
         if !content.ends_with('\n') {
             content.push('\n');
@@ -356,7 +367,6 @@ fn build_article_content(
         article_path.parent().unwrap_or(Path::new(".")).to_path_buf()
     };
     let output_dir = output_path.parent().unwrap_or(Path::new("."));
-    let mut warnings = Vec::new();
     content = rewrite_relative_paths(&content, &source_dir, output_dir, &mut warnings);
 
     // 9. Strip an optional duplicate title before banner injection.

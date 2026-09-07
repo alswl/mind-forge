@@ -66,24 +66,14 @@ pub(super) fn handle_block_renumber(args: ArticleBlockRenumberArgs, ctx: &mut Co
     edit_outcome(&project, ctx.format(), report)
 }
 
-/// Resolve an article selector (title or path) against the project index,
-/// returning the canonical project-relative article path. Shared by the
-/// `block rename` and `block rm` handlers.
+/// Resolve an article selector against the project index, returning the
+/// canonical project-relative article path. Shared by every `block *`
+/// handler (spec 079 US3, FR-007/FR-008/FR-009) — delegates to the same
+/// selector resolver `article remove` uses, so a bare slug, `docs/<slug>`,
+/// `docs/<slug>.md`, and exact title all resolve identically, and a selector
+/// matching more than one article is rejected rather than guessed.
 fn resolve_article_path(project_path: &Path, selector: &str) -> Result<String> {
-    let index = crate::service::index::load(project_path)?;
-    let articles = index.articles.as_ref().ok_or_else(|| {
-        MfError::not_found(
-            "no articles in index".to_string(),
-            Some("use `mf article list` to see available articles".to_string()),
-        )
-    })?;
-    let article = articles.iter().find(|a| a.title == selector || a.article_path == selector).ok_or_else(|| {
-        MfError::not_found(
-            format!("article '{}' not found", selector),
-            Some("use `mf article list --project <project>` to see available articles".to_string()),
-        )
-    })?;
-    Ok(article.article_path.clone())
+    article_svc::resolve_selector(project_path, selector)
 }
 
 pub(super) fn handle_block_rename(args: ArticleBlockRenameArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome> {

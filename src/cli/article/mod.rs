@@ -175,6 +175,11 @@ pub struct ArticleConvertArgs {
     /// (concatenated in filename order) instead of skipping them
     #[arg(long)]
     pub merge: bool,
+    /// Convert only this article (selector: bare slug, docs/<slug>,
+    /// docs/<slug>.md, or exact title). Without it, converts every eligible
+    /// article in the project (existing batch behaviour, unchanged).
+    #[arg(long)]
+    pub article: Option<String>,
     /// Preview conversions without writing changes
     #[command(flatten)]
     pub dry_run: DryRunFlag,

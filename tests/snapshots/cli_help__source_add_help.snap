@@ -10,7 +10,7 @@ Arguments:
   <INPUT>  
 
 Options:
-  -n, --name <NAME>                Override the source name derived from the input
+      --name <NAME>                Override the source name derived from the input
       --root <PATH>                Mind Repo root directory
       --config <PATH>              Config file path
       --file-kind <FILE_KIND>      File kind (mf primary). Use --source-kind for mind channel type
@@ -34,6 +34,6 @@ Options:
   -f, --force                      Proceed despite safety checks: overwrite an existing target, or
                                    remove an entity referenced by others
   -p, --project <NAME>             Project name for project-scoped operations
-      --dry-run                    Preview changes without writing
+  -n, --dry-run                    Preview changes without writing
   -h, --help                       Print help
   -V, --version                    Print version

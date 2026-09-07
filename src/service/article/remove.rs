@@ -5,44 +5,23 @@ use crate::error::{MfError, Result};
 use crate::model::article::{ArticleIdentity, ArticleRemoveReport};
 use crate::service::index;
 
-/// Strip a single trailing `.md` extension for identifier comparison so that an
-/// index key (`docs/foo`) and a stored `article_path` (`docs/foo.md`) resolve to
-/// the same article.
-fn strip_md(s: &str) -> &str {
-    s.strip_suffix(".md").unwrap_or(s)
-}
-
 /// Hard-remove an article: delete the file/directory and update the index.
 pub fn remove_article(project_path: &Path, title: &str, force: bool, dry_run: bool) -> Result<ArticleRemoveReport> {
     crate::service::util::require_nonempty(title, "article title")?;
 
     let mut index = index::load(project_path)?;
-    let articles = index.articles.as_ref().ok_or_else(|| {
-        MfError::not_found(
-            format!("article '{title}' not found"),
-            Some("use `mf article list --project <project>` to see available articles".to_string()),
-        )
-    })?;
 
-    // Resolve the target by any identifier form the user might supply: title,
-    // `article_path`, or the index key — comparing after stripping a single
-    // trailing `.md` on both sides so `docs/foo`, `docs/foo.md`, and the title
-    // all resolve to the same entry.
-    let needle = strip_md(title);
+    // Resolve the target via the shared selector (spec 079 US3, FR-007/009):
+    // full `article_path`, `article_path` with `.md` stripped, bare slug, or
+    // exact title — collecting *all* candidates and rejecting ambiguity
+    // rather than guessing. Unlike the old inline matcher, this also accepts
+    // a bare slug (`2026-09-monthly`, not just `docs/2026-09-monthly`).
+    let matched_path = super::selector::resolve_selector(project_path, title)?;
+    let articles = index.articles.as_ref().expect("resolve_selector found a match, so articles is non-empty");
     let article = articles
         .iter()
-        .find(|a| {
-            a.title == title
-                || a.article_path == title
-                || strip_md(&a.title) == needle
-                || strip_md(&a.article_path) == needle
-        })
-        .ok_or_else(|| {
-            MfError::not_found(
-                format!("article '{title}' not found"),
-                Some("use `mf article list --project <project>` to see available articles".to_string()),
-            )
-        })?;
+        .find(|a| a.article_path == matched_path)
+        .expect("resolve_selector returned this exact article_path from this same index load");
 
     let scope = crate::model::lifecycle::ScopeRef { project: Some(article.project.clone()), global: false };
     let before = ArticleIdentity { title: article.title.clone(), article_path: article.article_path.clone(), scope };

@@ -117,3 +117,59 @@ fn rm_json_before_reflects_matched_entity() {
     let dumped = v.to_string();
     assert!(dumped.contains("docs/jsonpost"), "JSON envelope should reference the matched entity: {dumped}");
 }
+
+// ---------------------------------------------------------------------------
+// Spec 079 US3 (#46) T025: `mf article rm`/`remove` must accept a bare slug,
+// same as the full `docs/<slug>` identity — for both directory and
+// single-file articles. Title is deliberately different from the slug so a
+// bare-slug hit can only come from the new resolution path, not from
+// accidentally matching `title`.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rm_by_bare_slug_removes_index_entry() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "demo");
+    Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["article", "new", "-p", "demo", "Monthly Report", "--slug", "2026-09-monthly", "--file"])
+        .assert()
+        .code(0);
+
+    // Bare slug — did not resolve before spec 079 US3 (title != slug here).
+    rm(&dir, "demo", "2026-09-monthly").code(0).stdout(predicates::str::contains("removed"));
+
+    let map = common::read_index_articles_map(&dir, "demo");
+    common::assert_no_article_key(&map, "docs/2026-09-monthly");
+}
+
+#[test]
+fn rm_by_bare_slug_matches_full_path_form_for_single_file_article() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "demo");
+    Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["article", "new", "-p", "demo", "Weekly Digest", "--slug", "weekly-digest", "--file"])
+        .assert()
+        .code(0);
+
+    // Full-path form on a fresh copy of the same fixture, to compare outcomes.
+    let dir2 = common::setup_repo();
+    common::create_project(&dir2, "demo");
+    Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(dir2.path())
+        .args(["article", "new", "-p", "demo", "Weekly Digest", "--slug", "weekly-digest", "--file"])
+        .assert()
+        .code(0);
+
+    rm(&dir, "demo", "weekly-digest").code(0);
+    rm(&dir2, "demo", "docs/weekly-digest.md").code(0);
+
+    let map1 = common::read_index_articles_map(&dir, "demo");
+    let map2 = common::read_index_articles_map(&dir2, "demo");
+    common::assert_no_article_key(&map1, "docs/weekly-digest");
+    common::assert_no_article_key(&map2, "docs/weekly-digest");
+}

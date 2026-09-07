@@ -410,6 +410,11 @@ fn scan_md_dir(dir_path: &Path, rel_dir: &str, scanned: &mut Vec<ScannedArticle>
             && path.extension().and_then(|e| e.to_str()) == Some(defaults::MARKDOWN_EXTENSION)
             && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
         {
+            // Deterministic by design (spec 079 US5): title always comes
+            // from the slug, never from the article body's H1 or frontmatter
+            // title. The slug is a stable identifier; H1 text changes freely
+            // as an article is drafted, so tracking it would make index
+            // rebuilds produce a different title depending on when they run.
             let title = stem.replace('-', " ");
             scanned.push(ScannedArticle {
                 title,
@@ -764,5 +769,28 @@ mod tests {
         let articles = scan_declared(dir.path(), &config).unwrap();
         assert_eq!(articles.len(), 1);
         assert_eq!(articles[0].article_path, "specs/my-article.md", "when <article_dir>/<id>.md exists, use file path");
+    }
+
+    // ── spec 079 US5 (#53): title is derived from slug, never from H1 ───────
+    //
+    // Zero-code confirmatory story (plan.md): this has always been the
+    // behaviour (every title-derivation site in this file uses
+    // `stem.replace('-', " ")`, none read file content) — the "title got
+    // downgraded" bug report was a misreading of intended, deterministic
+    // behaviour. This test locks it in so it can't be "fixed" by accident.
+
+    #[test]
+    fn scan_docs_title_is_derived_from_slug_not_from_h1() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("docs")).unwrap();
+        std::fs::write(dir.path().join("docs/2026-08-skm.md"), "# SKM：个人中心的 Agent Skill 管理器\n\nBody.\n")
+            .unwrap();
+
+        let articles = scan_docs(dir.path()).unwrap();
+        assert_eq!(articles.len(), 1);
+        assert_eq!(
+            articles[0].title, "2026 08 skm",
+            "title must be the slug with '-' replaced by spaces, not the H1 text"
+        );
     }
 }

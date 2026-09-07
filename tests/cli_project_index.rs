@@ -370,3 +370,88 @@ terms:
     assert!(content.contains("Alpha"), "term from first block should remain: {content}");
     assert!(content.contains("Beta"), "term from second block should remain: {content}");
 }
+
+// ---------------------------------------------------------------------------
+// Spec 079 US4 (#53): full-project index rebuild must not rewrite the
+// metadata of already-registered entries (INV-1/INV-2/INV-4).
+// ---------------------------------------------------------------------------
+
+fn run_full_index(dir: &common::TempDir, project: &str) {
+    for cmd in ["article", "asset", "source"] {
+        Command::cargo_bin("mf").unwrap().current_dir(dir.path().join(project)).args([cmd, "index"]).assert().code(0);
+    }
+}
+
+/// T033: a second full rebuild after every file's mtime moves forward must
+/// produce a byte-identical `mind-index.yaml` (INV-4).
+#[test]
+fn full_index_rebuild_is_byte_idempotent_after_mtime_touch() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "idem-project");
+    let project_path = dir.path().join("idem-project");
+    fs::create_dir_all(project_path.join("assets")).unwrap();
+    fs::create_dir_all(project_path.join("sources")).unwrap();
+    fs::create_dir_all(project_path.join("prompts")).unwrap();
+    fs::write(project_path.join("prompts/a-prompt.md"), "---\narticle: docs/x.md\n---\nBody.\n").unwrap();
+    fs::create_dir_all(project_path.join("thinking")).unwrap();
+    fs::write(project_path.join("thinking/a-note.md"), "Notes.\n").unwrap();
+
+    run_full_index(&dir, "idem-project");
+    let once = fs::read_to_string(project_path.join("mind-index.yaml")).unwrap();
+
+    // Simulate `git checkout` bumping every file's mtime forward, content
+    // unchanged.
+    let now = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
+    for f in ["prompts/a-prompt.md", "thinking/a-note.md"] {
+        fs::File::open(project_path.join(f)).unwrap().set_modified(now).unwrap();
+    }
+
+    run_full_index(&dir, "idem-project");
+    let twice = fs::read_to_string(project_path.join("mind-index.yaml")).unwrap();
+
+    assert_eq!(once, twice, "a second rebuild after mtime-only changes must produce a byte-identical index");
+}
+
+/// T034: a disk entry the index hasn't registered yet is still picked up on
+/// rebuild, with `added_at` set to the run time — the metadata-preservation
+/// fix must not regress this (FR-012).
+#[test]
+fn full_index_rebuild_still_registers_new_disk_entries() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "newentry-project");
+    let project_path = dir.path().join("newentry-project");
+    fs::create_dir_all(project_path.join("assets")).unwrap();
+    fs::create_dir_all(project_path.join("sources")).unwrap();
+    fs::create_dir_all(project_path.join("prompts")).unwrap();
+
+    run_full_index(&dir, "newentry-project");
+
+    fs::write(project_path.join("prompts/late-arrival.md"), "---\narticle: docs/x.md\n---\nBody.\n").unwrap();
+
+    run_full_index(&dir, "newentry-project");
+    let content = fs::read_to_string(project_path.join("mind-index.yaml")).unwrap();
+    assert!(content.contains("late-arrival"), "a newly-created file must still be registered: {content}");
+}
+
+/// Spec 079 US5 (#53) T041: index rebuild → rewrite the article's H1 →
+/// rebuild again. `title` must not change (INV-3) — it's derived from the
+/// slug, not read from the article body.
+#[test]
+fn article_index_title_is_stable_across_h1_rewrites() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "title-project");
+    let project_path = dir.path().join("title-project");
+    fs::create_dir_all(project_path.join("docs")).unwrap();
+    fs::write(project_path.join("docs/2026-08-skm.md"), "# Original Title\n\nBody.\n").unwrap();
+
+    Command::cargo_bin("mf").unwrap().current_dir(&project_path).args(["article", "index"]).assert().code(0);
+    let before = common::read_index_articles_map(&dir, "title-project");
+    let title_before = before.get("docs/2026-08-skm").expect("entry registered")["title"].clone();
+
+    fs::write(project_path.join("docs/2026-08-skm.md"), "# A Completely Different Title\n\nBody.\n").unwrap();
+    Command::cargo_bin("mf").unwrap().current_dir(&project_path).args(["article", "index"]).assert().code(0);
+    let after = common::read_index_articles_map(&dir, "title-project");
+    let title_after = after.get("docs/2026-08-skm").expect("entry still registered")["title"].clone();
+
+    assert_eq!(title_before, title_after, "title must not follow an H1 rewrite: {title_before:?} vs {title_after:?}");
+}

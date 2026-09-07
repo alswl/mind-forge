@@ -19,6 +19,16 @@ pub(super) fn handle_convert(args: ArticleConvertArgs, ctx: &mut CommandCtx) -> 
         .map(|articles| articles.iter().map(|a| a.article_path.clone()).collect())
         .unwrap_or_default();
 
+    // Spec 079 US6 (#47): `--article` narrows the candidate set to exactly
+    // one article before direction/plan inference, instead of always
+    // operating on the whole project. Resolution failure (not-found or
+    // ambiguous) must propagate as-is — it must never silently fall back to
+    // the full-project batch.
+    let article_paths: Vec<String> = match &args.article {
+        Some(selector) => vec![article_svc::resolve_selector(&project_path, selector)?],
+        None => article_paths,
+    };
+
     let (direction, direction_source) = match resolve_direction(&args, &project_path, &article_paths)? {
         DirectionDecision::Use { direction, source } => (direction, source),
         DirectionDecision::Declined => {

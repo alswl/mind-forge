@@ -198,7 +198,7 @@ Create a project
 
 * `--template <TEMPLATE>`
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -231,7 +231,7 @@ Archive a project
 
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-y`, `--yes` — Skip interactive confirmation prompt
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -247,7 +247,7 @@ Lint a project
 * `--rule <RULE>` — Restrict to a specific lint rule kind
 * `--severity <LEVEL>` — Only emit issues at or above this severity (error|warning|info)
 * `--max-warnings <N>` — Exit 1 when warnings exceed this count
-* `--dry-run` — Preview fixes without writing (only with --fix)
+* `-n`, `--dry-run` — Preview fixes without writing (only with --fix)
 * `--include-suggested` — Apply all corrections including suggested
 * `--min-confidence <0.0..1.0>` — Apply suggested corrections at or above this confidence
 
@@ -261,7 +261,7 @@ Index projects
 
 ###### **Options:**
 
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -291,7 +291,7 @@ Update project metadata
 
 * `--description <DESCRIPTION>`
 * `--clear-description`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -329,7 +329,7 @@ Rename a project
 ###### **Options:**
 
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -349,7 +349,7 @@ Remove a project
 
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-y`, `--yes` — Skip interactive confirmation prompt
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -399,7 +399,7 @@ Create an article
 
   Default value: `true`
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -430,7 +430,7 @@ Lint articles
 * `--rule <RULE>` — Restrict to a specific lint rule kind
 * `--severity <LEVEL>` — Only emit issues at or above this severity (error|warning|info)
 * `--max-warnings <N>` — Exit 1 when warnings exceed this count
-* `--dry-run` — Preview fixes without writing (only with --fix)
+* `-n`, `--dry-run` — Preview fixes without writing (only with --fix)
 * `--include-suggested` — Apply all corrections including suggested
 * `--min-confidence <0.0..1.0>` — Apply suggested corrections at or above this confidence
 
@@ -444,7 +444,7 @@ Index articles
 
 ###### **Options:**
 
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -462,7 +462,7 @@ Rename an article
 ###### **Options:**
 
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -479,7 +479,7 @@ Move an article to another project
 ###### **Options:**
 
 * `--to-project <TO_PROJECT>`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -499,7 +499,7 @@ Remove an article
 
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-y`, `--yes` — Skip interactive confirmation prompt
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -529,7 +529,7 @@ Update article metadata
 
 * `--status <STATUS>` — Article publication status
 * `--title <TITLE>` — New article title (metadata only, does not rename files)
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -566,7 +566,7 @@ Create a block within a directory article
 * `--start <START>`
 
   Default value: `1`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -587,7 +587,7 @@ Move a block within a directory article
 * `--start <START>`
 
   Default value: `1`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -606,7 +606,7 @@ Renumber blocks contiguously
 * `--start <START>`
 
   Default value: `1`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -625,7 +625,7 @@ Rename a block within a directory article
 ###### **Options:**
 
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -646,7 +646,7 @@ Remove a block within a directory article
 
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-y`, `--yes` — Skip interactive confirmation prompt
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -661,7 +661,8 @@ Convert article shape between directory and single-file
 * `--to-single-file` — Convert directory articles to single-file articles
 * `--to-directory` — Convert single-file articles to directory articles
 * `--merge` — Allow `--to-single-file` to merge multi-block directory articles (concatenated in filename order) instead of skipping them
-* `--dry-run` — Preview changes without writing
+* `--article <ARTICLE>` — Convert only this article (selector: bare slug, docs/<slug>, docs/<slug>.md, or exact title). Without it, converts every eligible article in the project (existing batch behaviour, unchanged)
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -782,7 +783,7 @@ Create a source
 
 ###### **Options:**
 
-* `-n`, `--name <NAME>` — Override the source name derived from the input
+* `--name <NAME>` — Override the source name derived from the input
 * `--file-kind <FILE_KIND>` — File kind (mf primary). Use --source-kind for mind channel type
 
   Possible values: `auto`, `pdf`, `file`, `rss`, `web`
@@ -796,7 +797,7 @@ Create a source
 * `--no-index` — Register only, without indexing the source into RAG (Lance backend). By default a new source is chunked and embedded so it is searchable at once
 * `--article <ARTICLE>` — Originating article that introduced this source (project-relative path). Captured as authoritative import provenance (spec 071). Must stay within the project; an escaping path is a usage error
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -814,7 +815,7 @@ Update a source
 
 * `--rename <RENAME>`
 * `--url <URL>`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -826,7 +827,7 @@ Index sources
 
 ###### **Options:**
 
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -847,7 +848,7 @@ Remove a source
 * `--keep-file`
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-y`, `--yes` — Skip interactive confirmation prompt
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -865,7 +866,7 @@ Rename a source
 ###### **Options:**
 
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -882,7 +883,7 @@ Move a source to another project
 ###### **Options:**
 
 * `--to-project <TO_PROJECT>`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -894,7 +895,7 @@ Clean source index
 
 ###### **Options:**
 
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -949,7 +950,7 @@ Synchronize sources and article content
 * `--source <SOURCE>` — Limit sync to a specific Source identity (requires unambiguous scope)
 * `--offline` — Forbid all network access (Web/RSS acquisition disabled)
 * `--rebuild` — Regenerate the Lance Source index to the current storage schema (full re-index/re-embed). Recovers from a schema-drift refusal in one command family instead of detouring to `source admin rebuild`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -976,7 +977,7 @@ Export the source corpus
 
 * `--output-dir <DIR>` — Destination bundle directory
 * `--force` — Allow writing into an existing/non-empty output directory
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -993,7 +994,7 @@ Import a source corpus bundle
 ###### **Options:**
 
 * `--overwrite` — Required when the target already has a published corpus
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1030,7 +1031,7 @@ Maintain the source corpus
 ###### **Options:**
 
 * `--offline`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1046,7 +1047,7 @@ Maintain the source corpus
 
 * `-p`, `--project <PROJECT>`
 * `--all`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 * `-y`, `--yes` — Skip interactive confirmation prompt
 
 
@@ -1058,7 +1059,7 @@ Maintain the source corpus
 ###### **Options:**
 
 * `--snapshot <SNAPSHOT>`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 * `-y`, `--yes` — Skip interactive confirmation prompt
 
 
@@ -1143,7 +1144,7 @@ Create an asset
 * `--copy`
 * `--link`
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1162,7 +1163,7 @@ Update assets
 * `--set-url <SET_URL>`
 * `--channel <CHANNEL>`
 * `--all`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1174,7 +1175,7 @@ Index assets
 
 ###### **Options:**
 
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 * `--refresh-metadata`
 
 
@@ -1187,7 +1188,7 @@ Clean stale asset index entries
 
 ###### **Options:**
 
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1207,7 +1208,7 @@ Remove an asset
 
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-y`, `--yes` — Skip interactive confirmation prompt
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1225,7 +1226,7 @@ Rename an asset
 ###### **Options:**
 
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1242,7 +1243,7 @@ Move an asset to another project
 ###### **Options:**
 
 * `--to-project <TO_PROJECT>`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1319,7 +1320,7 @@ Create a term
 * `--alias <ALIAS>`
 * `--tag <TAG>`
 * `--misrecognition <MISRECOGNITION>`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1346,7 +1347,7 @@ Lint term consistency in project docs
 * `--rule <RULE>` — Restrict to a specific lint rule kind
 * `--severity <LEVEL>` — Only emit issues at or above this severity (error|warning|info)
 * `--max-warnings <N>` — Exit 1 when warnings exceed this count
-* `--dry-run` — Preview fixes without writing (only with --fix)
+* `-n`, `--dry-run` — Preview fixes without writing (only with --fix)
 * `--include-suggested` — Apply all corrections including suggested
 * `--min-confidence <0.0..1.0>` — Apply suggested corrections at or above this confidence
 * `-y`, `--yes` — Skip interactive confirmation prompt
@@ -1379,7 +1380,7 @@ Update term metadata
 * `--correction-fix <ORIGINAL:KIND>` — Set fix kind of a correction: ORIGINAL:required|suggested
 * `--correction-pinyin <ORIGINAL:PINYIN>` — Set pinyin of a correction: ORIGINAL:PINYIN
 * `--delete-correction <DELETE_CORRECTION>` — Delete a correction by ORIGINAL
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1411,7 +1412,7 @@ Remove a term
 
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-y`, `--yes` — Skip interactive confirmation prompt
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1430,7 +1431,7 @@ Rename a term
 
 * `--keep-alias`
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1457,7 +1458,7 @@ Apply term corrections to documents (alias of `term lint --fix`)
 * `--rule <RULE>` — Restrict to a specific lint rule kind
 * `--severity <LEVEL>` — Only emit issues at or above this severity (error|warning|info)
 * `--max-warnings <N>` — Exit 1 when warnings exceed this count
-* `--dry-run` — Preview fixes without writing (only with --fix)
+* `-n`, `--dry-run` — Preview fixes without writing (only with --fix)
 * `--include-suggested` — Apply all corrections including suggested
 * `--min-confidence <0.0..1.0>` — Apply suggested corrections at or above this confidence
 * `-y`, `--yes` — Skip interactive confirmation prompt
@@ -1498,7 +1499,7 @@ Add a correction to a term
 * `--fix <FIX>`
 * `--pinyin <PINYIN>`
 * `--boundary <BOUNDARY>`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1550,7 +1551,7 @@ Update correction attributes
 * `--fix <FIX>`
 * `--pinyin <PINYIN>`
 * `--boundary <BOUNDARY>`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1567,7 +1568,7 @@ Remove a correction from a term
 
 ###### **Options:**
 
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1589,7 +1590,7 @@ Move a term between scopes
 * `--to-global` — Move to global scope
 * `--from-global` — Source is global scope (default: project-scoped via -p)
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1606,7 +1607,7 @@ Build articles
 ###### **Options:**
 
 * `--out <OUTPUT>`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 
@@ -1637,7 +1638,7 @@ Publish an article to a target
 ###### **Options:**
 
 * `--target <TARGET>`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 
 
@@ -1661,7 +1662,7 @@ Update publish record metadata
 
 * `--target-url <TARGET_URL>`
 * `--set <KEY=VALUE>`
-* `--dry-run` — Preview changes without writing
+* `-n`, `--dry-run` — Preview changes without writing
 
 
 

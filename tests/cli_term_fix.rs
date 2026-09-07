@@ -776,3 +776,47 @@ terms:
     );
     (repo, project)
 }
+
+// ---------------------------------------------------------------------------
+// Spec 079 Polish T065: regression coverage for #45, already fixed by spec
+// 077 (term fix leaves blockquote and 「…」-quoted text untouched by default;
+// `--include-quotes` opts in).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn fix_leaves_blockquote_and_cjk_quotes_untouched_by_default_include_quotes_opts_in() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    common::write_index(
+        &repo,
+        "alpha",
+        "schema_version: '1'\nterms:\n  - term: Mind Repo\n    corrections:\n      - original: mindrepo\n        correct: Mind Repo\n",
+    );
+    let content = "prose says mindrepo here.\n> mindrepo inside a quote\n「mindrepo」\n";
+    fs::write(project.join("docs/quoted.md"), content).unwrap();
+
+    mf(&repo).args(["term", "fix", "--project", "alpha", "--yes"]).assert().success();
+
+    let after_default = fs::read_to_string(project.join("docs/quoted.md")).unwrap();
+    assert!(after_default.contains("prose says Mind Repo here."), "prose occurrence must be fixed: {after_default}");
+    assert!(
+        after_default.contains("> mindrepo inside a quote"),
+        "blockquote must be left untouched by default: {after_default}"
+    );
+    assert!(
+        after_default.contains("「mindrepo」"),
+        "CJK-quoted text must be left untouched by default: {after_default}"
+    );
+
+    fs::write(project.join("docs/quoted.md"), content).unwrap();
+    mf(&repo).args(["term", "fix", "--project", "alpha", "--yes", "--include-quotes"]).assert().success();
+
+    let after_opt_in = fs::read_to_string(project.join("docs/quoted.md")).unwrap();
+    assert!(
+        after_opt_in.contains("> Mind Repo inside a quote"),
+        "--include-quotes must fix inside blockquotes: {after_opt_in}"
+    );
+    assert!(after_opt_in.contains("「Mind Repo」"), "--include-quotes must fix inside 「…」: {after_opt_in}");
+}

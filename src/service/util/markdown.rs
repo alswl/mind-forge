@@ -288,17 +288,30 @@ pub fn block_visibility(content: &str) -> Result<Visibility, VisibilityError> {
     Ok(Visibility::Public)
 }
 
+/// A private callout whose removal consumed one or more bare blank lines
+/// (no `>` prefix) followed by more blockquote content, merging that
+/// following content into the same removal (spec 079 FR-003/FR-004). Carries
+/// the callout's 1-indexed starting line so the caller can report it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PrivateStripWarning {
+    pub start_line: usize,
+}
+
 /// Remove every `mind-forge-*` private callout — a blockquote whose header
 /// line is `> [!<type>]` with `<type>` starting (case-insensitively) with
 /// `mf-` or `mind-forge-` — from `content` (spec 073, FR-001/FR-008).
 ///
 /// A callout is the maximal run of consecutive blockquote lines starting at
-/// its header line; it is self-delimiting (ends at the first non-blockquote
-/// line), so there is no "unclosed" failure mode. Nested callouts inside a
-/// private callout are removed along with it. Callouts inside fenced code
-/// blocks are left untouched (literal text, via [`FenceTracker`]).
-pub fn strip_private_callouts(content: &str) -> String {
+/// its header line, plus (spec 079 FR-003) any bare blank line immediately
+/// followed by more blockquote lines — that merge is reported via the
+/// returned `PrivateStripWarning`s, one per callout that merged at least
+/// once. A bare blank line *not* followed by more `>` lines ends the callout
+/// normally, with no warning. Nested callouts inside a private callout are
+/// removed along with it. Callouts inside fenced code blocks are left
+/// untouched (literal text, via [`FenceTracker`]).
+pub fn strip_private_callouts(content: &str) -> (String, Vec<PrivateStripWarning>) {
     let mut result = String::with_capacity(content.len());
+    let mut warnings = Vec::new();
     let mut fence = FenceTracker::new();
     let lines: Vec<&str> = content.split_inclusive('\n').collect();
     let mut i = 0;
@@ -309,14 +322,34 @@ pub fn strip_private_callouts(content: &str) -> String {
         let inside_fence = matches!(fence.process_line(line_body), FenceStatus::Inside);
 
         if !inside_fence && is_private_callout_header(line_body) {
+            let start_line = i + 1;
+            let mut merged = false;
             i += 1;
-            while i < lines.len() {
-                let next_body = lines[i].trim_end_matches(['\r', '\n']);
-                if is_blockquote_line(next_body) {
+            loop {
+                if i < lines.len() && is_blockquote_line(lines[i].trim_end_matches(['\r', '\n'])) {
                     i += 1;
-                } else {
-                    break;
+                    continue;
                 }
+                // A bare blank line doesn't end the callout by itself — only
+                // if nothing but more blank lines separates it from further
+                // blockquote content. Otherwise this run of blanks is the
+                // ordinary paragraph gap after the callout, and terminates it.
+                let mut lookahead = i;
+                while lookahead < lines.len() && lines[lookahead].trim_end_matches(['\r', '\n']).trim().is_empty() {
+                    lookahead += 1;
+                }
+                if lookahead > i
+                    && lookahead < lines.len()
+                    && is_blockquote_line(lines[lookahead].trim_end_matches(['\r', '\n']))
+                {
+                    merged = true;
+                    i = lookahead;
+                    continue;
+                }
+                break;
+            }
+            if merged {
+                warnings.push(PrivateStripWarning { start_line });
             }
             // A removed callout can leave one blank line on either side. Keep
             // the surrounding paragraph separation, but consume surplus blank
@@ -337,7 +370,7 @@ pub fn strip_private_callouts(content: &str) -> String {
         i += 1;
     }
 
-    result
+    (result, warnings)
 }
 
 /// Whether `line` (indentation ≤3 spaces, matching the fence-marker rule) is
@@ -939,19 +972,25 @@ mod tests {
     #[test]
     fn strip_private_callouts_removes_short_form() {
         let content = "Before.\n\n> [!mf-private]\n> Secret note.\n\nAfter.\n";
-        assert_eq!(strip_private_callouts(content), "Before.\n\nAfter.\n");
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(stripped, "Before.\n\nAfter.\n");
+        assert!(warnings.is_empty(), "no bare-blank-line merge in this fixture: {warnings:?}");
     }
 
     #[test]
     fn strip_private_callouts_removes_explicit_alias() {
         let content = "Before.\n\n> [!mind-forge-private]\n> Secret note.\n\nAfter.\n";
-        assert_eq!(strip_private_callouts(content), "Before.\n\nAfter.\n");
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(stripped, "Before.\n\nAfter.\n");
+        assert!(warnings.is_empty(), "no bare-blank-line merge in this fixture: {warnings:?}");
     }
 
     #[test]
     fn strip_private_callouts_is_case_insensitive() {
         let content = "Before.\n\n> [!MF-Private]\n> Secret.\n\nAfter.\n";
-        assert_eq!(strip_private_callouts(content), "Before.\n\nAfter.\n");
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(stripped, "Before.\n\nAfter.\n");
+        assert!(warnings.is_empty(), "no bare-blank-line merge in this fixture: {warnings:?}");
     }
 
     #[test]
@@ -967,33 +1006,113 @@ mod tests {
 > > still private\n\
 \n\
 After.\n";
-        assert_eq!(strip_private_callouts(content), "Before.\n\nAfter.\n");
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(stripped, "Before.\n\nAfter.\n");
+        assert!(warnings.is_empty(), "no bare-blank-line merge in this fixture: {warnings:?}");
+    }
+
+    // ── spec 079 US2 (#49): bare blank line inside a callout keeps stripping ─
+
+    #[test]
+    fn strip_private_callouts_merges_across_bare_blank_line_and_warns() {
+        // T014: a bare blank line (no `>` prefix) inside the callout, followed
+        // by more `>` lines. Before this fix, the bare blank line ended the
+        // callout early, leaving the later `>` lines as a residual public
+        // blockquote in the build output — the reported leak (#49).
+        let content = "Before.\n\n> [!mf-private]\n> front half\n\n> back half\n\nAfter.\n";
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(stripped, "Before.\n\nAfter.\n", "both halves must be stripped, leaking nothing: {stripped:?}");
+        assert_eq!(warnings.len(), 1, "exactly one warning for this callout: {warnings:?}");
+        assert_eq!(warnings[0].start_line, 3, "warning must carry the callout's header line");
+    }
+
+    #[test]
+    fn strip_private_callouts_merges_across_multiple_consecutive_bare_blank_lines() {
+        // T015 edge case: more than one bare blank line in a row still merges
+        // as long as `>` content eventually resumes.
+        let content = "Before.\n\n> [!mf-private]\n> front half\n\n\n> back half\n\nAfter.\n";
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(stripped, "Before.\n\nAfter.\n");
+        assert_eq!(warnings.len(), 1);
+    }
+
+    #[test]
+    fn strip_private_callouts_bare_blank_line_with_no_further_quote_ends_normally() {
+        // T015 edge case: a bare blank line NOT followed by more `>` content
+        // is the ordinary end-of-callout gap — no merge, no warning.
+        let content = "Before.\n\n> [!mf-private]\n> Secret.\n\nAfter blank, not part of the callout.\n";
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(stripped, "Before.\n\nAfter blank, not part of the callout.\n");
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn strip_private_callouts_bare_blank_line_before_fenced_block_ends_normally() {
+        // T015 edge case: a fenced code block starting after the bare blank
+        // line is not `>`-prefixed itself, so the callout must not reach
+        // through the blank line into it — even though the fenced block's
+        // *content* happens to contain a `>`-prefixed example line.
+        let content = "Before.\n\n> [!mf-private]\n> Secret.\n\n```\n> looks like a quote but is code\n```\nAfter.\n";
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(
+            stripped, "Before.\n\n```\n> looks like a quote but is code\n```\nAfter.\n",
+            "the fenced block must survive untouched: {stripped:?}"
+        );
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn strip_private_callouts_bare_blank_line_at_end_of_file_ends_normally() {
+        // T015 edge case: the callout is the last thing in the file — no
+        // trailing `>` content can exist, so this must not merge or warn.
+        let content = "Before.\n\n> [!mf-private]\n> Secret.\n\n";
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(stripped, "Before.\n\n");
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn strip_private_callouts_merges_trailing_public_blockquote_across_blank_line() {
+        // Acceptance scenario 3 (spec.md US2): a bare blank line followed by
+        // an *ordinary* (non-private) blockquote also merges — this is the
+        // documented trade-off (plan.md Complexity Tracking #2), guarded by a
+        // warning rather than silently dropped.
+        let content = "Before.\n\n> [!mf-private]\n> Secret.\n\n> Not private, but still swallowed.\n\nAfter.\n";
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(stripped, "Before.\n\nAfter.\n");
+        assert_eq!(warnings.len(), 1);
     }
 
     #[test]
     fn strip_private_callouts_leaves_fenced_example_untouched() {
         let content = "Before.\n```\n> [!mf-private]\n> shown as an example\n```\nAfter.\n";
-        assert_eq!(strip_private_callouts(content), content);
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(stripped, content);
+        assert!(warnings.is_empty());
     }
 
     #[test]
     fn strip_private_callouts_leaves_non_private_callout_untouched() {
         let content = "Before.\n\n> [!note]\n> This is a normal callout.\n\nAfter.\n";
-        assert_eq!(strip_private_callouts(content), content);
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(stripped, content);
+        assert!(warnings.is_empty());
     }
 
     #[test]
     fn strip_private_callouts_is_idempotent() {
         let content = "Before.\n\n> [!mf-private]\n> Secret.\n\nAfter.\n";
-        let once = strip_private_callouts(content);
-        let twice = strip_private_callouts(&once);
+        let (once, _) = strip_private_callouts(content);
+        let (twice, _) = strip_private_callouts(&once);
         assert_eq!(once, twice);
     }
 
     #[test]
     fn strip_private_callouts_noop_without_markers() {
         let content = "# Title\n\nJust ordinary prose with no callouts at all.\n";
-        assert_eq!(strip_private_callouts(content), content);
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(stripped, content);
+        assert!(warnings.is_empty());
     }
 
     // ── mind-forge-visibility front matter (spec 073, FR-002/FR-006) ────────

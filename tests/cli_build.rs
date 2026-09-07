@@ -1636,3 +1636,97 @@ fn build_output_format_confusion_names_the_out_flag() {
     assert!(stderr.contains("possible values"), "must still list valid formats: {stderr}");
     assert!(stderr.contains("--out"), "must name the flag that accepts an output path: {stderr}");
 }
+
+// ---------------------------------------------------------------------------
+// Spec 079 US2 (#49): mf-private content must not leak through a bare blank
+// line inside the callout. T016/T018.
+// ---------------------------------------------------------------------------
+
+/// T016: front half + a bare blank line + back half must both be stripped,
+/// and the build must emit exactly one `WARN:` naming the file and the
+/// callout's starting line — in both text and JSON output modes.
+#[test]
+fn build_strips_private_callout_across_bare_blank_line_and_warns() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "leaky");
+    common::write_doc(
+        &repo,
+        "my-project",
+        "leaky",
+        "# Leaky\n\nBefore.\n\n> [!mf-private]\n> front half\n\n> back half\n\nAfter.\n",
+    );
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "leaky"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let content = fs::read_to_string(repo.path().join("my-project/outputs/leaky.md")).unwrap();
+    assert!(!content.contains("front half"), "private content must not leak: {content}");
+    assert!(!content.contains("back half"), "content after the bare blank line must not leak either: {content}");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let warn_lines: Vec<&str> = stderr.lines().filter(|l| l.contains("WARN:")).collect();
+    assert_eq!(warn_lines.len(), 1, "exactly one warning, stderr: {stderr}");
+    assert!(warn_lines[0].contains("leaky.md:5"), "warning must name the file and callout start line: {stderr}");
+
+    // Same fixture in JSON mode: warning must land in the envelope, not just
+    // stderr, with no new field beyond the existing warnings array.
+    let repo_json = common::setup_repo();
+    common::create_project(&repo_json, "my-project");
+    common::write_article_index(&repo_json, "my-project", "leaky");
+    common::write_doc(
+        &repo_json,
+        "my-project",
+        "leaky",
+        "# Leaky\n\nBefore.\n\n> [!mf-private]\n> front half\n\n> back half\n\nAfter.\n",
+    );
+    let json_output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo_json.path().join("my-project"))
+        .args(["--output", "json", "build", "leaky"])
+        .output()
+        .expect("command runs");
+    assert!(json_output.status.success());
+    let stdout = String::from_utf8_lossy(&json_output.stdout);
+    let json_start = stdout.find('{').unwrap_or(0);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout[json_start..]).unwrap();
+    assert_eq!(parsed["status"], "ok");
+    let warnings = parsed["data"]["warnings"].as_array().or_else(|| parsed["warnings"].as_array());
+    let warnings = warnings.expect("a warnings array must exist in the envelope");
+    assert_eq!(warnings.len(), 1, "envelope must carry exactly one warning: {parsed}");
+}
+
+/// T018: the documented trade-off (plan.md Complexity Tracking #2) — a bare
+/// blank line after a private callout also swallows a *following*,
+/// otherwise-public blockquote. This pins the trade-off so a future change
+/// can't silently narrow or widen it without a failing test.
+#[test]
+fn build_merges_trailing_public_blockquote_across_bare_blank_line() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "adjacent");
+    common::write_doc(
+        &repo,
+        "my-project",
+        "adjacent",
+        "# Adjacent\n\n> [!mf-private]\n> Secret.\n\n> Not private, but still swallowed.\n\nAfter.\n",
+    );
+
+    let output = Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "adjacent"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success());
+
+    let content = fs::read_to_string(repo.path().join("my-project/outputs/adjacent.md")).unwrap();
+    assert!(!content.contains("Not private, but still swallowed"), "the known trade-off: {content}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("WARN:"), "the swallowed public blockquote must still be flagged: {stderr}");
+}

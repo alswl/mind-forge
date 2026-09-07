@@ -7,18 +7,21 @@ Convert article shape between directory and single-file
 Usage: mf article convert [OPTIONS]
 
 Options:
-      --root <PATH>      Mind Repo root directory
-      --to-single-file   Convert directory articles to single-file articles
-      --config <PATH>    Config file path
-      --to-directory     Convert single-file articles to directory articles
-      --merge            Allow `--to-single-file` to merge multi-block directory articles
-                         (concatenated in filename order) instead of skipping them
-  -v, --verbose...       Verbose output
-      --dry-run          Preview changes without writing
-  -q, --quiet            Silence non-error output
-  -o, --output <FORMAT>  Output format [default: text] [possible values: text, json]
-      --json             Shorthand for --output json
-      --no-color         Disable colored output
-  -p, --project <NAME>   Project name for project-scoped operations
-  -h, --help             Print help
-  -V, --version          Print version
+      --root <PATH>        Mind Repo root directory
+      --to-single-file     Convert directory articles to single-file articles
+      --config <PATH>      Config file path
+      --to-directory       Convert single-file articles to directory articles
+      --merge              Allow `--to-single-file` to merge multi-block directory articles
+                           (concatenated in filename order) instead of skipping them
+  -v, --verbose...         Verbose output
+      --article <ARTICLE>  Convert only this article (selector: bare slug, docs/<slug>,
+                           docs/<slug>.md, or exact title). Without it, converts every eligible
+                           article in the project (existing batch behaviour, unchanged)
+  -q, --quiet              Silence non-error output
+  -n, --dry-run            Preview changes without writing
+  -o, --output <FORMAT>    Output format [default: text] [possible values: text, json]
+      --json               Shorthand for --output json
+      --no-color           Disable colored output
+  -p, --project <NAME>     Project name for project-scoped operations
+  -h, --help               Print help
+  -V, --version            Print version

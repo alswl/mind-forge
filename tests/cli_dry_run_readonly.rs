@@ -119,3 +119,35 @@ fn every_mutating_surface_in_the_matrix_is_read_only_under_dry_run() {
         common::assert_tree_unchanged(repo.path(), &before);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Spec 079 US8 (#51) T057: `-n` must behave exactly like `--dry-run` — same
+// read-only guarantee — across commands using the shared `DryRunFlag` and
+// commands using `LintFlags` (`term fix`, whose `--dry-run` field is defined
+// independently, see plan.md's Complexity Tracking / T060's note).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn short_n_flag_matches_dry_run_behaviour() {
+    let cases: &[(&str, &[&str])] = &[
+        ("article index", &["article", "index", "--project", "alpha", "-n"]),
+        ("asset index", &["asset", "index", "--project", "alpha", "-n"]),
+        ("build", &["build", "docs/post", "--project", "alpha", "-n"]),
+        ("term fix", &["term", "fix", "--project", "alpha", "-n"]),
+    ];
+
+    for (name, args) in cases {
+        let repo = fixture();
+        let before = common::snapshot_tree(repo.path());
+        let mut command = Command::cargo_bin("mf").unwrap();
+        let output =
+            command.args(["--root", repo.path().to_str().unwrap()]).args(args.iter().copied()).output().unwrap();
+        assert!(
+            output.status.success(),
+            "{name} -n failed (args={args:?}):\nstdout={}\nstderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        common::assert_tree_unchanged(repo.path(), &before);
+    }
+}
