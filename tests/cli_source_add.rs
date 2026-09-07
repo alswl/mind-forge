@@ -520,7 +520,7 @@ fn add_file_rejects_existing() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     // Spec 074 #32: the collision is now an actionable usage error naming the
     // taken source and suggesting a concrete -n value.
-    assert!(stderr.contains("already registered") && stderr.contains("-n "), "stderr: {stderr}");
+    assert!(stderr.contains("already registered") && stderr.contains("--name "), "stderr: {stderr}");
 }
 
 // ---------------------------------------------------------------------------
@@ -975,4 +975,132 @@ fn add_url_force_replaces() {
     assert!(second_content.contains("test-url"));
     // Local file contains the new content
     assert_eq!(std::fs::read_to_string(&first_file).unwrap(), "updated content");
+}
+
+// ---------------------------------------------------------------------------
+// Spec 079 US8 (#51) T058: `-n` is freed from `--name` (breaking change) so
+// it can mean `--dry-run` everywhere, matching every other command. `--name`
+// keeps working as the long flag.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn source_add_long_name_flag_still_works() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    std::fs::write(project.join("incoming.md"), b"content\n").unwrap();
+
+    Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(&project)
+        .args(["source", "new", "incoming.md", "--name", "renamed"])
+        .assert()
+        .success();
+    // `--name` overrides the *index entry's* name, not the on-disk filename
+    // (which keeps its original basename — see `add_file_with_explicit_name`
+    // above).
+    let index_content = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert!(index_content.contains("renamed"), "index should record the --name-given name: {index_content}");
+}
+
+#[test]
+fn source_add_short_n_means_dry_run_not_name() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    std::fs::write(project.join("incoming.md"), b"content\n").unwrap();
+    let before = common::snapshot_tree(&project);
+
+    // Before spec 079, `-n` meant `--name`; this must now be rejected as
+    // dry-run (no value expected) or otherwise not be interpreted as a name.
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(&project)
+        .args(["source", "new", "incoming.md", "-n"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    common::assert_tree_unchanged(&project, &before);
+}
+
+// ---------------------------------------------------------------------------
+// Spec 079 Polish T065: regression coverage for bugs already fixed by spec
+// 077, not reintroduced by this feature.
+//
+// #43: `--register-only --force` used to be rejected outright (the two flags
+// couldn't combine at all); now `--force` lets a name collision be
+// overwritten by a *different* path registering under the same name.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn register_only_force_overwrites_existing_name_registration() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "alpha");
+    let project = repo.path().join("alpha");
+    let source_dir = project.join("sources/file");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    std::fs::write(source_dir.join("first.md"), b"first\n").unwrap();
+    std::fs::write(source_dir.join("second.md"), b"second\n").unwrap();
+
+    // Register the first file under the name "shared".
+    Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "new",
+            "sources/file/first.md",
+            "--project",
+            "alpha",
+            "--register-only",
+            "--no-index",
+            "--name",
+            "shared",
+        ])
+        .assert()
+        .success();
+
+    // A different path claiming the same name is rejected without --force.
+    Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "new",
+            "sources/file/second.md",
+            "--project",
+            "alpha",
+            "--register-only",
+            "--no-index",
+            "--name",
+            "shared",
+        ])
+        .assert()
+        .failure();
+
+    // With --force, the re-registration succeeds and overwrites.
+    Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "new",
+            "sources/file/second.md",
+            "--project",
+            "alpha",
+            "--register-only",
+            "--no-index",
+            "--name",
+            "shared",
+            "--force",
+        ])
+        .assert()
+        .success();
+
+    let index = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert!(index.contains("sources/file/second.md"), "index should now point at the second file: {index}");
+    assert_eq!(index.matches("name: shared").count(), 1, "only one entry named 'shared' should remain: {index}");
 }

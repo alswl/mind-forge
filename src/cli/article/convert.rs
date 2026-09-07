@@ -19,6 +19,14 @@ pub(super) fn handle_convert(args: ArticleConvertArgs, ctx: &mut CommandCtx) -> 
         .map(|articles| articles.iter().map(|a| a.article_path.clone()).collect())
         .unwrap_or_default();
 
+    // `--article` narrows the batch to one article before direction/plan
+    // inference (#47). A failed resolution must propagate: falling back to the
+    // full-project batch would run a typo'd selector over every article.
+    let article_paths: Vec<String> = match &args.article {
+        Some(selector) => vec![article_svc::resolve_selector(&project_path, selector)?],
+        None => article_paths,
+    };
+
     let (direction, direction_source) = match resolve_direction(&args, &project_path, &article_paths)? {
         DirectionDecision::Use { direction, source } => (direction, source),
         DirectionDecision::Declined => {

@@ -126,7 +126,9 @@ pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome>
 
             // Bug #22 defense in depth: any reference the service could not
             // safely rewrite is reported here (stderr + JSON envelope) rather
-            // than silently written as a malformed path.
+            // than silently written as a malformed path. This is the only
+            // emit site: the `Text` arm below must not loop over
+            // `result.warnings` again, or every warning hits stderr twice.
             let mut warnings = Vec::new();
             for w in &result.warnings {
                 emit_warning(w, &mut warnings);
@@ -135,10 +137,6 @@ pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome>
             match format {
                 crate::output::Format::Json => Ok(CommandOutcome::Success(data, warnings, None)),
                 crate::output::Format::Text => {
-                    let mut emitted_warnings = Vec::new();
-                    for warning in &result.warnings {
-                        emit_warning(warning, &mut emitted_warnings);
-                    }
                     let size_kb = format!("{:.1}", result.size_bytes as f64 / 1024.0);
                     let msg = format!(
                         "Article built: {}\n  Output: {}\n  Size: {} KB",

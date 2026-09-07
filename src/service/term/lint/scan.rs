@@ -384,6 +384,15 @@ pub(crate) fn scan_file_for_corrections(
                 continue;
             }
 
+            // Guards the `&content[offset..offset + len]` slices below
+            // (`context_excerpt`, `char_after`, the CJK check) against a match
+            // whose end falls mid-character (#52). `find_subseq` no longer
+            // yields such a match, so this is belt-and-braces on that invariant.
+            if !content.is_char_boundary(abs_offset) || !content.is_char_boundary(abs_offset + orig_bytes.len()) {
+                search_start = abs_offset + 1;
+                continue;
+            }
+
             if !apply_word_boundary(content, sanitized, check, abs_offset, orig_bytes.len(), jieba) {
                 search_start = abs_offset + 1;
                 continue;
@@ -450,17 +459,17 @@ pub(crate) fn scan_file_for_corrections(
     }
 }
 
-/// Find subsequence `needle` in `haystack`, accounting for \0 placeholders.
+/// Find `needle` in `haystack`. A zeroed byte marks an exempt region (see
+/// `exempt.rs`) and must never match: wildcard-matching zeroes let real prose
+/// followed by an exempt region "match" a span that was never `needle`, with
+/// the match end landing mid-character and panicking the caller's slice (#52).
+/// Requiring exact bytes also buys char-boundary alignment for free, since
+/// `needle` is valid UTF-8.
 fn find_subseq(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() {
         return None;
     }
-    haystack.windows(needle.len()).position(|w| {
-        if w[0] == 0 {
-            return false;
-        }
-        w.iter().zip(needle.iter()).all(|(&h, &n)| h == n || h == 0)
-    })
+    haystack.windows(needle.len()).position(|w| w == needle)
 }
 
 #[cfg(test)]
@@ -497,11 +506,14 @@ mod tests {
         assert_eq!(find_subseq(haystack, needle), None);
     }
 
+    /// #52: a zeroed byte anywhere in the window rejects the match, not just a
+    /// zeroed first byte — wildcarding through the middle was the root cause of
+    /// the false-positive/panic class the tests further below cover end-to-end.
     #[test]
-    fn find_subseq_allows_zero_in_middle() {
+    fn find_subseq_rejects_zero_anywhere_in_window() {
         let haystack = b"mind\0epo";
         let needle = b"mindrepo";
-        assert_eq!(find_subseq(haystack, needle), Some(0));
+        assert_eq!(find_subseq(haystack, needle), None);
     }
 
     #[test]
@@ -795,6 +807,76 @@ mod tests {
             Some(&jieba),
         );
         findings
+    }
+
+    /// Runs the real pipeline (`strip_exempt_regions_with_quotes` →
+    /// `scan_file_for_corrections`) so exempt regions are actually zeroed.
+    /// `scan_original` passes `content.as_bytes()` through unzeroed and so
+    /// cannot exercise anything involving `\0` bytes.
+    fn scan_with_exempt_regions(content: &str, original: &str) -> Vec<TermFinding> {
+        let correction = CorrectionRef {
+            yaml_index: 0,
+            original,
+            correct: "Kusion",
+            term_name: "Kusion",
+            description: None,
+            confidence: Some(1.0),
+            is_ambiguous: false,
+            candidates: &[],
+            match_kind: MatchKind::Word,
+            fix_kind: crate::model::term::FixKind::Required,
+            boundary: Boundary::Standalone,
+            pinyin: None,
+        };
+        let sanitized = super::super::exempt::strip_exempt_regions_with_quotes(content, None, false);
+        let mut findings = Vec::new();
+        let mut internal = Vec::new();
+        let mut claimed = BTreeSet::new();
+        let jieba = JiebaBoundaries::segment(content);
+        scan_file_for_corrections(
+            content,
+            &sanitized,
+            &[correction],
+            &[],
+            "cjk.md",
+            &mut findings,
+            &mut internal,
+            &mut claimed,
+            Some(&jieba),
+        );
+        findings
+    }
+
+    /// #52: a correction whose first CJK character sits right before an exempt
+    /// region can "match" through the region's `\0` bytes even though the text
+    /// isn't the correction at all, with the end offset landing inside the
+    /// following multi-byte `神` and panicking the content slice.
+    ///
+    /// The fixture shape is load-bearing: it takes an *odd* number of ASCII
+    /// bytes inside the exempt region (pure CJK keeps 3-byte alignment and can
+    /// never trigger this) plus an `original` of at least 3 Han characters, so
+    /// the end offset overshoots into the next character.
+    #[test]
+    fn cross_exempt_region_match_does_not_panic_or_flag() {
+        let findings = scan_with_exempt_regions("库「a神」在这里。", "库神器");
+        assert_eq!(findings.len(), 0, "a match manufactured through the \\0 wildcard must not be reported");
+    }
+
+    /// Control: no ASCII inside the exempt region keeps 3-byte alignment, so
+    /// the end offset is on a real boundary — still no finding, the text isn't
+    /// `库神器` either way.
+    #[test]
+    fn exempt_region_without_ascii_stays_aligned_and_unmatched() {
+        let findings = scan_with_exempt_regions("库「神」在这里。", "库神器");
+        assert_eq!(findings.len(), 0);
+    }
+
+    /// Control: a 2-character `original` whose end offset falls before the
+    /// exempt region entirely — also must not panic or flag.
+    #[test]
+    fn short_original_before_exempt_region_stays_unmatched() {
+        let findings = scan_with_exempt_regions("库「a神」在这里。", "库神");
+        assert_eq!(findings.len(), 0);
     }
 
     #[test]

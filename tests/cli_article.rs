@@ -2766,3 +2766,29 @@ fn article_index_idempotent_for_directory_articles() {
     assert!(stdout2.contains("=1"), "should show 1 kept: {stdout2}");
     assert!(stdout2.contains("-0"), "nothing should be removed: {stdout2}");
 }
+
+/// A directory article whose stored `article_path` carries a trailing slash
+/// (hand-edited YAML, older schema data) must list as one row. Untrimmed, the
+/// list lookup missed the existing entry and appended a second, synthesised row
+/// with a slug-derived title alongside the real one.
+#[test]
+fn article_list_shows_one_row_for_trailing_slash_directory_article() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "demo");
+    let project = repo.path().join("demo");
+    std::fs::create_dir_all(project.join("docs/2026-09-monthly")).unwrap();
+    std::fs::write(project.join("docs/2026-09-monthly/01-opening.md"), "# Opening\n").unwrap();
+    std::fs::write(
+        project.join("mind-index.yaml"),
+        "schema: '1'\narticles:\n  docs/2026-09-monthly/:\n    title: Monthly Report\n    project: demo\n    type: blank\n    article_path: docs/2026-09-monthly/\n    status: draft\n    created_at: '2020-01-01T00:00:00Z'\n    updated_at: '2020-01-01T00:00:00Z'\n",
+    )
+    .unwrap();
+
+    let output = Command::cargo_bin("mf").unwrap().current_dir(&project).args(["article", "list"]).output().unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    let rows = stdout.matches("2026-09-monthly").count();
+    assert_eq!(rows, 1, "expected exactly one row for the article, got {rows}: {stdout}");
+    assert!(stdout.contains("Monthly Report"), "the indexed title must be shown, not a slug-derived one: {stdout}");
+}

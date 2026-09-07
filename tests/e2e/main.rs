@@ -19,6 +19,7 @@ mod repo_lifecycle;
 mod source_advanced;
 mod source_advanced_roundtrip;
 mod source_index;
+mod spec_079_workflow;
 mod term_global;
 mod term_lifecycle;
 mod term_lint_workflow;

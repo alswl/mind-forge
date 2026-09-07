@@ -459,15 +459,22 @@ pub fn article_key(article: &crate::model::article::Article) -> std::result::Res
 
 /// Derive the build artifact filename stem.
 ///
-/// Strips `docs/` or `outputs/` prefix and `.md` extension.
+/// Strips `docs/` or `outputs/` prefix, `.md` extension, and any trailing `/`.
+///
+/// A directory article's `article_path` is sometimes stored with a trailing
+/// slash (hand-edited YAML, older schema data); without the trim, `docs/foo`
+/// and `docs/foo/` derive different stems for the same article, so a bare slug
+/// fails to resolve against it. `article_key` already trims the same way.
 /// Used by build output and publish artifact lookup to keep
 /// `_build/<short-key>.<format>` consistent and avoid double-prefix
 /// paths like `outputs/outputs/...`.
 pub fn article_output_stem(article_path: &str) -> &str {
     let path = article_path.strip_suffix(".md").unwrap_or(article_path);
-    path.strip_prefix(defaults::DOCS_PATH_PREFIX)
+    let path = path
+        .strip_prefix(defaults::DOCS_PATH_PREFIX)
         .or_else(|| path.strip_prefix(defaults::BUILD_OUTPUT_PATH_PREFIX))
-        .unwrap_or(path)
+        .unwrap_or(path);
+    path.trim_end_matches('/')
 }
 
 /// Derive a store entry's own dictionary/identity key from its file path
@@ -654,6 +661,20 @@ pub fn resolve_article<'a>(index: &'a IndexFile, article_arg: &str) -> Result<Re
 mod tests {
     use super::*;
     use crate::model::article::{Article, ArticleStatus, ArticleType, TemplateOrigin};
+
+    // ── spec 079 (#46): a trailing-slash article_path must derive the same
+    //    stem as its slash-free form ───────────────────────────────────────
+
+    #[test]
+    fn article_output_stem_strips_trailing_slash() {
+        assert_eq!(article_output_stem("docs/2026-09-monthly/"), "2026-09-monthly");
+        assert_eq!(article_output_stem("docs/2026-09-monthly"), "2026-09-monthly");
+    }
+
+    #[test]
+    fn article_output_stem_trailing_slash_matches_slash_free_form() {
+        assert_eq!(article_output_stem("docs/dup/"), article_output_stem("docs/dup"));
+    }
 
     fn make_article(article_path: &str, template_origin: Option<TemplateOrigin>) -> Article {
         Article {

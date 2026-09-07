@@ -54,7 +54,7 @@ Options:
           Set pinyin of a correction: ORIGINAL:PINYIN
       --delete-correction <DELETE_CORRECTION>
           Delete a correction by ORIGINAL
-      --dry-run
+  -n, --dry-run
           Preview changes without writing
   -h, --help
           Print help

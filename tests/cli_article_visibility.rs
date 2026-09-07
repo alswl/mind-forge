@@ -124,3 +124,56 @@ fn article_lint_no_issues_for_valid_visibility() {
     assert!(!stdout.contains("mind_forge_visibility_invalid"));
     assert!(!stdout.contains("mind_forge_private_title_block"));
 }
+
+// ── spec 079 T017: lock in spec-077 fixes (#44/#48) with regression tests ──
+
+/// #44: stripping a private callout must not leave more than one blank line
+/// between the surrounding paragraphs (blank-line normalisation).
+#[test]
+fn build_strip_normalizes_to_single_blank_line() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "spacing");
+    common::write_doc(&repo, "my-project", "spacing", "# Spacing\n\nBefore.\n\n> [!mf-private]\n> Secret.\n\nAfter.\n");
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "spacing"])
+        .assert()
+        .success();
+
+    let content = std::fs::read_to_string(repo.path().join("my-project/outputs/spacing.md")).unwrap();
+    assert!(!content.contains("\n\n\n"), "no more than one blank line must remain: {content:?}");
+    assert!(
+        content.contains("Before.\n\nAfter.\n"),
+        "paragraphs must be separated by exactly one blank line: {content:?}"
+    );
+}
+
+/// #48: a private callout with no leading blank line (immediately following
+/// another line of prose) must still be recognised and stripped.
+#[test]
+fn build_strips_private_callout_with_no_leading_blank_line() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    common::write_article_index(&repo, "my-project", "no-lead-blank");
+    common::write_doc(
+        &repo,
+        "my-project",
+        "no-lead-blank",
+        "# No Lead Blank\n\nBefore.\n> [!mf-private]\n> Secret.\n\nAfter.\n",
+    );
+
+    Command::cargo_bin("mf")
+        .expect("binary exists")
+        .current_dir(repo.path().join("my-project"))
+        .args(["build", "no-lead-blank"])
+        .assert()
+        .success();
+
+    let content = std::fs::read_to_string(repo.path().join("my-project/outputs/no-lead-blank.md")).unwrap();
+    assert!(!content.contains("Secret"), "callout must be stripped even with no leading blank line: {content:?}");
+    assert!(content.contains("Before."), "prose before the callout must survive: {content:?}");
+    assert!(content.contains("After."), "prose after the callout must survive: {content:?}");
+}

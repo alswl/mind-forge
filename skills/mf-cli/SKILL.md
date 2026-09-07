@@ -75,7 +75,7 @@ Shared flag families (uniform across all commands they apply to):
 
 | Flag family | Applies to | Description |
 |---|---|---|
-| `--dry-run` | every mutating command (`new`, `add`, `rename`, `remove`, `archive`, `update`, `index`, lint `--fix`) | Preview without writing; JSON envelope sets `dry_run: true` |
+| `-n`, `--dry-run` | every mutating command (`new`, `add`, `rename`, `remove`, `archive`, `update`, `index`, lint `--fix`) | Preview without writing; JSON envelope sets `dry_run: true` |
 | `-f`, `--force` | every `new` / `rename` / `remove` / `archive` | Overwrite a target or bypass safety checks; it does not confirm remove/archive |
 | `-y`, `--yes` | every `remove` and `archive` | Confirm destructive action non-interactively |
 | `--no-headers`, `--no-trunc` | every `list` | Suppress table header / disable column truncation |
@@ -300,7 +300,7 @@ part of the user-facing interface.
 Subcommands: `list` (alias `ls`), `new`, `show`, `update`, `rename`, `move`, `remove` (alias `rm`), `index`, `clean`, plus the RAG/corpus commands `search`, `sync`, `status`, `export`, `import`, `trace`, and `admin` (`rebuild`/`clear`/`recover`) described above.
 
 **`mf source new <INPUT>`**
-`-n`, `--name <NAME>` — Source name
+`--name <NAME>` — Source name (spec 079: `-n` is no longer this flag's short form — it now means `--dry-run`, the same as every other command)
 `--file-kind <auto|pdf|file|rss|web>` — File kind (mf primary)
 `--source-kind <yuque|meeting|misc>` — Source channel type (mind primary)
 `-t`, `--type <KIND>` — Deprecated: use `--file-kind` or `--source-kind` instead

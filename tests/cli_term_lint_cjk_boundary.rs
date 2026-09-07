@@ -423,3 +423,62 @@ terms:
         "the shorter correction (declared first) must not win by declaration order: {stdout}"
     );
 }
+
+// ── #52 (spec 079 T009/T010): panic through the exempt-region \0 wildcard ──
+//
+// A correction whose first character is real prose text immediately
+// followed by an exempt region (here a `「…」` CJK quote) could match past
+// the region into the following character, panicking `mf term lint`/`mf
+// term fix` before this fix (`end byte index 9 is not a char boundary; it
+// is inside '神'`). Confirmed by direct execution against the pre-fix
+// binary (2026-09-07) with this exact fixture; a pure-CJK document without
+// an adjacent exempt region cannot trigger it at all — see research.md §1.
+
+fn write_cross_boundary_fixture(repo: &common::TempDir) -> std::path::PathBuf {
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    write_cjk_index(
+        repo,
+        "alpha",
+        "schema_version: '1'\nterms:\n  - term: Kusion\n    corrections:\n      - original: 库神器\n        correct: Kusion\n",
+    );
+    write_cjk_doc(&project, "cjk", "库「a神」在这里。\n");
+    project
+}
+
+#[test]
+fn lint_does_not_panic_on_cross_exempt_region_boundary() {
+    let repo = setup_cjk_repo();
+    write_cross_boundary_fixture(&repo);
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("panicked"), "term lint must not panic: {stderr}");
+    assert!(
+        output.status.success() || output.status.code() == Some(1),
+        "term lint must not panic (exit={:?}), stderr: {stderr}",
+        output.status.code()
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("stdout must be a JSON envelope");
+    assert_eq!(json["status"], "ok", "envelope status must be ok: {stdout}");
+}
+
+#[test]
+fn fix_dry_run_does_not_panic_on_cross_exempt_region_boundary() {
+    let repo = setup_cjk_repo();
+    let project = write_cross_boundary_fixture(&repo);
+    let before = fs::read_to_string(project.join("docs").join("cjk.md")).unwrap();
+
+    let output = mf(&repo).args(["term", "fix", "--dry-run", "--yes", "--project", "alpha"]).output().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("panicked"), "term fix --dry-run must not panic: {stderr}");
+    assert!(
+        output.status.success() || output.status.code() == Some(1),
+        "term fix --dry-run must not panic (exit={:?}), stderr: {stderr}",
+        output.status.code()
+    );
+
+    let after = fs::read_to_string(project.join("docs").join("cjk.md")).unwrap();
+    assert_eq!(before, after, "--dry-run must not write to disk");
+}

@@ -16,7 +16,7 @@ Options:
       --config <PATH>      Config file path
       --all                
   -v, --verbose...         Verbose output
-      --dry-run            Preview changes without writing
+  -n, --dry-run            Preview changes without writing
   -q, --quiet              Silence non-error output
   -o, --output <FORMAT>    Output format [default: text] [possible values: text, json]
       --json               Shorthand for --output json

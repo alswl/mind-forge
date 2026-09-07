@@ -198,3 +198,118 @@ fn block_rm_non_tty_without_yes_or_force_errors() {
     // Nothing removed.
     assert!(repo.path().join("my-project/docs/my-article/02-body.md").exists());
 }
+
+// ---------------------------------------------------------------------------
+// Spec 079 US3 (#46) T024: `block new`/`block rm`/`block rename` must accept a
+// bare slug, not just the full `docs/<slug>` identity — and must resolve it
+// the same way regardless of form. The article's `title` is deliberately
+// different from its slug, so passing the bare slug can only succeed via the
+// new bare-slug resolution path, not by accidentally matching on title.
+// ---------------------------------------------------------------------------
+
+fn setup_directory_article_with_title(
+    repo: &common::TempDir,
+    project: &str,
+    slug: &str,
+    title: &str,
+    blocks: &[(&str, &str)],
+) {
+    let project_path = repo.path().join(project);
+    let article_dir = project_path.join("docs").join(slug);
+    fs::create_dir_all(&article_dir).unwrap();
+    for (filename, content) in blocks {
+        fs::write(article_dir.join(filename), content).unwrap();
+    }
+    let index_yaml = format!(
+        "schema: '1'\narticles:\n  - title: '{title}'\n    project: {project}\n    type: blog\n    article_path: docs/{slug}\n    status: draft\n    created_at: '2026-07-01T00:00:00Z'\n    updated_at: '2026-07-01T00:00:00Z'\n"
+    );
+    fs::write(project_path.join("mind-index.yaml"), index_yaml).unwrap();
+}
+
+#[test]
+fn block_new_accepts_bare_slug_same_as_full_path() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    setup_directory_article_with_title(
+        &repo,
+        "my-project",
+        "2026-09-monthly",
+        "Monthly Report",
+        &[("01-opening.md", "# Opening\n")],
+    );
+
+    // Bare slug — did not work before spec 079 US3.
+    mf().current_dir(repo.path().join("my-project"))
+        .args(["article", "block", "new", "2026-09-monthly", "progress"])
+        .assert()
+        .success();
+    assert!(repo.path().join("my-project/docs/2026-09-monthly/02-progress.md").exists());
+
+    // Full path form — must behave identically (a second, differently-named block).
+    mf().current_dir(repo.path().join("my-project"))
+        .args(["article", "block", "new", "docs/2026-09-monthly", "review"])
+        .assert()
+        .success();
+    assert!(repo.path().join("my-project/docs/2026-09-monthly/03-review.md").exists());
+}
+
+#[test]
+fn block_rm_accepts_bare_slug() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    setup_directory_article_with_title(
+        &repo,
+        "my-project",
+        "2026-09-monthly",
+        "Monthly Report",
+        &[("01-opening.md", "# Opening\n"), ("02-body.md", "## Body\n")],
+    );
+
+    mf().current_dir(repo.path().join("my-project"))
+        .args(["article", "block", "rm", "2026-09-monthly", "02-body", "--yes"])
+        .assert()
+        .success();
+    assert!(!repo.path().join("my-project/docs/2026-09-monthly/02-body.md").exists());
+}
+
+#[test]
+fn block_rename_accepts_bare_slug() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    setup_directory_article_with_title(
+        &repo,
+        "my-project",
+        "2026-09-monthly",
+        "Monthly Report",
+        &[("01-opening.md", "# Opening\n")],
+    );
+
+    mf().current_dir(repo.path().join("my-project"))
+        .args(["article", "block", "rename", "2026-09-monthly", "01-opening", "intro"])
+        .assert()
+        .success();
+    assert!(repo.path().join("my-project/docs/2026-09-monthly/01-intro.md").exists());
+}
+
+/// Black-box regression (found by independent verification, my-tests/spec
+/// 016): a directory article whose `article_path` is stored *with* a
+/// trailing slash (hand-edited YAML, or data carried over from an older
+/// schema) must still resolve via bare slug — `article_output_stem` used to
+/// leave the trailing slash in place, so it never matched the slash-free
+/// stem derived from the selector itself.
+#[test]
+fn block_new_accepts_bare_slug_when_article_path_has_trailing_slash() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    let project = repo.path().join("my-project");
+    fs::create_dir_all(project.join("docs/2026-09-monthly")).unwrap();
+    fs::write(project.join("docs/2026-09-monthly/01-opening.md"), "# Opening\n").unwrap();
+    fs::write(
+        project.join("mind-index.yaml"),
+        "schema: '1'\narticles:\n  docs/2026-09-monthly/:\n    title: Monthly Report\n    project: my-project\n    type: blank\n    article_path: docs/2026-09-monthly/\n    status: draft\n    created_at: '2026-01-01T00:00:00Z'\n    updated_at: '2026-01-01T00:00:00Z'\n",
+    )
+    .unwrap();
+
+    mf().current_dir(&project).args(["article", "block", "new", "2026-09-monthly", "progress"]).assert().success();
+    assert!(project.join("docs/2026-09-monthly/02-progress.md").exists());
+}

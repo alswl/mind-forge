@@ -508,3 +508,89 @@ fn read_only_selector_resolution_does_not_modify_files() {
     assert_eq!(mind_before, mind_after, "mind.yaml was modified by read-only operations");
     assert_eq!(index_before, index_after, "mind-index.yaml was modified by read-only operations");
 }
+
+// ---------------------------------------------------------------------------
+// Spec 079 US3 (#46) T026: article write-operation selector resolution —
+// ambiguity is rejected (not guessed), `contains` substring matching is not
+// carried over from `mf article show`, and the not-found hint points at
+// `mf article list`.
+// ---------------------------------------------------------------------------
+
+fn write_index_with_two_articles(
+    repo: &TempDir,
+    project: &str,
+    a_slug: &str,
+    a_title: &str,
+    b_path: &str,
+    b_title: &str,
+) {
+    let project_path = repo.path().join(project);
+    fs::create_dir_all(project_path.join("docs").join(a_slug)).unwrap();
+    fs::write(project_path.join("docs").join(a_slug).join("01-content.md"), "# Content\n").unwrap();
+    let index_yaml = format!(
+        "schema: '1'\narticles:\n  - title: '{a_title}'\n    project: {project}\n    type: blog\n    article_path: docs/{a_slug}\n    status: draft\n    created_at: '2026-07-01T00:00:00Z'\n    updated_at: '2026-07-01T00:00:00Z'\n  - title: '{b_title}'\n    project: {project}\n    type: blog\n    article_path: {b_path}\n    status: draft\n    created_at: '2026-07-01T00:00:00Z'\n    updated_at: '2026-07-01T00:00:00Z'\n"
+    );
+    fs::write(project_path.join("mind-index.yaml"), index_yaml).unwrap();
+}
+
+#[test]
+fn write_op_ambiguous_selector_is_rejected_and_does_not_delete() {
+    let repo = setup();
+    common::create_project(&repo, "demo");
+    // `docs/dup` (directory) and `outputs/dup.md` (single file) share the bare
+    // slug `dup` — see data-model.md §2 for why this is the representable form
+    // of the directory-vs-single-file ambiguity (same-prefix forms collide on
+    // the index's own map key and cannot coexist).
+    write_index_with_two_articles(&repo, "demo", "dup", "Dup Dir", "outputs/dup.md", "Dup Generated");
+    let project_dir = repo.path().join("demo");
+    fs::create_dir_all(project_dir.join("outputs")).unwrap();
+    fs::write(project_dir.join("outputs").join("dup.md"), "# Generated\n").unwrap();
+
+    let output = mf_in(&repo).args(["--project", "demo", "article", "remove", "dup", "--yes"]).output().unwrap();
+    assert_ne!(output.status.code(), Some(0), "ambiguous selector must not succeed");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("docs/dup") && stderr.contains("outputs/dup.md"), "must list both candidates: {stderr}");
+
+    // Neither entry was touched.
+    assert!(project_dir.join("docs").join("dup").exists(), "directory article must survive a rejected ambiguous op");
+    assert!(
+        project_dir.join("outputs").join("dup.md").exists(),
+        "generated article must survive a rejected ambiguous op"
+    );
+}
+
+#[test]
+fn write_op_not_found_hints_at_article_list() {
+    let repo = setup();
+    common::create_project(&repo, "demo");
+    let output =
+        mf_in(&repo).args(["--project", "demo", "article", "remove", "does-not-exist", "--yes"]).output().unwrap();
+    assert_ne!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("not found"), "stderr: {stderr}");
+    assert!(stderr.contains("mf article list"), "stderr should hint at mf article list: {stderr}");
+}
+
+#[test]
+fn write_op_does_not_fall_back_to_contains_substring() {
+    let repo = setup();
+    common::create_project(&repo, "demo");
+    let project_path = repo.path().join("demo");
+    fs::create_dir_all(project_path.join("docs")).unwrap();
+    fs::write(project_path.join("docs").join("2026-09-monthly.md"), "# Monthly\n").unwrap();
+    fs::write(
+        project_path.join("mind-index.yaml"),
+        "schema: '1'\narticles:\n  - title: 'Monthly Report'\n    project: demo\n    type: blog\n    article_path: docs/2026-09-monthly.md\n    status: draft\n    created_at: '2026-07-01T00:00:00Z'\n    updated_at: '2026-07-01T00:00:00Z'\n",
+    )
+    .unwrap();
+
+    // `mf article show` accepts this substring; write ops deliberately do not.
+    let output = mf_in(&repo).args(["--project", "demo", "article", "remove", "2026-09", "--yes"]).output().unwrap();
+    assert_ne!(output.status.code(), Some(0), "a substring selector must not match on a write operation");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("not found"), "stderr: {stderr}");
+    assert!(
+        project_path.join("docs").join("2026-09-monthly.md").exists(),
+        "the article must survive a rejected substring selector"
+    );
+}

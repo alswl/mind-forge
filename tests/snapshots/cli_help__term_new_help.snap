@@ -22,7 +22,7 @@ Options:
       --tag <TAG>                        
       --json                             Shorthand for --output json
       --misrecognition <MISRECOGNITION>  
-      --dry-run                          Preview changes without writing
+  -n, --dry-run                          Preview changes without writing
       --no-color                         Disable colored output
   -p, --project <NAME>                   Project name for project-scoped operations
   -h, --help                             Print help

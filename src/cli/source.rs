@@ -134,8 +134,12 @@ impl From<CliSourceKindType> for SourceKind {
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceAddArgs {
     pub input: String,
+    // `-n` was this flag's short form until #51 gave it to `--dry-run`
+    // CLI-wide; this was the only collision. Deliberately a plain comment, not
+    // `///`: a multi-paragraph doc comment here flips clap's entire `--help`
+    // for this command to the long format, wrecking every other flag's layout.
     /// Override the source name derived from the input
-    #[arg(short = 'n', long)]
+    #[arg(long)]
     pub name: Option<String>,
     /// File kind (mf primary). Use --source-kind for mind channel type.
     #[arg(long = "file-kind", value_enum)]

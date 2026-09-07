@@ -241,3 +241,88 @@ fn convert_merge_still_blocked_by_target_exists() {
     assert!(stdout.contains("target_exists"), "stdout: {stdout}");
     assert!(article_dir.exists(), "source directory must be untouched when blocked");
 }
+
+// ---------------------------------------------------------------------------
+// Spec 079 US6 (#47) T044-T046: `--article <selector>` targets a single
+// article for conversion instead of the whole project.
+// ---------------------------------------------------------------------------
+
+fn write_two_single_file_articles(repo: &common::TempDir, project: &str) {
+    let project_path = repo.path().join(project);
+    fs::create_dir_all(project_path.join("docs")).unwrap();
+    fs::write(project_path.join("docs/one.md"), "# One\n\nContent one.\n").unwrap();
+    fs::write(project_path.join("docs/two.md"), "# Two\n\nContent two.\n").unwrap();
+    let yaml = format!(
+        "schema: '1'\narticles:\n  - title: One\n    project: {project}\n    type: blog\n    article_path: docs/one.md\n    status: draft\n    created_at: '2026-07-01T00:00:00Z'\n    updated_at: '2026-07-01T00:00:00Z'\n  - title: Two\n    project: {project}\n    type: blog\n    article_path: docs/two.md\n    status: draft\n    created_at: '2026-07-01T00:00:00Z'\n    updated_at: '2026-07-01T00:00:00Z'\n"
+    );
+    fs::write(project_path.join("mind-index.yaml"), yaml).unwrap();
+}
+
+#[test]
+fn convert_with_article_flag_only_converts_that_article() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    write_two_single_file_articles(&repo, "my-project");
+
+    let output = mf()
+        .current_dir(repo.path().join("my-project"))
+        .args(["--output", "json", "article", "convert", "--to-directory", "--article", "one"])
+        .output()
+        .expect("command runs");
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["scanned_count"], 1, "only the targeted article should be scanned: {json}");
+
+    assert!(repo.path().join("my-project/docs/one").is_dir(), "targeted article must be converted");
+    assert!(repo.path().join("my-project/docs/two.md").exists(), "untargeted article must be left alone");
+    assert!(!repo.path().join("my-project/docs/two").exists(), "untargeted article must not become a directory");
+}
+
+#[test]
+fn convert_with_article_and_dry_run_writes_nothing() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    write_two_single_file_articles(&repo, "my-project");
+
+    mf().current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-directory", "--article", "one", "--dry-run"])
+        .assert()
+        .success();
+
+    assert!(repo.path().join("my-project/docs/one.md").exists(), "--dry-run must not convert");
+    assert!(!repo.path().join("my-project/docs/one").exists(), "--dry-run must not create the directory");
+}
+
+#[test]
+fn convert_with_nonexistent_article_reports_not_found_not_batch() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    write_two_single_file_articles(&repo, "my-project");
+
+    let output = mf()
+        .current_dir(repo.path().join("my-project"))
+        .args(["article", "convert", "--to-directory", "--article", "nope"])
+        .output()
+        .expect("command runs");
+    assert_ne!(output.status.code(), Some(0), "a nonexistent --article selector must fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("not found"), "stderr: {stderr}");
+    assert!(stderr.contains("mf article list"), "stderr should hint at mf article list: {stderr}");
+
+    // Neither article was touched — must not degrade into a batch convert.
+    assert!(repo.path().join("my-project/docs/one.md").exists());
+    assert!(repo.path().join("my-project/docs/two.md").exists());
+}
+
+#[test]
+fn convert_without_article_flag_keeps_existing_batch_semantics() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    write_two_single_file_articles(&repo, "my-project");
+
+    mf().current_dir(repo.path().join("my-project")).args(["article", "convert", "--to-directory"]).assert().success();
+
+    assert!(repo.path().join("my-project/docs/one").is_dir(), "without --article, every eligible article converts");
+    assert!(repo.path().join("my-project/docs/two").is_dir());
+}

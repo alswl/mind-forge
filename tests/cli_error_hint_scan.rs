@@ -169,16 +169,20 @@ fn no_deprecated_config_init_hint() {
 }
 
 // =============================================================================
-// T110 (extended): Verify the correct init hint is present
+// T110 (extended, revised by spec 079 T053): the not-in-repo hint now points
+// at `--root`, not `mf init` — see error.rs's `NOT_IN_REPO_HINT` for why.
 // =============================================================================
 
 #[test]
-fn init_hint_uses_backtick_mf_init() {
-    // the error.rs INIT_REPO_HINT must use backticks
+fn not_in_repo_hint_points_at_root_not_mf_init() {
     let content = fs::read_to_string("src/error.rs").expect("can read error.rs");
-    assert!(content.contains("`mf init`"), "INIT_REPO_HINT should use backtick-quoted `mf init`");
+    assert!(content.contains("`--root <mind-repo>`"), "NOT_IN_REPO_HINT should suggest `--root <mind-repo>`");
+    assert!(
+        !content.contains("Run `mf init` to initialize a new project"),
+        "the not-in-repo hint must no longer suggest `mf init`"
+    );
     assert!(
         !content.contains("'mf config init --target project'"),
-        "INIT_REPO_HINT should NOT contain deprecated config init command"
+        "NOT_IN_REPO_HINT should NOT contain deprecated config init command"
     );
 }
