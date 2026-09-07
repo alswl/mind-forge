@@ -23,10 +23,19 @@ use crate::service::util::path_template::PathTemplate;
 /// [`refresh_index`], this does **not** persist the result.
 pub fn build_index(project_root: &Path, config: &MindConfig) -> Result<IndexFile> {
     let existing = index::load(project_root)?;
+    // Keyed by the trailing-slash-trimmed `article_path` (matching
+    // `article_key`'s own normalization, and the black-box finding behind
+    // `article_output_stem`'s fix above): a directory article's
+    // `article_path` is sometimes stored with a trailing slash (hand-edited
+    // YAML, older schema data), and every scan phase below always produces
+    // its own paths *without* one. Without this trim, a lookup by the fresh
+    // scan's slash-free path misses the existing slash-having entry, so the
+    // scan treats it as a brand-new article — discarding its `created_at`/
+    // `updated_at`/title and generating fresh ones on every rebuild.
     let existing_map: HashMap<&str, &Article> = existing
         .articles
         .as_ref()
-        .map(|a| a.iter().map(|a| (a.article_path.as_str(), a)).collect())
+        .map(|a| a.iter().map(|a| (a.article_path.trim_end_matches('/'), a)).collect())
         .unwrap_or_default();
 
     let mut articles: Vec<Article> = Vec::new();
@@ -480,9 +489,15 @@ pub fn compute_article_diff(index: &IndexFile, scanned: &[ScannedArticle], docs_
     // Build set of scanned filenames for the legacy fallback check
     let scanned_filenames: std::collections::HashSet<&str> = scanned.iter().map(|s| s.filename.as_str()).collect();
 
-    // Removed: articles in index whose article_path no longer has a matching file
+    // Removed: articles in index whose article_path no longer has a matching file.
+    // Compared trailing-slash-trimmed (spec 079 black-box finding): a directory
+    // article's stored `article_path` can carry a trailing slash (hand-edited
+    // YAML, older schema data) while every scan always produces one without —
+    // an untrimmed comparison here misclassified the entry as both removed
+    // (no exact string match) and freshly added (see below), discarding its
+    // `created_at`/`updated_at`/title on every rebuild.
     for a in index.articles.iter().flat_map(|a| a.iter()) {
-        if !scanned_paths.contains(&a.article_path) {
+        if !scanned_paths.contains(a.article_path.trim_end_matches('/')) {
             // For articles in the default docs dir, also check via the old
             // filename-based method (strip docs/ prefix + .md extension)
             let docs_prefix = format!("{docs_dir}/");
@@ -501,10 +516,13 @@ pub fn compute_article_diff(index: &IndexFile, scanned: &[ScannedArticle], docs_
         }
     }
 
-    // Added: scanned articles not yet in index
+    // Added: scanned articles not yet in index (same trailing-slash trim as above)
     for s in scanned {
         let sp = article_path_for_scanned(s, docs_dir);
-        let exists = index.articles.as_ref().is_some_and(|articles| articles.iter().any(|a| a.article_path == sp));
+        let exists = index
+            .articles
+            .as_ref()
+            .is_some_and(|articles| articles.iter().any(|a| a.article_path.trim_end_matches('/') == sp));
         if !exists {
             added.push(s.clone());
         }
@@ -586,7 +604,38 @@ pub fn reconcile_project_docs(project_path: &Path, dry_run: bool) -> Result<(Vec
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::article::{Article, ArticleStatus, ArticleType};
     use crate::model::config::{ArticleBuildConfig, BuildConfig};
+
+    // ── spec 079 black-box finding: trailing-slash article_path must not be
+    //    misclassified as both removed and freshly added on rebuild ────────
+
+    #[test]
+    fn compute_article_diff_trailing_slash_article_path_is_neither_added_nor_removed() {
+        let index = IndexFile {
+            articles: Some(vec![Article {
+                title: "Monthly Report".to_string(),
+                project: "demo".to_string(),
+                article_type: ArticleType::Blank,
+                article_path: "docs/2026-09-monthly/".to_string(),
+                status: ArticleStatus::Draft,
+                created_at: "2020-01-01T00:00:00Z".to_string(),
+                updated_at: "2020-01-01T00:00:00Z".to_string(),
+                template_origin: None,
+            }]),
+            ..IndexFile::create_default()
+        };
+        let scanned = vec![ScannedArticle {
+            title: "2026 09 monthly".to_string(),
+            filename: "2026-09-monthly".to_string(),
+            article_dir: Some("docs/2026-09-monthly".to_string()),
+            article_path: Some("docs/2026-09-monthly".to_string()),
+        }];
+
+        let diff = compute_article_diff(&index, &scanned, "docs");
+        assert!(diff.added.is_empty(), "must not be treated as a new article: {:?}", diff.added);
+        assert!(diff.removed.is_empty(), "must not be treated as a deleted article: {:?}", diff.removed);
+    }
 
     /// Helper: build a MindConfig with typed build.articles entries.
     fn config_with_typed(entries: Vec<(&str, Option<&str>)>) -> MindConfig {

@@ -459,15 +459,26 @@ pub fn article_key(article: &crate::model::article::Article) -> std::result::Res
 
 /// Derive the build artifact filename stem.
 ///
-/// Strips `docs/` or `outputs/` prefix and `.md` extension.
+/// Strips `docs/` or `outputs/` prefix, `.md` extension, and any trailing
+/// `/` (a directory article's `article_path` is sometimes stored with one —
+/// e.g. hand-edited YAML, or data from an older schema — and without this,
+/// `docs/foo` and `docs/foo/` derive two different stems for what is the
+/// same article; discovered via spec 079 US3 black-box verification: a bare
+/// slug failed to resolve against a trailing-slash entry even though the
+/// directory scan's own trailing-slash-free re-discovery of the same
+/// article, at the same time, produced a second, unmerged list entry).
+/// `article_key` (this module) already does the equivalent trim for its own
+/// normalization; this brings the two into agreement.
 /// Used by build output and publish artifact lookup to keep
 /// `_build/<short-key>.<format>` consistent and avoid double-prefix
 /// paths like `outputs/outputs/...`.
 pub fn article_output_stem(article_path: &str) -> &str {
     let path = article_path.strip_suffix(".md").unwrap_or(article_path);
-    path.strip_prefix(defaults::DOCS_PATH_PREFIX)
+    let path = path
+        .strip_prefix(defaults::DOCS_PATH_PREFIX)
         .or_else(|| path.strip_prefix(defaults::BUILD_OUTPUT_PATH_PREFIX))
-        .unwrap_or(path)
+        .unwrap_or(path);
+    path.trim_end_matches('/')
 }
 
 /// Derive a store entry's own dictionary/identity key from its file path
@@ -654,6 +665,21 @@ pub fn resolve_article<'a>(index: &'a IndexFile, article_arg: &str) -> Result<Re
 mod tests {
     use super::*;
     use crate::model::article::{Article, ArticleStatus, ArticleType, TemplateOrigin};
+
+    // ── spec 079 US3 (#46) black-box regression: a directory article_path
+    //    stored with a trailing slash (hand-edited YAML, legacy schema data)
+    //    must derive the same stem as its slash-free form ─────────────────
+
+    #[test]
+    fn article_output_stem_strips_trailing_slash() {
+        assert_eq!(article_output_stem("docs/2026-09-monthly/"), "2026-09-monthly");
+        assert_eq!(article_output_stem("docs/2026-09-monthly"), "2026-09-monthly");
+    }
+
+    #[test]
+    fn article_output_stem_trailing_slash_matches_slash_free_form() {
+        assert_eq!(article_output_stem("docs/dup/"), article_output_stem("docs/dup"));
+    }
 
     fn make_article(article_path: &str, template_origin: Option<TemplateOrigin>) -> Article {
         Article {

@@ -290,3 +290,26 @@ fn block_rename_accepts_bare_slug() {
         .success();
     assert!(repo.path().join("my-project/docs/2026-09-monthly/01-intro.md").exists());
 }
+
+/// Black-box regression (found by independent verification, my-tests/spec
+/// 016): a directory article whose `article_path` is stored *with* a
+/// trailing slash (hand-edited YAML, or data carried over from an older
+/// schema) must still resolve via bare slug — `article_output_stem` used to
+/// leave the trailing slash in place, so it never matched the slash-free
+/// stem derived from the selector itself.
+#[test]
+fn block_new_accepts_bare_slug_when_article_path_has_trailing_slash() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    let project = repo.path().join("my-project");
+    fs::create_dir_all(project.join("docs/2026-09-monthly")).unwrap();
+    fs::write(project.join("docs/2026-09-monthly/01-opening.md"), "# Opening\n").unwrap();
+    fs::write(
+        project.join("mind-index.yaml"),
+        "schema: '1'\narticles:\n  docs/2026-09-monthly/:\n    title: Monthly Report\n    project: my-project\n    type: blank\n    article_path: docs/2026-09-monthly/\n    status: draft\n    created_at: '2026-01-01T00:00:00Z'\n    updated_at: '2026-01-01T00:00:00Z'\n",
+    )
+    .unwrap();
+
+    mf().current_dir(&project).args(["article", "block", "new", "2026-09-monthly", "progress"]).assert().success();
+    assert!(project.join("docs/2026-09-monthly/02-progress.md").exists());
+}

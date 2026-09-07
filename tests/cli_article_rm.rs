@@ -173,3 +173,56 @@ fn rm_by_bare_slug_matches_full_path_form_for_single_file_article() {
     common::assert_no_article_key(&map1, "docs/weekly-digest");
     common::assert_no_article_key(&map2, "docs/weekly-digest");
 }
+
+// ---------------------------------------------------------------------------
+// Black-box regression (found by independent verification, my-tests/spec 016):
+// selector resolution and `mf article index` must both tolerate a directory
+// article whose `article_path` is stored *with* a trailing slash.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn write_op_rejects_ambiguous_selector_when_directory_article_path_has_trailing_slash() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "demo");
+    let project = dir.path().join("demo");
+    std::fs::create_dir_all(project.join("docs/dup")).unwrap();
+    std::fs::write(project.join("docs/dup/01-a.md"), "# Dup dir\n").unwrap();
+    std::fs::write(project.join("docs/dup.md"), "# Dup file\n").unwrap();
+    std::fs::write(
+        project.join("mind-index.yaml"),
+        "schema: '1'\narticles:\n  docs/dup/:\n    title: Dup Directory\n    project: demo\n    type: blank\n    article_path: docs/dup/\n    status: draft\n    created_at: '2026-01-01T00:00:00Z'\n    updated_at: '2026-01-01T00:00:00Z'\n  docs/dup.md:\n    title: Dup Single\n    project: demo\n    type: blank\n    article_path: docs/dup.md\n    status: draft\n    created_at: '2026-01-01T00:00:00Z'\n    updated_at: '2026-01-01T00:00:00Z'\n",
+    )
+    .unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .current_dir(&project)
+        .args(["article", "remove", "dup", "--yes"])
+        .output()
+        .unwrap();
+    assert_ne!(output.status.code(), Some(0), "ambiguous selector must not silently pick one: {output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("ambiguous"), "stderr: {stderr}");
+    assert!(project.join("docs/dup").exists(), "directory article must survive");
+    assert!(project.join("docs/dup.md").exists(), "single-file article must survive");
+}
+
+#[test]
+fn article_index_preserves_metadata_for_trailing_slash_directory_article() {
+    let dir = common::setup_repo();
+    common::create_project(&dir, "demo");
+    let project = dir.path().join("demo");
+    std::fs::create_dir_all(project.join("docs/2026-09-monthly")).unwrap();
+    std::fs::write(project.join("docs/2026-09-monthly/01-opening.md"), "# Opening\n").unwrap();
+    std::fs::write(
+        project.join("mind-index.yaml"),
+        "schema: '1'\narticles:\n  docs/2026-09-monthly/:\n    title: Monthly Report\n    project: demo\n    type: blank\n    article_path: docs/2026-09-monthly/\n    status: draft\n    created_at: '2020-01-01T00:00:00Z'\n    updated_at: '2020-01-01T00:00:00Z'\n",
+    )
+    .unwrap();
+
+    Command::cargo_bin("mf").unwrap().current_dir(&project).args(["article", "index"]).assert().success();
+
+    let index = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+    assert!(index.contains("title: Monthly Report"), "title must be preserved, not slug-regenerated: {index}");
+    assert!(index.contains("2020-01-01T00:00:00Z"), "created_at/updated_at must be preserved: {index}");
+}
