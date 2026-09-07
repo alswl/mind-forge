@@ -310,9 +310,8 @@ fn build_article_content(
     // every included block. Fails before any artifact is written if a
     // visibility value is unrecognized or the title block is marked private.
     let mut content = String::new();
-    // Moved ahead of the file loop (spec 079 T021) so private-callout strip
-    // warnings, discovered per-file below, land in the same vec as the
-    // path-rewrite warnings from step 8b.
+    // Declared ahead of the file loop so per-file private-callout warnings and
+    // step 8b's path-rewrite warnings accumulate in the same vec.
     let mut warnings = Vec::new();
     for (idx, file) in article_files.iter().enumerate() {
         let raw_content = fs::read_to_string(file).map_err(MfError::Io)?;

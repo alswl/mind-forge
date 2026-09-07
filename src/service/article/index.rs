@@ -23,15 +23,11 @@ use crate::service::util::path_template::PathTemplate;
 /// [`refresh_index`], this does **not** persist the result.
 pub fn build_index(project_root: &Path, config: &MindConfig) -> Result<IndexFile> {
     let existing = index::load(project_root)?;
-    // Keyed by the trailing-slash-trimmed `article_path` (matching
-    // `article_key`'s own normalization, and the black-box finding behind
-    // `article_output_stem`'s fix above): a directory article's
-    // `article_path` is sometimes stored with a trailing slash (hand-edited
-    // YAML, older schema data), and every scan phase below always produces
-    // its own paths *without* one. Without this trim, a lookup by the fresh
-    // scan's slash-free path misses the existing slash-having entry, so the
-    // scan treats it as a brand-new article — discarding its `created_at`/
-    // `updated_at`/title and generating fresh ones on every rebuild.
+    // Keyed trailing-slash-trimmed, matching `article_key`: a directory
+    // article's stored `article_path` sometimes carries a trailing slash
+    // (hand-edited YAML, older schema data) while every scan below produces
+    // paths without one. Untrimmed, the lookup misses the existing entry and
+    // the article is rebuilt as brand-new, losing created_at/updated_at/title.
     let existing_map: HashMap<&str, &Article> = existing
         .articles
         .as_ref()
@@ -419,11 +415,9 @@ fn scan_md_dir(dir_path: &Path, rel_dir: &str, scanned: &mut Vec<ScannedArticle>
             && path.extension().and_then(|e| e.to_str()) == Some(defaults::MARKDOWN_EXTENSION)
             && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
         {
-            // Deterministic by design (spec 079 US5): title always comes
-            // from the slug, never from the article body's H1 or frontmatter
-            // title. The slug is a stable identifier; H1 text changes freely
-            // as an article is drafted, so tracking it would make index
-            // rebuilds produce a different title depending on when they run.
+            // Title comes from the slug, never the body's H1 or frontmatter
+            // (spec 079 US5): H1 text changes freely while drafting, so
+            // reading it would make a rebuild's title depend on when it ran.
             let title = stem.replace('-', " ");
             scanned.push(ScannedArticle {
                 title,
@@ -490,12 +484,9 @@ pub fn compute_article_diff(index: &IndexFile, scanned: &[ScannedArticle], docs_
     let scanned_filenames: std::collections::HashSet<&str> = scanned.iter().map(|s| s.filename.as_str()).collect();
 
     // Removed: articles in index whose article_path no longer has a matching file.
-    // Compared trailing-slash-trimmed (spec 079 black-box finding): a directory
-    // article's stored `article_path` can carry a trailing slash (hand-edited
-    // YAML, older schema data) while every scan always produces one without —
-    // an untrimmed comparison here misclassified the entry as both removed
-    // (no exact string match) and freshly added (see below), discarding its
-    // `created_at`/`updated_at`/title on every rebuild.
+    // Trimmed on both sides (see `build_index`): untrimmed, a stored
+    // `docs/foo/` counts as both removed here and freshly added below, so the
+    // rebuild silently replaces the entry and loses its created_at/updated_at.
     for a in index.articles.iter().flat_map(|a| a.iter()) {
         if !scanned_paths.contains(a.article_path.trim_end_matches('/')) {
             // For articles in the default docs dir, also check via the old
@@ -607,8 +598,8 @@ mod tests {
     use crate::model::article::{Article, ArticleStatus, ArticleType};
     use crate::model::config::{ArticleBuildConfig, BuildConfig};
 
-    // ── spec 079 black-box finding: trailing-slash article_path must not be
-    //    misclassified as both removed and freshly added on rebuild ────────
+    // ── spec 079 (#53): a trailing-slash article_path must not be misclassified
+    //    as both removed and freshly added on rebuild ──────────────────────
 
     #[test]
     fn compute_article_diff_trailing_slash_article_path_is_neither_added_nor_removed() {
@@ -822,11 +813,8 @@ mod tests {
 
     // ── spec 079 US5 (#53): title is derived from slug, never from H1 ───────
     //
-    // Zero-code confirmatory story (plan.md): this has always been the
-    // behaviour (every title-derivation site in this file uses
-    // `stem.replace('-', " ")`, none read file content) — the "title got
-    // downgraded" bug report was a misreading of intended, deterministic
-    // behaviour. This test locks it in so it can't be "fixed" by accident.
+    // Locks in long-standing behaviour that a bug report mistook for a defect,
+    // so it can't be "fixed" by accident.
 
     #[test]
     fn scan_docs_title_is_derived_from_slug_not_from_h1() {

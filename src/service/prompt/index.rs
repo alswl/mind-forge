@@ -17,12 +17,10 @@ use crate::service::util::{self, file_mtime_rfc3339};
 /// before and after. `--dry-run` reports the plan without writing.
 pub fn reconcile(project_path: &Path, dry_run: bool) -> Result<PromptIndexReport> {
     let mut idx = index::load(project_path)?;
-    // Keyed by path so a kept entry can reuse its *own* previous `updated_at`
-    // (spec 079 FR-011/INV-2) instead of the file's mtime — `git checkout` and
-    // fresh worktrees bump every file's mtime to checkout time regardless of
-    // content, so mtime is not a reliable "did this change" signal. The real
-    // update time is maintained by explicit write commands (e.g.
-    // `src/service/source/update.rs`), not by this reconcile pass.
+    // Keyed by path so a kept entry reuses its own previous `updated_at`
+    // (spec 079 FR-011) instead of the file's mtime: `git checkout` and fresh
+    // worktrees bump mtime regardless of content, so mtime cannot stand in for
+    // "did this change". Real update times come from explicit write commands.
     let previous: std::collections::HashMap<String, String> =
         idx.prompts.iter().flatten().map(|p| (p.path.clone(), p.updated_at.clone())).collect();
 
@@ -133,7 +131,7 @@ mod tests {
         assert_eq!(mode, None);
     }
 
-    // ── spec 079 US4 (#53) T031: reconcile must not refresh a kept entry's
+    // ── spec 079 US4 (#53): reconcile must not refresh a kept entry's
     //    `updated_at` from file mtime ────────────────────────────────────────
 
     #[test]
@@ -155,8 +153,8 @@ mod tests {
         };
         index::save(project_path, &idx).unwrap();
 
-        // Simulate `git checkout`/a new worktree bumping every file's mtime —
-        // the file's *content* is unchanged, only its mtime moved forward.
+        // Simulate `git checkout`/a fresh worktree: mtime moves forward while
+        // the content is untouched.
         let file = project_path.join("prompts/my-prompt.md");
         let now = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
         std::fs::File::open(&file).unwrap().set_modified(now).unwrap();

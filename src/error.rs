@@ -137,15 +137,11 @@ pub enum MfError {
 }
 
 impl MfError {
-    /// Spec 079 US7 (#50): `--root` is a *global* flag (`src/cli/mod.rs`'s
-    /// `GlobalOpts`, `global = true`) — every subcommand accepts it,
-    /// including `mf init` itself. This error is only ever produced by
-    /// `require_repo`/`require_repo_path` (`src/runtime/mod.rs`), and `mf
-    /// init` never calls either, so there is no command that still needs an
-    /// `mf init` suggestion here (spec FR-018's "commands that keep the old
-    /// hint" set is empty). Suggesting `mf init` when the repo actually
-    /// exists elsewhere invited a destructive mistake: initializing a new,
-    /// unrelated repo at the wrong cwd instead of passing `--root`.
+    /// No `mf init` suggestion here (#50): this hint is only produced by
+    /// `require_repo`/`require_repo_path`, which `mf init` never calls, and
+    /// `--root` is global so every subcommand can point at an existing repo.
+    /// Suggesting `mf init` invited initializing a new, unrelated repo at the
+    /// wrong cwd when one already existed elsewhere.
     pub const NOT_IN_REPO_HINT: &str = "run from a directory under a mind repo, or pass `--root <mind-repo>`";
 
     pub fn usage(message: impl Into<String>, hint: Option<String>) -> Self {

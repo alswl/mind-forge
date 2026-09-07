@@ -6,41 +6,30 @@ use crate::model::article::Article;
 use crate::service::index::{self, article_output_stem};
 
 /// Resolve a user-supplied article selector to the unique `article_path` it
-/// identifies (spec 079 US3/US6, FR-007/FR-008/FR-009, data-model.md §2).
+/// identifies (spec 079 FR-007/FR-008/FR-009).
 ///
-/// Collects *all* candidates matching any of four exact forms — full
-/// `article_path`, `article_path` with `.md` stripped, bare slug (via
-/// [`article_output_stem`]), or exact `title` — then decides:
-///
-/// - 0 candidates → `MfError::not_found`, pointing at `mf article list`.
-/// - more than 1 candidate → `MfError::usage` (ambiguous), listing every
-///   candidate `article_path` rather than guessing.
-/// - exactly 1 → that entry's `article_path`.
+/// Four selector forms resolve here — full `article_path`, `article_path`
+/// without `.md`, bare slug, exact `title` — the first three by normalizing
+/// both sides through [`article_output_stem`], which strips the `docs/`/
+/// `outputs/` prefix, `.md`, and any trailing `/`. A selector matching more
+/// than one article is an error listing the candidates, never a guess.
 ///
 /// Deliberately does **not** fall back to `mf article show`'s `contains`
-/// substring match — a write operation silently guessing among substring
-/// matches (`remove 2026-09` matching `2026-09-monthly`) is dangerous.
-/// `mf article show` itself is unaffected; it keeps its own looser resolver.
+/// substring match: a write operation guessing among substring matches
+/// (`remove 2026-09` hitting `2026-09-monthly`) is dangerous. `mf article
+/// show` is unaffected and keeps its own looser resolver.
 pub fn resolve_selector(project_path: &Path, selector: &str) -> Result<String> {
     let idx = index::load(project_path)?;
     let articles: &[Article] = idx.articles.as_deref().unwrap_or(&[]);
 
     let bare_slug = article_output_stem(selector);
-    let selector_without_md = selector.strip_suffix(".md").unwrap_or(selector);
 
-    // A BTreeSet dedups an entry that matches more than one form at once
-    // (e.g. a single-file article whose `article_path` bare slug equals the
-    // selector already collected via the full-path form) so it isn't
-    // reported as two separate ambiguous candidates.
+    // A set dedups an entry matching both forms at once, so one article never
+    // surfaces as two ambiguous candidates.
     let mut candidates: BTreeSet<&str> = BTreeSet::new();
     for a in articles {
         let path = a.article_path.as_str();
-        let path_without_md = path.strip_suffix(".md").unwrap_or(path);
-        if path == selector
-            || path_without_md == selector_without_md
-            || article_output_stem(path) == bare_slug
-            || a.title == selector
-        {
+        if article_output_stem(path) == bare_slug || a.title == selector {
             candidates.insert(path);
         }
     }
@@ -138,16 +127,10 @@ mod tests {
 
     #[test]
     fn ambiguous_when_directory_and_single_file_share_a_slug() {
-        // `docs/dup` (a directory article) and `docs/dup.md` (a single-file
-        // article at the same path minus `.md`) cannot coexist in a real
-        // index: `article_key` — the index's own map key — strips `.md` and
-        // any trailing `/` but *not* the `docs/`/`outputs/` prefix, so both
-        // forms reduce to the identical key `docs/dup` and one would
-        // silently overwrite the other on any index rebuild. The
-        // representable version of this ambiguity is a directory article
-        // under `docs/` and a single-file *generated* article under
-        // `outputs/` that happen to share a bare slug — distinct map keys,
-        // same `article_output_stem`.
+        // The obvious fixture (`docs/dup` + `docs/dup.md`) is unrepresentable:
+        // `article_key` strips `.md` and trailing `/` but keeps the prefix, so
+        // both collapse to one index key. The reachable ambiguity is a `docs/`
+        // directory article and an `outputs/` generated file sharing a slug.
         let dir = tmp_project();
         write_index(dir.path(), vec![article("Dup Dir", "docs/dup"), article("Dup Generated", "outputs/dup.md")]);
         let err = resolve_selector(dir.path(), "dup").unwrap_err();

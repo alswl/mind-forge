@@ -97,9 +97,10 @@ pub(crate) fn strip_exempt_regions_with_quotes(content: &str, fm_end: Option<usi
 
                 if starts_with_url_scheme(bytes, i, b"http://") || starts_with_url_scheme(bytes, i, b"https://") {
                     // The scheme's first byte is URL *content* (not a delimiter like
-                    // `` ` `` or `<`), so it must be zeroed too. Leaving it visible let a
-                    // correction whose `original` shares that leading byte (e.g. `hcs` vs
-                    // `https`) match `h\0\0` via the `\0` wildcard in `find_subseq`.
+                    // `` ` `` or `<`), so it is zeroed too, leaving no visible byte of the
+                    // URL for a correction to match. `find_subseq` requires an exact,
+                    // zero-free match, so this now only matters for a single-byte
+                    // `original` — which would otherwise flag the scheme's leading letter.
                     state = ScanCursor::BareUrl;
                     i += 1;
                     continue;

@@ -126,12 +126,9 @@ pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome>
 
             // Bug #22 defense in depth: any reference the service could not
             // safely rewrite is reported here (stderr + JSON envelope) rather
-            // than silently written as a malformed path. Emitted exactly
-            // once here (regardless of output format) — the `Text` arm used
-            // to loop over `result.warnings` a second time, which called
-            // `emit_warning` (and so wrote `WARN:` to stderr) twice per
-            // warning; discovered via spec 079 US2's private-callout warning
-            // (#49), which made the duplicate visible for the first time.
+            // than silently written as a malformed path. This is the only
+            // emit site: the `Text` arm below must not loop over
+            // `result.warnings` again, or every warning hits stderr twice.
             let mut warnings = Vec::new();
             for w in &result.warnings {
                 emit_warning(w, &mut warnings);

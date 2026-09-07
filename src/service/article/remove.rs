@@ -11,11 +11,9 @@ pub fn remove_article(project_path: &Path, title: &str, force: bool, dry_run: bo
 
     let mut index = index::load(project_path)?;
 
-    // Resolve the target via the shared selector (spec 079 US3, FR-007/009):
-    // full `article_path`, `article_path` with `.md` stripped, bare slug, or
-    // exact title — collecting *all* candidates and rejecting ambiguity
-    // rather than guessing. Unlike the old inline matcher, this also accepts
-    // a bare slug (`2026-09-monthly`, not just `docs/2026-09-monthly`).
+    // Shared selector (spec 079 FR-007/FR-009): collects *all* candidates and
+    // rejects ambiguity rather than guessing — a destructive command must not
+    // pick one of several matches.
     let matched_path = super::selector::resolve_selector(project_path, title)?;
     let articles = index.articles.as_ref().expect("resolve_selector found a match, so articles is non-empty");
     let article = articles

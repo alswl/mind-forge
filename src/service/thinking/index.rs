@@ -17,10 +17,9 @@ use crate::service::util::{self, file_mtime_rfc3339};
 /// writing. Tolerates a missing `thinking/` directory (empty result).
 pub fn reconcile(project_path: &Path, dry_run: bool) -> Result<ThinkingIndexReport> {
     let mut idx = index::load(project_path)?;
-    // Same fix as `prompt::index::reconcile` (spec 079 FR-011/INV-2): a kept
-    // entry reuses its own previous `updated_at` rather than the file's
-    // mtime, which `git checkout`/a fresh worktree bumps regardless of
-    // content.
+    // Same as `prompt::index::reconcile` (spec 079 FR-011): a kept entry
+    // reuses its own previous `updated_at` rather than the file's mtime, which
+    // `git checkout`/a fresh worktree bumps regardless of content.
     let previous: std::collections::HashMap<String, String> =
         idx.thinking.iter().flatten().map(|t| (t.path.clone(), t.updated_at.clone())).collect();
 
@@ -73,7 +72,7 @@ mod tests {
     use super::*;
     use crate::model::thinking::Thinking;
 
-    // ── spec 079 US4 (#53) T032: same fix as prompt/index.rs, mirrored here ─
+    // ── spec 079 US4 (#53): same guarantee as prompt/index.rs ──────────────
 
     #[test]
     fn reconcile_keeps_existing_updated_at_even_after_mtime_changes() {

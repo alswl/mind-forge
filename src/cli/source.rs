@@ -134,13 +134,10 @@ impl From<CliSourceKindType> for SourceKind {
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceAddArgs {
     pub input: String,
-    // Spec 079 US8 (#51): `-n` no longer works as this flag's short form — it
-    // now means `--dry-run` (FR-020), the same as every other command. This
-    // is the only short-flag collision in the whole CLI; `--name` itself is
-    // unaffected. A plain comment, not `///`: a multi-paragraph doc comment
-    // here switches clap's *entire* `--help` rendering to the long format
-    // (see git history on this file — that broke every other flag's layout
-    // in `source new --help`, not just this one).
+    // `-n` was this flag's short form until #51 gave it to `--dry-run`
+    // CLI-wide; this was the only collision. Deliberately a plain comment, not
+    // `///`: a multi-paragraph doc comment here flips clap's entire `--help`
+    // for this command to the long format, wrecking every other flag's layout.
     /// Override the source name derived from the input
     #[arg(long)]
     pub name: Option<String>,
