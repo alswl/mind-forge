@@ -19,8 +19,8 @@ Four ideas shape the product.
 
 Knowledge should move instead of being copied. A Source, term, or reusable
 Block can contribute to several articles; an article can then flow to several
-publishers. The repository preserves the connections so the same idea can
-evolve without creating disconnected copies.
+publishers. The repository preserves those connections — including the RAG path
+that finds existing knowledge and its provenance before new prose is written.
 
 ```mermaid
 flowchart LR
@@ -47,9 +47,6 @@ flowchart LR
   A1 --> P2
 ```
 
-RAG is part of this diffusion path: it helps find existing knowledge and its
-provenance before new prose is written.
-
 ### Document as Code
 
 Writing deserves the same engineering discipline as software:
@@ -61,24 +58,22 @@ Writing deserves the same engineering discipline as software:
 - Git records the history of both content and decisions.
 
 If a code change can be reviewed as a diff, a chapter should be reviewable the
-same way. Derived indexes and build products must never replace authored files.
+same way. Derived indexes and build products never replace authored files.
 
 ### AI Native CLI
 
 An Agent should not need to scrape colorful terminal prose or guess whether a
-command succeeded. `mf` exposes stable, always single-level JSON envelopes,
-predictable exit codes, canonical identities, dry-run support, and explicit
-confirmation boundaries.
-
-This is more than “CLI automation.” The command surface is an API for reasoning
-systems: deterministic enough to compose, inspect, retry, and audit.
+command succeeded. `mf` exposes stable single-level JSON envelopes, predictable
+exit codes, canonical identities, dry-run support, and explicit confirmation
+boundaries — a command surface deterministic enough to compose, inspect, retry
+and audit.
 
 ### Local first
 
-The repository remains useful without a required cloud service. Authored
-content stays in ordinary files, secrets stay outside committed configuration,
-and the embedded RAG corpus can be rebuilt locally. Optional external services
-extend the workflow; they do not own it.
+The repository remains useful without a cloud service. Authored content stays
+in ordinary files, secrets stay outside committed configuration, and the
+embedded RAG corpus rebuilds locally. External services extend the workflow;
+they do not own it.
 
 ## Install
 
@@ -87,8 +82,12 @@ Requires Rust 1.91+.
 ```bash
 git clone https://github.com/alswl/mind-forge.git
 cd mind-forge
-cargo install --path .
+scripts/install.sh
 ```
+
+Use the script rather than `cargo install --path .`: it points `--target-dir` at
+a persistent directory, so later installs rebuild only `mf` instead of all ~490
+dependency crates.
 
 ## Quick start
 
@@ -135,7 +134,7 @@ build:
       command: "rsvg-convert {input} --output {output}"
 ```
 
-`mf build article --dry-run` shows the ordered asset plan without running a
+`mf build <article> --dry-run` shows the ordered asset plan without running a
 tool. In a chain, rebuilding `diagram.d2 → diagram.svg` also rebuilds the
 dependent `diagram.png`, even when the latter has an artificially newer mtime.
 Missing or failing optional tools emit warnings and leave existing outputs in
@@ -201,10 +200,6 @@ flowchart TD
   Articles --> Build[Build and Publish]
 ```
 
-The separation is deliberate: Prompt preserves intent, Thinking preserves the
-path taken, Sources preserve evidence, and Article preserves the result. RAG
-connects all four without collapsing their ownership boundaries.
-
 ## Core workflow
 
 ```text
@@ -234,15 +229,12 @@ mf source status --output json
 flag and searches registered Sources, article prose, Prompts, Thinking, project
 goals, and repository terms.
 
-Every hit carries a structured `context` on each `registrations[]` entry:
-repository and owning project (with the project's goal), content kind, article
-lifecycle status, internal `relations` (links and prompt/thinking siblings, with
-dangling targets marked `resolved:false`), and — for Source hits — `imported_by`
-provenance. Consume this context to attribute and cite a result instead of
-re-deriving it. Search is read-only.
+Every hit carries a structured `context` on each `registrations[]` entry —
+repository and owning project, content kind, article status, internal
+`relations`, and `imported_by` provenance for Source hits. Use it to attribute
+and cite a result instead of re-deriving it. Search is read-only.
 
-`mf source search --mode ...` is retained only for old scripts. New workflows
-should use `mf search`.
+`mf source search --mode ...` is retained only for old scripts.
 
 ### Source dual-write
 
@@ -276,23 +268,16 @@ mf source import ./backup.mfbundle --dry-run
 mf source trace
 ```
 
-The old `source advanced` command tree and terminal enrichment workflow are
-removed. Existing enrichment data is not deleted by sync or maintenance.
+The RAG storage schema is `v3`, and compatibility is read from the
+`registrations` table's on-disk structure rather than a recorded version, so it
+cannot go stale. A repository predating the current schema refuses
+`search`/`sync` with a diagnostic; run `mf source sync --rebuild` once. No
+migration shim is provided.
 
-The RAG storage schema is `v3`. Schema compatibility is read from the
-`registrations` table's actual on-disk structure rather than a recorded
-version, so it cannot go stale or be hand-edited. A repository whose tables
-predate the current schema refuses `search`/`sync` with a diagnostic; run
-`mf source sync --rebuild` once to regenerate the index. No migration shim is
-provided.
-
-The Lance registration store is authoritative for Sources; the
-`mind-index.yaml` `sources:` section is a lossless compatibility projection.
-Terms remain authoritative in `mind-index.yaml`, while source, article, and
-prompt/thinking commands stay within the sections they own. Disk-adoption and
-reconcile operations import missing registrations and never delete them
-implicitly. Machine-local activation state contains only activation status;
-the corpus on disk remains the source of truth for recovery.
+Lance is authoritative for Sources and `mind-index.yaml`'s `sources:` section is
+a lossless projection of it; terms remain authoritative in `mind-index.yaml`.
+Reconcile operations import missing registrations and never delete them
+implicitly — the corpus on disk is the source of truth for recovery.
 
 Optional semantic embeddings use an OpenAI-compatible `/v1/embeddings`
 provider. Credentials belong in environment variables or the gitignored
@@ -333,7 +318,8 @@ mf publish ...   mf render ...   mf config ...
 ```
 
 Use `mf <command> --help` for current flags. Most commands support
-`--project`, `--output text|json`, `--json`, and `--dry-run` where applicable.
+`--project`, `--output text|json`, `--json`, and `-n`/`--dry-run` where
+applicable.
 
 ## Output and safety
 
@@ -344,20 +330,22 @@ JSON commands use `{ "status", "command", "data" }` envelopes. Exit codes are:
 - `2` invalid input or rejected operation.
 
 Read-only retrieval does not modify authored files. Destructive operations
-require explicit confirmation; use `--dry-run` to preview what would change
+require explicit confirmation; use `-n`/`--dry-run` to preview what would change
 (`would index`, `would update`) before writing. `-q` silences successful output
 while preserving diagnostics and exit codes, for byte-silent automation.
 
 ## Development
 
 ```bash
-cargo fmt --check
-cargo clippy -- -D warnings
-cargo test
+cargo ck                 # inner loop
+cargo t1 cli_article     # one test target
+cargo test               # pre-push gate
+cargo fmt --check && cargo clippy -- -D warnings
 ```
 
-Feature specifications live under `specs/`. Commits use conventional commit
-messages.
+`mf` is a single ~50k-line crate, so the full suite is the expensive path — see
+[docs/build-workflow.md](docs/build-workflow.md) for when each tier is worth
+running. Commits use conventional commit messages.
 
 ## License
 
