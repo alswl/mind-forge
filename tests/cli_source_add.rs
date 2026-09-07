@@ -520,7 +520,7 @@ fn add_file_rejects_existing() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     // Spec 074 #32: the collision is now an actionable usage error naming the
     // taken source and suggesting a concrete -n value.
-    assert!(stderr.contains("already registered") && stderr.contains("-n "), "stderr: {stderr}");
+    assert!(stderr.contains("already registered") && stderr.contains("--name "), "stderr: {stderr}");
 }
 
 // ---------------------------------------------------------------------------

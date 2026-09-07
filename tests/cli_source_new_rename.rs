@@ -63,7 +63,7 @@ fn register_only_auto_named_collision_is_actionable() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("0731"), "error must name the taken source: {stderr}");
     assert!(stderr.contains("already registered"), "error must say already registered: {stderr}");
-    assert!(stderr.contains("-n dima-0731"), "error must suggest a concrete -n value: {stderr}");
+    assert!(stderr.contains("--name dima-0731"), "error must suggest a concrete --name value: {stderr}");
 }
 
 /// FR-008: an explicit `-n` that collides also fails with the actionable
@@ -114,7 +114,7 @@ mod lance_backend_collision {
     use crate::common::embedding_provider::{provider_repo, run};
 
     /// T084/FR-033: an auto-derived name collision on the Lance backend path
-    /// reports `already registered` and suggests `-n <parent>-<stem>` — the
+    /// reports `already registered` and suggests `--name <parent>-<stem>` — the
     /// legacy-backend case above already covers the other (non-Lance) path.
     #[test]
     fn auto_derived_collision_on_lance_backend_is_actionable() {
@@ -132,7 +132,10 @@ mod lance_backend_collision {
         assert_ne!(code, 0, "collision must fail\nstdout:\n{stdout}\nstderr:\n{stderr}");
         assert!(stderr.contains("already registered"), "must say already registered: {stderr}");
         assert!(stderr.contains("notes"), "must name the taken source: {stderr}");
-        assert!(stderr.contains("-n dima-notes"), "must suggest a concrete -n value from the path segment: {stderr}");
+        assert!(
+            stderr.contains("--name dima-notes"),
+            "must suggest a concrete --name value from the path segment: {stderr}"
+        );
         assert!(!stderr.contains("--force"), "must never suggest --force, a dead end under --register-only: {stderr}");
     }
 
@@ -152,7 +155,7 @@ mod lance_backend_collision {
         );
         assert_ne!(code, 0, "collision must fail\nstdout:\n{stdout}\nstderr:\n{stderr}");
         assert!(stderr.contains("notes") && stderr.contains("already registered"), "{stderr}");
-        assert!(!stderr.contains("-n "), "an explicit-name collision must not invent a suggestion: {stderr}");
+        assert!(!stderr.contains("try --name"), "an explicit-name collision must not invent a suggestion: {stderr}");
         assert!(!stderr.contains("--force"), "must not suggest --force under --register-only: {stderr}");
     }
 
@@ -181,11 +184,14 @@ mod lance_backend_collision {
 
         // Both paths hit the same `add_registration` collision branch, so
         // they share the same wording template — "already registered" plus
-        // a concrete `-n` suggestion — even though the suggested value
+        // a concrete `--name` suggestion — even though the suggested value
         // differs because the two files were placed in different segments.
+        // The hint must name the long flag: `-n` means `--dry-run` since #51,
+        // so a `-n <value>` suggestion would fail if the user followed it.
         for stderr in [&stderr_register_only, &stderr_copy] {
             assert!(stderr.contains("source name 'notes' is already registered"), "{stderr}");
-            assert!(stderr.contains("try -n "), "{stderr}");
+            assert!(stderr.contains("try --name "), "{stderr}");
+            assert!(!stderr.contains("try -n "), "hint must not suggest the retired short flag: {stderr}");
         }
     }
 }

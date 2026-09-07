@@ -54,6 +54,22 @@ enforced there. Locally, run the full suite before pushing — not after every e
 
 The aliases are defined in `.cargo/config.toml` at the repository root.
 
+Every one of these must run with the command sandbox disabled: sccache cannot
+write its cache under the sandbox, so even `cargo ck` fails with
+`sccache: error: Operation not permitted` before compiling anything.
+
+## Reading a failing run
+
+Cargo runs the ~113 test binaries in sequence and abandons the rest as soon as one
+fails, so a red run reports far fewer results than a green one — a single failing
+unit test truncated a 2386-test run to 856, hiding whether the CLI-level tests for
+the same behaviour would also have failed. Nothing in the output says it stopped
+early.
+
+When the question is *how much* a change breaks — impact assessment, deletion
+experiments, judging whether a fix is load-bearing — pass `--no-fail-fast` and read
+the whole failure list.
+
 ## Installing
 
 Use `scripts/install.sh` rather than `cargo install --path .`.

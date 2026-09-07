@@ -76,10 +76,13 @@ pub(crate) fn suggest_unique_name(source_path: &Path, sources_dir: &Path) -> Str
 
 /// Actionable duplicate-source-name error (spec 074 #32): names the taken
 /// source and — when the collision came from an auto-derived name — suggests a
-/// concrete unique `-n` value. No automatic renaming is introduced.
+/// concrete unique `--name` value. No automatic renaming is introduced.
+///
+/// Spelled `--name`, never `-n`: spec 079 (#51) gave `-n` to `--dry-run`
+/// CLI-wide, so a `-n <value>` hint now fails with "unexpected argument".
 pub(crate) fn name_collision_error(taken: &str, suggestion: Option<String>) -> MfError {
-    let hint =
-        suggestion.map_or_else(|| "choose a unique --name".to_string(), |suggestion| format!("try -n {suggestion}"));
+    let hint = suggestion
+        .map_or_else(|| "choose a unique --name".to_string(), |suggestion| format!("try --name {suggestion}"));
     MfError::usage(format!("source name '{taken}' is already registered"), Some(hint))
 }
 
