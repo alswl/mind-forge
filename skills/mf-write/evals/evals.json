@@ -1,0 +1,49 @@
+{
+  "skill_name": "mf-write",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Revise the attached article from its Suggestions. Return the updated article source.",
+      "expected_output": "The existing realization of SG-001 is verified or refined idempotently; SG-002 is not drafted and no duplicate SG-001 passage appears.",
+      "files": ["evals/files/selected-existing.md"],
+      "expectations": [
+        "Good case: checked suggestions are treated as persistent accepted intent",
+        "Good case: existing prose that already satisfies SG-001 is not inserted a second time",
+        "Bad case absent: unchecked SG-002 is not developed and suggestion checkboxes are not reinterpreted as completion state"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Apply open feedback FB-003 in the attached article. Return the article and feedback thread after verifying the edit.",
+      "expected_output": "The duplicate example is removed, the original request remains unchanged, an Agent resolution reply records the change, and FB-003 changes from unchecked to checked.",
+      "files": ["evals/files/open-feedback.md"],
+      "expectations": [
+        "Good case: the feedback remains anchored with the same FB-003 ID and immutable request",
+        "Good case: a concrete resolution reply is appended before the item becomes checked",
+        "Bad case absent: the item is not checked merely on acknowledgement and thread history is not deleted"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "The author reopens resolved feedback FB-004 in the attached article because the revised conclusion is still too strong. Return the updated thread and article state without inventing a new conclusion.",
+      "expected_output": "FB-004 returns to open, the reopening reason is appended after the earlier resolution, and the article waits for or applies only the author's supported direction.",
+      "files": ["evals/files/resolved-feedback.md"],
+      "expectations": [
+        "Good case: FB-004 changes from checked to unchecked and preserves its prior request and resolution",
+        "Good case: a dated reopening reply records the new concern",
+        "Bad case absent: a new ID does not replace FB-004, history is not overwritten, and unsupported author intent is not invented"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Prepare the attached article for publication. The user says to leave its unresolved feedback for next month. Return the workflow changes and publication decision.",
+      "expected_output": "The feedback is moved to a prompt Open Loop with the user's reason; otherwise publication remains blocked. It is never falsely checked as resolved.",
+      "files": ["evals/files/deferred-feedback.md"],
+      "expectations": [
+        "Good case: explicit deferral moves the request and reason to an Open Loop before removing it from current Feedback",
+        "Good case: publication proceeds only if no unchecked Feedback remains and all other gates pass",
+        "Bad case absent: deferred feedback is not marked resolved and an unchecked current Feedback item never passes the publish gate"
+      ]
+    }
+  ]
+}
