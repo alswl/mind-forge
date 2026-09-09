@@ -1,11 +1,12 @@
 ---
 name: mf-plan
-description: Research, plan, or replan a mind-forge article from an idea, prompt, evidence, draft, or inline human feedback. Use when defining goals or constraints, collecting and comparing evidence, maintaining a research or decision article, changing structure, resolving feedback, inspecting progress, or deciding what to investigate next.
+version: 0.2.0
+description: Research, plan, or replan a mind-forge article as an outline-first workflow from an idea, prompt, evidence, draft, or human feedback. Use when defining goals or constraints, collecting and comparing evidence, creating or changing structure, presenting private suggestions for user selection, routing Word-style feedback threads, inspecting progress, or deciding what to investigate next; leave detailed prose development to mf-write.
 ---
 
 # Research and plan a mind-forge article
 
-Own problem framing, evidence gathering, comparison, and judgment. Planning and writing cooperate continuously: for research work, keep the article itself current after every material turn rather than waiting for a later writing stage.
+Own problem framing, evidence gathering, comparison, judgment, and the article outline. Planning ends with a reviewable structure and explicit user choices; it does not silently turn research into finished prose. `$mf-write` expands the approved structure in a later pass.
 
 ## Resolve the workspace
 
@@ -27,7 +28,7 @@ Treat these four first-class authored stores as one workspace:
   intent or reasoning context, not factual evidence by themselves. Do not
   treat a successful YAML-only write as proof that the RAG corpus is current.
 - `thinking/`: working ledger for comparisons, contradictions, assumptions, feedback, decisions, blockers, and next investigations. Use `<project>/thinking/<article-key>.md`; create it when work begins and it is absent.
-- `docs/`: the current user-readable deliverable, never a deferred final dump. `outputs/` remains generated and must not be edited.
+- `docs/`: the current user-readable artifact. During planning it is an outline with private choices and feedback; after `$mf-write` it becomes the developed article. `outputs/` remains generated and must not be edited.
 
 Do not copy source bodies into prompts or duplicate prompts under `docs/`.
 
@@ -39,7 +40,7 @@ At the start of every turn, read and reconcile:
 2. registered sources and relevant terms;
 3. the thinking ledger;
 4. current article source;
-5. every `<!-- mf-feedback ... -->` annotation in the article.
+5. every `<!-- mf-feedback ... -->` annotation and every `mf-private` suggestion or feedback block in the article.
 
 Treat prompt frontmatter `article` as authoritative. After rename, verify the new identity, prompt filename, frontmatter binding, and thinking filename. For external renames, never infer mappings from title similarity. Stop on duplicate prompt bindings.
 
@@ -80,32 +81,47 @@ rather than silently falling back to an incomplete source list.
 
 - Ask first only for missing hard constraints that would invalidate the work. Continue with explicit assumptions when uncertainty is non-blocking.
 - For comparisons, normalize the basis before ranking: applicable dates, people or units, variant, currency, taxes or fees, cancellation terms, access time, and other domain-specific conditions.
-- Distinguish sourced facts, user-provided constraints, and agent inference. Record conflicts and volatility in thinking and expose material uncertainty in the article.
+- Distinguish sourced facts, user-provided constraints, and agent inference. Record conflicts and volatility in thinking; reflect material uncertainty in the outline or private planning regions only when it changes the structure or the user's choice.
 - Register durable evidence in `sources/`; record how it affects judgment in `thinking`.
-- For `research` and `decision-research`, after every turn that adds a fact, constraint, exclusion, comparison, or changed judgment, update `docs/` to the best current answer. Preserve uncertainty and pending verification instead of waiting for completeness.
-- For `editorial`, update `docs/` only when requested or when the planning request explicitly includes prose changes.
-- Preserve substantive user content and preview broad structural mutations.
+- Keep detailed evidence, comparisons, and provisional conclusions in `sources/` and `thinking/`. Update the prompt's outline and open loops when they change.
+- In every mode, materialize only the article framework in public `docs/` during planning: title and section hierarchy, plus a minimal placeholder only when a heading alone cannot communicate the intended role. Do not draft body paragraphs, examples, transitions, or detailed conclusions at this stage.
+- If details would help the author choose a direction, keep them beside the relevant heading as private planning content. Split them into separate, local regions rather than one article-wide dump:
 
-A research turn is complete only when all affected stores agree: prompt for changed control information, sources for new evidence, thinking for changed reasoning or feedback state, and docs for the current conclusion.
+  ```markdown
+  > [!mf-private] Suggestions
+  > - [ ] SG-001 — Candidate direction A
+  > - [ ] SG-002 — Candidate direction B
+
+  > [!mf-private] Feedback
+  > - [ ] FB-001 — Original user request, preserved verbatim
+  >   - Author (2026-09-08): Clarification or reply
+  ```
+
+  Give each item an article-local stable ID. In `Suggestions`, `[x]` means the user selected that option for `$mf-write`; `[ ]` means it remains unselected. Leave new suggestions unchecked unless the user has already selected one explicitly. Selection persists after drafting.
+- Treat each `Feedback` item like a Word comment thread anchored beside the section it governs. The first line is the immutable request. Append dated `Author` or `Agent` replies beneath it; never rewrite earlier messages. `[ ]` means open, `[x]` means resolved by `$mf-write` after implementation and verification. Reopening changes `[x]` back to `[ ]` and appends a dated reason while preserving the earlier resolution.
+- The private thread is authoritative for current feedback status. Thinking may reference `FB-NNN` for reasoning and audit history, but must not maintain a competing open/resolved flag.
+- Do not invent feedback or resolve private Feedback in this skill. If the user explicitly defers an item, move it from Feedback to a prompt Open Loop with the reason; every remaining open Feedback thread is current work.
+- Use as many suggestion/feedback pairs as the decisions require, normally adjacent to the section they govern. Keep factual detail and citations in the registered sources or thinking ledger; private blocks should contain concise choices, rationale, and user direction rather than hidden draft prose.
+- Prune the plan actively: remove redundant or obsolete headings, duplicated choices, and branches that no longer serve the objective. Preserve substantive authored material and decision history in the appropriate store; preview broad structural deletions before applying them.
+- Finish the planning pass with a coherent outline and clearly report which choices still need the user's selection. Do not proceed to detailed prose merely because enough evidence exists.
+
+A research turn is complete only when all affected stores agree: prompt for changed control information, sources for new evidence, thinking for changed reasoning or feedback state, and `docs/` for the current outline and private choices. A detailed conclusion remains a `$mf-write` deliverable.
 
 ## Process human feedback
 
-Recognize Markdown HTML comments beginning with `mf-feedback`, including a short form such as `<!-- mf-feedback: verify this price -->` and a multiline form. Associate the annotation with its surrounding paragraph or section. Distinguish material — content or phrasing the author supplies, folded in with the author's wording taking precedence — from an instruction — a directive to execute, never inserted as prose; a single annotation may carry both.
+Classify legacy Markdown comments beginning with `mf-feedback` before acting:
 
-For each annotation:
-
-1. add or update a stable entry in the thinking file's Feedback ledger;
-2. resolve it immediately when evidence and intent are sufficient;
-3. otherwise retain the annotation and record the investigation or question;
-4. after resolution, update the article, remove the inline annotation, and keep the resolution in thinking;
-5. promote feedback to the prompt only when it changes a durable goal, constraint, criterion, protocol, or writing rule.
+- Resolve research, comparison, goal, choice, and structure comments here. Record the request and resolution in the thinking Feedback ledger, update the outline, then remove the comment.
+- Migrate prose, expression, and local-edit comments into an open private `Feedback` thread with a stable ID and the original wording, then remove the legacy comment. `$mf-write` owns resolution.
+- If one comment contains both kinds, resolve the planning part and create an open thread for the writing part.
+- Promote feedback to the prompt only when it establishes a durable goal, constraint, criterion, protocol, or writing rule.
 
 Never silently delete feedback. Unresolved feedback blocks publication because current build behavior does not guarantee removal from generated Markdown.
 
-For a persistent private aside — a process-discussion note or exploratory passage that must stay in the source but never ship — use mind-forge private content rather than `mf-feedback`: wrap it in a `> [!mf-private]` callout, or set `mind-forge-visibility: private` on a whole block file. Unlike feedback, it never needs to be resolved or removed; `mf build`/`mf publish` exclude it while it stays intact in the source, and it remains available for the author's own RAG retrieval. See `$mf-write` / `$mf-cli` for the exact rules (block-level only; the title block cannot be private).
+For a persistent private aside — a process-discussion note or exploratory passage that must stay in the source but never ship — use mind-forge private content rather than `mf-feedback`: wrap it in a `> [!mf-private]` callout, or set `mind-forge-visibility: private` on a whole block file. `mf build`/`mf publish` exclude it while it stays intact in the source, and it remains available for the author's own RAG retrieval. A generic private aside has no workflow state; only private regions titled `Suggestions` or `Feedback` use the checkbox lifecycle defined above. See `$mf-write` / `$mf-cli` for the exact rules (block-level only; the title block cannot be private).
 
 ## Hand off by concern
 
-Use `$mf-write` for prose craft, substantial rewriting, assembly, build, and publication. Do not hand off merely because research changed the article: maintaining a research deliverable is part of this skill.
+Use `$mf-write` after the outline and user choices are ready for prose craft, substantial rewriting, assembly, build, and publication. Further research may refine the outline and private choices, but it does not cause `$mf-plan` to draft the article body.
 
 Report changes to the current conclusion, evidence, judgment, open loops, and feedback state. Use JSON envelopes and exit codes; consult `$mf-cli` for exact command behavior.

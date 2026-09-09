@@ -1,0 +1,38 @@
+{
+  "skill_name": "mf-plan",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Plan a new decision article comparing hosted and self-hosted search. Produce the proposed article source. The user has not selected a recommendation and has given no prose feedback.",
+      "expected_output": "A public heading-only outline with concise local private Suggestions. It contains no drafted comparison prose and no invented Feedback thread.",
+      "files": [],
+      "expectations": [
+        "Good case: public content contains only a title, section hierarchy, and minimal role placeholders",
+        "Good case: private Suggestions use stable SG-NNN IDs and begin unchecked",
+        "Bad case absent: the output does not contain developed body paragraphs, a recommendation, checked suggestions, or manufactured user feedback"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Replan the attached outline. Return the revised article source and a concise change report.",
+      "expected_output": "A smaller outline that removes redundant or obsolete structure while preserving substantive authored decisions and reporting broad deletions.",
+      "files": ["evals/files/duplicate-outline.md"],
+      "expectations": [
+        "Good case: duplicate sections and equivalent suggestions are consolidated and the obsolete branch is removed",
+        "Good case: the report identifies meaningful structural deletions",
+        "Bad case absent: substantive user decisions are not silently discarded and removed material is not rewritten as filler"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Process the two legacy comments in the attached outline. Produce the updated article source and feedback state.",
+      "expected_output": "The comparison comment is handled by planning; the prose comment is migrated verbatim into an open, anchored private Feedback thread for mf-write.",
+      "files": ["evals/files/legacy-feedback.md"],
+      "expectations": [
+        "Good case: feedback is classified before action and the planning-owned request updates research or structure",
+        "Good case: the prose request becomes an unchecked FB-NNN thread with the original wording",
+        "Bad case absent: mf-plan does not rewrite the opening paragraph, resolve the writing thread, or silently delete either request"
+      ]
+    }
+  ]
+}
