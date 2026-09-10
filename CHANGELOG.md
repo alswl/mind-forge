@@ -1,197 +1,188 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [Unreleased]
+
+### Features
+- Add version bump script (scripts/bump.sh) (by @alswl)
+
 ## [0.4.0] - 2026-09-10
 
-### Changes
-- **Breaking (spec 075)**: the `registrations` storage schema is bumped `2`→`3` to add `added_at`, `updated_at`, and an `extras_json` passthrough column, completing the record so the project-index mirror is lossless. Existing repositories need one `mf source sync --rebuild`; no migration shim is provided (single-maintainer system).
-- **Breaking (spec 075)**: machine-local activation state is reduced to a single activation-status field — the previous `activation_snapshot_id`, `activation_catalog_fingerprint`, and `storage_schema_version` are gone. Schema compatibility is now read from the tables' actual on-disk structure, never a recorded value; a repository whose local state is deleted self-heals via `mf source status`/`mf source sync` with no manual file edits (dissolves prior issues #36, #37, #39).
-- `mf source index` on the Lance backend is now a real disk-adoption and reconcile pass: files present on disk but unknown to the store are imported (with populated paths), and registrations whose file has vanished are reported as `removed` but never deleted — removal stays exclusive to `mf source remove`/`mf source clean`.
+### Features
+- Boundary-aware linting with standalone mode (spec 044) (by @alswl)
+- Add model update commands (by @alswl)
+- Safer defaults, single-step authoring, unified `new` verb (spec 046) (by @alswl)
+- Show mtime in article list, sort by recency (by @alswl)
+- CLI UX consistency audit & refactor (by @alswl)
+- Simplify writing workflow (by @alswl)
+- Split rename (slug-only) and update --title (by @alswl)
+- Add block rename subcommand (by @alswl)
+- Align internals with rust-cli.md guide (spec 049) (by @alswl)
+- Complete term CLI lifecycle (spec 051) (by @alswl)
+- Consolidate correction edits to one path (spec 052) (by @alswl)
+- Add --term filter to fix/lint for scoped corrections (spec 053) (by @alswl)
+- Add jieba-rs bring-up smoke, LmCorrector heuristic mode, and backfill rules tests (spec 055) (by @alswl)
+- Implement LM engine lint with KenLM scoring (spec 056) (by @alswl)
+- Thinking skill (by @alswl)
+- Improve research and feedback workflow (by @alswl)
+- Promote prompts and thinking to first-class schema entities (by @alswl)
+- Complete advanced Source RAG implementation (by @alswl)
+- Unify repository rag command surface (by @alswl)
+- Fix known CLI bugs and add one-step source indexing (spec 069) (by @alswl)
+- Generic publish transforms and persistent yuque-prompt file output (by @alswl)
+- RAG context enrichment + full-corpus coverage (spec 071) (by @alswl)
+- Private content via callouts and block visibility (spec 073) (by @alswl)
+- Implement CLI fixes and enhancements (by @alswl)
+- Add outline feedback workflow (by @alswl)
 
 ### Bug Fixes
-- `mf term lint`/`fix` now report held-back short-CJK advisory findings instead of rendering them identically to auto-applied ones: lint marks them `, held back` and the bulk fix summary reports a held-back count alongside the applied count, naming the scoped `--term` invocation that applies them. JSON gains additive `held_back`/`held_back_count` fields (spec 075 #40).
-- The most specific (longest) registered correction now wins at every position in every mode: a shorter correction that is a prefix of a longer one (e.g. `机器`→`装置` vs `机器人`→`机械装置`) no longer claims the position first just because it was declared earlier, in both lint reporting and scoped/bulk fix (spec 075 #41).
-- Registering a term correction now warns when its original is a prefix of, or equal to, another term's name or registered original, naming the shadowed term — still registers (warn-and-proceed). Lint findings likewise disclose competing terms even when no other correction shares the exact same original text (spec 075 #42).
-- A source-name collision on the Lance registration path now reports the actionable "already registered" error with a concrete `-n` suggestion (matching the legacy backend), instead of the generic file-conflict error whose only hint (`--force`) was a dead end under `--register-only` (spec 075 #35).
-- `mf project rename` no longer fails on a project whose files were never committed: trackedness is probed via `git ls-files` before choosing `git mv` vs `fs::rename`. A path-prefixed new name now shows the bare form of what was supplied in its hint.
-- `mf build` names `--out` as the flag that accepts an output path when a path-like value is passed to the global `--output` (text/json) flag by mistake, in addition to listing the valid format values.
-
-### Features
-- Add transactional cross-project `source`, `asset`, and `article move`
-  commands, including directory article blocks, prompt/thinking projections,
-  publish records, dry-run planning, and RAG deferral reporting.
-- Add read-only `prompt` and `thinking` projection views and directory article
-  block creation, reordering, and contiguous renumbering.
-- Move Lance activation metadata to gitignored per-worktree local state and
-  self-heal missing pointers through `mf source sync`.
-
-### Bug Fixes
-- Make quiet successful commands byte-silent while preserving warnings and exit
-  outcomes; align term-lint JSON on `issues`; and make mutation previews
-  prospective and write-safe for term corrections and asset updates (spec 076).
-- Preserve unknown source kinds and all index sections during registration;
-  reject unsupported index schemas without silent migration.
-- Make article creation dry-run safe and warn when a derived non-ASCII slug
-  should be replaced with an English `--slug`.
-- Prevent standalone CJK term matches from straddling segmented words.
-
-### Features
-- **RAG context enrichment (spec 071)**: every `mf search` hit's `registrations[].context` now carries structured attribution — `repository`, `project_identity`, `project_goal`, `content_kind`, `lifecycle_status`, internal `relations` (dangling links marked `resolved:false`), and, for source hits, `imported_by` import provenance. Single-owner content (article/prompt/thinking/project/term) gets a deterministic context preamble folded into its embedded chunk text so attribution participates in matching; shared source vectors are left context-free. `mf source sync` now also indexes `project` goals (from `mind.yaml`) and repository `term` definitions, and reports per-kind `coverage` plus item-by-item `skipped_items` (with `reason`) so indexing is auditable with no silent drops. `mf source new`/`add` gains `--article <PATH>` to capture the originating article as authoritative provenance. All new JSON fields are additive.
-- `mf publish run` on `yuque-prompt` targets now writes a persistent publish-ready file to `outputs/<stem>.yuque.md` (in addition to the existing stdout prompt/envelope); the JSON envelope gains an additive `destination` field. SVG→PNG substitution and banner injection are now generic publish-time transforms controlled by `config.svg_to_png` (bool, default false), `config.banner_markdown`, and `config.banner_file` — available to all target types, not hardcoded to `yuque-prompt`. (spec 070, #21)
-
-### Changes
-- **Breaking (spec 071)**: the repository RAG storage schema version is bumped `1`→`2` for the new per-registration context. An index pinned at v1 refuses `mf search`/`mf source sync` with an actionable diagnostic; run `mf source admin rebuild` once to regenerate the context-enriched index and adopt v2. No migration shim is provided (single-maintainer system).
-- **Breaking**: Remove correction-mutation flags from `term update`; correction edits now go solely through `term correction update`/`remove` (spec 052)
-- `term correction add` now reports `created: true|false` in JSON and "added" vs "already exists, skipped" in text
-- Clarify `--filter`/`--alias`/`--tag` help text for `term list`
-
-### Features
-- `mf source new` now indexes a new source into RAG (chunks + embeddings) in the same step on Lance-backed repos, so it is searchable without a separate `mf source sync`; pass `--no-index` to register only. Indexing is best-effort — an embedding/acquisition failure keeps the file and registration and warns to retry via `mf source sync`, never rolling back the registration. The result is reported in an additive `indexing` field (spec 069 #28)
-- `mf publish run` on `yuque-prompt` targets now injects a configured banner (`config.banner_markdown`, or `config.banner_file` read project-relative) at the top of the published payload, reported in an additive `transforms.banner_injected`; the on-disk build artifact is never modified, so the banner survives every `mf build` (spec 069 #21)
-- `mf source status` reports an additive `chunks_embedded_count` distinguishing "vectors present" from "text indexed", so `index_status: ready` no longer masks missing vectors after a keyword-only sync (spec 069 #27)
-- Add `mf article block rm` to remove a single block from a directory article (refuses to remove the last remaining block); add `mf article convert --to-single-file --merge` to collapse multi-block directory articles into a single file, re-depthing asset references and rebinding any bound prompt (spec 064)
-- `mf publish run` on `yuque-prompt` targets substitutes relative `.svg` image references with a sibling `.png` when one exists, reporting the result in an additive `transforms` field; the build artifact on disk is never modified (spec 064)
-- Complete term CLI lifecycle (spec 051)
-- Boundary-aware linting with standalone mode (spec 044)
-- Add model update commands
-- Safer defaults, single-step authoring, unified `new` verb (spec 046)
-- Show mtime in article list, sort by recency
-- CLI UX consistency audit & refactor
-- Simplify writing workflow
-- Split rename (slug-only) and update --title
-- Add block rename subcommand
-- Align CLI internals with rust-cli.md guide (spec 049)
-
-### Bug Fixes
-- `mf source new` now resolves a relative `<INPUT>` against the project root, the project's `sources/` dir, the repo root, and the process cwd (in that order) on both backends, so registering an in-tree file from a git worktree works; a path that resolves to nothing is a usage error (exit 2) naming the anchors tried, not an internal error (exit 1) advising a bug report (spec 069 #23)
-- `mf source new` refuses (exit 2, before any write) when a copy/link destination would overwrite a file owned by a different source identity — no more silent same-basename overwrite — and reports `replaced` truthfully (spec 069 #25)
-- `mf source sync --offline` no longer blocks loopback embedding endpoints: `--offline` forbids only external network, and loopback (`127.0.0.0/8`, `::1`, `localhost`) is never network access, applied through one shared predicate; an external endpoint under `--offline` is skipped with an explicit warning instead of silently dropping vectors (spec 069 #27)
-- `mf term lint`/`fix` now warn when a `substring`+`loose` correction match is adjacent to a continuous CJK/alphanumeric character (it may be part of a larger word, e.g. `阿卡`→`ARCA` over `阿卡索`); surfaced as `substring_adjacent_word` in JSON and a warning in text — the default `word`+`standalone` path was already safe (spec 069 #24)
-- `mf build` no longer emits malformed image/link paths (mixing a relative prefix with an absolute path) when a canonicalized `@`-path is combined with a relative `--out`, including from git worktrees or symlinked checkouts; also now rewrites HTML `<img src>` references, not just Markdown; an unresolvable reference is kept as-is and reported as a warning instead of written malformed (spec 064)
-- `article rm` resolves the target by title, `article_path`, or index key (with or without `.md`) and persists the index removal for every form; no more false success leaving a dangling entry (spec 062)
-- `project index` also reconciles each project's article index, pruning stale entries whose target file is absent on disk; declared/template-origin articles with existing files are never removed; per-project reconcile failures surface as warnings instead of silent skips (spec 062)
-- Strip ./ prefix from project paths for consistency
-- Fall back to filesystem mtime when created_at is empty
-- Persist created_at fallback to minds.yaml
-- Update test for TITLE column, remove write-back from read-only list_projects
-- Zero scheme leading byte to stop URL exemption leak
+- Strip ./ prefix from project paths for consistency (by @alswl)
+- Fall back to filesystem mtime when created_at is empty (by @alswl)
+- Persist created_at fallback to minds.yaml (by @alswl)
+- Update test for TITLE column, remove write-back from read-only list_projects (by @alswl)
+- Zero scheme leading byte to stop URL exemption leak (by @alswl)
+- Route all-ASCII phrase corrections through ASCII word-boundary path (by @alswl)
+- Restore 3-tuple claimed type in scan_file_for_corrections (by @alswl)
+- Resolve CLI workflow bugs across build/publish/index/term (spec 059) (by @alswl)
+- Resolve known CLI workflow bugs (spec 061) (by @alswl)
+- Honest article rm and project index stale pruning (spec 062) (by @alswl)
+- Keep substring with boundary-aware modes (spec 063) (by @alswl)
+- Resolve build and article workflow bugs (by @alswl)
+- Preserve author intent in writing workflow (by @alswl)
+- Address user-reported CLI bugs (by @alswl)
+- Short-CJK advisory lint, sync --rebuild, actionable collision error (by @alswl)
+- Enforce cli contract guardrails (spec 076) (by @alswl)
+- Spec 075 — truthful source storage and deterministic term corrections (by @alswl)
+- Resolve user-reported CLI bugs (spec 079, #46-#53) (by @alswl)
 
 ### Documentation
-- Update command examples for new verbs
-- Align manual, mf-cli skill, and README with --output/-o flag
+- Update command examples for new verbs (by @alswl)
+- Document rules vs. agent correction model (spec 058) (by @alswl)
+- Update (by @alswl)
+- Restore product philosophy in readme (by @alswl)
+- Promote prompt and thinking as first-class stores (by @alswl)
+- Align knowledge store model (by @alswl)
+- Document private content (callouts + block visibility, spec 073) (by @alswl)
+- Catch mf-cli up to latest CLI surface (#8) (by @alswl)
+- Single-envelope guarantee, index order/extras preservation, tie-break disclosure (by @alswl)
+- Update (by @alswl)
 
 ### Refactoring
-- Replace CONTENT column with TITLE in list view
+- Replace CONTENT column with TITLE in list view (by @alswl)
+- Drop the LM engine, keep rules + agent correction (spec 058) (by @alswl)
+- Repository-wide structural review and non-breaking refactor (spec 060) (by @alswl)
+
+### Performance
+- Compact JSON output and add git short hash to version (by @alswl)
+- Cargo aliases and persistent install target-dir (by @alswl)
 
 ### Miscellaneous
-- Align project ls with article ls format
+- Align project ls with article ls format (by @alswl)
 
 ## [0.2.1] - 2026-06-18
 
 ### Features
-- Default article new to directory blocks
-- Add Typora front-matter plugin with config and article injection
-- Add project layout mechanism
-- Add top-level `mf init` repo lifecycle command
-- Review and reorganize CLI command UX
-- Add description and confidence metadata to terms
-- Add unified remove and rename lifecycle operations for all primary objects
-- Elevate --project to global CLI parameter, fix term subcommand scope
-- Path-based entity identity for writing workflow parity
-- Path-centered article list output with content kind labels
-- Unified output infrastructure & flag conventions (spec 039)
-- Article shape conversion (spec 040)
-- Terminal capability detection (spec 041)
-- Wire OSC 8 hyperlink rendering into list/show/verb outputs
-- Tmux
-- Mf article ls auto-matches all projects when run outside a project dir
-- Mispronunciation-aware lint + first-class `term fix` verb (spec 042)
-- Add --delete-* flags, correction attr updates, and project-scoped --misrecognition
+- Default article new to directory blocks (by @alswl)
+- Add Typora front-matter plugin with config and article injection (by @alswl)
+- Add project layout mechanism (by @alswl)
+- Add top-level `mf init` repo lifecycle command (by @alswl)
+- Review and reorganize CLI command UX (by @alswl)
+- Add description and confidence metadata to terms (by @alswl)
+- Add unified remove and rename lifecycle operations for all primary objects (by @alswl)
+- Elevate --project to global CLI parameter, fix term subcommand scope (by @alswl)
+- Path-based entity identity for writing workflow parity (by @alswl)
+- Path-centered article list output with content kind labels (by @alswl)
+- Unified output infrastructure & flag conventions (spec 039) (by @alswl)
+- Article shape conversion (spec 040) (by @alswl)
+- Terminal capability detection (spec 041) (by @alswl)
+- Wire OSC 8 hyperlink rendering into list/show/verb outputs (by @alswl)
+- Tmux (by @alswl)
+- Mf article ls auto-matches all projects when run outside a project dir (by @alswl)
+- Mispronunciation-aware lint + first-class `term fix` verb (spec 042) (by @alswl)
+- Add --delete-* flags, correction attr updates, and project-scoped --misrecognition (by @alswl)
 
 ### Bug Fixes
-- Strip typora front matter from build output
-- Discover source-kind files during source index
-- Cover article new missing index creation
-- Resolve relative paths to absolute file:// URIs in render_path_link
-- Broaden terminal hyperlink detection and encode file URIs
-- Prevent --fix panic when overlapping corrections match the same text
+- Strip typora front matter from build output (by @alswl)
+- Discover source-kind files during source index (by @alswl)
+- Cover article new missing index creation (by @alswl)
+- Resolve relative paths to absolute file:// URIs in render_path_link (by @alswl)
+- Broaden terminal hyperlink detection and encode file URIs (by @alswl)
+- Prevent --fix panic when overlapping corrections match the same text (by @alswl)
 
 ### Documentation
-- Update
-- Update README and SKILL for publisher→publish target rename
-- No migration
-- No changelog manual
-- Add CHANGELOG.md and git-cliff configuration
-- Regenerate README and SKILL from latest CLI manual
-- Regenerate README and SKILL from latest CLI manual
-- Regenerate README and SKILL from latest CLI manual
-- Regenerate README and SKILL from latest CLI manual
-- Refresh SKILL.md and README after spec 040-042 features
-- Update README and SKILL.md with new term update flags
+- Update (by @alswl)
+- Update README and SKILL for publisher→publish target rename (by @alswl)
+- No migration (by @alswl)
+- No changelog manual (by @alswl)
+- Add CHANGELOG.md and git-cliff configuration (by @alswl)
+- Regenerate README and SKILL from latest CLI manual (by @alswl)
+- Regenerate README and SKILL from latest CLI manual (by @alswl)
+- Regenerate README and SKILL from latest CLI manual (by @alswl)
+- Regenerate README and SKILL from latest CLI manual (by @alswl)
+- Refresh SKILL.md and README after spec 040-042 features (by @alswl)
+- Update README and SKILL.md with new term update flags (by @alswl)
 
 ### Refactoring
-- Rename article storage path fields
-- Remove repo-format, collapse to schema-version only
-- Clean up term lint path handling
+- Rename article storage path fields (by @alswl)
+- Remove repo-format, collapse to schema-version only (by @alswl)
+- Clean up term lint path handling (by @alswl)
 
 ### Testing
-- Derive expected --version from CARGO_PKG_VERSION
+- Derive expected --version from CARGO_PKG_VERSION (by @alswl)
 
 ### Miscellaneous
-- Merge branch '031-layout-mechanism'
-- Add concurrency control, rust-cache, and pin macOS toolchain
-- Bump version to 0.2.0
-- Bump version to 0.2.1 and sync Cargo.lock
+- Merge branch '031-layout-mechanism' (by @alswl)
+- Add concurrency control, rust-cache, and pin macOS toolchain (by @alswl)
 
 ## [0.1.0] - 2026-05-19
 
 ### Features
-- Add configurable projects_dir to MindsManifest (#2)
-- Complete 014-cli-mind-parity — full CLI parity with mind tool (#3)
-- Add publisher channels and CLI skill, clean up codebase
-- Add publisher e2e tests and CI enforcement (#4)
-- Python mind 0.3.0 YAML compatibility (#017)
-- Implement build banner, article source dirs, and asset layout (#018)
-- Add rename subcommands for project and article (#019)
-- Implement render command with template system
-- Dual-shape terms file support — repo-format detection, read, and write
-- Default article new to blank directory
-- Add version management with draft release workflow
+- Add configurable projects_dir to MindsManifest (#2) (by @alswl)
+- Complete 014-cli-mind-parity — full CLI parity with mind tool (#3) (by @alswl)
+- Add publisher channels and CLI skill, clean up codebase (by @alswl)
+- Add publisher e2e tests and CI enforcement (#4) (by @alswl)
+- Python mind 0.3.0 YAML compatibility (#017) (by @alswl)
+- Implement build banner, article source dirs, and asset layout (#018) (by @alswl)
+- Add rename subcommands for project and article (#019) (by @alswl)
+- Implement render command with template system (by @alswl)
+- Dual-shape terms file support — repo-format detection, read, and write (by @alswl)
+- Default article new to blank directory (by @alswl)
+- Add version management with draft release workflow (by @alswl)
 
 ### Bug Fixes
-- Reconcile/clean 数据丢失修复及 P1 代码重构
-- Upgrade GitHub Actions to use node24 runtime
-- Centralize defaults and honor project paths
-- Remove docs/images/ from project scaffold and lint rules
-- Harden index handling and render prompts
-- Complete index bug handling
-- Implement publish path expansion and generated-article discovery
-- Close BUG-3 and BUG-5 — generated-article publish identity and declared-article index gaps
-- Unify article resolver across index, build, and publish
-- Support global terms via minds-terms.yaml without project context
-- Converge article identity to path全名 and DOCS_DIR relative forms
-- Strip outputs/ prefix in article_output_stem to avoid double path
-- Centralize layout constants, eliminate hardcoded path strings
-- Support schema-tagged repository terms
+- Reconcile/clean 数据丢失修复及 P1 代码重构 (by @alswl)
+- Upgrade GitHub Actions to use node24 runtime (by @alswl)
+- Centralize defaults and honor project paths (by @alswl)
+- Remove docs/images/ from project scaffold and lint rules (by @alswl)
+- Harden index handling and render prompts (by @alswl)
+- Complete index bug handling (by @alswl)
+- Implement publish path expansion and generated-article discovery (by @alswl)
+- Close BUG-3 and BUG-5 — generated-article publish identity and declared-article index gaps (by @alswl)
+- Unify article resolver across index, build, and publish (by @alswl)
+- Support global terms via minds-terms.yaml without project context (by @alswl)
+- Converge article identity to path全名 and DOCS_DIR relative forms (by @alswl)
+- Strip outputs/ prefix in article_output_stem to avoid double path (by @alswl)
+- Centralize layout constants, eliminate hardcoded path strings (by @alswl)
+- Support schema-tagged repository terms (by @alswl)
 
 ### Documentation
-- Update SKILL.md with rename subcommands
-- Docs
-- Skill
-- Generate skills and readme
+- Update SKILL.md with rename subcommands (by @alswl)
+- Docs (by @alswl)
+- Skill (by @alswl)
+- Generate skills and readme (by @alswl)
 
 ### Miscellaneous
-- Initial commit
-- Implement mf CLI framework
-- .
+- Initial commit (by @alswl)
+- Implement mf CLI framework (by @alswl)
+- . (by @alswl)
 - Fix spec compliance and code quality issues
 
 - Fix mf source (no subcommand) exiting 0 — now returns exit code 2 per spec
 - Simplify wants_json detection to use windows(2) for --format json pair
-- Remove redundant copy/link bool fields from AssetAddPayload (mode suffices)
+- Remove redundant copy/link bool fields from AssetAddPayload (mode suffices) (by @alswl)
 - Add GitHub Actions CI workflow
 
-Run build, test, clippy (deny warnings), and rustfmt check on push/PR to master.
+Run build, test, clippy (deny warnings), and rustfmt check on push/PR to master. (by @alswl)
 - Implement CLI command skeleton, model types, and CI setup
 
 - Add multi-level command tree: source, asset, project, article, term, build, config, publish
@@ -200,7 +191,7 @@ Run build, test, clippy (deny warnings), and rustfmt check on push/PR to master.
 - Add shell completion generation via `mf completion <shell>`
 - Add integration tests with assert_cmd and insta snapshots
 - Add GitHub Actions CI workflow with cargo build, test, clippy, fmt
-- Set up Cargo.lock for reproducible builds
+- Set up Cargo.lock for reproducible builds (by @alswl)
 - Implement Mind Repo detection and project index command
 
 Adds Mind Repo context detection (upward search for minds.yaml with
@@ -210,8 +201,8 @@ Commands needing repo context now fail fast with a not-in-mind-repo
 error envelope outside a Mind Repo, while config/completion/help still
 work anywhere.
 
-Refs: specs/003-mind-repo-infra
-- Fix clippy warning: redundant closure in ok_or_else
+Refs: specs/003-mind-repo-infra (by @alswl)
+- Fix clippy warning: redundant closure in ok_or_else (by @alswl)
 - CI build artifacts, cross-compilation, and code review fixes
 
 - Add GitHub Actions artifact builds for Linux x86_64, ARM64, and macOS ARM64
@@ -220,7 +211,7 @@ Refs: specs/003-mind-repo-infra
 - Add CommandOutcome::Success variant for proper exit 0 on implemented commands
 - Replace hand-rolled iso_now date calculation with chrono crate
 - Scoped #[allow(dead_code)] on placeholder-only model modules
-- Misc test updates and cleanups
+- Misc test updates and cleanups (by @alswl)
 - Squashed commit of the following:
 
 commit 447c30d4bfcef60ea45b3093f304c1804daae203
@@ -239,7 +230,7 @@ Date:   Wed Apr 29 23:23:22 2026 +0800
     - Add schemars dependency for JSON Schema (Draft-07) derivation
     - Code review: extract shared util module (atomic_write, validate_schema_version),
       remove dead_code allowances, fix --format json double-encoding via
-      CommandOutcome::Raw, remove misleading merge _base parameters
+      CommandOutcome::Raw, remove misleading merge _base parameters (by @alswl)
 - Implement article core commands and fix code quality
 
 - Full article lifecycle: create (mf article new), list (mf article list),
@@ -248,7 +239,7 @@ Date:   Wed Apr 29 23:23:22 2026 +0800
 - Lint with --fix: kebab-case filename validation and auto-rename
 - Refactor compute_article_diff to single-pass iteration
 - Replace entries.flatten() with explicit error propagation
-- Replace String-typed severity/kind with Severity/LintKind enums
+- Replace String-typed severity/kind with Severity/LintKind enums (by @alswl)
 - Implement article core commands: new, list, lint, index, and build
 
 - Add ArticleStatus (Draft/Published) and LintIssue models
@@ -257,8 +248,8 @@ Date:   Wed Apr 29 23:23:22 2026 +0800
 - Implement build command reading markdown from docs/
 - Extract shared utilities: resolve_project, to_filename, dir_name
 - 11 integration tests covering all commands and edge cases
-- Replace placeholders for all 5 article/build commands
-- Merge branch '006-article-core' into master
+- Replace placeholders for all 5 article/build commands (by @alswl)
+- Merge branch '006-article-core' into master (by @alswl)
 - Implement project lifecycle commands: new, list, status, lint, and archive
 
 - mf project new <NAME> — scaffold project skeleton, upsert to minds.yaml
@@ -269,13 +260,13 @@ Date:   Wed Apr 29 23:23:22 2026 +0800
 - Add --root <PATH> global flag for repo root override
 - Add canonicalize_within path boundary security check
 - Add validate_project_name kebab-case validation
-- 24 e2e tests covering all commands + boundary cases
+- 24 e2e tests covering all commands + boundary cases (by @alswl)
 - Implement config-driven build command with index validation
 
 Upgrade `mf build` skeleton to read project config (BuildConfig),
 validate article existence in mind-index.yaml (exit 1 if not found),
 and write output to config-driven path `{output_dir}/{article}.{format}`.
-Add MfError::NotFound variant for article-not-in-index (exit 1).
+Add MfError::NotFound variant for article-not-in-index (exit 1). (by @alswl)
 - Implement publish MVP: local/yuque-prompt targets and update record
 
 - Add PublishTargetType::YuquePrompt variant for yuque-prompt target type
@@ -285,7 +276,7 @@ Add MfError::NotFound variant for article-not-in-index (exit 1).
 - Add not-implemented guard for yuque/github_pages/custom target types
 - Add hint field to NotImplemented error variant for actionable messages
 - Add 36 integration tests across all user stories + quickstart E2E test
-- Remove publish placeholder assertions; wire real dispatch
+- Remove publish placeholder assertions; wire real dispatch (by @alswl)
 - Implement asset core commands: add, list, update, index
 
 Replace placeholders with four real asset management commands:
@@ -294,7 +285,7 @@ Replace placeholders with four real asset management commands:
 - mf asset update: refresh size and hash for single or all assets
 - mf asset index: reconcile assets directory with index
 
-Adds sha2 and walkdir dependencies. 39 integration tests + 6 help snapshots.
+Adds sha2 and walkdir dependencies. 39 integration tests + 6 help snapshots. (by @alswl)
 - Implement term core commands and cleanup dead code
 
 Features (012-term-core):
@@ -310,7 +301,7 @@ Bad-smell fixes:
 - Remove unread InternalFinding.term field
 - Remove entire Placeholder dead-code path (variant, fn, module)
 - Remove unused color module and is-terminal dependency
-- Update tests/cli_placeholders.rs assertion tighten
+- Update tests/cli_placeholders.rs assertion tighten (by @alswl)
 - Implement structural refactor: directory modules, error model, CLI hygiene
 
 Service layer split into directory modules (term/source/asset/project),
@@ -318,5 +309,6 @@ index I/O centralized to service::index, MfError tightened with proper
 kind/hint taxonomy, output render consolidated to single dispatch,
 repo-context declarative via RepoRequirement, dead code and duplicate
 flags removed, main.rs slimmed to 120 lines, success envelope aligned
-with charter V (command field), and clig.dev cosmetic fixes applied.
-- Chore
+with charter V (command field), and clig.dev cosmetic fixes applied. (by @alswl)
+- Chore (by @alswl)
+

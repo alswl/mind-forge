@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Bump the mf crate version and roll the CHANGELOG. Modeled on skm's hack/bump.sh.
+# Bump the mf crate version and regenerate the CHANGELOG via git-cliff.
+# Modeled on skm's hack/bump.sh.
 #
 # Unlike skm there is no VERSION file: the version lives in Cargo.toml (synced
-# into Cargo.lock by cargo). The CHANGELOG is hand-maintained, so "generating"
-# it means renaming the `## [Unreleased]` heading to the released version.
+# into Cargo.lock by cargo). CHANGELOG.md is fully regenerated from commit
+# history each bump (see cliff.toml), so write conventional commits.
 #
 # Usage: scripts/bump.sh [--stage <stage>] [--scope <scope>] [--dry-run <bool>] [--push <bool>]
 #   --stage:    final, alpha, beta, candidate (default: final)
@@ -50,7 +51,8 @@ case "$scope" in
 esac
 next="$major.$minor.$patch"
 [ -z "$suffix" ] || next="$next-$suffix"
-today=$(date +%F)
+
+command -v git-cliff > /dev/null || { echo "git-cliff is required (brew install git-cliff)"; exit 1; }
 
 if [ "$(git status --porcelain --untracked-files=no)" != "" ]; then
   echo "working tree has uncommitted changes; commit or stash first"
@@ -69,10 +71,16 @@ if [ "$dry_run" = "true" ]; then
   echo "------------------------------"
   echo "  Actions (if DRY_RUN=false):"
   echo "    1. Write $next to Cargo.toml (+ Cargo.lock sync)"
-  echo "    2. Rename CHANGELOG.md '## [Unreleased]' to '## [$next] - $today'"
+  echo "    2. Regenerate CHANGELOG.md (via git-cliff)"
   echo "    3. git commit \"chore: bump version to $next\""
   echo "    4. git tag v$next"
   echo "    5. git push (with --push true)"
+  echo "=============================="
+  echo ""
+  echo "------------------------------"
+  echo "  Changelog Preview (unreleased)"
+  echo "------------------------------"
+  git cliff --unreleased --tag "v$next" 2>/dev/null | tail -n +2 || echo "  (git cliff failed, skipped)"
   echo "=============================="
   echo ""
   echo "  To execute, re-run with: --dry-run false"
@@ -84,12 +92,8 @@ fi
 NEXT="$next" perl -pi -e 'if (!$done && /^version = /) { s/^version = ".*"/version = "$ENV{NEXT}"/; $done = 1 }' Cargo.toml
 cargo metadata --offline --format-version 1 > /dev/null   # syncs Cargo.lock
 
-# 2. CHANGELOG: release the Unreleased section
-grep -q '^## \[Unreleased\]$' CHANGELOG.md || { echo "CHANGELOG.md has no '## [Unreleased]' section"; exit 1; }
-if [ "$(sed -n '/^## \[Unreleased\]$/,/^## /p' CHANGELOG.md | sed '1d;$d' | grep -c .)" = "0" ]; then
-  echo "warning: the [Unreleased] CHANGELOG section is empty"
-fi
-NEXT="$next" TODAY="$today" perl -0pi -e 's/^## \[Unreleased\]$/## [$ENV{NEXT}] - $ENV{TODAY}/m' CHANGELOG.md
+# 2. Regenerate CHANGELOG.md from commit history
+git cliff --tag "v$next" -o CHANGELOG.md
 
 # 3-4. Commit and tag
 git add Cargo.toml Cargo.lock CHANGELOG.md

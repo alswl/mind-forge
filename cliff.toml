@@ -30,5 +30,6 @@ commit_parsers = [
     { message = "^test", group = "<!-- 4 -->Testing" },
     { message = "^perf", group = "<!-- 5 -->Performance" },
     { message = "^ci", group = "<!-- 6 -->CI" },
+    { message = "^chore: bump version", skip = true },
     { message = ".*", group = "<!-- 7 -->Miscellaneous" },
 ]
