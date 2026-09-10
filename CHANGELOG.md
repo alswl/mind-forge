@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-## [Unreleased]
+## [0.4.0] - 2026-09-10
 
 ### Changes
 - **Breaking (spec 075)**: the `registrations` storage schema is bumped `2`→`3` to add `added_at`, `updated_at`, and an `extras_json` passthrough column, completing the record so the project-index mirror is lossless. Existing repositories need one `mf source sync --rebuild`; no migration shim is provided (single-maintainer system).
