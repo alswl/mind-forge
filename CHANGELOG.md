@@ -1,10 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-## [Unreleased]
+## [0.4.1] - 2026-09-10
 
 ### Features
 - Add version bump script (scripts/bump.sh) (by @alswl)
+- Generate CHANGELOG via git-cliff on bump (by @alswl)
+
+### Bug Fixes
+- Trim header from bump changelog preview (by @alswl)
 
 ## [0.4.0] - 2026-09-10
 
