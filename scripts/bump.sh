@@ -80,7 +80,7 @@ if [ "$dry_run" = "true" ]; then
   echo "------------------------------"
   echo "  Changelog Preview (unreleased)"
   echo "------------------------------"
-  git cliff --unreleased --tag "v$next" 2>/dev/null | tail -n +2 || echo "  (git cliff failed, skipped)"
+  git cliff --unreleased --tag "v$next" 2>/dev/null | sed -n '/^## /,$p' || echo "  (git cliff failed, skipped)"
   echo "=============================="
   echo ""
   echo "  To execute, re-run with: --dry-run false"
