@@ -13,6 +13,37 @@ by hand: after changing command definitions, run
 diff. Keep workflow guidance in this skill, the README, or focused documents
 under `docs/`.
 
+## Installation
+
+If `mf` is missing (`command not found: mf`), give the user these steps — do
+not install on their behalf:
+
+```bash
+git clone https://github.com/alswl/mind-forge.git
+cd mind-forge
+scripts/install.sh      # installs `mf` into ~/.cargo/bin (Rust 1.91+)
+mf version
+```
+
+Use `scripts/install.sh`, not `cargo install --path .`: the script points
+`--target-dir` at a persistent directory, so later installs rebuild only `mf`
+instead of all ~490 dependency crates.
+
+Install the four skills by linking them from the clone into a skills
+directory — `~/.claude/skills/` for every project, `.claude/skills/` inside one
+repo. Symlinks keep them current on `git pull`:
+
+```bash
+mkdir -p ~/.claude/skills
+for s in mf-cli mf-plan mf-write mf-source; do
+  ln -sfn "$PWD/skills/$s" ~/.claude/skills/$s
+done
+```
+
+`mf-cli` (this reference), `mf-plan`, and `mf-write` load automatically when a
+request matches. `mf-source` sets `disable-model-invocation: true`, so the user
+must invoke it explicitly. Restart the agent session to pick up new skills.
+
 ## Overview
 
 `mf` manages local mind-format knowledge repos. Sources preserve evidence,
