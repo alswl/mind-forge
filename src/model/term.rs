@@ -150,6 +150,13 @@ pub struct TermFinding {
     /// when false to keep the common-case output stable.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub substring_adjacent_word: bool,
+    /// Spec 081 FR-006/FR-007: the occurrence sits inside a verbatim quote
+    /// region (a blockquote line or a `「…」` span) and is never replaced —
+    /// not by bulk fix, not by targeted `--term` apply. Mutually exclusive
+    /// with `held_back`. Omitted from JSON when false so documents with no
+    /// quote-interior hits serialize byte-identically to before (FR-009).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub quote_protected: bool,
     pub selection: FindingSelection,
     pub context: String,
     /// Spec 075 US3/FR-020: true when this finding will not be applied
@@ -180,6 +187,11 @@ pub enum FindingSelection {
     BelowConfidence,
     Ambiguous,
     NotReplacement,
+    /// Spec 081 FR-008: unlike `Ambiguous`/advisory handling, naming the
+    /// term or pair via `--term` does NOT promote this to `Selected`. The
+    /// only override is `--include-quotes`, which acts at scan time, before
+    /// selection is ever computed.
+    QuoteProtected,
 }
 
 impl FindingSelection {
@@ -230,7 +242,14 @@ impl FixSelection {
         fix_kind: FixKind,
         replacement_eligible: bool,
         advisory: bool,
+        quote_protected: bool,
     ) -> FindingSelection {
+        // Order is load-bearing (spec 081 FR-008): this must precede the
+        // `!replacement_eligible` branch, or a quote-protected hit that is
+        // also short-CJK advisory becomes `--term`-promotable.
+        if quote_protected {
+            return FindingSelection::QuoteProtected;
+        }
         if !replacement_eligible {
             // Advisory findings (e.g. short-CJK, spec 074 #30) are skipped by
             // auto-apply unless the user explicitly opted in by naming the term
@@ -424,6 +443,16 @@ pub struct TermLintReport {
     /// unopted-in advisory findings — a narrower subset of `ineligible_count`
     /// that excludes genuinely ambiguous findings (see `TermFinding::held_back`).
     pub held_back_count: u64,
+    /// Spec 081 FR-007: findings inside a verbatim quote region (see
+    /// `TermFinding::quote_protected`) — disjoint from `held_back_count`.
+    /// Omitted from JSON when zero to keep quote-free output byte-identical
+    /// to before this field existed (FR-009).
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub quote_protected_count: u64,
+}
+
+fn is_zero_u64(n: &u64) -> bool {
+    *n == 0
 }
 
 #[cfg(test)]
@@ -726,15 +755,15 @@ mod tests {
     fn selection_uses_inclusive_minimum_confidence() {
         let selection = FixSelection { include_suggested: true, min_confidence: Some(0.8), ..Default::default() };
         assert_eq!(
-            selection.classify("Synthetic", "old", "new", Some(0.8), FixKind::Suggested, true, false),
+            selection.classify("Synthetic", "old", "new", Some(0.8), FixKind::Suggested, true, false, false),
             FindingSelection::Selected
         );
         assert_eq!(
-            selection.classify("Synthetic", "old", "new", Some(0.79), FixKind::Suggested, true, false),
+            selection.classify("Synthetic", "old", "new", Some(0.79), FixKind::Suggested, true, false, false),
             FindingSelection::BelowConfidence
         );
         assert_eq!(
-            selection.classify("Synthetic", "old", "new", None, FixKind::Suggested, true, false),
+            selection.classify("Synthetic", "old", "new", None, FixKind::Suggested, true, false, false),
             FindingSelection::BelowConfidence
         );
     }
@@ -745,7 +774,7 @@ mod tests {
         selection.selected_terms.insert("Synthetic".into());
         selection.excluded_terms.insert("Synthetic".into());
         assert_eq!(
-            selection.classify("Synthetic", "old", "new", Some(1.0), FixKind::Required, true, false),
+            selection.classify("Synthetic", "old", "new", Some(1.0), FixKind::Required, true, false, false),
             FindingSelection::ExcludedTerm
         );
     }
@@ -756,15 +785,15 @@ mod tests {
         selection.selected_pairs.insert(("Synthetic".into(), "wanted".into()));
         selection.excluded_originals.insert("blocked".into());
         assert_eq!(
-            selection.classify("Synthetic", "wanted", "new", Some(1.0), FixKind::Required, true, false),
+            selection.classify("Synthetic", "wanted", "new", Some(1.0), FixKind::Required, true, false, false),
             FindingSelection::Selected
         );
         assert_eq!(
-            selection.classify("Synthetic", "other", "new", Some(1.0), FixKind::Required, true, false),
+            selection.classify("Synthetic", "other", "new", Some(1.0), FixKind::Required, true, false, false),
             FindingSelection::NotSelected
         );
         assert_eq!(
-            selection.classify("Other", "blocked", "new", Some(1.0), FixKind::Required, true, false),
+            selection.classify("Other", "blocked", "new", Some(1.0), FixKind::Required, true, false, false),
             FindingSelection::ExcludedOriginal
         );
     }
@@ -776,7 +805,7 @@ mod tests {
         // term or (term, original) pair via --term NAME[:ORIGINAL].
         let selection = FixSelection::default();
         assert_eq!(
-            selection.classify("Synthetic", "以可", "new", Some(1.0), FixKind::Required, false, true),
+            selection.classify("Synthetic", "以可", "new", Some(1.0), FixKind::Required, false, true, false),
             FindingSelection::Ambiguous,
             "advisory finding must be skipped without explicit opt-in"
         );
@@ -784,7 +813,7 @@ mod tests {
         let mut selection = FixSelection::default();
         selection.selected_pairs.insert(("Synthetic".into(), "以可".into()));
         assert_eq!(
-            selection.classify("Synthetic", "以可", "new", Some(1.0), FixKind::Required, false, true),
+            selection.classify("Synthetic", "以可", "new", Some(1.0), FixKind::Required, false, true, false),
             FindingSelection::Selected,
             "explicit --term NAME:ORIGINAL opt-in must apply an advisory finding"
         );
@@ -794,9 +823,52 @@ mod tests {
         let mut selection = FixSelection::default();
         selection.selected_terms.insert("Synthetic".into());
         assert_eq!(
-            selection.classify("Synthetic", "ambiguous", "new", Some(1.0), FixKind::Required, false, false),
+            selection.classify("Synthetic", "ambiguous", "new", Some(1.0), FixKind::Required, false, false, false),
             FindingSelection::Ambiguous,
             "ambiguous findings must not be force-applied by --term"
+        );
+    }
+
+    // ── Spec 081 US3/FR-008: quote-protected findings ────────────────────
+
+    #[test]
+    fn quote_protected_finding_is_never_selected_even_when_named() {
+        let selection = FixSelection::default();
+        assert_eq!(
+            selection.classify("Synthetic", "old", "new", Some(1.0), FixKind::Required, true, false, true),
+            FindingSelection::QuoteProtected
+        );
+
+        // Naming the term (or the term:original pair) via --term must not
+        // promote a quote-protected finding to Selected — unlike the
+        // advisory opt-in path, the only deliberate override is
+        // --include-quotes, which keeps it out of this state entirely.
+        let mut selection = FixSelection::default();
+        selection.selected_terms.insert("Synthetic".into());
+        assert_eq!(
+            selection.classify("Synthetic", "old", "new", Some(1.0), FixKind::Required, true, false, true),
+            FindingSelection::QuoteProtected,
+            "--term NAME must not promote a quote-protected finding"
+        );
+
+        let mut selection = FixSelection::default();
+        selection.selected_pairs.insert(("Synthetic".into(), "old".into()));
+        assert_eq!(
+            selection.classify("Synthetic", "old", "new", Some(1.0), FixKind::Required, true, false, true),
+            FindingSelection::QuoteProtected,
+            "--term NAME:ORIGINAL must not promote a quote-protected finding"
+        );
+    }
+
+    #[test]
+    fn quote_protected_takes_priority_over_advisory_classification() {
+        // A quote-protected occurrence that also happens to be short-CJK
+        // advisory (replacement_eligible=false, advisory=true) is reported
+        // as protected, not as an ordinary advisory/ambiguous finding.
+        let selection = FixSelection::default();
+        assert_eq!(
+            selection.classify("Synthetic", "以可", "new", Some(1.0), FixKind::Required, false, true, true),
+            FindingSelection::QuoteProtected
         );
     }
 }

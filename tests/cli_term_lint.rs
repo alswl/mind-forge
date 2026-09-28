@@ -1175,3 +1175,151 @@ terms:
         "text output must also disclose the competing term: {text_stdout}"
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Spec 081 US3/FR-006/FR-007: quote-protected disclosure
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A document with the same correctable term once in body prose, once inside
+/// a blockquote, and once inside a `「…」` span.
+fn write_mixed_quote_doc(project: &std::path::Path) {
+    write_doc(project, "mixed", "Body says mindrepo here\n> quoted mindrepo inside a blockquote\n「mindrepo」\n");
+}
+
+/// text output marks quote-interior hits distinctly from body hits and
+/// emits the disclosure summary line naming `--include-quotes`.
+#[test]
+fn lint_text_marks_quote_protected_findings_and_summarizes() {
+    let (repo, project) = setup_with_term();
+    write_mixed_quote_doc(&project);
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    assert!(stdout.contains("\"mindrepo\" → \"Mind Repo\""), "body occurrence must report normally: {stdout}");
+    let quote_protected_lines: Vec<&str> = stdout.lines().filter(|l| l.contains(", quote-protected")).collect();
+    assert_eq!(quote_protected_lines.len(), 2, "both quote-interior hits must be marked: {stdout}");
+    assert!(
+        stdout.contains("2 findings inside quotes/blockquotes left untouched; pass --include-quotes to scan them"),
+        "summary must disclose the protected count and name --include-quotes: {stdout}"
+    );
+}
+
+/// JSON output carries `quote_protected`/`safety_reason` per finding
+/// and `quote_protected_count` on the report, with the outer envelope shape
+/// and exit code unchanged.
+#[test]
+fn lint_json_carries_quote_protected_fields_and_count() {
+    let (repo, project) = setup_with_term();
+    write_mixed_quote_doc(&project);
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    assert_eq!(v["status"], "ok", "{stdout}");
+    assert_eq!(v["data"]["quote_protected_count"], 2, "{stdout}");
+    let issues = v["data"]["issues"].as_array().unwrap();
+    let protected: Vec<&serde_json::Value> =
+        issues.iter().filter(|f| f["quote_protected"] == serde_json::Value::Bool(true)).collect();
+    assert_eq!(protected.len(), 2, "{stdout}");
+    for f in &protected {
+        assert_eq!(f["safety_reason"], "quote-protected", "{stdout}");
+    }
+    let body: Vec<&serde_json::Value> = issues.iter().filter(|f| f["quote_protected"].is_null()).collect();
+    assert_eq!(body.len(), 1, "body occurrence must not carry quote_protected: {stdout}");
+}
+
+/// `--dry-run` (i.e. `term fix --dry-run`) reports the same protected
+/// count as the non-dry-run lint path — protected findings are disclosed
+/// regardless of dry-run mode.
+#[test]
+fn lint_dry_run_reports_same_quote_protected_count() {
+    let (repo, project) = setup_with_term();
+    write_mixed_quote_doc(&project);
+
+    let output =
+        mf(&repo).args(["term", "fix", "--project", "alpha", "--dry-run", "--output", "json"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(v["data"]["quote_protected_count"], 2, "{stdout}");
+}
+
+/// `--include-quotes` restores quote-interior hits as ordinary,
+/// non-protected findings — the two states never overlap.
+#[test]
+fn lint_include_quotes_restores_ordinary_findings() {
+    let (repo, project) = setup_with_term();
+    write_mixed_quote_doc(&project);
+
+    let output = mf(&repo)
+        .args(["term", "lint", "--project", "alpha", "--include-quotes", "--output", "json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    assert!(
+        v["data"].get("quote_protected_count").is_none() || v["data"]["quote_protected_count"] == 0,
+        "no finding should be quote-protected under --include-quotes: {stdout}"
+    );
+    let issues = v["data"]["issues"].as_array().unwrap();
+    assert_eq!(issues.len(), 3, "all three occurrences must be ordinary findings: {stdout}");
+    assert!(
+        issues.iter().all(|f| f["quote_protected"].is_null()),
+        "no finding may carry quote_protected under --include-quotes: {stdout}"
+    );
+}
+
+/// an unclosed `「` with no closing `」` still protects
+/// everything from the opening marker to end of content — matching the
+/// existing byte-level masking's own unclosed-quote behavior.
+#[test]
+fn lint_unclosed_cjk_quote_protects_to_end_of_content() {
+    let (repo, project) = setup_with_term();
+    write_doc(&project, "unclosed", "Body says mindrepo here\n「unterminated mindrepo\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(v["data"]["quote_protected_count"], 1, "{stdout}");
+}
+
+/// a correctable term inside a fenced code block or inline
+/// code span stays silently suppressed — it is verbatim by nature, not a
+/// quote, and quote-protected disclosure does not extend to it.
+#[test]
+fn lint_code_fence_and_inline_code_stay_silently_exempt_not_quote_protected() {
+    let (repo, project) = setup_with_term();
+    write_doc(&project, "code", "Body says mindrepo here\n```\nmindrepo in a fence\n```\ninline `mindrepo` code.\n");
+
+    let output = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(
+        v["data"].get("quote_protected_count").is_none(),
+        "code exemptions must not surface as quote-protected: {stdout}"
+    );
+    let issues = v["data"]["issues"].as_array().unwrap();
+    assert_eq!(issues.len(), 1, "only the body occurrence produces a finding: {stdout}");
+}
+
+/// FR-009: a document with no quote-interior hits produces output
+/// byte-identical to before this feature — no `quote_protected` field, no
+/// `quote_protected_count`, no summary line.
+#[test]
+fn lint_no_quote_hits_is_byte_identical_to_before() {
+    let (repo, project) = setup_with_term();
+    write_doc(&project, "plain", "Body says mindrepo here, nothing quoted anywhere\n");
+
+    let text = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let text_stdout = String::from_utf8(text.stdout).unwrap();
+    assert!(!text_stdout.contains("quote-protected"), "{text_stdout}");
+    assert!(!text_stdout.contains("--include-quotes"), "{text_stdout}");
+
+    let json = mf(&repo).args(["term", "lint", "--project", "alpha", "--output", "json"]).output().unwrap();
+    let json_stdout = String::from_utf8(json.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&json_stdout).unwrap();
+    assert!(v["data"].get("quote_protected_count").is_none(), "{json_stdout}");
+    assert!(v["data"]["issues"][0].get("quote_protected").is_none(), "{json_stdout}");
+}

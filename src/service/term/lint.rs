@@ -156,6 +156,9 @@ struct SelectionCounts {
     /// maps both cases to `FindingSelection::Ambiguous`, so `internal.advisory`
     /// (set independently at scan time) is what discriminates them here.
     held_back: u64,
+    /// Spec 081 FR-007: also counted in `ineligible`, the same way
+    /// `held_back` is a narrower subset of it — the two are not additive.
+    quote_protected: u64,
 }
 
 fn apply_selection(
@@ -174,6 +177,7 @@ fn apply_selection(
             internal.fix_kind,
             internal.replacement_eligible,
             internal.advisory,
+            internal.quote_protected,
         );
         finding.selection = state;
         finding.held_back = state == FindingSelection::Ambiguous && internal.advisory;
@@ -185,6 +189,9 @@ fn apply_selection(
         }
         if finding.held_back {
             counts.held_back += 1;
+        }
+        if state == FindingSelection::QuoteProtected {
+            counts.quote_protected += 1;
         }
     }
     counts
@@ -251,6 +258,7 @@ pub(crate) fn empty_report(fix: bool, dry_run: bool) -> TermLintReport {
         below_confidence_count: 0,
         ineligible_count: 0,
         held_back_count: 0,
+        quote_protected_count: 0,
     }
 }
 
@@ -363,6 +371,7 @@ pub(crate) fn lint_single_file_with_selection(
             below_confidence_count: counts.below_confidence,
             ineligible_count: counts.ineligible,
             held_back_count: counts.held_back,
+            quote_protected_count: counts.quote_protected,
         });
     }
 
@@ -415,6 +424,7 @@ fn single_file_report(
         below_confidence_count: counts.below_confidence,
         ineligible_count: counts.ineligible,
         held_back_count: counts.held_back,
+        quote_protected_count: counts.quote_protected,
     }
 }
 
@@ -518,6 +528,7 @@ pub(crate) fn lint_walk_with_selection(
             below_confidence_count: counts.below_confidence,
             ineligible_count: counts.ineligible,
             held_back_count: counts.held_back,
+            quote_protected_count: counts.quote_protected,
         });
     }
 
@@ -547,7 +558,13 @@ pub(crate) fn scan_content(
     claimed: &mut BTreeSet<(String, usize, usize)>,
     include_quotes: bool,
 ) {
-    let sanitized = strip_exempt_regions_with_quotes(content, fm_end, include_quotes);
+    // Spec 081 US3: under `--include-quotes` quote hits are ordinary body
+    // findings, so there is nothing to protect and no span to collect.
+    let (sanitized, quote_spans) = if include_quotes {
+        (strip_exempt_regions_with_quotes(content, fm_end, true), Vec::new())
+    } else {
+        exempt::strip_exempt_regions_collecting_quote_spans(content, fm_end)
+    };
     // Compute jieba token boundaries once per document for CJK word-boundary
     // checks (Bug #5/#8 fix). Deterministic, O(n) over document length.
     let jieba = segment::JiebaBoundaries::segment(content);
@@ -563,6 +580,41 @@ pub(crate) fn scan_content(
         Some(&jieba),
     );
     pinyin::scan_for_pinyin(content, &sanitized, rel_path, correction_refs, findings, internal_findings, claimed);
+
+    // Spec 081 FR-006/FR-007: second pass over the suppressed spans only, so
+    // a correctable hit inside a quote surfaces instead of vanishing. Sharing
+    // `claimed` with the body pass is safe rather than merely convenient: the
+    // body pass saw these spans zeroed, so it can never have claimed a
+    // position inside one, and no hit is double-reported.
+    if !quote_spans.is_empty() {
+        let mut quote_sanitized = vec![0u8; content.len()];
+        for &(start, end) in &quote_spans {
+            quote_sanitized[start..end].copy_from_slice(&content.as_bytes()[start..end]);
+        }
+        let findings_before = findings.len();
+        let internal_before = internal_findings.len();
+        scan_file_for_corrections(
+            content,
+            &quote_sanitized,
+            correction_refs,
+            all_term_names,
+            rel_path,
+            findings,
+            internal_findings,
+            claimed,
+            Some(&jieba),
+        );
+        for finding in &mut findings[findings_before..] {
+            finding.quote_protected = true;
+            finding.replacement_eligible = false;
+            finding.safety_reason = Some("quote-protected".to_string());
+            finding.candidates.clear();
+        }
+        for internal in &mut internal_findings[internal_before..] {
+            internal.quote_protected = true;
+            internal.replacement_eligible = false;
+        }
+    }
 }
 
 pub(crate) fn build_correction_refs<'a>(corrections: &'a [CorrectionEntry]) -> Vec<scan::CorrectionRef<'a>> {
@@ -645,6 +697,7 @@ fn apply_term_fixes(
                 ifind.fix_kind,
                 ifind.replacement_eligible,
                 ifind.advisory,
+                ifind.quote_protected,
             );
             if !state.is_selected() {
                 continue;
@@ -706,6 +759,7 @@ fn apply_term_fixes(
         below_confidence_count: counts.below_confidence,
         ineligible_count: counts.ineligible,
         held_back_count: counts.held_back,
+        quote_protected_count: counts.quote_protected,
     })
 }
 

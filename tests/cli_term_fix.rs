@@ -350,7 +350,7 @@ terms:
     (repo, project)
 }
 
-/// T008: --term RAG applies only RAG corrections, LLM variant unchanged.
+/// --term RAG applies only RAG corrections, LLM variant unchanged.
 #[test]
 fn term_filter_single_term_project_scope() {
     let (repo, project) = setup_two_term_fixture();
@@ -374,7 +374,7 @@ fn term_filter_single_term_project_scope() {
     assert!(fixed.contains("llm"), "llm should remain unchanged: {fixed}");
 }
 
-/// T009: --term filter works in global scope.
+/// --term filter works in global scope.
 #[test]
 fn term_filter_single_term_global_scope() {
     let repo = common::setup_repo();
@@ -418,7 +418,7 @@ terms:
     assert!(fixed.contains("llm"), "llm should remain unchanged: {fixed}");
 }
 
-/// T010: --term with --dry-run marks only targeted term as selected.
+/// --term with --dry-run marks only targeted term as selected.
 #[test]
 fn term_filter_dry_run_reports_only_targeted() {
     let (repo, _project) = setup_two_term_fixture();
@@ -445,7 +445,7 @@ fn term_filter_dry_run_reports_only_targeted() {
     assert_eq!(original, after, "dry-run must not modify file");
 }
 
-/// T011: unknown term name exits 2 with diagnostic.
+/// unknown term name exits 2 with diagnostic.
 #[test]
 fn term_filter_unknown_term_exits_2() {
     let (repo, _project) = setup_two_term_fixture();
@@ -458,7 +458,7 @@ fn term_filter_unknown_term_exits_2() {
     assert!(stderr.contains("NOPE"), "stderr must contain the unknown name: {stderr}");
 }
 
-/// T012: no --term produces same result as before (regression, SC-002).
+/// no --term produces same result as before (regression, SC-002).
 #[test]
 fn term_filter_absent_is_whole_glossary_regression() {
     let (repo, project) = setup_two_term_fixture();
@@ -476,7 +476,7 @@ fn term_filter_absent_is_whole_glossary_regression() {
     assert!(!fixed.contains("llm"), "llm should be fixed: {fixed}");
 }
 
-/// T013: JSON output includes term_filter array; absent when no filter.
+/// JSON output includes term_filter array; absent when no filter.
 #[test]
 fn term_filter_json_envelope() {
     let (repo, _project) = setup_two_term_fixture();
@@ -507,7 +507,7 @@ fn term_filter_json_envelope() {
 
 // ── US2: Multi-term filter ──────────────────────────────────────────────────
 
-/// T019: --term RAG --term LLM applies both, leaves TPU untouched.
+/// --term RAG --term LLM applies both, leaves TPU untouched.
 #[test]
 fn term_filter_multi_term_union() {
     let repo = common::setup_repo();
@@ -557,7 +557,7 @@ terms:
     assert!(fixed.contains("tpu"), "tpu should remain unchanged: {fixed}");
 }
 
-/// T020: mixed valid+unknown exits 2 with no edits (FR-006 strictness).
+/// mixed valid+unknown exits 2 with no edits (FR-006 strictness).
 #[test]
 fn term_filter_mixed_valid_and_unknown_exits_2() {
     let (repo, project) = setup_two_term_fixture();
@@ -579,7 +579,7 @@ fn term_filter_mixed_valid_and_unknown_exits_2() {
     assert_eq!(original, after, "file must not be modified on error");
 }
 
-/// T021: JSON term_filter preserves all requested names for multi-term.
+/// JSON term_filter preserves all requested names for multi-term.
 #[test]
 fn term_filter_multi_term_json() {
     let (repo, _project) = setup_two_term_fixture();
@@ -797,6 +797,18 @@ fn fix_leaves_blockquote_and_cjk_quotes_untouched_by_default_include_quotes_opts
     let content = "prose says mindrepo here.\n> mindrepo inside a quote\n「mindrepo」\n";
     fs::write(project.join("docs/quoted.md"), content).unwrap();
 
+    // Spec 081 US3/FR-006/FR-007/data-model.md invariant: by default the two
+    // quote-interior occurrences are quote-protected findings, distinct from
+    // the ordinary body finding.
+    let dry_run_output =
+        mf(&repo).args(["term", "fix", "--project", "alpha", "--dry-run", "--output", "json"]).output().unwrap();
+    let dry_run_stdout = String::from_utf8(dry_run_output.stdout).unwrap();
+    let dry_run_json: serde_json::Value = serde_json::from_str(&dry_run_stdout).unwrap();
+    assert_eq!(dry_run_json["data"]["quote_protected_count"], 2, "{dry_run_stdout}");
+    let issues = dry_run_json["data"]["issues"].as_array().unwrap();
+    let protected_count = issues.iter().filter(|f| f["quote_protected"] == serde_json::Value::Bool(true)).count();
+    assert_eq!(protected_count, 2, "{dry_run_stdout}");
+
     mf(&repo).args(["term", "fix", "--project", "alpha", "--yes"]).assert().success();
 
     let after_default = fs::read_to_string(project.join("docs/quoted.md")).unwrap();
@@ -811,6 +823,26 @@ fn fix_leaves_blockquote_and_cjk_quotes_untouched_by_default_include_quotes_opts
     );
 
     fs::write(project.join("docs/quoted.md"), content).unwrap();
+
+    // Spec 081 US3 data-model.md invariant: the two states never overlap —
+    // under --include-quotes the same occurrences are ordinary findings,
+    // not quote-protected.
+    let opt_in_dry_run = mf(&repo)
+        .args(["term", "fix", "--project", "alpha", "--dry-run", "--include-quotes", "--output", "json"])
+        .output()
+        .unwrap();
+    let opt_in_stdout = String::from_utf8(opt_in_dry_run.stdout).unwrap();
+    let opt_in_json: serde_json::Value = serde_json::from_str(&opt_in_stdout).unwrap();
+    assert!(
+        opt_in_json["data"].get("quote_protected_count").is_none(),
+        "--include-quotes must yield no quote-protected findings: {opt_in_stdout}"
+    );
+    let opt_in_issues = opt_in_json["data"]["issues"].as_array().unwrap();
+    assert!(
+        opt_in_issues.iter().all(|f| f["quote_protected"].is_null()),
+        "--include-quotes findings must not carry quote_protected: {opt_in_stdout}"
+    );
+
     mf(&repo).args(["term", "fix", "--project", "alpha", "--yes", "--include-quotes"]).assert().success();
 
     let after_opt_in = fs::read_to_string(project.join("docs/quoted.md")).unwrap();
@@ -819,4 +851,90 @@ fn fix_leaves_blockquote_and_cjk_quotes_untouched_by_default_include_quotes_opts
         "--include-quotes must fix inside blockquotes: {after_opt_in}"
     );
     assert!(after_opt_in.contains("「Mind Repo」"), "--include-quotes must fix inside 「…」: {after_opt_in}");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Spec 081 US3/FR-006/FR-007/FR-008: quote-protected findings are never fixed
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn setup_mixed_quote_fixture(repo: &common::TempDir) -> std::path::PathBuf {
+    common::create_project(repo, "alpha");
+    let project = repo.path().join("alpha");
+    fs::create_dir_all(project.join("docs")).unwrap();
+    common::write_index(
+        repo,
+        "alpha",
+        "schema_version: '1'\nterms:\n  - term: Mind Repo\n    corrections:\n      - original: mindrepo\n        correct: Mind Repo\n",
+    );
+    fs::write(project.join("docs/quoted.md"), "prose says mindrepo here.\n> mindrepo inside a quote\n「mindrepo」\n")
+        .unwrap();
+    project
+}
+
+/// bulk `fix -y` corrects the body occurrence, leaves both quote
+/// occurrences byte-identical, and reports the protected count in the
+/// summary — a `0 fixed`-looking result must never be the only signal (the
+/// #40 lesson: silent zero looks identical to "nothing was there").
+#[test]
+fn fix_bulk_apply_leaves_quote_protected_bytes_untouched_and_reports_count() {
+    let repo = common::setup_repo();
+    let project = setup_mixed_quote_fixture(&repo);
+    let before = fs::read_to_string(project.join("docs/quoted.md")).unwrap();
+
+    let output = mf(&repo).args(["term", "fix", "--project", "alpha", "--yes", "--output", "json"]).output().unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(v["data"]["fixed_count"], 1, "only the body occurrence is fixed: {stdout}");
+    assert_eq!(v["data"]["quote_protected_count"], 2, "the summary must report the protected count: {stdout}");
+
+    let after = fs::read_to_string(project.join("docs/quoted.md")).unwrap();
+    assert!(after.contains("prose says Mind Repo here."), "body occurrence must be fixed: {after}");
+    assert!(after.contains("> mindrepo inside a quote"), "blockquote bytes must be untouched: {after}");
+    assert!(after.contains("「mindrepo」"), "CJK-quote bytes must be untouched: {after}");
+    // The quoted lines are byte-identical to the original, not just visually similar.
+    let before_lines: Vec<&str> = before.lines().skip(1).collect();
+    let after_lines: Vec<&str> = after.lines().skip(1).collect();
+    assert_eq!(before_lines, after_lines, "quote lines must be byte-identical, not merely unfixed");
+
+    // Text output must also carry the disclosure, not just JSON.
+    fs::write(project.join("docs/quoted.md"), "prose says mindrepo here.\n> mindrepo inside a quote\n「mindrepo」\n")
+        .unwrap();
+    let text_output = mf(&repo).args(["term", "fix", "--project", "alpha", "--yes"]).output().unwrap();
+    let text_stdout = String::from_utf8(text_output.stdout).unwrap();
+    assert!(
+        text_stdout.contains("2 finding") && text_stdout.contains("inside quotes/blockquotes"),
+        "text summary must disclose the protected count, not read as a bare fixed-count: {text_stdout}"
+    );
+}
+
+/// naming a quote-protected occurrence via `--term` leaves it
+/// unreplaced and the output explains the protection, pointing at
+/// `--include-quotes` as the deliberate route — not a new flag.
+#[test]
+fn fix_targeted_term_apply_does_not_override_quote_protection() {
+    let repo = common::setup_repo();
+    let project = setup_mixed_quote_fixture(&repo);
+
+    let output = mf(&repo)
+        .args(["term", "fix", "--project", "alpha", "--yes", "--term", "Mind Repo", "--output", "json"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(v["data"]["quote_protected_count"], 2, "{stdout}");
+
+    let after = fs::read_to_string(project.join("docs/quoted.md")).unwrap();
+    assert!(
+        after.contains("> mindrepo inside a quote") && after.contains("「mindrepo」"),
+        "--term naming the term must not override quote protection: {after}"
+    );
+
+    let text_output = mf(&repo).args(["term", "lint", "--project", "alpha"]).output().unwrap();
+    let text_stdout = String::from_utf8(text_output.stdout).unwrap();
+    assert!(
+        text_stdout.contains("--include-quotes"),
+        "protection explanation must name the existing opt-in flag, not a new one: {text_stdout}"
+    );
 }

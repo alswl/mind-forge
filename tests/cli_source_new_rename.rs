@@ -106,8 +106,10 @@ fn explicit_name_collision_is_actionable_but_success_for_unique() {
 // ---------------------------------------------------------------------------
 // Spec 075 US6: the Lance backend's registration path used to report the
 // generic file-conflict error (`refusing to overwrite existing file`, hint
-// `--force`) instead of the actionable naming error — and that hint is a
-// dead end under `--register-only`, which rejects `--force` outright.
+// `--force`) instead of the actionable naming error. Both backends now accept
+// `--register-only --force` and replace the existing same-name registration
+// in place (spec 081 US1); the collision error below is only reached when
+// `--force` is absent.
 // ---------------------------------------------------------------------------
 
 mod lance_backend_collision {
@@ -192,6 +194,74 @@ mod lance_backend_collision {
             assert!(stderr.contains("source name 'notes' is already registered"), "{stderr}");
             assert!(stderr.contains("try --name "), "{stderr}");
             assert!(!stderr.contains("try -n "), "hint must not suggest the retired short flag: {stderr}");
+        }
+    }
+
+    /// Spec 081 US1/FR-001/FR-002/FR-003/SC-001: `--register-only --force` on
+    /// the Lance backend replaces a same-name registration in one command —
+    /// without `--force` the collision still refuses with a `--name` hint
+    /// (never `-n`, which is `--dry-run`'s short flag); with `--force` the
+    /// second file's registration replaces the first's, leaving exactly one
+    /// row for that name and a projection re-export with no drift.
+    #[test]
+    fn register_only_force_replaces_registration_on_lance_backend() {
+        let repo = provider_repo();
+        let project = repo.path().join("projects/alpha");
+        std::fs::create_dir_all(project.join("sources/dima")).unwrap();
+        std::fs::write(project.join("sources/dima/other.md"), "second\n").unwrap();
+
+        // Without --force: refused, hint names --name, never -n.
+        let (_, stderr, code) = run(
+            &repo,
+            &["source", "new", "sources/dima/other.md", "--project", "alpha", "--register-only", "--name", "notes"],
+            &[],
+        );
+        assert_ne!(code, 0, "collision without --force must refuse");
+        assert!(stderr.contains("source name 'notes' is already registered"), "{stderr}");
+        assert!(!stderr.contains("-n "), "hint must never suggest the retired short flag: {stderr}");
+
+        // With --force: succeeds, replaces the registration.
+        let (stdout, stderr, code) = run(
+            &repo,
+            &[
+                "source",
+                "new",
+                "sources/dima/other.md",
+                "--project",
+                "alpha",
+                "--register-only",
+                "--no-index",
+                "--name",
+                "notes",
+                "--force",
+            ],
+            &[],
+        );
+        assert_eq!(code, 0, "--force replacement must succeed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+
+        // Exactly one registration named "notes", now pointing at the second file.
+        let (stdout, stderr, code) = run(&repo, &["source", "list", "--project", "alpha"], &[]);
+        assert_eq!(code, 0, "source list failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+        let sources = v["data"]["sources"].as_array().expect("sources array");
+        let matches: Vec<&serde_json::Value> = sources.iter().filter(|s| s["name"].as_str() == Some("notes")).collect();
+        assert_eq!(matches.len(), 1, "must be exactly one registration named 'notes', no duplicate: {stdout}");
+        let path = matches[0]["path"].as_str().unwrap_or_default();
+        assert!(path.contains("dima/other.md"), "registration must point at the replacement file: {stdout}");
+
+        // mind-index.yaml projection is re-exported in sync, no stale entry.
+        let index = std::fs::read_to_string(project.join("mind-index.yaml")).unwrap();
+        assert!(index.contains("dima/other.md"), "projection must reflect the replacement: {index}");
+        assert!(!index.contains("file/notes.md"), "projection must not keep the replaced file's path: {index}");
+
+        // `mf source status` agrees: no drift warning attached to the
+        // replacement (the outer envelope's `warnings` array is omitted
+        // entirely when empty, per its `skip_serializing_if`).
+        let (stdout, stderr, code) = run(&repo, &["source", "status"], &[]);
+        assert_eq!(code, 0, "source status failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+        if let Some(warnings) = v.get("warnings").and_then(|w| w.as_array()) {
+            assert!(warnings.is_empty(), "replacement must not leave a drift warning: {stdout}");
         }
     }
 }

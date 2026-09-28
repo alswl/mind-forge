@@ -329,8 +329,11 @@ fn format_lint_text_with_target(
                 // distinguished from an auto-applicable one, not just marked
                 // identically to a normal standalone match.
                 let held_back_mark = if f.held_back { ", held back" } else { "" };
+                // Spec 081 FR-007: user-visible marker string; the summary
+                // line below explains why protected hits must be disclosed.
+                let quote_protected_mark = if f.quote_protected { ", quote-protected" } else { "" };
                 lines.push(format!(
-                    "{}:{}:{}: \"{}\" → \"{}\" [{}]{}{}{}{}",
+                    "{}:{}:{}: \"{}\" → \"{}\" [{}]{}{}{}{}{}",
                     f.path,
                     f.line,
                     f.column,
@@ -340,7 +343,8 @@ fn format_lint_text_with_target(
                     confidence_part,
                     suggested_mark,
                     boundary_mark,
-                    held_back_mark
+                    held_back_mark,
+                    quote_protected_mark
                 ));
                 // Spec 075 US5/FR-032: a finding whose original is claimed
                 // by more than one term (via the prefix-or-equal shadowing
@@ -394,6 +398,16 @@ fn format_lint_text_with_target(
         lines.push(format!("{total_findings} findings in {file_count} files"));
     }
 
+    // Spec 081 FR-007, Bug #40 lesson: "0 fixed" and "present but protected"
+    // must never look identical, in every mode (lint, fix, dry-run).
+    if report.quote_protected_count > 0 {
+        let count = report.quote_protected_count;
+        let plural = if count == 1 { "" } else { "s" };
+        lines.push(format!(
+            "{count} finding{plural} inside quotes/blockquotes left untouched; pass --include-quotes to scan them"
+        ));
+    }
+
     lines.join("\n")
 }
 
@@ -425,6 +439,7 @@ mod tests {
                 selection: FindingSelection::Selected,
                 context: "context with old token".into(),
                 held_back: false,
+                quote_protected: false,
                 competing_terms: vec![],
             }],
             scanned_files: 1,
@@ -439,6 +454,7 @@ mod tests {
             below_confidence_count: 0,
             ineligible_count: 0,
             held_back_count: 0,
+            quote_protected_count: 0,
         };
         let output = format_lint_text(&report, true, true);
         assert!(output.contains("synthetic.md:2:4"));

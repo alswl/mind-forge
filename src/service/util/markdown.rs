@@ -963,10 +963,10 @@ mod tests {
 
     // ── mind-forge private callouts (spec 073, FR-001/FR-008) ───────────────
 
-    // Note: the blank line before AND after a callout are both preserved (only
-    // the callout's own lines are removed), so a callout sitting between two
-    // blank lines leaves a double blank line behind — the documented "no
-    // further cleanup beyond the marked span" edge case (spec.md).
+    // Note: removal-site whitespace is normalized (spec 081 FR-004), so a
+    // callout between two blank lines leaves one blank line, not two. Scoped
+    // to the removal site: text with no callout passes through unchanged
+    // (FR-005).
 
     #[test]
     fn strip_private_callouts_removes_short_form() {
@@ -1103,6 +1103,53 @@ After.\n";
         let content = "# Title\n\nJust ordinary prose with no callouts at all.\n";
         let (stripped, warnings) = strip_private_callouts(content);
         assert_eq!(stripped, content);
+        assert!(warnings.is_empty());
+    }
+
+    // ── spec 081 US2/FR-004: removal-site boundary coverage ─────────────────
+
+    #[test]
+    fn strip_private_callouts_at_start_of_section_leaves_single_blank_line() {
+        // The callout is the section's first content, directly under the
+        // heading with no leading blank line before it.
+        let content = "## Head\n> [!mf-private]\n> secret\n\nAfter.\n";
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(stripped, "## Head\n\nAfter.\n", "no orphan blank lines at the section start: {stripped:?}");
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn strip_private_callouts_immediately_followed_by_next_heading() {
+        // No trailing blank line between the callout and the next heading.
+        let content = "Before.\n\n> [!mf-private]\n> secret\n## Next\n";
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(
+            stripped, "Before.\n\n## Next\n",
+            "heading must survive intact with no consecutive blank lines: {stripped:?}"
+        );
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn strip_private_callouts_as_only_content_of_a_section() {
+        // The callout is the entirety of a section between two headings.
+        let content = "## A\n\n> [!mf-private]\n> secret\n\n## B\n";
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(
+            stripped, "## A\n\n## B\n",
+            "adjacent headings must end up separated by exactly one blank line: {stripped:?}"
+        );
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn strip_private_callouts_preserves_legitimate_multi_blank_formatting() {
+        // FR-005: normalization is scoped to the removal site only — content
+        // with no callout at all, including deliberate multi-blank-line
+        // formatting, must pass through byte-identical.
+        let content = "Before.\n\n\n\nAfter still here.\n";
+        let (stripped, warnings) = strip_private_callouts(content);
+        assert_eq!(stripped, content, "no callout removed, so nothing should be normalized: {stripped:?}");
         assert!(warnings.is_empty());
     }
 

@@ -243,6 +243,10 @@ pub(crate) struct InternalFinding {
     /// auto-apply unless the user explicitly opts in (`--term NAME[:ORIGINAL]`).
     pub(crate) advisory: bool,
     pub(crate) substring_adjacent_word: bool,
+    /// Spec 081 US3: owned by the caller (`scan_content`), which sets it on
+    /// the quote-only second pass. `scan_file_for_corrections` always leaves
+    /// it false — it cannot tell which pass it is running.
+    pub(crate) quote_protected: bool,
     /// Position of the source Correction in the YAML `corrections:` list.
     /// Used by `deduplicate_spans` as the tie-breaker when two corrections
     /// share the same byte span: lower wins (i.e., the earlier-declared rule).
@@ -436,6 +440,7 @@ pub(crate) fn scan_file_for_corrections(
                 context: context_excerpt(content, abs_offset, orig_bytes.len()),
                 // Overwritten by `apply_selection` once the fix scope is known.
                 held_back: false,
+                quote_protected: false,
                 competing_terms: competing.clone(),
             });
 
@@ -451,6 +456,7 @@ pub(crate) fn scan_file_for_corrections(
                 replacement_eligible: !is_ambiguous && !short_cjk_advisory,
                 advisory: short_cjk_advisory,
                 substring_adjacent_word,
+                quote_protected: false,
                 yaml_index: c.yaml_index,
             });
 
