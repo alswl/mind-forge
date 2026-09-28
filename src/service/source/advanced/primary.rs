@@ -198,7 +198,7 @@ pub fn add_registration(
             add_local_source(repo_root, project_path, cwd, args, register_only, dry_run, &existing_locations)?
         }
     };
-    let location = source.path.as_ref().or(source.url.as_ref()).expect("source has location");
+    let location = source.path.clone().or_else(|| source.url.clone()).expect("source has location");
     let existing_by_name =
         rows.iter().find(|row| row.project_path == project_rel && row.source_identity == source.name);
     if existing_by_name.is_some() && !args.force {
@@ -217,7 +217,7 @@ pub fn add_registration(
         return Err(crate::service::source::add::name_collision_error(&source.name, suggestion));
     }
     if let Some(existing) = rows.iter().find(|row| {
-        row.project_path == project_rel && row.registered_location == *location && row.source_identity != source.name
+        row.project_path == project_rel && row.registered_location == location && row.source_identity != source.name
     }) {
         return Err(MfError::usage(
             format!("source path '{location}' is already registered as '{}'", existing.source_identity),
@@ -229,6 +229,7 @@ pub fn add_registration(
             source,
             mode,
             replaced: existing_by_name.is_some(),
+            replaced_location: existing_by_name.map(|row| row.registered_location.clone()),
             registration_key: None,
             projection_degraded: false,
             indexing: None,
@@ -248,7 +249,7 @@ pub fn add_registration(
         })
         .ok()
     };
-    let registration_key = identity::registration_key(&project_key, source.kind.as_str(), location);
+    let registration_key = identity::registration_key(&project_key, source.kind.as_str(), &location);
     let tags =
         existing_by_name.and_then(|row| serde_json::from_str::<Vec<String>>(&row.tags_json).ok()).unwrap_or_default();
     let registration = SourceRegistration {
@@ -279,6 +280,8 @@ pub fn add_registration(
         updated_at: Some(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()),
         extras_json: existing_by_name.and_then(|row| row.extras_json.clone()),
     };
+    let persisted_added_at = registration.added_at.clone();
+    let persisted_updated_at = registration.updated_at.clone();
     let write_result = (|| -> Result<bool> {
         if let Some(existing) = existing_by_name {
             store.clear_content_bindings(&std::collections::BTreeSet::from([existing.registration_key.clone()]))?;
@@ -303,6 +306,10 @@ pub fn add_registration(
     // written, so an embedding/acquisition failure only warns and defers vectors
     // to a later `mf source sync` — it never rolls back the registration.
     let replaced = existing_by_name.is_some();
+    let replaced_location = existing_by_name.map(|row| row.registered_location.clone());
+    let mut source = source;
+    source.added_at = persisted_added_at.unwrap_or_default();
+    source.updated_at = persisted_updated_at.unwrap_or_default();
     let indexing = if index {
         match super::sync::sync_registration(
             repo_root,
@@ -345,7 +352,15 @@ pub fn add_registration(
         })
     };
 
-    Ok(AddOutcome { source, mode, replaced, registration_key: Some(registration_key), projection_degraded, indexing })
+    Ok(AddOutcome {
+        source,
+        mode,
+        replaced,
+        replaced_location,
+        registration_key: Some(registration_key),
+        projection_degraded,
+        indexing,
+    })
 }
 
 fn add_url_source(

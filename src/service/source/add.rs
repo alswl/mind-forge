@@ -36,6 +36,10 @@ pub struct AddOutcome {
     pub source: Source,
     pub mode: AddMode,
     pub replaced: bool,
+    /// Location of the registration this add overwrote (spec 081 FR-002), so
+    /// the command can name what was destroyed instead of only that something
+    /// was. `None` when nothing was replaced.
+    pub replaced_location: Option<String>,
     /// Lance-primary registration key (set only when Lance backend is active).
     pub registration_key: Option<String>,
     /// Whether the compatibility projection export degraded (set when Lance active).
@@ -138,6 +142,7 @@ pub fn register_only(
                 source: existing.clone(),
                 mode: AddMode::Register,
                 replaced: false,
+                replaced_location: None,
                 registration_key: None,
                 projection_degraded: false,
                 indexing: None,
@@ -150,6 +155,14 @@ pub fn register_only(
         return Err(name_collision_error(&name, suggestion));
     }
 
+    // Overwriting a name replaces the file behind the same logical record, so
+    // its creation time, tags and uninterpreted passthrough fields carry over
+    // (spec 075 FR-011); only `updated_at` moves. A brand-new registration
+    // starts from scratch.
+    let prior = existing_index.map(|index| {
+        let prior: &Source = &sources[index];
+        (prior.tags.clone(), prior.added_at.clone(), prior.extra.clone(), prior.path.clone())
+    });
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let source = Source {
         name,
@@ -157,11 +170,12 @@ pub fn register_only(
         source_kind: args.source_kind.clone(),
         url: None,
         path: Some(rel_path),
-        tags: vec![],
-        added_at: now.clone(),
+        tags: prior.as_ref().map(|(tags, ..)| tags.clone()).unwrap_or_default(),
+        added_at: prior.as_ref().map(|(_, added_at, ..)| added_at.clone()).unwrap_or_else(|| now.clone()),
         updated_at: now,
-        extra: Default::default(),
+        extra: prior.as_ref().map(|(_, _, extra, _)| extra.clone()).unwrap_or_default(),
     };
+    let replaced_location = prior.and_then(|(_, _, _, path)| path);
     let replaced = existing_index.is_some();
     if !dry_run {
         if let Some(index) = existing_index {
@@ -176,6 +190,7 @@ pub fn register_only(
         source,
         mode: AddMode::Register,
         replaced,
+        replaced_location,
         registration_key: None,
         projection_degraded: false,
         indexing: None,
@@ -321,7 +336,7 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
     // URL adds always carry an explicit --name, so no auto-derived suggestion.
     let slot = locate_slot(sources, &name, args.force, None)?;
 
-    let (mode, source, replaced) = match slot {
+    let (mode, source, replaced_location) = match slot {
         UpsertSlot::Replace { idx, prior } => {
             // Clean up the previous local file if it differs.
             if let Some(ref old_path) = prior.path
@@ -340,8 +355,9 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
                 updated_at: now,
                 extra: prior.extra.clone(),
             };
+            let overwritten = prior.path.clone().or_else(|| prior.url.clone());
             replace_in_sources(sources, idx, source.clone());
-            (AddMode::Url, source, true)
+            (AddMode::Url, source, overwritten)
         }
         UpsertSlot::New => {
             let source = Source {
@@ -357,12 +373,20 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
             };
             sources.push(source.clone());
             sources.sort_by(|a, b| a.name.cmp(&b.name));
-            (AddMode::Url, source, false)
+            (AddMode::Url, source, None)
         }
     };
 
     index::save(project_path, &index)?;
-    Ok(AddOutcome { source, mode, replaced, registration_key: None, projection_degraded: false, indexing: None })
+    Ok(AddOutcome {
+        source,
+        mode,
+        replaced: replaced_location.is_some(),
+        replaced_location,
+        registration_key: None,
+        projection_degraded: false,
+        indexing: None,
+    })
 }
 
 fn add_path(repo_root: &Path, project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcome> {
@@ -447,7 +471,7 @@ fn add_path(repo_root: &Path, project_path: &Path, cwd: &Path, args: &AddArgs) -
         }
     };
 
-    let (mode, source, replaced) = match slot {
+    let (mode, source, replaced_location) = match slot {
         UpsertSlot::Replace { idx, prior } => {
             let rel_path = util::rel_posix_path(project_path, &dest)?;
             let old_path = prior.path.clone();
@@ -472,8 +496,9 @@ fn add_path(repo_root: &Path, project_path: &Path, cwd: &Path, args: &AddArgs) -
                 extra: prior.extra.clone(),
             };
             let mode = if args.link { AddMode::Link } else { AddMode::Copy };
+            let overwritten = old_path.clone();
             replace_in_sources(sources, idx, source.clone());
-            (mode, source, true)
+            (mode, source, overwritten)
         }
         UpsertSlot::New => {
             let rel_path = util::rel_posix_path(project_path, &dest)?;
@@ -494,13 +519,21 @@ fn add_path(repo_root: &Path, project_path: &Path, cwd: &Path, args: &AddArgs) -
             let mode = if args.link { AddMode::Link } else { AddMode::Copy };
             sources.push(source.clone());
             sources.sort_by(|a, b| a.name.cmp(&b.name));
-            (mode, source, false)
+            (mode, source, None)
         }
     };
 
     index::save(project_path, &index)?;
 
-    Ok(AddOutcome { source, mode, replaced, registration_key: None, projection_degraded: false, indexing: None })
+    Ok(AddOutcome {
+        source,
+        mode,
+        replaced: replaced_location.is_some(),
+        replaced_location,
+        registration_key: None,
+        projection_degraded: false,
+        indexing: None,
+    })
 }
 
 #[cfg(test)]
