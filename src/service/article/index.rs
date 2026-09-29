@@ -356,7 +356,6 @@ pub fn scan_templates(project_root: &Path, config: &MindConfig) -> Result<Vec<Ar
             }
         })?;
         let matcher = path_tmpl.compile_matcher();
-        let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
         let project_name = util::dir_name(project_root);
 
         for entry in walkdir::WalkDir::new(project_root)
@@ -378,14 +377,20 @@ pub fn scan_templates(project_root: &Path, config: &MindConfig) -> Result<Vec<Ar
             if let Some(pm) = matcher.try_match(rel_path) {
                 let slot_value = pm.most_specific_slot_value;
                 let article_id = format!("{}/{}", name, slot_value);
+                // Derived from the file's own mtime rather than Utc::now(): the
+                // latter regenerates on every scan, so re-running `list` before
+                // the article is ever indexed (and thus persisted) fabricated a
+                // new timestamp each call and broke output idempotency.
+                let file_time = util::file_mtime_rfc3339(path)
+                    .unwrap_or_else(|_| Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string());
                 articles.push(Article {
                     title: article_id.clone(),
                     project: project_name.clone(),
                     article_type: ArticleType::Blog,
                     article_path: rel_path.to_string_lossy().to_string(),
                     status: ArticleStatus::Draft,
-                    created_at: now.clone(),
-                    updated_at: now.clone(),
+                    created_at: file_time.clone(),
+                    updated_at: file_time,
                     template_origin: Some(TemplateOrigin { template_name: name.clone(), slot_value }),
                 });
             }
