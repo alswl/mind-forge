@@ -111,7 +111,13 @@ pub struct GlobalOpts {
     pub json: bool,
     #[arg(long = "no-color", global = true, help = "Disable colored output")]
     pub no_color: bool,
-    #[arg(short = 'p', long, global = true, value_name = "NAME", help = "Project name for project-scoped operations")]
+    #[arg(
+        short = 'p',
+        long,
+        global = true,
+        value_name = "NAME_OR_PATH",
+        help = "Project name or path (cwd-relative, repo-relative, or absolute)"
+    )]
     pub project: Option<String>,
     #[arg(long = "generate-manual", global = true, hide = true)]
     pub generate_manual: bool,

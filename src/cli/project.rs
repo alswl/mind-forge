@@ -92,6 +92,7 @@ pub struct ProjectListArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectArchiveArgs {
+    /// Project name or path (cwd-relative, repo-relative, or absolute)
     pub name_or_path: String,
     #[command(flatten)]
     pub force: ForceFlag,
@@ -115,11 +116,13 @@ pub struct ProjectIndexArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectShowArgs {
+    /// Project name or path (cwd-relative, repo-relative, or absolute)
     pub path: String,
 }
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectUpdateArgs {
+    /// Project name or path (cwd-relative, repo-relative, or absolute)
     pub path: String,
     #[arg(long)]
     pub description: Option<String>,
@@ -146,7 +149,9 @@ pub struct ProjectImportArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectRenameArgs {
+    /// Current project name or path
     pub old_path: String,
+    /// New project path
     pub new_path: String,
     #[command(flatten)]
     pub force: ForceFlag,
@@ -156,6 +161,7 @@ pub struct ProjectRenameArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct ProjectRemoveArgs {
+    /// Project name or path (cwd-relative, repo-relative, or absolute)
     pub path: String,
     #[command(flatten)]
     pub force: ForceFlag,

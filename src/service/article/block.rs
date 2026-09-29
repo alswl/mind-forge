@@ -71,11 +71,15 @@ pub fn new_block(
         ));
     }
     let insert_at = match after {
-        Some(block) => files
-            .iter()
-            .position(|file| file == block || block_slug(file) == block)
-            .map(|i| i + 1)
-            .ok_or_else(|| MfError::not_found(format!("block '{block}' not found"), None::<String>))?,
+        // Keep insertion anchors consistent with the block selector forms.
+        Some(block) => {
+            let resolved = resolve_block_filename(&files, article_path, block)?;
+            files
+                .iter()
+                .position(|file| file == &resolved)
+                .map(|i| i + 1)
+                .ok_or_else(|| MfError::not_found(format!("block '{block}' not found"), None::<String>))?
+        }
         None => files.len(),
     };
     let mut bodies: Vec<(String, String)> = files
@@ -124,18 +128,22 @@ pub fn move_block(
         .filter_map(|path| Path::new(&path).file_name().and_then(|name| name.to_str()).map(str::to_string))
         .collect();
     let from = resolve_block_filename(&files, article_path, block)?;
-    let moved_body = fs::read_to_string(project_path.join(article_path).join(&from)).map_err(MfError::Io)?;
     let mut selected = files.clone();
     let item = selected.remove(selected.iter().position(|f| f == &from).unwrap());
     let at = match after {
-        Some(value) => selected
-            .iter()
-            .position(|f| f == value || block_slug(f) == value)
-            .map(|i| i + 1)
-            .ok_or_else(|| MfError::not_found(format!("block '{value}' not found"), None::<String>))?,
+        // Use the same accepted forms and ambiguity handling as block move.
+        Some(value) => {
+            let resolved = resolve_block_filename(&selected, article_path, value)?;
+            selected
+                .iter()
+                .position(|f| f == &resolved)
+                .map(|i| i + 1)
+                .ok_or_else(|| MfError::not_found(format!("block '{value}' not found"), None::<String>))?
+        }
         None => selected.len(),
     };
     selected.insert(at, item);
+    let moved_index = at;
     let mut normalized = Vec::new();
     for (i, old) in selected.iter().enumerate() {
         normalized.push((
@@ -145,7 +153,7 @@ pub fn move_block(
     }
     let order = normalized.iter().map(|(name, _)| name.clone()).collect();
     rewrite_blocks(project_path, article_path, &normalized, dry_run)?;
-    let new_name = normalized.iter().find(|(_, body)| body == &moved_body).map(|(name, _)| name.clone());
+    let new_name = normalized.get(moved_index).map(|(name, _)| name.clone());
     Ok(BlockEditReport {
         article_path: article_path.to_string(),
         old_path: Some(format!("{article_path}/{from}")),
@@ -414,5 +422,19 @@ mod tests {
         assert!(report.dry_run);
         assert!(article.join("01-first.md").exists());
         assert!(article.join("02-second.md").exists());
+    }
+
+    #[test]
+    fn move_block_reports_selected_block_when_bodies_match() {
+        let tmp = tempfile::tempdir().unwrap();
+        let article = tmp.path().join("docs/article");
+        fs::create_dir_all(&article).unwrap();
+        fs::write(article.join("01-first.md"), "same body\n").unwrap();
+        fs::write(article.join("02-second.md"), "same body\n").unwrap();
+        fs::write(article.join("03-third.md"), "other body\n").unwrap();
+
+        let report = move_block(tmp.path(), "docs/article", "02-second", Some("03-third"), 1, false).unwrap();
+
+        assert_eq!(report.new_path.as_deref(), Some("docs/article/03-second.md"));
     }
 }

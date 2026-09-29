@@ -54,6 +54,7 @@ fn merge_publish(
     crate::model::config::PublishConfig {
         default_target: overlay.default_target.or(base.default_target),
         targets: overlay.targets.or(base.targets),
+        strip_front_matter: overlay.strip_front_matter.or(base.strip_front_matter),
     }
 }
 

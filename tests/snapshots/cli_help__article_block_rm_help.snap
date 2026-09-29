@@ -7,21 +7,21 @@ Remove a block within a directory article
 Usage: mf article block rm [OPTIONS] <ARTICLE> <BLOCK>
 
 Arguments:
-  <ARTICLE>  Article path (e.g. docs/my-article) or title
-  <BLOCK>    Block filename (e.g. "02-notes.md"), stem (e.g. "02-notes"), or slug (e.g. "notes")
+  <ARTICLE>  Article path (e.g. docs/my-article), bare slug, or title
+  <BLOCK>    Block filename, numbered stem, slug, or completed path within the article
 
 Options:
-  -f, --force            Proceed despite safety checks: overwrite an existing target, or remove an
-                         entity referenced by others
-      --root <PATH>      Mind Repo root directory
-      --config <PATH>    Config file path
-  -y, --yes              Skip interactive confirmation prompt
-  -n, --dry-run          Preview changes without writing
-  -v, --verbose...       Verbose output
-  -q, --quiet            Silence non-error output
-  -o, --output <FORMAT>  Output format [default: text] [possible values: text, json]
-      --json             Shorthand for --output json
-      --no-color         Disable colored output
-  -p, --project <NAME>   Project name for project-scoped operations
-  -h, --help             Print help
-  -V, --version          Print version
+  -f, --force                   Proceed despite safety checks: overwrite an existing target, or
+                                remove an entity referenced by others
+      --root <PATH>             Mind Repo root directory
+      --config <PATH>           Config file path
+  -y, --yes                     Skip interactive confirmation prompt
+  -n, --dry-run                 Preview changes without writing
+  -v, --verbose...              Verbose output
+  -q, --quiet                   Silence non-error output
+  -o, --output <FORMAT>         Output format [default: text] [possible values: text, json]
+      --json                    Shorthand for --output json
+      --no-color                Disable colored output
+  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative, repo-relative, or absolute)
+  -h, --help                    Print help
+  -V, --version                 Print version

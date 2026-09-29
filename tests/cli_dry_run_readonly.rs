@@ -80,7 +80,11 @@ fn every_mutating_surface_in_the_matrix_is_read_only_under_dry_run() {
         ("article block renumber", &["article", "block", "renumber", "docs/post", "--project", "alpha", "--dry-run"]),
         ("source new", &["source", "new", "external.md", "--project", "alpha", "--name", "incoming", "--dry-run"]),
         ("source index", &["source", "index", "--project", "alpha", "--dry-run"]),
-        ("source rename", &["source", "rename", "note", "renamed", "--project", "alpha", "--dry-run"]),
+        // spec 082 (#54): the target is now a path, resolved cwd-relative
+        // and checked against the project boundary — "sources/file/renamed.md"
+        // keeps the source in its existing directory. This case alone needs
+        // `current_dir` set to inside the project; see the loop below.
+        ("source rename", &["source", "rename", "note", "sources/file/renamed.md", "--project", "alpha", "--dry-run"]),
         ("source remove", &["source", "remove", "note", "--project", "alpha", "--yes", "--force", "--dry-run"]),
         ("source move", &["source", "move", "note", "--to-project", "beta", "--project", "alpha", "--dry-run"]),
         ("source clean", &["source", "clean", "--project", "alpha", "--dry-run"]),
@@ -108,8 +112,14 @@ fn every_mutating_surface_in_the_matrix_is_read_only_under_dry_run() {
         let repo = fixture();
         let before = common::snapshot_tree(repo.path());
         let mut command = Command::cargo_bin("mf").unwrap();
-        let output =
-            command.args(["--root", repo.path().to_str().unwrap()]).args(args.iter().copied()).output().unwrap();
+        command.args(["--root", repo.path().to_str().unwrap()]).args(args.iter().copied());
+        // `source rename`'s target is a cwd-relative path (spec 082 #54);
+        // every other case in this table is project-name-scoped via
+        // `--project` and indifferent to cwd, so only this one needs it set.
+        if *name == "source rename" {
+            command.current_dir(repo.path().join("alpha"));
+        }
+        let output = command.output().unwrap();
         assert!(
             output.status.success(),
             "{name} dry-run failed (args={args:?}):\nstdout={}\nstderr={}",

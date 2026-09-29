@@ -537,13 +537,14 @@ fn source_kind_name(kind: Option<&SourceKind>) -> Option<String> {
 pub fn rename_registration(
     repo_root: &Path,
     project_path: &Path,
+    cwd: &Path,
     old_name: &str,
-    new_name: &str,
+    target: &str,
     force: bool,
     dry_run: bool,
 ) -> Result<SourceRenameReport> {
     crate::service::util::require_nonempty(old_name, "old source name")?;
-    crate::service::util::require_nonempty(new_name, "new source name")?;
+    crate::service::util::require_nonempty(target, "rename target")?;
     let config = super::config::load_repository_config(repo_root)?;
     if !config.is_lance() {
         return Err(MfError::usage("Lance primary mutation requires an active Lance backend".to_string(), None));
@@ -561,6 +562,24 @@ pub fn rename_registration(
                 Some("use `mf source list` to see available sources".to_string()),
             )
         })?;
+
+    // spec 082 (#54): `target` is a path, resolved cwd-relative or absolute
+    // and checked against the project boundary — matching the legacy
+    // backend (`service::source::rename::rename_source`) exactly, so both
+    // backends behave identically for the same input (spec FR-002).
+    let resolved_target = crate::service::identity::resolve_path_selector(target, cwd, Some(project_path), "project")?;
+    let new_name = resolved_target
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            MfError::usage(
+                format!("target '{target}' has no valid file name"),
+                Some("provide a path ending in a file name".to_string()),
+            )
+        })?
+        .to_string();
+
     let replaced = rows.iter().find(|row| {
         row.project_path == project_rel && row.source_identity == new_name && row.source_identity != old_name
     });
@@ -574,21 +593,33 @@ pub fn rename_registration(
     let is_url =
         current.registered_location.starts_with("http://") || current.registered_location.starts_with("https://");
     let old_file = (!is_url).then(|| project_path.join(&current.registered_location));
-    let new_file = old_file.as_ref().and_then(|old| {
-        old.extension()
-            .and_then(|extension| extension.to_str())
-            .map(|extension| old.parent().unwrap_or(project_path).join(format!("{new_name}.{extension}")))
-    });
-    if let Some(new_file) = &new_file
-        && new_file.exists()
-        && old_file.as_ref() != Some(new_file)
-        && !force
+    let new_file = old_file.as_ref().map(|_| resolved_target.clone());
+    // `resolved_target` is canonical (`resolve_path_selector` canonicalizes
+    // internally); `project_path` may not be if this function is called
+    // directly rather than through the CLI's own `--root` canonicalization
+    // — canonicalize it here too, or the prefix strips below silently fail
+    // and leak an absolute path into the stored `registered_location`.
+    let project_canonical = crate::service::util::try_canonicalize(project_path);
+    if let Some(old_file) = &old_file
+        && old_file.exists()
     {
-        return Err(MfError::file_exists(new_file.clone()));
+        let parent = resolved_target.parent().ok_or_else(|| {
+            MfError::usage(format!("cannot determine parent of target '{target}'"), None as Option<String>)
+        })?;
+        if !parent.exists() {
+            let shown = crate::service::util::repo_relative_path(&project_canonical, parent);
+            return Err(MfError::not_found(
+                format!("target directory does not exist: '{shown}'"),
+                Some("create the directory first, or choose an existing one".to_string()),
+            ));
+        }
+        if resolved_target.exists() && &resolved_target != old_file && !force {
+            return Err(MfError::file_exists(resolved_target.clone()));
+        }
     }
     let next_location = new_file.as_ref().map_or_else(
         || current.registered_location.clone(),
-        |path| path.strip_prefix(project_path).unwrap_or(path).to_string_lossy().replace('\\', "/"),
+        |path| crate::service::util::repo_relative_path(&project_canonical, path),
     );
     let kind = file_kind(&current.source_type);
     let before = SourceRenameIdentity {
@@ -606,7 +637,7 @@ pub fn rename_registration(
     let mut side_effects = vec![crate::service::lifecycle::planned_yaml_update(
         &project_path.join("mind-index.yaml").to_string_lossy(),
         Some(old_name),
-        Some(new_name),
+        Some(&new_name),
     )];
     if let (Some(old_file), Some(_)) = (&old_file, &new_file)
         && old_file.exists()
@@ -633,15 +664,14 @@ pub fn rename_registration(
 
     // Moving the file first ensures the primary registration never commits a
     // path that does not exist.  Roll back that move if the primary write fails.
-    let moved_file = match (&old_file, &new_file) {
+    let pending_move = match (&old_file, &new_file) {
         (Some(old), Some(new)) if old.exists() && old != new => {
-            std::fs::rename(old, new).map_err(MfError::Io)?;
-            true
+            Some(crate::service::util::PendingFileRename::begin(old, new)?)
         }
-        _ => false,
+        _ => None,
     };
     let next_key = identity::registration_key(&current.project_key, &current.source_type, &next_location);
-    let registration = replacement_registration(current, new_name, &next_location, next_key.clone());
+    let registration = replacement_registration(current, &new_name, &next_location, next_key.clone());
     let write_result = (|| -> Result<()> {
         let mut invalidated_keys = std::collections::BTreeSet::new();
         if next_key != current.registration_key {
@@ -668,10 +698,13 @@ pub fn rename_registration(
         .map(|_| ())
     })();
     if let Err(error) = write_result {
-        if moved_file && let (Some(old), Some(new)) = (&old_file, &new_file) {
-            let _ = std::fs::rename(new, old);
+        if let Some(pending_move) = pending_move {
+            let _ = pending_move.rollback();
         }
         return Err(error);
+    }
+    if let Some(pending_move) = pending_move {
+        pending_move.commit();
     }
     Ok(SourceRenameReport {
         verb: "rename".into(),
@@ -1067,7 +1100,11 @@ mod tests {
         };
         super::super::activation::activate(dir.path(), &legacy).unwrap();
 
-        let report = rename_registration(dir.path(), &project, "notes", "renamed", false, false).unwrap();
+        // spec 082 (#54): target is a path, resolved cwd-relative — run
+        // "from inside the project" and give the full path (same directory,
+        // explicit extension) to match today's file-move semantics.
+        let report =
+            rename_registration(dir.path(), &project, &project, "notes", "sources/renamed.md", false, false).unwrap();
         assert_eq!(report.after.path.as_deref(), Some("sources/renamed.md"));
         assert!(!project.join("sources/notes.md").exists());
         assert!(project.join("sources/renamed.md").exists());

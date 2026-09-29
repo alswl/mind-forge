@@ -111,13 +111,13 @@ pub struct ArticleIndexArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleShowArgs {
-    /// Article path (e.g. docs/weekly.md) or title
+    /// Article path (e.g. docs/weekly.md), bare slug, or title
     pub path: String,
 }
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleUpdateArgs {
-    /// Article path (e.g. docs/weekly.md) or title
+    /// Article path (e.g. docs/weekly.md), bare slug, or title
     pub path: String,
     /// Article publication status
     #[arg(long)]
@@ -131,7 +131,7 @@ pub struct ArticleUpdateArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleRemoveArgs {
-    /// Article path (e.g. docs/weekly.md) or title
+    /// Article path (e.g. docs/weekly.md), bare slug, or title
     pub path: String,
     #[command(flatten)]
     pub force: ForceFlag,
@@ -143,9 +143,9 @@ pub struct ArticleRemoveArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleRenameArgs {
-    /// Current article path or title
+    /// Current article path (project-relative) or indexed title
     pub old_path: String,
-    /// New slug (e.g. "new-slug") — renames the file/directory, title is unchanged
+    /// New article slug (what name), without a path; title is unchanged
     pub new_path: String,
     #[command(flatten)]
     pub force: ForceFlag,
@@ -155,8 +155,9 @@ pub struct ArticleRenameArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleMoveArgs {
-    /// Article path or title
+    /// Current article path, bare slug, or indexed title
     pub path: String,
+    /// Destination project name or path (cwd-relative, repo-relative, or absolute)
     #[arg(long = "to-project")]
     pub to_project: String,
     #[command(flatten)]
@@ -201,11 +202,14 @@ pub enum ArticleBlockSubcommand {
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleBlockNewArgs {
+    /// Article path (e.g. docs/my-article), bare slug, or title
     pub article: String,
     /// New block slug without a numeric prefix
     pub slug: String,
+    /// Insert after a block filename, numbered stem, slug, or completed path
     #[arg(long)]
     pub after: Option<String>,
+    /// Numbering origin applied after the insertion
     #[arg(long, default_value_t = 1)]
     pub start: usize,
     #[command(flatten)]
@@ -214,10 +218,14 @@ pub struct ArticleBlockNewArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleBlockMoveArgs {
+    /// Article path (e.g. docs/my-article), bare slug, or title
     pub article: String,
+    /// Block filename, numbered stem, slug, or completed path
     pub block: String,
+    /// Move after a block filename, numbered stem, slug, or completed path
     #[arg(long)]
     pub after: Option<String>,
+    /// Numbering origin applied after the move
     #[arg(long, default_value_t = 1)]
     pub start: usize,
     #[command(flatten)]
@@ -226,6 +234,7 @@ pub struct ArticleBlockMoveArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleBlockRenumberArgs {
+    /// Article path (e.g. docs/my-article), bare slug, or title
     pub article: String,
     #[arg(long, default_value_t = 1)]
     pub start: usize,
@@ -235,9 +244,9 @@ pub struct ArticleBlockRenumberArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleBlockRenameArgs {
-    /// Article path (e.g. docs/my-article) or title
+    /// Article path (e.g. docs/my-article), bare slug, or title
     pub article: String,
-    /// Current block filename (e.g. "02-notes.md") or slug (e.g. "notes")
+    /// Current block filename, numbered stem, slug, or completed path within the article
     pub old_block: String,
     /// New slug — the number prefix is preserved (e.g. "thoughts" → "02-thoughts.md")
     pub new_slug: String,
@@ -249,9 +258,9 @@ pub struct ArticleBlockRenameArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct ArticleBlockRmArgs {
-    /// Article path (e.g. docs/my-article) or title
+    /// Article path (e.g. docs/my-article), bare slug, or title
     pub article: String,
-    /// Block filename (e.g. "02-notes.md"), stem (e.g. "02-notes"), or slug (e.g. "notes")
+    /// Block filename, numbered stem, slug, or completed path within the article
     pub block: String,
     #[command(flatten)]
     pub force: ForceFlag,

@@ -40,8 +40,8 @@ Options:
           
       --delete-alias <DELETE_ALIAS>
           Remove an alias from the term
-  -p, --project <NAME>
-          Project name for project-scoped operations
+  -p, --project <NAME_OR_PATH>
+          Project name or path (cwd-relative, repo-relative, or absolute)
       --delete-tag <DELETE_TAG>
           Remove a tag from the term
       --add-correction <ORIGINAL[:CORRECT]>

@@ -28,7 +28,7 @@ Options:
                                      line
       --no-color                     Disable colored output
       --fix                          Auto-fix issues that have a fixer
-  -p, --project <NAME>               Project name for project-scoped operations
+  -p, --project <NAME_OR_PATH>       Project name or path (cwd-relative, repo-relative, or absolute)
       --rule <RULE>                  Restrict to a specific lint rule kind
       --severity <LEVEL>             Only emit issues at or above this severity (error|warning|info)
       --max-warnings <N>             Exit 1 when warnings exceed this count

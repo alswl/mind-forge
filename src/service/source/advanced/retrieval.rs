@@ -318,14 +318,9 @@ fn search_repository_with_store(
         let config = super::config::load_repository_config(repo_root)?;
         let catalog = super::catalog::SourceCatalog::discover(&config, repo_root)?;
         for registration in catalog.registrations(Some(s))? {
-            if project_filter.is_some_and(|filter| {
-                filter != registration.project_identity
-                    && filter
-                        != Path::new(&registration.project_path)
-                            .file_name()
-                            .and_then(|name| name.to_str())
-                            .unwrap_or("")
-            }) {
+            if project_filter
+                .is_some_and(|filter| filter != registration.project_identity && filter != registration.project_path)
+            {
                 continue;
             }
             if kind_filter.is_some_and(|kind| kind != registration.source_type)
@@ -364,13 +359,6 @@ fn search_repository_with_store(
             }
             let project_path = project_entry.path();
             let project_name = project_path.file_name().unwrap_or_default().to_string_lossy();
-
-            if let Some(filter) = project_filter
-                && project_name != filter
-            {
-                continue;
-            }
-
             let index_path = project_path.join("mind-index.yaml");
             if !index_path.exists() {
                 continue;
@@ -380,6 +368,11 @@ fn search_repository_with_store(
                 && let Ok(index) = serde_yaml::from_str::<serde_yaml::Value>(&yaml_data)
             {
                 let project_identity = index.get("project").and_then(|v| v.as_str()).unwrap_or(&project_name);
+                let project_rel =
+                    project_path.strip_prefix(repo_root).unwrap_or(&project_path).to_string_lossy().replace('\\', "/");
+                if project_filter.is_some_and(|filter| filter != project_identity && filter != project_rel) {
+                    continue;
+                }
                 if let Some(sources) = index.get("sources").and_then(|v| v.as_sequence()) {
                     for source in sources {
                         let name = source.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
@@ -419,7 +412,7 @@ fn search_repository_with_store(
                         all_registrations.push(BasicCandidate {
                             registration_key: rk,
                             project_identity: project_identity.to_string(),
-                            project_path: project_name.to_string(),
+                            project_path: project_rel.clone(),
                             source_identity: name.to_string(),
                             source_type: kind.to_string(),
                             registered_location: location.to_string(),

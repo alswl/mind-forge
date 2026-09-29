@@ -157,6 +157,14 @@ pub fn strip_mind_forge_front_matter(content: &str) -> String {
     strip_front_matter_keys(content, is_mind_forge_key_line)
 }
 
+/// Remove the complete initial YAML front-matter block, preserving the body.
+pub fn strip_front_matter(content: &str) -> String {
+    match split_initial_yaml_front_matter(content) {
+        Some((_, body, eol)) => body.strip_prefix(eol).unwrap_or(body).to_string(),
+        None => content.to_string(),
+    }
+}
+
 /// Shared front-matter key removal: drop every leading-front-matter line for
 /// which `should_remove` returns true, then reassemble (or drop entirely) the
 /// `---`-delimited block. Used by [`strip_typora_front_matter`] and

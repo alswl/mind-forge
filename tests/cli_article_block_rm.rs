@@ -199,6 +199,32 @@ fn block_rm_non_tty_without_yes_or_force_errors() {
     assert!(repo.path().join("my-project/docs/my-article/02-body.md").exists());
 }
 
+#[test]
+fn block_rm_and_rename_accept_completed_paths_without_doubling_them() {
+    let repo = common::setup_repo();
+    common::create_project(&repo, "my-project");
+    setup_directory_article(
+        &repo,
+        "my-project",
+        "my-article",
+        &[("01-opening.md", "# Opening\n"), ("02-body.md", "## Body\n"), ("03-third.md", "## Third\n")],
+    );
+    let project = repo.path().join("my-project");
+
+    mf().current_dir(&project)
+        .args(["article", "block", "rename", "my-article", "docs/my-article/02-body.md", "renamed"])
+        .assert()
+        .success();
+    assert!(project.join("docs/my-article/02-renamed.md").exists());
+    assert!(!project.join("docs/my-article/docs/my-article/02-body.md").exists());
+
+    mf().current_dir(&project)
+        .args(["article", "block", "rm", "my-article", "docs/my-article/03-third.md", "--yes"])
+        .assert()
+        .success();
+    assert!(!project.join("docs/my-article/03-third.md").exists());
+}
+
 // ---------------------------------------------------------------------------
 // Spec 079 US3 (#46) T024: `block new`/`block rm`/`block rename` must accept a
 // bare slug, not just the full `docs/<slug>` identity — and must resolve it

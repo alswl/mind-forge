@@ -1638,8 +1638,11 @@ Publish an article to a target
 ###### **Options:**
 
 * `--target <TARGET>`
+* `--strip-front-matter` — Remove the complete YAML front-matter block from the published payload. `--keep-front-matter` overrides `publish.strip_front_matter` for this run.
 * `-n`, `--dry-run` — Preview changes without writing
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
+
+Publish front matter is preserved by default. Set `publish.strip_front_matter: true` in `mind.yaml`, or pass `--strip-front-matter` for one run, to remove the whole block from the published payload. `--keep-front-matter` keeps it for one run when the project setting is enabled. Build artifacts continue to preserve user keys while removing mf-owned keys; publish also removes mf-owned keys for template-origin articles, which bypass build. Source articles and build artifacts are never rewritten by this publish option.
 
 
 

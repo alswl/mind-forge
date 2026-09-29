@@ -409,7 +409,7 @@ fn build_strips_only_typora_key_from_mixed_front_matter() {
     let repo = common::setup_repo();
     common::create_project(&repo, "my-project");
 
-    let article_content = "---\ntitle: Keep Me\ntypora-copy-images-to: ../assets\ntags:\n  - rust\n---\n# Article\n";
+    let article_content = "---\ntitle: Keep Me\nstyle: arch-design-slim\nstyle-skill: minds-style-arch-design-slim\ntypora-copy-images-to: ../assets\ntags:\n  - rust\n---\n# Article\n";
     write_existing_md(&repo, "my-project", "mixed-front-matter.md", article_content);
     common::write_article_index(&repo, "my-project", "mixed-front-matter");
 
@@ -423,6 +423,8 @@ fn build_strips_only_typora_key_from_mixed_front_matter() {
 
     let artifact = std::fs::read_to_string(repo.path().join("my-project/outputs/mixed-front-matter.md")).unwrap();
     assert!(artifact.starts_with("---\ntitle: Keep Me\n"), "non-Typora front matter should be preserved");
+    assert!(artifact.contains("style: arch-design-slim\n"));
+    assert!(artifact.contains("style-skill: minds-style-arch-design-slim\n"));
     assert!(artifact.contains("tags:\n  - rust\n---\n# Article\n"));
     assert!(!artifact.contains("typora-copy-images-to:"));
 }

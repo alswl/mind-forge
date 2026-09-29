@@ -68,6 +68,12 @@ pub struct PublishRunArgs {
     pub article: String,
     #[arg(long)]
     pub target: Option<String>,
+    /// Remove the complete front-matter block from the published payload
+    #[arg(long, conflicts_with = "keep_front_matter")]
+    pub strip_front_matter: bool,
+    /// Keep front matter even when publish.strip_front_matter is enabled
+    #[arg(long, conflicts_with = "strip_front_matter")]
+    pub keep_front_matter: bool,
     #[command(flatten)]
     pub dry_run: DryRunFlag,
     #[command(flatten)]

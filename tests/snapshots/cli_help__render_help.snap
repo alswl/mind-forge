@@ -48,8 +48,8 @@ Options:
       --no-color
           Disable colored output
 
-  -p, --project <NAME>
-          Project name for project-scoped operations
+  -p, --project <NAME_OR_PATH>
+          Project name or path (cwd-relative, repo-relative, or absolute)
 
   -h, --help
           Print help (see a summary with '-h')

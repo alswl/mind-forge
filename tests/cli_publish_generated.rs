@@ -53,7 +53,11 @@ fn end_to_end_generated_publish() {
     // Create the generated article file on disk
     let output_dir = project_path.join("outputs/2026-05");
     std::fs::create_dir_all(&output_dir).unwrap();
-    std::fs::write(output_dir.join("2026-05-15.md"), b"# Generated content\n").unwrap();
+    std::fs::write(
+        output_dir.join("2026-05-15.md"),
+        b"---\ntitle: Keep me\ntypora-copy-images-to: ./assets\nmind-forge-visibility: public\n---\n# Generated content\n",
+    )
+    .unwrap();
 
     // Dry-run publish using the generated article ID
     let (parsed, stderr, code) = json_run(
@@ -69,6 +73,17 @@ fn end_to_end_generated_publish() {
     assert!(destination.contains("gen-"), "destination should contain prefix: {destination}");
     assert!(destination.contains("2026-05"), "destination should contain expanded date: {destination}");
     assert!(destination.contains("2026-05-15"), "should contain article date stem: {destination}");
+
+    let (published, publish_stderr, publish_code) = json_run(
+        &["--output", "json", "publish", "run", "daily_report/2026-05-15", "--target", "local-out"],
+        project_path.as_path(),
+    );
+    assert_eq!(publish_code, Some(0), "template publish failed: {publish_stderr} {published}");
+    let dest_file = std::path::PathBuf::from(published["data"]["destination"].as_str().unwrap());
+    let published_content = std::fs::read_to_string(dest_file).unwrap();
+    assert!(published_content.contains("title: Keep me"));
+    assert!(!published_content.contains("typora-copy-images-to"));
+    assert!(!published_content.contains("mind-forge-visibility"));
 
     let _ = std::fs::remove_dir_all(&dest);
 }

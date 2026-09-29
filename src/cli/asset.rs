@@ -201,7 +201,11 @@ fn handle_add(
     format: Format,
     project: Option<&str>,
 ) -> Result<CommandOutcome> {
-    let project_path = svc_util::resolve_project(root, project, cwd)?;
+    // `asset new`/`asset add` creates the project directory as a side
+    // effect when it doesn't exist yet, so it uses the unchecked resolver
+    // rather than `resolve_project` (spec 082 FR-008's uniform manifest
+    // check would otherwise refuse the very project this command creates).
+    let project_path = svc_util::resolve_project_allow_missing(root, project, cwd)?;
 
     if args.dry_run.dry_run {
         let name =

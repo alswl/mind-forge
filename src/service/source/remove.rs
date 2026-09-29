@@ -14,6 +14,35 @@ pub fn remove_source(
     force: bool,
     dry_run: bool,
 ) -> Result<SourceRemoveReport> {
+    // Resolve before choosing the name/path lifecycle branch so a path hit
+    // cannot silently win over another registration's identical name.
+    let index_data = index::load(project_path)?;
+    let sources = index_data.sources.as_deref().unwrap_or(&[]);
+    let matches: Vec<_> = sources
+        .iter()
+        .filter(|source| source.name == name_or_path || source.path.as_deref() == Some(name_or_path))
+        .collect();
+    match matches.as_slice() {
+        [] => {
+            return Err(MfError::not_found(
+                format!("source '{name_or_path}' not found"),
+                Some("use `mf source list` to see available sources".to_string()),
+            ));
+        }
+        [_, _, ..] => {
+            let candidates = matches
+                .iter()
+                .map(|source| format!("{} ({})", source.name, source.path.as_deref().unwrap_or("no path")))
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(MfError::usage(
+                format!("source selector '{name_or_path}' matches multiple registrations: {candidates}"),
+                Some("use an unambiguous source name or path".to_string()),
+            ));
+        }
+        [_] => {}
+    }
+
     let is_path = name_or_path.contains('/') || name_or_path.starts_with("sources");
     if is_path {
         lifecycle_remove_by_path(project_path, name_or_path, keep_file, force, dry_run)

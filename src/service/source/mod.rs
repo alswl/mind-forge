@@ -12,6 +12,33 @@ pub use self::remove::remove_source;
 pub use self::rename::rename_source;
 pub use self::update::{UpdateArgs, update};
 
+/// Resolve a source selector by its registered name or project-relative path.
+/// Multiple matching registrations are refused rather than selected by index order.
+pub fn resolve_selector(project_path: &Path, selector: &str) -> Result<String> {
+    let index = crate::service::index::load(project_path)?;
+    let sources = index.sources.as_deref().unwrap_or(&[]);
+    let matches: Vec<_> =
+        sources.iter().filter(|source| source.name == selector || source.path.as_deref() == Some(selector)).collect();
+    match matches.as_slice() {
+        [source] => Ok(source.name.clone()),
+        [] => Err(MfError::not_found(
+            format!("source '{selector}' not found"),
+            Some("use `mf source list` to see available sources".to_string()),
+        )),
+        _ => {
+            let candidates = matches
+                .iter()
+                .map(|source| format!("{} ({})", source.name, source.path.as_deref().unwrap_or("no path")))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Err(MfError::usage(
+                format!("source selector '{selector}' matches multiple registrations: {candidates}"),
+                Some("use an unambiguous source name or path".to_string()),
+            ))
+        }
+    }
+}
+
 // ── URL validation ───────────────────────────────────────────────────────────
 
 pub(crate) fn validate_url(s: &str) -> Result<()> {

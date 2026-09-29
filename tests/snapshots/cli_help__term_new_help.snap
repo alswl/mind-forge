@@ -10,20 +10,37 @@ Arguments:
   [TERM]  Canonical term name
 
 Options:
-      --definition <DEFINITION>          
-      --root <PATH>                      Mind Repo root directory
-      --config <PATH>                    Config file path
-      --description <DESCRIPTION>        
-      --confidence <CONFIDENCE>          
-  -v, --verbose...                       Verbose output
-      --alias <ALIAS>                    
-  -q, --quiet                            Silence non-error output
-  -o, --output <FORMAT>                  Output format [default: text] [possible values: text, json]
-      --tag <TAG>                        
-      --json                             Shorthand for --output json
-      --misrecognition <MISRECOGNITION>  
-  -n, --dry-run                          Preview changes without writing
-      --no-color                         Disable colored output
-  -p, --project <NAME>                   Project name for project-scoped operations
-  -h, --help                             Print help
-  -V, --version                          Print version
+      --definition <DEFINITION>
+          
+      --root <PATH>
+          Mind Repo root directory
+      --config <PATH>
+          Config file path
+      --description <DESCRIPTION>
+          
+      --confidence <CONFIDENCE>
+          
+  -v, --verbose...
+          Verbose output
+      --alias <ALIAS>
+          
+  -q, --quiet
+          Silence non-error output
+  -o, --output <FORMAT>
+          Output format [default: text] [possible values: text, json]
+      --tag <TAG>
+          
+      --json
+          Shorthand for --output json
+      --misrecognition <MISRECOGNITION>
+          
+  -n, --dry-run
+          Preview changes without writing
+      --no-color
+          Disable colored output
+  -p, --project <NAME_OR_PATH>
+          Project name or path (cwd-relative, repo-relative, or absolute)
+  -h, --help
+          Print help
+  -V, --version
+          Print version

@@ -421,6 +421,7 @@ fn run_local(
     let bytes = fs::read(&artifact_path).map_err(MfError::Io)?;
     let content = String::from_utf8(bytes)
         .map_err(|e| MfError::Internal(anyhow::anyhow!("build artifact is not valid UTF-8: {e}")))?;
+    let content = prepare_publish_content(args, config, article_entry, &content);
     util::atomic_write(&dest_file, &content)?;
 
     Ok(LocalRunOutcome {
@@ -444,6 +445,7 @@ fn run_yuque_prompt(
     let (artifact_path, _size_bytes) = locate_build_artifact(project_path, config, article_entry)?;
 
     let raw_content = fs::read_to_string(&artifact_path).map_err(MfError::Io)?;
+    let raw_content = prepare_publish_content(args, config, article_entry, &raw_content);
     let artifact_dir = artifact_path.parent().unwrap_or(Path::new("."));
     let (content, transforms) = apply_publish_transforms(&raw_content, artifact_dir, target, project_path)?;
 
@@ -511,6 +513,28 @@ After publishing, run:\n\
         destination: Some(dest.to_string_lossy().to_string()),
         transforms,
     })
+}
+
+/// Prepare an in-memory publish payload. Template-origin articles bypass
+/// build, so remove mf-owned metadata here to keep both publish paths aligned.
+/// User front matter is removed only when the project setting or CLI requests it.
+fn prepare_publish_content(args: &PublishRunArgs, config: &MindConfig, article: &Article, raw: &str) -> String {
+    let mut content = if article.template_origin.is_some() {
+        markdown::strip_mind_forge_front_matter(&markdown::strip_typora_front_matter(raw))
+    } else {
+        raw.to_string()
+    };
+    let strip_all = if args.strip_front_matter {
+        true
+    } else if args.keep_front_matter {
+        false
+    } else {
+        config.publish.strip_front_matter.unwrap_or(false)
+    };
+    if strip_all {
+        content = markdown::strip_front_matter(&content);
+    }
+    content
 }
 
 /// Resolve the destination path for the `yuque-prompt` publish-ready file.

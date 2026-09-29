@@ -10,6 +10,71 @@ pub mod yaml_splice;
 
 use std::fs;
 use std::path::{Path, PathBuf};
+
+/// A file move that keeps an occupied destination recoverable until its
+/// associated metadata write commits.
+pub struct PendingFileRename {
+    old: PathBuf,
+    new: PathBuf,
+    backup: Option<(PathBuf, PathBuf)>,
+}
+
+impl PendingFileRename {
+    pub fn begin(old: &Path, new: &Path) -> Result<Self> {
+        let mut backup = None;
+        if new.exists() {
+            let parent =
+                new.parent().ok_or_else(|| MfError::usage("cannot determine target directory", None::<String>))?;
+            let dir = create_rename_backup_dir(parent)?;
+            let path = dir.join("replaced-file");
+            if let Err(error) = std::fs::rename(new, &path) {
+                let _ = std::fs::remove_dir(&dir);
+                return Err(MfError::Io(error));
+            }
+            backup = Some((dir, path));
+        }
+        if let Err(error) = std::fs::rename(old, new) {
+            if let Some((dir, path)) = backup.take() {
+                if let Err(restore_error) = std::fs::rename(&path, new) {
+                    return Err(MfError::Io(restore_error));
+                }
+                let _ = std::fs::remove_dir_all(dir);
+            }
+            return Err(MfError::Io(error));
+        }
+        Ok(Self { old: old.to_path_buf(), new: new.to_path_buf(), backup })
+    }
+
+    pub fn rollback(mut self) -> Result<()> {
+        std::fs::rename(&self.new, &self.old).map_err(MfError::Io)?;
+        if let Some((dir, path)) = self.backup.take() {
+            std::fs::rename(&path, &self.new).map_err(MfError::Io)?;
+            std::fs::remove_dir_all(dir).map_err(MfError::Io)?;
+        }
+        Ok(())
+    }
+
+    pub fn commit(self) {
+        if let Some((dir, _)) = self.backup {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+}
+
+fn create_rename_backup_dir(parent: &Path) -> Result<PathBuf> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+    for attempt in 0..100 {
+        let path = parent.join(format!(".mf-rename-{}-{stamp}-{attempt}", std::process::id()));
+        match std::fs::create_dir(&path) {
+            Ok(()) => return Ok(path),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(MfError::Io(error)),
+        }
+    }
+    Err(MfError::usage("could not reserve a temporary rename backup", None::<String>))
+}
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::defaults;
@@ -246,28 +311,48 @@ pub fn repo_relative_path(repo_root: &Path, file_path: &Path) -> String {
 /// Resolve a project path within a repo root.
 ///
 /// If `project` is `Some(selector)`, tries in order:
-/// 1. Manifest lookup by name or path.
-/// 2. If the selector contains `/` or `\`, resolve it as a cwd-relative or
-///    repo-relative path through the identity layer.
-/// 3. Fall back to `<repo_root>/<projects_dir>/<selector>`.
+/// 1. If the selector is a path form (`.`, or contains `/` or `\`), resolve
+///    it cwd-relative or repo-relative through the identity layer — this is
+///    the primary form (spec 082 FR-001: it is what a shell completes).
+/// 2. Otherwise (a bare name): try manifest lookup and cwd-relative
+///    resolution independently. If both exist and point at different
+///    directories, refuse as ambiguous rather than silently preferring one
+///    (spec 082 FR-003, FR-010). If exactly one exists, use it.
+/// 3. If neither resolved, fall back to `<repo_root>/<projects_dir>/<selector>`.
+///
+/// In every case, the final candidate MUST contain `mind.yaml`, or this
+/// returns `not_found` naming the resolved location (spec 082 FR-008). This
+/// check lives here — not in each of the ~30 call sites — so every
+/// project-scoped command enforces it identically.
 ///
 /// If `project` is `None`, auto-detects the current project from `cwd` by
-/// walking up for `mind.yaml`.
+/// walking up for `mind.yaml` — already guaranteed to exist by construction,
+/// so no separate check is needed for that branch.
+///
+/// One caller — `asset new`/`asset add`, which lazily creates the project
+/// directory when it doesn't exist yet — deliberately needs the unchecked
+/// candidate instead; it calls [`resolve_project_allow_missing`] directly
+/// rather than this function.
 pub fn resolve_project(repo_root: &Path, project: Option<&str>, cwd: &Path) -> Result<PathBuf> {
     let projects_dir = crate::service::repo::projects_dir_for(repo_root)?;
     match project {
         Some(selector) => {
-            // 1. Manifest lookup by name, path basename, or full path
-            if let Some(path) = crate::service::repo::project_path_for(repo_root, selector)? {
-                return Ok(path);
+            let candidate = resolve_project_candidate(repo_root, &projects_dir, selector, cwd)?;
+            if !candidate.join("mind.yaml").exists() {
+                let repo_canonical = try_canonicalize(repo_root);
+                let shown = repo_relative_path(&repo_canonical, &try_canonicalize(&candidate));
+                // `usage` (exit 2), matching the pre-existing convention this
+                // check replaces (project::index::resolve_project's own
+                // now-removed duplicate check used the same kind) — spec 082
+                // FR-008 accepts either usage or not_found, and FR-037 says
+                // not to change an exit code an existing test already relies
+                // on without a reason tied to this feature's requirements.
+                return Err(MfError::usage(
+                    format!("project '{selector}' not found (resolved to '{shown}')"),
+                    Some("use `mf project list` to see available projects".to_string()),
+                ));
             }
-            // 2. If the selector looks like a path, resolve through identity layer
-            if selector.contains('/') || selector.contains('\\') {
-                return crate::service::identity::normalize_project_selector(repo_root, selector, cwd)
-                    .map(|id| id.resolved_path);
-            }
-            // 3. Fall back to projects_dir-relative
-            Ok(project_dir_for(repo_root, &projects_dir, selector))
+            Ok(candidate)
         }
         None => {
             let detected = detect_current_project(repo_root, cwd).ok_or_else(|| {
@@ -283,6 +368,75 @@ pub fn resolve_project(repo_root: &Path, project: Option<&str>, cwd: &Path) -> R
                 Ok(repo_root.join(&detected))
             }
         }
+    }
+}
+
+/// Resolve a project selector the same way [`resolve_project`] does, but
+/// without requiring `mind.yaml` to already exist at the result.
+///
+/// This exists for the one legitimate case where a project-scoped command
+/// creates the project directory as a side effect instead of operating on
+/// an existing one — `asset new`/`asset add`, which the `--project
+/// <new-name>` positional both selects *and* creates. Every path-resolution
+/// rule (path form vs. bare name, the ambiguity refusal, the `..` rejection)
+/// still applies identically; only the final existence check is skipped.
+///
+/// Keep this exception limited to commands that create the selected project.
+pub fn resolve_project_allow_missing(repo_root: &Path, project: Option<&str>, cwd: &Path) -> Result<PathBuf> {
+    let projects_dir = crate::service::repo::projects_dir_for(repo_root)?;
+    match project {
+        Some(selector) => resolve_project_candidate(repo_root, &projects_dir, selector, cwd),
+        None => resolve_project(repo_root, None, cwd),
+    }
+}
+
+/// Compute the candidate path for a project selector, without checking
+/// whether it actually contains `mind.yaml` — [`resolve_project`] does that
+/// check once, uniformly, after calling this.
+fn resolve_project_candidate(repo_root: &Path, projects_dir: &str, selector: &str, cwd: &Path) -> Result<PathBuf> {
+    // 1. Path form: `.`, or anything containing a separator. Resolved
+    // cwd-relative/repo-relative through the identity layer, which also
+    // rejects `..` uniformly (spec 082 FR-004, FR-007).
+    if selector == "." || selector == ".." || selector.contains('/') || selector.contains('\\') {
+        return crate::service::identity::normalize_project_selector(repo_root, selector, cwd)
+            .map(|id| id.resolved_path);
+    }
+
+    // 2. Bare name: manifest lookup and cwd-relative resolution are two
+    // independent candidates for the same input. Prefer neither silently —
+    // if both exist (as directories with `mind.yaml`) and differ, refuse
+    // rather than guess (spec 082 FR-003, FR-010).
+    let manifest_candidate = crate::service::repo::project_path_for(repo_root, selector)?;
+    let cwd_candidate = {
+        let candidate = cwd.join(selector);
+        candidate.join("mind.yaml").exists().then_some(candidate)
+    };
+    match (&manifest_candidate, &cwd_candidate) {
+        (Some(manifest_path), Some(cwd_path)) => {
+            let manifest_canonical = try_canonicalize(manifest_path);
+            let cwd_canonical = try_canonicalize(cwd_path);
+            if manifest_canonical != cwd_canonical {
+                let repo_canonical = try_canonicalize(repo_root);
+                return Err(MfError::usage(
+                    format!(
+                        "project selector '{selector}' is ambiguous: it matches both '{}' and '{}'",
+                        repo_relative_path(&repo_canonical, &manifest_canonical),
+                        repo_relative_path(&repo_canonical, &cwd_canonical),
+                    ),
+                    Some(
+                        "use a path (e.g. './name' for the cwd-relative one, or the full project path) to disambiguate"
+                            .to_string(),
+                    ),
+                ));
+            }
+            Ok(manifest_path.clone())
+        }
+        (Some(manifest_path), None) => Ok(manifest_path.clone()),
+        (None, Some(cwd_path)) => Ok(cwd_path.clone()),
+        // 3. Neither resolved: fall back to projects_dir-relative. The
+        // mind.yaml check in `resolve_project` reports not-found for this
+        // candidate if it isn't a real project either.
+        (None, None) => Ok(project_dir_for(repo_root, projects_dir, selector)),
     }
 }
 
@@ -384,6 +538,20 @@ pub fn canonicalize_within(root: &Path, target: &Path) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pending_file_rename_restores_replaced_target_on_rollback() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join("old.md");
+        let new = dir.path().join("new.md");
+        std::fs::write(&old, "source contents").unwrap();
+        std::fs::write(&new, "previous destination").unwrap();
+
+        PendingFileRename::begin(&old, &new).unwrap().rollback().unwrap();
+
+        assert_eq!(std::fs::read_to_string(old).unwrap(), "source contents");
+        assert_eq!(std::fs::read_to_string(new).unwrap(), "previous destination");
+    }
 
     // --- to_filename ---
 

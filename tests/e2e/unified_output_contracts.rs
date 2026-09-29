@@ -273,7 +273,20 @@ fn e2e_unified_modify_commands_emit_canonical_dry_run_envelopes() {
             "docs/renamed.md",
         ),
         (
-            vec!["--project", "alpha", "--json", "source", "rename", "paper", "paper-renamed", "--dry-run"],
+            // spec 082 (#54): the target is a path, resolved cwd-relative
+            // (cwd here is the repo root — a flat-layout repo, so
+            // "alpha/..." reaches the project); the reported new identity
+            // is the target's file stem, matching every other source.
+            vec![
+                "--project",
+                "alpha",
+                "--json",
+                "source",
+                "rename",
+                "paper",
+                "alpha/sources/paper-renamed.pdf",
+                "--dry-run",
+            ],
             "source",
             "paper",
             "paper-renamed",

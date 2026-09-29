@@ -33,7 +33,7 @@ Options:
       --no-color                   Disable colored output
   -f, --force                      Proceed despite safety checks: overwrite an existing target, or
                                    remove an entity referenced by others
-  -p, --project <NAME>             Project name for project-scoped operations
+  -p, --project <NAME_OR_PATH>     Project name or path (cwd-relative, repo-relative, or absolute)
   -n, --dry-run                    Preview changes without writing
   -h, --help                       Print help
   -V, --version                    Print version

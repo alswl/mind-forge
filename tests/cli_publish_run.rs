@@ -69,6 +69,67 @@ fn read_index_bytes(repo: &common::TempDir) -> Vec<u8> {
     fs::read(repo.path().join("my-project/mind-index.yaml")).unwrap()
 }
 
+#[test]
+fn publish_front_matter_switch_defaults_off_and_can_be_overridden() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets(&local_target_yaml("local", dest_root.path()));
+    let project = repo.path().join("my-project");
+    let content =
+        "---\nstyle: arch-design-slim\nstyle-skill: minds-style-arch-design-slim\ntitle: Keep me\n---\n# Hello\n";
+    fs::write(project.join("docs/my-article.md"), content).unwrap();
+    fs::write(project.join("_build/my-article.md"), content).unwrap();
+
+    let out = run_publish(&repo, &["publish", "run", ARTICLE, "--target", "local"]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(fs::read_to_string(dest_root.path().join("my-article.md")).unwrap(), content);
+
+    fs::remove_file(dest_root.path().join("my-article.md")).unwrap();
+    let out = run_publish(&repo, &["publish", "run", ARTICLE, "--target", "local", "--strip-front-matter"]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(fs::read_to_string(dest_root.path().join("my-article.md")).unwrap(), "# Hello\n");
+    assert_eq!(fs::read_to_string(project.join("docs/my-article.md")).unwrap(), content);
+    assert_eq!(fs::read_to_string(project.join("_build/my-article.md")).unwrap(), content);
+}
+
+#[test]
+fn publish_cli_can_keep_front_matter_when_project_config_strips_it() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets(&local_target_yaml("local", dest_root.path()));
+    let project = repo.path().join("my-project");
+    let config_path = project.join("mind.yaml");
+    let config = fs::read_to_string(&config_path)
+        .unwrap()
+        .replace("publish:\n  targets:", "publish:\n  strip_front_matter: true\n  targets:");
+    fs::write(config_path, config).unwrap();
+    let content = "---\ntitle: Keep me\n---\n# Hello\n";
+    fs::write(project.join("_build/my-article.md"), content).unwrap();
+
+    let out = run_publish(&repo, &["publish", "run", ARTICLE, "--target", "local", "--keep-front-matter"]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(fs::read_to_string(dest_root.path().join("my-article.md")).unwrap(), content);
+}
+
+#[test]
+fn publish_front_matter_stripping_handles_crlf_missing_and_body_horizontal_rule() {
+    let dest_root = tempfile::tempdir().unwrap();
+    let repo = setup_repo_with_targets(&local_target_yaml("local", dest_root.path()));
+    let project = repo.path().join("my-project");
+    let crlf = "---\r\ntitle: remove\r\n---\r\n# Hello\r\n";
+    fs::write(project.join("_build/my-article.md"), crlf).unwrap();
+    let out = run_publish(&repo, &["publish", "run", ARTICLE, "--target", "local", "--strip-front-matter"]);
+    assert!(out.status.success());
+    assert_eq!(fs::read_to_string(dest_root.path().join("my-article.md")).unwrap(), "# Hello\r\n");
+
+    fs::remove_file(dest_root.path().join("my-article.md")).unwrap();
+    fs::write(project.join("_build/my-article.md"), "# No front matter\n\n---\nbody divider\n").unwrap();
+    let out = run_publish(&repo, &["publish", "run", ARTICLE, "--target", "local", "--strip-front-matter"]);
+    assert!(out.status.success());
+    assert_eq!(
+        fs::read_to_string(dest_root.path().join("my-article.md")).unwrap(),
+        "# No front matter\n\n---\nbody divider\n"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // US2 — file-based publisher from .mind-forge/publisher/*.yaml
 // ---------------------------------------------------------------------------

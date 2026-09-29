@@ -295,12 +295,25 @@ pub fn rename_block(
     })
 }
 
-/// Resolve a block identifier (full filename like "02-notes.md", filename
-/// stem like "02-notes", or slug like "notes") against a directory article's
-/// block files. Returns the matched filename. Does not verify the file
-/// exists on disk — callers do that themselves. Shared by `rename_block` and
-/// `block::remove_block`.
+/// Resolve a filename, numbered stem, slug, or completed path against the
+/// blocks in one directory article. Returns only the matched filename so
+/// callers join it to the article directory exactly once. Paths to another
+/// article are refused as `not_found`.
 pub(crate) fn resolve_block_filename(section_files: &[String], article_path: &str, block: &str) -> Result<String> {
+    if block.contains('/') || block.contains('\\') {
+        let normalized = block.replace('\\', "/");
+        let article_prefix = format!("{}/", article_path.trim_end_matches('/'));
+        return match normalized.strip_prefix(article_prefix.as_str()) {
+            Some(basename) if !basename.is_empty() && !basename.contains('/') => {
+                resolve_block_filename(section_files, article_path, basename)
+            }
+            _ => Err(MfError::not_found(
+                format!("block '{}' not found in article '{}'", block, article_path),
+                Some("use `mf article show <article>` to list blocks".to_string()),
+            )),
+        };
+    }
+
     if block.contains('.') {
         if !block.ends_with(".md") {
             return Err(MfError::usage(
@@ -308,7 +321,20 @@ pub(crate) fn resolve_block_filename(section_files: &[String], article_path: &st
                 Some("use the filename (e.g. '02-notes.md') or the slug (e.g. 'notes')".to_string()),
             ));
         }
-        return Ok(block.to_string());
+        // spec 082 FR-021: verify the filename actually names one of this
+        // article's blocks — otherwise a nonexistent name (or one that
+        // slipped through as a completed path with no matching prefix)
+        // reaches the caller's disk read and surfaces as a bare I/O error
+        // instead of a clean refusal here.
+        let exists =
+            section_files.iter().any(|f| Path::new(f.as_str()).file_name().and_then(|n| n.to_str()) == Some(block));
+        if exists {
+            return Ok(block.to_string());
+        }
+        return Err(MfError::not_found(
+            format!("block '{}' not found in article '{}'", block, article_path),
+            Some("use `mf article show <article>` to list blocks".to_string()),
+        ));
     }
 
     let sanitized = util::to_filename(block);

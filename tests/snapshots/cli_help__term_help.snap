@@ -19,13 +19,13 @@ Commands:
   move        Move a term between scopes [aliases: mv]
 
 Options:
-      --root <PATH>      Mind Repo root directory
-      --config <PATH>    Config file path
-  -v, --verbose...       Verbose output
-  -q, --quiet            Silence non-error output
-  -o, --output <FORMAT>  Output format [default: text] [possible values: text, json]
-      --json             Shorthand for --output json
-      --no-color         Disable colored output
-  -p, --project <NAME>   Project name for project-scoped operations
-  -h, --help             Print help
-  -V, --version          Print version
+      --root <PATH>             Mind Repo root directory
+      --config <PATH>           Config file path
+  -v, --verbose...              Verbose output
+  -q, --quiet                   Silence non-error output
+  -o, --output <FORMAT>         Output format [default: text] [possible values: text, json]
+      --json                    Shorthand for --output json
+      --no-color                Disable colored output
+  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative, repo-relative, or absolute)
+  -h, --help                    Print help
+  -V, --version                 Print version

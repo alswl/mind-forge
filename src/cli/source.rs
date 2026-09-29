@@ -190,7 +190,7 @@ pub struct SourceListArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceUpdateArgs {
-    /// Source path (e.g. sources/meeting/notes.md) or name
+    /// Project-relative source path or registered source name
     pub path: String,
     #[arg(long)]
     pub rename: Option<String>,
@@ -206,7 +206,7 @@ pub struct SourceUpdateArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceRemoveArgs {
-    /// Source path (e.g. sources/yuque/foo.md) or source name (deprecated)
+    /// Project-relative source path or registered source name
     pub name_or_path: String,
     #[arg(long = "keep-file")]
     pub keep_file: bool,
@@ -230,9 +230,12 @@ pub struct SourceIndexArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceRenameArgs {
-    /// Current source path or name
+    /// Current project-relative source path or registered source name
     pub old_path: String,
-    /// New source path or name
+    /// New location as a path (cwd-relative or absolute) — e.g.
+    /// "sources/yuque/renamed.md" or "renamed.md" for the current
+    /// directory. `--project` does not change how this resolves; it only
+    /// requires the result to fall inside that project.
     pub new_path: String,
     #[command(flatten)]
     pub force: ForceFlag,
@@ -242,7 +245,9 @@ pub struct SourceRenameArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceMoveArgs {
+    /// Project-relative source path or registered source name
     pub path: String,
+    /// Destination project name or path (cwd-relative, repo-relative, or absolute)
     #[arg(long = "to-project")]
     pub to_project: String,
     #[command(flatten)]
@@ -257,7 +262,7 @@ pub struct SourceCleanArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct SourceShowArgs {
-    /// Source path (e.g. sources/meeting/notes.md) or name
+    /// Project-relative source path or registered source name
     pub path: String,
 }
 
@@ -268,8 +273,8 @@ pub struct SourceSearchArgs {
     /// Search mode: basic (metadata), advanced (content), or both (fused)
     #[arg(long, value_enum)]
     pub mode: Option<SearchModeArg>,
-    /// Limit search to a specific project
-    #[arg(short = 'p', long)]
+    /// Limit search to a project name or path (cwd-relative, repo-relative, or absolute)
+    #[arg(short = 'p', long, value_name = "NAME_OR_PATH")]
     pub project: Option<String>,
     /// Filter by file kind
     #[arg(long)]
@@ -295,7 +300,8 @@ pub struct SourceSearchArgs {
 #[derive(Debug, Clone, Args)]
 pub struct GlobalSearchArgs {
     pub query: String,
-    #[arg(short = 'p', long)]
+    /// Limit search to a project name or path (cwd-relative, repo-relative, or absolute)
+    #[arg(short = 'p', long, value_name = "NAME_OR_PATH")]
     pub project: Option<String>,
     #[arg(long)]
     pub file_kind: Option<String>,
@@ -469,6 +475,7 @@ fn handle_update(args: SourceUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutc
     let repo_root = ctx.require_repo_path()?;
     let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
     identity::validate_entity_path(&project_path, &args.path)?;
+    let source_name = svc_source::resolve_selector(&project_path, &args.path)?;
 
     if args.dry_run.dry_run {
         let mut changes = serde_json::Map::new();
@@ -478,8 +485,8 @@ fn handle_update(args: SourceUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutc
         if let Some(ref url) = args.url {
             changes.insert("url".to_string(), serde_json::json!({"to": url}));
         }
-        let identity = args.rename.as_ref().unwrap_or(&args.path).clone();
-        let old_identity = args.rename.as_ref().map(|_| args.path.clone());
+        let identity = args.rename.as_ref().unwrap_or(&source_name).clone();
+        let old_identity = args.rename.as_ref().map(|_| source_name.clone());
         let result = VerbResult {
             verb: Verb::Update,
             kind: "source",
@@ -500,14 +507,14 @@ fn handle_update(args: SourceUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutc
     }
 
     let update_args =
-        svc_source::UpdateArgs { name: &args.path, rename: args.rename.as_deref(), url: args.url.as_deref() };
+        svc_source::UpdateArgs { name: &source_name, rename: args.rename.as_deref(), url: args.url.as_deref() };
 
     let config = svc_source::advanced::config::load_repository_config(repo_root)?;
     let source = if config.is_lance() {
         svc_source::advanced::primary::update_registration(
             repo_root,
             &project_path,
-            &args.path,
+            &source_name,
             args.rename.as_deref(),
             args.url.as_deref(),
         )?
@@ -523,8 +530,8 @@ fn handle_update(args: SourceUpdateArgs, ctx: &CommandCtx) -> Result<CommandOutc
         changes.insert("url".to_string(), serde_json::json!({"to": url}));
     }
 
-    let identity = args.rename.as_ref().unwrap_or(&args.path).clone();
-    let old_identity = args.rename.as_ref().map(|_| args.path.clone());
+    let identity = args.rename.as_ref().unwrap_or(&source_name).clone();
+    let old_identity = args.rename.as_ref().map(|_| source_name.clone());
     let result = VerbResult {
         verb: Verb::Update,
         kind: "source",
@@ -617,10 +624,11 @@ fn handle_remove(args: SourceRemoveArgs, ctx: &mut CommandCtx) -> Result<Command
     let repo_root = ctx.require_repo_path()?;
     let config = svc_source::advanced::config::load_repository_config(repo_root)?;
     let report = if config.is_lance() {
+        let source_name = svc_source::resolve_selector(&project_path, &args.name_or_path)?;
         svc_source::advanced::primary::remove_registration(
             repo_root,
             &project_path,
-            &args.name_or_path,
+            &source_name,
             args.keep_file,
             args.force.force,
             args.dry_run.dry_run,
@@ -699,7 +707,9 @@ fn handle_move(args: SourceMoveArgs, ctx: &CommandCtx) -> Result<CommandOutcome>
     let root = ctx.require_repo_path()?;
     let source_project = svc_util::resolve_project(root, ctx.project(), ctx.cwd())?;
     let target_project = svc_util::resolve_project(root, Some(&args.to_project), ctx.cwd())?;
-    let report = svc_source::move_source(&source_project, &target_project, &args.path, args.dry_run.dry_run)?;
+    identity::validate_entity_path(&source_project, &args.path)?;
+    let source_name = svc_source::resolve_selector(&source_project, &args.path)?;
+    let report = svc_source::move_source(&source_project, &target_project, &source_name, args.dry_run.dry_run)?;
     let mut rag_indexed = false;
     let mut warnings = Vec::new();
     if !report.dry_run
@@ -733,15 +743,23 @@ fn handle_move(args: SourceMoveArgs, ctx: &CommandCtx) -> Result<CommandOutcome>
 fn handle_rename(args: SourceRenameArgs, ctx: &CommandCtx) -> Result<CommandOutcome> {
     let repo_root = ctx.require_repo_path()?;
     let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
+    // `old_path` is an identity lookup (project-relative, matched against
+    // the registration's stored path) — `validate_entity_path` is the right
+    // check for it. `new_path`/target is a **destination**, resolved
+    // cwd-relative by `rename_source`/`rename_registration` themselves
+    // (spec 082 FR-002, `research.md` §2) — validating it project-relative
+    // here would apply the wrong base, so it is no longer checked at this
+    // layer.
     identity::validate_entity_path(&project_path, &args.old_path)?;
-    identity::validate_entity_path(&project_path, &args.new_path)?;
+    let old_name = svc_source::resolve_selector(&project_path, &args.old_path)?;
 
     let config = svc_source::advanced::config::load_repository_config(repo_root)?;
     if config.is_lance() {
         let report = svc_source::advanced::primary::rename_registration(
             repo_root,
             &project_path,
-            &args.old_path,
+            ctx.cwd(),
+            &old_name,
             &args.new_path,
             args.force.force,
             args.dry_run.dry_run,
@@ -765,27 +783,19 @@ fn handle_rename(args: SourceRenameArgs, ctx: &CommandCtx) -> Result<CommandOutc
         };
     }
 
-    if args.dry_run.dry_run {
-        let result = VerbResult {
-            verb: Verb::Rename,
-            kind: "source",
-            identity: args.new_path.clone(),
-            old_identity: Some(args.old_path.clone()),
-            path: None,
-            dry_run: true,
-            details: serde_json::json!({}),
-        };
-        return match ctx.format() {
-            Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
-            Format::Text => Ok(CommandOutcome::Success(
-                serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path.as_path())))),
-                Vec::new(),
-                None,
-            )),
-        };
-    }
-
-    let report = svc_source::rename_source(&project_path, &args.old_path, &args.new_path, args.force.force, false)?;
+    // Legacy backend: let `rename_source` handle dry-run itself (it already
+    // resolves and validates the target either way) rather than a
+    // CLI-level stub that echoed the raw argument back without resolving
+    // it — that stub never reported the true destination (spec FR-018) and
+    // silently ignored `args.dry_run.dry_run` on the executing call below it.
+    let report = svc_source::rename_source(
+        &project_path,
+        ctx.cwd(),
+        &old_name,
+        &args.new_path,
+        args.force.force,
+        args.dry_run.dry_run,
+    )?;
 
     let result = VerbResult {
         verb: Verb::Rename,
@@ -793,7 +803,7 @@ fn handle_rename(args: SourceRenameArgs, ctx: &CommandCtx) -> Result<CommandOutc
         identity: report.after.name.clone(),
         old_identity: Some(report.before.name.clone()),
         path: report.after.path.clone(),
-        dry_run: false,
+        dry_run: report.dry_run,
         details: serde_json::json!({}),
     };
     match ctx.format() {
@@ -814,6 +824,7 @@ fn handle_source_show(args: SourceShowArgs, ctx: &CommandCtx) -> Result<CommandO
     let repo_root = ctx.require_repo_path()?;
     let project_path = svc_util::resolve_project(repo_root, ctx.project(), ctx.cwd())?;
     identity::validate_entity_path(&project_path, &args.path)?;
+    let source_name = svc_source::resolve_selector(&project_path, &args.path)?;
     let config = svc_source::advanced::config::load_repository_config(repo_root)?;
     let sources = if config.is_lance() {
         let store = svc_source::advanced::sync::open_active_store(repo_root)?;
@@ -857,13 +868,10 @@ fn handle_source_show(args: SourceShowArgs, ctx: &CommandCtx) -> Result<CommandO
         svc_source::list(&project_path, None, None)?
     };
 
-    let resolved = sources
-        .iter()
-        .find(|s| s.path.as_deref() == Some(&args.path))
-        .or_else(|| sources.iter().find(|s| s.name.eq_ignore_ascii_case(&args.path)));
+    let resolved = sources.iter().find(|source| source.name == source_name);
 
     match resolved {
-        None => Err(MfError::usage(
+        None => Err(MfError::not_found(
             format!("source '{}' not found", args.path),
             Some("use `mf source list` to see available sources".to_string()),
         )),
@@ -1057,6 +1065,18 @@ pub fn dispatch_global_search(args: GlobalSearchArgs, ctx: &mut CommandCtx) -> R
 
 fn handle_search(args: SourceSearchArgs, ctx: &mut CommandCtx, canonical: bool) -> Result<CommandOutcome> {
     let repo = ctx.require_repo_path()?;
+    // Resolve --project through the same selector as project-scoped commands,
+    // then keep its full repo-relative path so nested projects with the same
+    // directory name remain distinct in the retrieval catalog.
+    let project_filter = args
+        .project
+        .as_deref()
+        .map(|selector| {
+            let path = svc_util::resolve_project(repo, Some(selector), ctx.cwd())?;
+            let repo_root = svc_util::try_canonicalize(repo);
+            Ok::<_, MfError>(svc_util::repo_relative_path(&repo_root, &svc_util::try_canonicalize(&path)))
+        })
+        .transpose()?;
     let source_config = crate::service::source::advanced::config::load_repository_config(repo)?;
 
     let mode = match args.mode {
@@ -1081,7 +1101,7 @@ fn handle_search(args: SourceSearchArgs, ctx: &mut CommandCtx, canonical: bool) 
         repo,
         &args.query,
         mode,
-        args.project.as_deref(),
+        project_filter.as_deref(),
         args.file_kind.as_deref(),
         args.source.as_deref(),
         &label_filter,

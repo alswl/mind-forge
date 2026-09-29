@@ -74,6 +74,27 @@ fn publish_help_snapshot() {
 }
 
 #[test]
+fn publish_run_help_snapshot() {
+    let (stdout, _, code) = run(&["publish", "run", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("publish_run_help", stdout);
+}
+
+#[test]
+fn article_block_move_help_snapshot() {
+    let (stdout, _, code) = run(&["article", "block", "move", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("article_block_move_help", stdout);
+}
+
+#[test]
+fn article_block_new_help_snapshot() {
+    let (stdout, _, code) = run(&["article", "block", "new", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("article_block_new_help", stdout);
+}
+
+#[test]
 fn asset_help_snapshot() {
     let (stdout, _, code) = run(&["asset", "--help"]);
     assert_eq!(code, 0);
@@ -266,6 +287,15 @@ fn article_convert_help_snapshot() {
     let (stdout, _, code) = run(&["article", "convert", "--help"]);
     assert_eq!(code, 0);
     assert_snapshot!("article_convert_help", stdout);
+}
+
+#[test]
+fn source_rename_help_snapshot() {
+    // spec 082 (#54): the target is a path, not a name — lock the wording
+    // that states so (FR-018's snapshot-coverage requirement for help text).
+    let (stdout, _, code) = run(&["source", "rename", "--help"]);
+    assert_eq!(code, 0);
+    assert_snapshot!("source_rename_help", stdout);
 }
 
 #[test]

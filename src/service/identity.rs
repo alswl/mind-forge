@@ -74,7 +74,9 @@ pub fn normalize_project_selector(repo_root: &Path, input: &str, cwd: &Path) -> 
 
     let repo_canonical = util::try_canonicalize(repo_root);
     let cwd_canonical = util::try_canonicalize(cwd);
-    let has_separator = input.contains('/') || input.contains('\\');
+    // spec 082 FR-007: bare `.` is a path form on its own — exactly what a
+    // shell completes for "here" — not only when paired with a separator.
+    let has_separator = input == "." || input.contains('/') || input.contains('\\');
 
     let resolved = if has_separator {
         canonicalize_within_boundary(&repo_canonical, &cwd_canonical.join(input))?
@@ -100,6 +102,12 @@ fn projects_dir_target(repo_root: &Path, name: &str) -> Result<PathBuf> {
 ///
 /// A bare substring match on `..` is not enough — file names may legitimately
 /// contain dots — so this splits on both POSIX and Windows separators.
+///
+/// spec 082 FR-004: this is a strict, unconditional refusal — it fires even
+/// when the `..` would resolve to a location genuinely inside the boundary.
+/// The message therefore states the restriction itself, not an asserted
+/// consequence ("would escape the X root") that may be false for a `..` that
+/// stays inside the repo (e.g. `../sibling-project`).
 fn reject_traversal(input: &str, hint: &str) -> Result<()> {
     if !input.contains("..") {
         return Ok(());
@@ -107,25 +115,25 @@ fn reject_traversal(input: &str, hint: &str) -> Result<()> {
     let components: Vec<&str> = input.split(&['/', '\\'][..]).collect();
     if components.contains(&"..") {
         return Err(MfError::usage(
-            format!("path '{input}' contains '..' which would escape the {hint} root"),
-            Some(format!("use a path under the {hint} root")),
+            format!("path '{input}' contains '..', which is not accepted in a {hint} selector"),
+            Some(format!("use a path under the {hint} root without '..' components")),
         ));
     }
     Ok(())
 }
 
 /// Validate the raw project selector input for basic safety.
+///
+/// spec 082 FR-007: bare `.` and `./`-prefixed forms are valid cwd-relative
+/// selectors and must reach [`normalize_project_selector`]'s path-resolution
+/// branch, not be rejected here. Bare `..` and any `..` component are still
+/// rejected — by [`reject_traversal`] below, uniformly with every other
+/// `..`-bearing input, so there is one rejection path instead of two.
 fn validate_project_input(input: &str) -> Result<()> {
     if input.is_empty() {
         return Err(MfError::usage(
             "project path cannot be empty",
             Some("provide a path under the repo root".to_string()),
-        ));
-    }
-    if input == "." || input == ".." {
-        return Err(MfError::usage(
-            format!("invalid project path: '{input}'"),
-            Some("use a path under the repo root".to_string()),
         ));
     }
     reject_traversal(input, "repo")
@@ -169,6 +177,33 @@ fn canonicalize_within_boundary(boundary_root: &Path, target: &Path) -> Result<P
         return Err(outside_err());
     }
     Ok(parent_resolved.join(&leaf))
+}
+
+/// The one path-resolution rule for a target that is always a path, never a
+/// name to look up (spec 082 FR-002, FR-012; `research.md` §2).
+///
+/// Absolute inputs are used as-is; relative inputs resolve against `cwd`.
+/// Any `..` component is rejected unconditionally — before `boundary` is
+/// even considered (spec 082 FR-004). When `boundary` is `Some`, the
+/// resolved path is additionally verified to fall inside it; this is an
+/// extra check, not a different resolution rule — the presence of a project
+/// scope never changes how the path itself is resolved (FR-002).
+///
+/// Does not check whether the target (or its parent) exists; callers that
+/// require an existing parent directory (e.g. `source rename`, spec 082
+/// FR-015) verify that separately, since "parent must exist" is specific to
+/// that operation, not to path resolution in general.
+pub fn resolve_path_selector(input: &str, cwd: &Path, boundary: Option<&Path>, hint: &str) -> Result<PathBuf> {
+    if input.trim().is_empty() {
+        return Err(MfError::usage("path cannot be empty", Some("provide a path".to_string())));
+    }
+    reject_traversal(input, hint)?;
+    let cwd_canonical = util::try_canonicalize(cwd);
+    let target = cwd_canonical.join(input);
+    match boundary {
+        Some(boundary_root) => canonicalize_within_boundary(boundary_root, &target),
+        None => Ok(target),
+    }
 }
 
 // ── Project-local entity selector normalization (T009) ────────────────────
@@ -277,10 +312,24 @@ mod tests {
     }
 
     #[test]
-    fn normalize_rejects_dot_input() {
+    fn normalize_dot_from_repo_root_resolves_to_repo_root() {
+        // spec 082 FR-007: `.` is a path form and must resolve, not be
+        // rejected — it is exactly what a shell completes for "here".
         let (_dir, repo_root) = setup_repo();
-        let err = normalize_project_selector(&repo_root, ".", &repo_root).unwrap_err();
-        assert!(err.to_string().contains("invalid"), "got: {err}");
+        let id = normalize_project_selector(&repo_root, ".", &repo_root).unwrap();
+        assert_eq!(id.resolved_path, util::try_canonicalize(&repo_root));
+    }
+
+    #[test]
+    fn normalize_dot_from_inside_a_project_resolves_to_that_project() {
+        // The reported bug (#55): `--project .` run from inside a project
+        // must resolve to that project, not to the projects directory.
+        let (_dir, repo_root) = setup_repo();
+        let project = repo_root.join("projects/projA");
+        fs::create_dir_all(&project).unwrap();
+        fs::write(project.join("mind.yaml"), "schema_version: '1'\n").unwrap();
+        let id = normalize_project_selector(&repo_root, ".", &project).unwrap();
+        assert_eq!(id.resolved_path, util::try_canonicalize(&project));
     }
 
     #[test]
@@ -457,5 +506,75 @@ mod tests {
                 || err.to_string().contains(".."),
             "got: {err}"
         );
+    }
+
+    #[test]
+    fn resolve_path_selector_cwd_relative_no_boundary() {
+        let (_dir, repo_root) = setup_repo();
+        let cwd = repo_root.join("some/where");
+        fs::create_dir_all(&cwd).unwrap();
+        let resolved = resolve_path_selector("target.md", &cwd, None, "target").unwrap();
+        assert_eq!(resolved, util::try_canonicalize(&cwd).join("target.md"));
+    }
+
+    #[test]
+    fn resolve_path_selector_absolute_input_used_as_is() {
+        let (_dir, repo_root) = setup_repo();
+        let cwd = repo_root.join("elsewhere");
+        fs::create_dir_all(&cwd).unwrap();
+        let abs = repo_root.join("sources/file/x.md");
+        let resolved = resolve_path_selector(abs.to_str().unwrap(), &cwd, None, "target").unwrap();
+        // Path::join replaces entirely when the joined component is absolute.
+        assert_eq!(resolved, abs);
+    }
+
+    #[test]
+    fn resolve_path_selector_rejects_dotdot_before_boundary_check() {
+        let (_dir, repo_root) = setup_repo();
+        let err = resolve_path_selector("../escape.md", &repo_root, Some(&repo_root), "target").unwrap_err();
+        assert!(err.to_string().contains(".."), "got: {err}");
+    }
+
+    #[test]
+    fn resolve_path_selector_rejects_empty_input() {
+        let (_dir, repo_root) = setup_repo();
+        let err = resolve_path_selector("", &repo_root, None, "target").unwrap_err();
+        assert!(err.to_string().contains("empty"), "got: {err}");
+    }
+
+    #[test]
+    fn resolve_path_selector_within_boundary_succeeds() {
+        let (_dir, repo_root) = setup_repo();
+        let project = repo_root.join("projects/p");
+        fs::create_dir_all(project.join("sources/yuque")).unwrap();
+        // cwd == project, so this mirrors "run from inside the project".
+        let resolved = resolve_path_selector("sources/yuque/renamed.md", &project, Some(&project), "project").unwrap();
+        assert_eq!(resolved, util::try_canonicalize(&project).join("sources/yuque/renamed.md"));
+    }
+
+    #[test]
+    fn resolve_path_selector_outside_boundary_is_refused() {
+        let (_dir, repo_root) = setup_repo();
+        let project = repo_root.join("projects/p");
+        fs::create_dir_all(&project).unwrap();
+        // cwd == repo_root, NOT inside the project: the relative target
+        // resolves outside the project boundary and must be refused
+        // (spec 082 research.md §2's accepted consequence).
+        let err = resolve_path_selector("sources/yuque/renamed.md", &repo_root, Some(&project), "project").unwrap_err();
+        assert!(err.to_string().contains("outside"), "got: {err}");
+    }
+
+    #[test]
+    fn resolve_path_selector_project_flag_only_adds_a_check() {
+        // spec 082 FR-002: the same input resolves to the same location
+        // with or without a boundary — `boundary` only adds a pass/fail
+        // check, it never changes the resolved path itself.
+        let (_dir, repo_root) = setup_repo();
+        let project = repo_root.join("projects/p");
+        fs::create_dir_all(project.join("sources/yuque")).unwrap();
+        let without_boundary = resolve_path_selector("sources/yuque/renamed.md", &project, None, "project").unwrap();
+        let with_boundary =
+            resolve_path_selector("sources/yuque/renamed.md", &project, Some(&project), "project").unwrap();
+        assert_eq!(without_boundary, with_boundary);
     }
 }

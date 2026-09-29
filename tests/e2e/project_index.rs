@@ -140,3 +140,56 @@ fn index_is_idempotent() {
 
     assert_eq!(after_first, after_second, "index should be idempotent");
 }
+
+// ---------------------------------------------------------------------------
+// spec 082 US1 (#55): `--project .` must agree across command families
+// ---------------------------------------------------------------------------
+
+/// E2E: `--project .` resolves identically for `article index`, `project
+/// lint`, and `build`, run from inside the project directory. Before the
+/// fix, `article index --project .` returned `status: ok` with a zero scan
+/// (it resolved to the projects directory, not the project), while `project
+/// lint --project .` failed outright with "project '.' not found" — the
+/// same selector, three different outcomes across three commands.
+#[test]
+fn project_dot_agrees_across_article_index_project_lint_and_build() {
+    let ds = Dataset::empty().with_project("crossfam");
+    let project_dir = ds.root().join("projects/crossfam");
+    std::fs::create_dir_all(project_dir.join("docs/x")).unwrap();
+    std::fs::create_dir_all(project_dir.join("sources")).unwrap();
+    std::fs::create_dir_all(project_dir.join("assets")).unwrap();
+    std::fs::write(project_dir.join("docs/x/01-opening.md"), "# Opening\n").unwrap();
+
+    // article index: --project . must scan the same as the bare form.
+    let (stdout_dot, stderr_dot, code_dot) = run_in(&project_dir, &["--json", "article", "index", "--project", "."]);
+    assert_eq!(code_dot, 0, "stderr: {stderr_dot}");
+    let dot: serde_json::Value = serde_json::from_str(&stdout_dot).unwrap();
+
+    let (stdout_bare, stderr_bare, code_bare) = run_in(&project_dir, &["--json", "article", "index"]);
+    assert_eq!(code_bare, 0, "stderr: {stderr_bare}");
+    let bare: serde_json::Value = serde_json::from_str(&stdout_bare).unwrap();
+
+    assert_eq!(
+        dot["data"]["scanned_count"], bare["data"]["scanned_count"],
+        "article index --project . diverged from the bare form: dot={dot} bare={bare}"
+    );
+    assert_eq!(dot["data"]["scanned_count"], 1, "expected the one fixture article to be scanned: {dot}");
+
+    // project lint: --project . must reach the same project as the bare
+    // form (both may still report lint findings — that's not what's under
+    // test here, only that the *resolution* agrees).
+    let (_, stderr_lint_dot, code_lint_dot) = run_in(&project_dir, &["project", "lint", "--project", "."]);
+    let (_, stderr_lint_bare, code_lint_bare) = run_in(&project_dir, &["project", "lint"]);
+    assert_eq!(
+        code_lint_dot, code_lint_bare,
+        "project lint --project . vs bare form diverged: dot(stderr={stderr_lint_dot}) bare(stderr={stderr_lint_bare})"
+    );
+
+    // build: --project . must resolve the same article set as the bare form.
+    let (_, stderr_build_dot, code_build_dot) = run_in(&project_dir, &["build", "docs/x", "--project", "."]);
+    assert_eq!(code_build_dot, 0, "build --project . should succeed: stderr={stderr_build_dot}");
+    assert!(
+        project_dir.join("outputs/x.md").exists() || project_dir.join("build/x.md").exists(),
+        "build --project . should have produced an artifact"
+    );
+}

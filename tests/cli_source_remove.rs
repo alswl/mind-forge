@@ -155,6 +155,48 @@ fn remove_dirty_entry_succeeds() {
     assert!(!index_content.contains("paper"), "entry should be removed");
 }
 
+#[test]
+fn remove_refuses_a_name_path_collision() {
+    let (repo, project) = setup();
+    let yaml = r#"schema_version: '1'
+sources:
+  - name: sources/pdf/paper.pdf
+    type: file
+    path: sources/file/notes.md
+    tags: []
+  - name: paper
+    type: pdf
+    path: sources/pdf/paper.pdf
+    tags: []
+"#;
+    common::write_index(&repo, "alpha", yaml);
+    let before = std::fs::read(project.join("mind-index.yaml")).unwrap();
+
+    let output = Command::cargo_bin("mf")
+        .unwrap()
+        .args([
+            "--output",
+            "json",
+            "--root",
+            repo.path().to_str().unwrap(),
+            "source",
+            "remove",
+            "sources/pdf/paper.pdf",
+            "--project",
+            "alpha",
+            "--yes",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["kind"], "usage");
+    assert!(error["error"]["message"].as_str().unwrap().contains("matches multiple registrations"));
+    assert!(error["error"]["message"].as_str().unwrap().contains("paper"));
+    assert_eq!(std::fs::read(project.join("mind-index.yaml")).unwrap(), before);
+    assert!(project.join("sources/pdf/paper.pdf").exists());
+}
+
 // ---------------------------------------------------------------------------
 // 5. remove_unknown_name — non-existent name → usage
 // ---------------------------------------------------------------------------

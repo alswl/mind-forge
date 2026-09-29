@@ -87,6 +87,17 @@ fn search_respects_limit() {
 }
 
 #[test]
+fn search_refuses_an_unresolvable_project_selector() {
+    let repo = synced_repo();
+    let (stdout, stderr, code) = run(&repo, &["source", "search", "notes", "--project", "missing-project"], &[]);
+    assert_eq!(code, 2, "unknown project must be a selector error\nstdout={stdout}\nstderr={stderr}");
+    let error: serde_json::Value = serde_json::from_str(&stderr).expect("JSON error envelope");
+    assert!(matches!(error["error"]["kind"].as_str(), Some("usage" | "not_found")));
+    assert!(error["error"]["message"].as_str().unwrap_or_default().contains("missing-project"));
+    assert!(!error["error"]["hint"].as_str().unwrap_or_default().is_empty());
+}
+
+#[test]
 fn search_with_integer_revision() {
     let repo = synced_repo();
     let (stdout, stderr, code) = run(&repo, &["source", "search", "entanglement", "--revision", "1"], &[]);

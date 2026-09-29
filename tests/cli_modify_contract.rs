@@ -166,19 +166,29 @@ articles:
 
 #[test]
 fn source_rename_text_confirm() {
-    let (repo, _project) = setup_project_with_source("alpha", "old-src");
-    let output = mf(&repo).args(["source", "rename", "old-src", "new-src", "--project", "alpha"]).output().unwrap();
-    assert!(output.status.success());
+    // spec 082 (#54): the target is a path, resolved cwd-relative — run
+    // from inside the project and give the full path (same directory,
+    // explicit extension) so the rename lands where "source new" put it.
+    let (repo, project) = setup_project_with_source("alpha", "old-src");
+    let output = mf(&repo)
+        .args(["source", "rename", "old-src", "sources/pdf/new-src.pdf", "--project", "alpha"])
+        .current_dir(&project)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("✓ renamed source:"), "stdout: {stdout}");
 }
 
 #[test]
 fn source_rename_json_envelope() {
-    let (repo, _project) = setup_project_with_source("alpha", "old-src");
-    let output =
-        mf_json(&repo).args(["source", "rename", "old-src", "new-src", "--project", "alpha"]).output().unwrap();
-    assert!(output.status.success());
+    let (repo, project) = setup_project_with_source("alpha", "old-src");
+    let output = mf_json(&repo)
+        .args(["source", "rename", "old-src", "sources/pdf/new-src.pdf", "--project", "alpha"])
+        .current_dir(&project)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(v["status"], "ok");
@@ -639,9 +649,13 @@ fn rename_dry_run_all_resources() {
     assert!(String::from_utf8(out.stdout).unwrap().contains("[dry-run]"));
 
     // Create a source to rename with --dry-run
-    let (repo2, _) = setup_project_with_source("beta", "s1");
-    let out = mf(&repo2).args(["source", "rename", "s1", "s2", "--project", "beta", "--dry-run"]).output().unwrap();
-    assert!(out.status.success());
+    let (repo2, project2) = setup_project_with_source("beta", "s1");
+    let out = mf(&repo2)
+        .args(["source", "rename", "s1", "sources/pdf/s2.pdf", "--project", "beta", "--dry-run"])
+        .current_dir(&project2)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
     assert!(String::from_utf8(out.stdout).unwrap().contains("[dry-run]"));
 
     // Create an asset to rename with --dry-run

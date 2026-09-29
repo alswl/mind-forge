@@ -2,29 +2,26 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Create an article
+Publish an article to a target
 
-Usage: mf article new [OPTIONS] <TITLE>
+Usage: mf publish run [OPTIONS] <ARTICLE>
 
 Arguments:
-  <TITLE>  Article title (sole positional)
+  <ARTICLE>  Article name (kebab-case, no extension, no path separators)
 
 Options:
       --root <PATH>             Mind Repo root directory
-      --slug <SLUG>             Optional ASCII-friendly filename slug. Without it the title is used
+      --target <TARGET>         
       --config <PATH>           Config file path
-  -t, --template <TEMPLATE>     Template: built-in schema name (blank/arch/prd/blog) or path under
-                                project root. Default: blank [default: blank]
-      --file                    Write a single file instead of a directory [aliases: --single-file]
+      --strip-front-matter      Remove the complete front-matter block from the published payload
+      --keep-front-matter       Keep front matter even when publish.strip_front_matter is enabled
   -v, --verbose...              Verbose output
+  -n, --dry-run                 Preview changes without writing
   -q, --quiet                   Silence non-error output
-      --tag <TAG>               
-      --draft                   
-  -o, --output <FORMAT>         Output format [default: text] [possible values: text, json]
   -f, --force                   Proceed despite safety checks: overwrite an existing target, or
                                 remove an entity referenced by others
+  -o, --output <FORMAT>         Output format [default: text] [possible values: text, json]
       --json                    Shorthand for --output json
-  -n, --dry-run                 Preview changes without writing
       --no-color                Disable colored output
   -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative, repo-relative, or absolute)
   -h, --help                    Print help

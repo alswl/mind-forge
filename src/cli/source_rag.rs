@@ -12,7 +12,7 @@ use crate::service as svc;
 
 #[derive(Debug, Clone, Args)]
 pub struct AdvancedSyncArgs {
-    /// Limit sync to a specific project
+    /// Limit sync to a project name or path (cwd-relative, repo-relative, or absolute)
     #[arg(short = 'p', long)]
     pub project: Option<String>,
     /// Limit sync to a specific Source identity (requires unambiguous scope)
@@ -34,6 +34,7 @@ pub struct AdvancedSyncArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct AdvancedStatusArgs {
+    /// Limit to a project name or path (cwd-relative, repo-relative, or absolute)
     #[arg(short = 'p', long)]
     pub project: Option<String>,
     #[arg(long)]
@@ -55,6 +56,7 @@ pub struct AdvancedRebuildArgs {
 #[derive(Debug, Clone, Args)]
 pub struct AdvancedClearArgs {
     pub source: Option<String>,
+    /// Limit to a project name or path (cwd-relative, repo-relative, or absolute)
     #[arg(short = 'p', long)]
     pub project: Option<String>,
     #[arg(long)]
@@ -108,7 +110,7 @@ pub struct AdvancedImportArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct AdvancedTraceArgs {
-    /// Limit to one project
+    /// Limit to a project name or path (cwd-relative, repo-relative, or absolute)
     #[arg(short = 'p', long)]
     pub project: Option<String>,
 }

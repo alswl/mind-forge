@@ -61,6 +61,9 @@ pub struct PublishConfig {
     pub default_target: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub targets: Option<Vec<PublishTarget>>,
+    /// Remove the complete YAML front-matter block from publish payloads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strip_front_matter: Option<bool>,
 }
 
 /// Banner presentation level for generated article output.

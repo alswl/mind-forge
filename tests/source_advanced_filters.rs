@@ -24,12 +24,46 @@ fn project_filter_limits_results() {
     let proj = report(&proj_out);
     assert!(!proj["results"].as_array().unwrap().is_empty(), "existing project must have results\n{proj_out}");
 
-    // Search scoped to a nonexistent project must return zero results.
-    let (none_out, _, _) =
+    // An invalid project selector is an error rather than a misleading empty result.
+    let (_, none_err, none_code) =
         run(&repo, &["source", "search", "entanglement", "--mode", "both", "--project", "nonexistent"], &[]);
-    let none = report(&none_out);
-    assert!(none["results"].as_array().unwrap().is_empty(), "nonexistent project must return zero results\n{none_out}");
+    assert_eq!(none_code, 2, "unknown project must be a usage error: {none_err}");
+    let error: serde_json::Value = serde_json::from_str(&none_err).unwrap();
+    assert!(error["error"]["message"].as_str().unwrap_or_default().contains("nonexistent"));
+    assert!(!error["error"]["hint"].as_str().unwrap_or_default().is_empty());
     let _ = all_count;
+}
+
+#[test]
+fn project_filter_keeps_nested_projects_with_same_basename_distinct() {
+    let repo = synced_repo();
+    let nested = repo.path().join("workspaces/alpha");
+    std::fs::create_dir_all(nested.join("sources/file")).unwrap();
+    std::fs::write(nested.join("mind.yaml"), "schema_version: '1'\n").unwrap();
+    std::fs::write(
+        nested.join("sources/file/nested.md"),
+        "# Nested project\n\nQuantum entanglement appears in this nested project.\n",
+    )
+    .unwrap();
+    let nested_selector = nested.to_str().unwrap();
+    let (stdout, stderr, code) = run(&repo, &["source", "index", "--project", nested_selector], &[]);
+    assert_eq!(code, 0, "index failed\nstdout: {stdout}\nstderr: {stderr}");
+    let (stdout, stderr, code) = run(&repo, &["source", "sync", "--offline"], &[]);
+    assert_eq!(code, 0, "sync failed\nstdout: {stdout}\nstderr: {stderr}");
+
+    let (stdout, stderr, code) =
+        run(&repo, &["source", "search", "entanglement", "--mode", "advanced", "--project", nested_selector], &[]);
+    assert_eq!(code, 0, "search failed\nstdout: {stdout}\nstderr: {stderr}");
+    let report = report(&stdout);
+    let results = report["results"].as_array().unwrap();
+    assert!(!results.is_empty(), "nested project should have hits: {stdout}");
+    assert!(results.iter().all(|result| {
+        result["registrations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|registration| registration["project_path"] == "workspaces/alpha")
+    }));
 }
 
 #[test]
