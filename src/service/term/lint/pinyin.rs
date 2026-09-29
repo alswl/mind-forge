@@ -102,6 +102,9 @@ pub(crate) fn scan_for_pinyin(
                     context: context_excerpt(content, window_byte_start, window_byte_len),
                     // Overwritten by `apply_selection` once the fix scope is known.
                     held_back: false,
+                    // Spec 081 US3 scopes quote-protected disclosure to the
+                    // literal-correction scanner; phonetic matching is out.
+                    quote_protected: false,
                     competing_terms: vec![],
                 });
 
@@ -117,6 +120,7 @@ pub(crate) fn scan_for_pinyin(
                     replacement_eligible: !entry.cref.is_ambiguous,
                     advisory: false,
                     substring_adjacent_word: false,
+                    quote_protected: false,
                     yaml_index: entry.cref.yaml_index,
                 });
             }

@@ -20,10 +20,29 @@ pub(crate) fn strip_exempt_regions(content: &str, fm_end: Option<usize>) -> Vec<
 }
 
 pub(crate) fn strip_exempt_regions_with_quotes(content: &str, fm_end: Option<usize>, include_quotes: bool) -> Vec<u8> {
+    scan_exempt_regions(content, fm_end, include_quotes).0
+}
+
+/// Spec 081 US3: `strip_exempt_regions_with_quotes(.., false)` plus the byte
+/// ranges suppressed *as verbatim quotes* (blockquote lines, `「…」` spans).
+/// Other exemptions — fenced/inline code, comments, URLs, front matter — are
+/// masked but deliberately not disclosed: they are verbatim by nature and
+/// carry no correction the user could act on.
+pub(crate) fn strip_exempt_regions_collecting_quote_spans(
+    content: &str,
+    fm_end: Option<usize>,
+) -> (Vec<u8>, Vec<(usize, usize)>) {
+    scan_exempt_regions(content, fm_end, false)
+}
+
+fn scan_exempt_regions(content: &str, fm_end: Option<usize>, include_quotes: bool) -> (Vec<u8>, Vec<(usize, usize)>) {
     let bytes = content.as_bytes();
     let len = bytes.len();
     let mut out = vec![0u8; len];
     let mut state = ScanCursor::Body;
+    // Spec 081 US3: start offset of the quote span currently open, if any.
+    let mut quote_span_start: Option<usize> = None;
+    let mut quote_spans: Vec<(usize, usize)> = Vec::new();
 
     let start_offset = fm_end.unwrap_or_default();
 
@@ -32,12 +51,14 @@ pub(crate) fn strip_exempt_regions_with_quotes(content: &str, fm_end: Option<usi
         match state {
             ScanCursor::Body => {
                 if !include_quotes && is_blockquote_start(bytes, i, start_offset) {
+                    quote_span_start = Some(i);
                     state = ScanCursor::Blockquote;
                     continue;
                 }
                 if !include_quotes && bytes[i..].starts_with("「".as_bytes()) {
                     // UTF-8 punctuation is handled by the byte helper below;
                     // zero the complete span while retaining line structure.
+                    quote_span_start = Some(i);
                     let width = '「'.len_utf8();
                     out[i..i + width].fill(0);
                     i += width;
@@ -216,6 +237,9 @@ pub(crate) fn strip_exempt_regions_with_quotes(content: &str, fm_end: Option<usi
                 if bytes[i] == b'\n' {
                     out[i] = bytes[i];
                     state = ScanCursor::Body;
+                    if let Some(start) = quote_span_start.take() {
+                        quote_spans.push((start, i));
+                    }
                 } else if bytes[i] == b'\r' {
                     out[i] = bytes[i];
                 }
@@ -227,6 +251,9 @@ pub(crate) fn strip_exempt_regions_with_quotes(content: &str, fm_end: Option<usi
                     out[i..i + width].fill(0);
                     i += width;
                     state = ScanCursor::Body;
+                    if let Some(start) = quote_span_start.take() {
+                        quote_spans.push((start, i));
+                    }
                 } else if bytes[i] == b'\n' || bytes[i] == b'\r' {
                     out[i] = bytes[i];
                     i += 1;
@@ -237,7 +264,13 @@ pub(crate) fn strip_exempt_regions_with_quotes(content: &str, fm_end: Option<usi
         }
     }
 
-    out
+    // An unclosed `「` runs to end of content rather than leaking: this
+    // mirrors the byte masking above, which already zeroes the same range.
+    if let Some(start) = quote_span_start {
+        quote_spans.push((start, len));
+    }
+
+    (out, quote_spans)
 }
 
 fn is_blockquote_start(bytes: &[u8], i: usize, start_offset: usize) -> bool {
@@ -444,5 +477,63 @@ mod tests {
         let content = "> quoted mindrepo 「verbatim mindrepo」";
         let result = strip_exempt_regions_with_quotes(content, None, true);
         assert_eq!(result, content.as_bytes());
+    }
+
+    // ── spec 081 US3: quote-span collection ──────────────────────────────
+
+    #[test]
+    fn collecting_quote_spans_reports_blockquote_line_span() {
+        let content = "plain\n> quoted 装置\nmore plain\n";
+        let (_, spans) = strip_exempt_regions_collecting_quote_spans(content, None);
+        assert_eq!(spans.len(), 1, "exactly one blockquote line span: {spans:?}");
+        let (start, end) = spans[0];
+        assert_eq!(&content[start..end], "> quoted 装置", "span must cover the whole line, marker included");
+    }
+
+    #[test]
+    fn collecting_quote_spans_reports_cjk_quote_span_including_markers() {
+        let content = "plain 「装置」 more";
+        let (_, spans) = strip_exempt_regions_collecting_quote_spans(content, None);
+        assert_eq!(spans.len(), 1, "exactly one CJK-quote span: {spans:?}");
+        let (start, end) = spans[0];
+        assert_eq!(&content[start..end], "「装置」");
+    }
+
+    #[test]
+    fn collecting_quote_spans_closes_unclosed_cjk_quote_at_end_of_content() {
+        // No closing 」: spec 081 edge case — the span runs to end of content,
+        // matching the byte-level masking, which zeroes the same range.
+        let content = "before 「unterminated 装置";
+        let (masked, spans) = strip_exempt_regions_collecting_quote_spans(content, None);
+        assert_eq!(spans.len(), 1);
+        let (start, end) = spans[0];
+        assert_eq!(end, content.len(), "unclosed span must run to end of content: {spans:?}");
+        assert_eq!(&content[start..end], "「unterminated 装置");
+        assert!(masked[start..end].iter().all(|&b| b == 0), "byte mask must agree with the span");
+    }
+
+    #[test]
+    fn collecting_quote_spans_is_empty_for_plain_text() {
+        let content = "no quotes here at all\n";
+        let (_, spans) = strip_exempt_regions_collecting_quote_spans(content, None);
+        assert!(spans.is_empty());
+    }
+
+    #[test]
+    fn collecting_quote_spans_ignores_code_fence_lookalikes() {
+        // A `>`-prefixed line and a 「…」 span inside a fenced code block are
+        // exempt as code, not as quotes — neither should be reported here.
+        let content = "```\n> not a quote, it's code\n「not a quote either」\n```\n";
+        let (_, spans) = strip_exempt_regions_collecting_quote_spans(content, None);
+        assert!(spans.is_empty(), "code-fence content must not be reported as quote spans: {spans:?}");
+    }
+
+    #[test]
+    fn collecting_quote_spans_matches_masked_bytes_exactly() {
+        let content = "Before.\n> quoted 装置\n「verbatim 装置」\nAfter.\n";
+        let (masked, spans) = strip_exempt_regions_collecting_quote_spans(content, None);
+        for &(start, end) in &spans {
+            assert!(masked[start..end].iter().all(|&b| b == 0 || b == b'\n'), "span must be zeroed in the mask");
+        }
     }
 }

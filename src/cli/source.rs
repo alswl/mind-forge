@@ -416,8 +416,8 @@ fn handle_list(args: SourceListArgs, ctx: &CommandCtx) -> Result<CommandOutcome>
                     url: is_url.then(|| registration.registered_location.clone()),
                     path: (!is_url).then_some(registration.registered_location),
                     tags: serde_json::from_str(&registration.tags_json).unwrap_or_default(),
-                    added_at: String::new(),
-                    updated_at: String::new(),
+                    added_at: registration.added_at.unwrap_or_default(),
+                    updated_at: registration.updated_at.unwrap_or_default(),
                     extra: svc_source::advanced::compatibility::extras_from_json(registration.extras_json.as_ref()),
                 })
             })
@@ -847,8 +847,8 @@ fn handle_source_show(args: SourceShowArgs, ctx: &CommandCtx) -> Result<CommandO
                     url: is_url.then(|| registration.registered_location.clone()),
                     path: (!is_url).then_some(registration.registered_location),
                     tags: serde_json::from_str(&registration.tags_json).unwrap_or_default(),
-                    added_at: String::new(),
-                    updated_at: String::new(),
+                    added_at: registration.added_at.unwrap_or_default(),
+                    updated_at: registration.updated_at.unwrap_or_default(),
                     extra: svc_source::advanced::compatibility::extras_from_json(registration.extras_json.as_ref()),
                 })
             })
@@ -1010,6 +1010,9 @@ fn source_add_outcome(
     if let Some(ref key) = outcome.registration_key {
         details["registration_key"] = serde_json::Value::String(key.clone());
     }
+    if let Some(ref overwritten) = outcome.replaced_location {
+        details["replaced_location"] = serde_json::Value::String(overwritten.clone());
+    }
 
     let mut warnings = Vec::new();
     if outcome.projection_degraded {
@@ -1038,11 +1041,13 @@ fn source_add_outcome(
     };
     match ctx.format() {
         Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings, None)),
-        Format::Text => Ok(CommandOutcome::Success(
-            serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(project_path)))),
-            warnings,
-            None,
-        )),
+        Format::Text => {
+            let mut text = verb_text(&result, &VerbOpts::from_repo_root(Some(project_path)));
+            if let Some(ref overwritten) = outcome.replaced_location {
+                text.push_str(&format!("\n  replaced registration at {overwritten}"));
+            }
+            Ok(CommandOutcome::Success(serde_json::Value::String(text), warnings, None))
+        }
     }
 }
 

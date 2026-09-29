@@ -3,7 +3,10 @@
 `mf term lint` scans project documents for term inconsistencies and, with `--fix`, rewrites them in place.
 
 Quoted text is protected by default: blockquotes and CJK verbatim spans (`「…」`)
-are not scanned. Use `--include-quotes` to opt in for one invocation. One-time
+are never rewritten. A correctable hit inside one is reported as a distinct
+`, quote-protected` finding (spec 081) — visible and countable, but never
+auto-applied, not even with `--term`. Use `--include-quotes` to opt in for one
+invocation and have those hits treated as ordinary, fixable findings. One-time
 rules can be supplied with repeatable `--ad-hoc 'ORIGINAL=>CORRECT'` or
 `--ad-hoc-from PATH`; they never modify the glossary.
 
