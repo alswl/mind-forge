@@ -316,11 +316,15 @@ fn project_bare_name_shadowed_by_cwd_subdir_is_refused_not_guessed() {
     // and a *different*, also-registered top-level project also named "B".
     std::fs::create_dir_all(project.join("B/docs")).unwrap();
     std::fs::write(project.join("B/mind.yaml"), "schema_version: '1'\n").unwrap();
+    std::fs::write(project.join("B/docs/child.md"), "# Child\n").unwrap();
 
     std::fs::create_dir_all(dir.path().join("projects/B")).unwrap();
     std::fs::write(dir.path().join("projects/B/mind.yaml"), "schema_version: '1'\n").unwrap();
     let manifest = std::fs::read_to_string(dir.path().join("minds.yaml")).unwrap();
     std::fs::write(dir.path().join("minds.yaml"), format!("{manifest}- projects/B\n")).unwrap();
+    let (created, create_err, create_code) =
+        mf_at(&["article", "new", "alpha", "--project", "B"], dir.path(), dir.path(), true);
+    assert_eq!(create_code, 0, "fixture article creation failed: {create_err} {created}");
 
     let (stdout, stderr, code) = mf_at(&["article", "list", "--project", "B"], dir.path(), &project, true);
     assert_ne!(code, 0, "ambiguous bare name must be refused, not silently resolved: stdout={stdout} stderr={stderr}");
@@ -331,9 +335,9 @@ fn project_bare_name_shadowed_by_cwd_subdir_is_refused_not_guessed() {
     assert!(msg.contains("ambiguous") || msg.contains("both"), "message should name the ambiguity: {msg}");
 
     // The `./`-prefixed form is unambiguous and must still resolve cwd-relative.
-    let (stdout2, stderr2, code2) = mf_at(&["article", "list", "--project", "./B"], dir.path(), &project, true);
+    let (stdout2, stderr2, code2) = mf_at(&["article", "list", "--project", "./B"], dir.path(), &project, false);
     assert_eq!(code2, 0, "./B should resolve cwd-relative without ambiguity: stderr={stderr2}");
-    let _ = stdout2;
+    assert!(!stdout2.contains("alpha"), "./B must resolve to the empty cwd child, not projects/B: {stdout2}");
 }
 
 #[test]
