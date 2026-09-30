@@ -45,7 +45,12 @@ pub fn render_text(result: &VerbResult, opts: &VerbOpts) -> String {
             Verb::Add => format!("[dry-run] would add {}: {}", result.kind, result.identity),
             Verb::Rename => {
                 let old = result.old_identity.as_deref().unwrap_or("?");
-                format!("[dry-run] would rename {}: {} → {}", result.kind, old, result.identity)
+                let destination = if result.kind == "source" {
+                    result.path.as_deref().map(|path| format!(" ({path})")).unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                format!("[dry-run] would rename {}: {} → {}{}", result.kind, old, result.identity, destination)
             }
             Verb::Remove => format!("[dry-run] would remove {}: {}", result.kind, result.identity),
             Verb::Update => {

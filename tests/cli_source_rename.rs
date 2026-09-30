@@ -129,6 +129,11 @@ fn rename_source_dry_run() {
     let output = rename_in_project(&repo, &project, &["notes", "sources/file/meeting-notes.md", "--dry-run"]);
 
     assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout.clone()).unwrap();
+    assert!(
+        stdout.contains("sources/file/meeting-notes.md"),
+        "dry-run text must report the destination path that execution would produce: {stdout}"
+    );
 
     // File should still be at old location
     assert!(project.join("sources/file/notes.md").exists(), "old file should still exist after dry run");
