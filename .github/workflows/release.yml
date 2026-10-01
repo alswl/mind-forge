@@ -41,10 +41,12 @@ jobs:
           echo "/tmp/zig-linux-x86_64-0.14.0" >> "$GITHUB_PATH"
           cargo install cargo-zigbuild
       - run: cargo zigbuild --release --locked --target ${{ matrix.target }}
+      - name: Name binary by target
+        run: cp target/${{ matrix.target }}/release/mf mf-${{ matrix.target }}
       - uses: actions/upload-artifact@v6
         with:
           name: mf-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/mf
+          path: mf-${{ matrix.target }}
 
   build-macos:
     needs: [validate-tag]
@@ -62,10 +64,12 @@ jobs:
       - name: Install protobuf compiler
         run: brew install protobuf
       - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Name binary by target
+        run: cp target/${{ matrix.target }}/release/mf mf-${{ matrix.target }}
       - uses: actions/upload-artifact@v6
         with:
           name: mf-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/mf
+          path: mf-${{ matrix.target }}
 
   create-release:
     needs: [build-linux, build-macos]
