@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.4.2] - 2026-10-01
 
 ### Breaking Changes
 - `mf source rename <old> <new>`: `<new>` is now always interpreted as a
@@ -21,6 +21,19 @@ All notable changes to this project will be documented in this file.
     srcfile renamed.md` used to succeed and write `sources/file/renamed.md.md`
     with a registered name of the literal string `renamed.md`. That can no
     longer happen.
+
+### Features
+- Skills (by @alswl)
+
+### Bug Fixes
+- Disclose quote-protected term corrections and preserve replaced source registrations (spec 081) (by @alswl)
+- Derive template-generated article timestamps from file mtime (by @alswl)
+- Align CLI selector and publish behavior (by @alswl)
+- Identity (by @alswl)
+- Name release binaries by target so artifacts do not collide
+
+### Documentation
+- Rewrite README for current CLI surface
 
 ## [0.4.1] - 2026-09-10
 
