@@ -1,15 +1,34 @@
 # mind-forge
 
+[![CI](https://github.com/alswl/mind-forge/actions/workflows/ci.yml/badge.svg)](https://github.com/alswl/mind-forge/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/alswl/mind-forge)](https://github.com/alswl/mind-forge/releases)
+![Rust 1.91+](https://img.shields.io/badge/rust-1.91%2B-orange)
+
 **A local-first, AI-native CLI for card-based writing and personal knowledge.**
 
-`mf` manages Markdown articles, Sources, assets, terms, builds, publishing,
-and a repository-wide local RAG corpus. Authored files stay plain and
-Git-reviewable; the RAG index is rebuildable derived state.
+`mf` treats a knowledge base like a codebase. You capture evidence once, write
+several articles from it, and ship them through repeatable build and publish
+steps. Everything you author is plain Markdown and YAML that Git can diff and
+review. The search index is derived state and can be rebuilt locally at any
+time. A person, a shell script and an AI agent can all drive the CLI the same
+way.
 
-`mind-forge` treats a knowledge base like a codebase: capture evidence once,
-compose it into different articles, and ship it through repeatable workflows.
-The CLI is designed to be driven equally well by a person, a script, or an AI
-Agent.
+- **Four knowledge stores.** Sources (evidence), Prompts (intent), Thinking
+  (reasoning) and Articles (synthesis) are all first-class.
+- **Repository-wide local RAG.** `mf search` covers Sources, articles, prompts,
+  thinking, project goals and terms. Every hit says where it came from.
+- **Card-based articles.** Directory articles are ordered blocks that you can
+  create, move, renumber and rename.
+- **Deterministic builds.** Blocks merge into one output, private content is
+  stripped, and an opt-in asset pipeline (for example `d2 → svg → png`) runs.
+- **Publishing.** Built articles go to local or prompt-based targets, and
+  publish records are tracked.
+- **Terminology control.** A shared glossary drives lint and safe batch fixes
+  for transcription errors.
+- **Agent contract.** Commands return single JSON envelopes, use fixed exit
+  codes, support `--dry-run` and stop at explicit confirmation boundaries.
+- **Agent skills.** Claude Code skills for planning, writing and CLI reference
+  ship with the repo.
 
 ## Philosophy
 
@@ -36,7 +55,7 @@ flowchart LR
   end
   subgraph Ship
     P1[Local]
-    P2[Yuque]
+    P2[Yuque prompt]
   end
   S --> R
   B --> R
@@ -77,7 +96,9 @@ they do not own it.
 
 ## Install
 
-Requires Rust 1.91+.
+> [!NOTE]
+> Requires Rust 1.91+. Prebuilt binaries for tagged versions are attached to
+> [GitHub Releases](https://github.com/alswl/mind-forge/releases).
 
 ```bash
 git clone https://github.com/alswl/mind-forge.git
@@ -85,9 +106,11 @@ cd mind-forge
 scripts/install.sh
 ```
 
-Use the script rather than `cargo install --path .`: it points `--target-dir` at
-a persistent directory, so later installs rebuild only `mf` instead of all ~490
-dependency crates.
+Use `scripts/install.sh` instead of `cargo install --path .`. The script keeps
+its build directory between runs, so a reinstall rebuilds only `mf` and skips
+the ~490 dependency crates.
+
+Shell completion: `mf completion <shell>`.
 
 ## Quick start
 
@@ -95,79 +118,43 @@ dependency crates.
 mkdir my-repo && cd my-repo
 mf init
 mf project new notes
-mf article new "First Note" --project notes
-mf source new ./reference.pdf --file-kind pdf --project notes
+mf article new "First Note" --project notes        # creates docs/first-note/
 
-# Build and query the repository-wide RAG corpus
+# Capture evidence; new sources are indexed for search by default
+printf '# Reference\n\nA local reference about gateways.\n' > reference.md
+mf source new ./reference.md --project notes
+
+# Sync the whole repository into the local RAG corpus, then query it
 mf source sync --offline
-mf search "what I am investigating" --output json
+mf search "gateways" --project notes --output json
 
-mf article index --project notes
-mf build "First Note" --project notes
+# Assemble the article into projects/notes/outputs/first-note.md
+mf build first-note --project notes
 ```
 
-See the generated [docs/manual.md](docs/manual.md) for the exact command
-reference. After changing CLI definitions, regenerate it with:
+> [!TIP]
+> `mf build` takes an article slug (`first-note`) or path (`docs/first-note`),
+> and `mf publish run` takes the slug. Neither accepts the title. Run
+> `mf article list` to see what is available.
 
-```bash
-scripts/generate-manual.sh
-```
+There is a longer offline walkthrough in [quickstart.md](quickstart.md).
 
-## Build pipeline and safe corrections
+## The Mind Repo model
 
-`mf build` can also maintain derived assets declared in a project's
-`mind.yaml`. A pipeline is opt-in, deterministic, and runs only stale outputs;
-its commands stay outside the Rust binary so each project can choose its local
-tools.
-
-```yaml
-build:
-  strip_first_h1: true
-  pipeline:
-    - name: d2-to-svg
-      input_extension: d2
-      output_extension: svg
-      command: "d2 {input} {output}"
-    - name: svg-to-png
-      input_extension: svg
-      output_extension: png
-      command: "rsvg-convert {input} --output {output}"
-```
-
-`mf build <article> --dry-run` shows the ordered asset plan without running a
-tool. In a chain, rebuilding `diagram.d2 → diagram.svg` also rebuilds the
-dependent `diagram.png`, even when the latter has an artificially newer mtime.
-Missing or failing optional tools emit warnings and leave existing outputs in
-place. See the [build manual](docs/manual.md#mf-build) for path,
-staleness, and safety rules.
-
-For one-off transcription cleanup, keep the shared glossary untouched:
-
-```bash
-mf term fix --project notes --ad-hoc 'listnode=>Release Note' --yes
-```
-
-Term lint/fix protects blockquotes, inline code, and `「verbatim spans」` by
-default. Use `--include-quotes` only when quoted evidence is intentionally in
-scope. The [term lint guide](docs/term-lint.md) documents matching and safety
-rules.
-
-## Mind Repo model
-
-A Mind Repo is more than a folder of finished documents. Each article is
-supported by four first-class knowledge stores:
+A Mind Repo holds projects. Each project has four first-class knowledge stores
+plus supporting assets and terms:
 
 | Store | Responsibility |
 |---|---|
 | **Sources** | Evidence and provenance: what the work can rely on. |
-| **Prompts** | The control plane: objective, mode, audience, constraints, criteria, and durable decisions. |
-| **Thinking** | The working ledger: reasoning, conflicts, assumptions, feedback, blockers, and follow-ups. |
-| **Articles** | The current user-readable synthesis or deliverable. |
+| **Prompts** | The control plane: objective, audience, constraints, criteria and durable decisions. |
+| **Thinking** | The working ledger: reasoning, conflicts, assumptions, feedback and follow-ups. |
+| **Articles** | The current reader-facing synthesis or deliverable. |
 
-Prompt and Thinking are authored Markdown, not transient chat context. A Prompt
-binds to an Article through its declared `article` field; a Thinking ledger
-associates by article key. `mf article list` and `show` expose both relationships,
-while `mf article index` reconciles their projections after manual edits.
+Prompts and Thinking are authored Markdown, not throwaway chat context. A
+Prompt binds to an Article through its `article` field, and a Thinking ledger
+is matched by article key. `mf article show`, `mf prompt list` and
+`mf thinking list` show these links.
 
 ```mermaid
 flowchart TD
@@ -200,26 +187,46 @@ flowchart TD
   Articles --> Build[Build and Publish]
 ```
 
-## Core workflow
+```text
+my-repo/
+├── minds.yaml                  # repository config
+├── projects/
+│   └── notes/
+│       ├── mind.yaml           # project config (build, publish, ...)
+│       ├── mind-index.yaml     # index projection
+│       ├── docs/               # articles
+│       ├── sources/            # captured evidence
+│       ├── prompts/            # intent and constraints
+│       ├── thinking/           # reasoning ledger
+│       └── outputs/            # build products
+└── .mind-forge/cache/source/advanced/  # rebuildable RAG state
+```
+
+`minds.yaml` describes the repository; `mind.yaml` describes a project;
+`mind-index.yaml` is the project compatibility/index projection.
+
+## Workflow
 
 ```text
 set intent → capture evidence → reason → sync/search → write → build → publish
 ```
 
-- `prompts/<key>.md` defines the article's objective and constraints.
-- `thinking/<key>.md` records reasoning and work state as they evolve.
-- `mf source new` records evidence with provenance.
-- `mf source sync --offline` initializes or refreshes the local corpus.
-- `mf search <QUERY>` searches Sources, Prompts, Thinking, Article content,
-  project goals, and terms — each hit carrying structured attribution context.
-- `mf article`, `mf build`, and `mf publish` manage the writing pipeline.
+| Step | Where / command |
+|---|---|
+| Set intent | `prompts/<key>.md` defines the article's objective and constraints |
+| Capture evidence | `mf source new` records evidence with provenance |
+| Reason | `thinking/<key>.md` records reasoning and work state as they evolve |
+| Sync / search | `mf source sync --offline`, then `mf search <QUERY>` |
+| Write | `mf article new`, `mf article block ...` |
+| Build | `mf build <article>` |
+| Publish | `mf publish run <article>` |
 
-## Source RAG
+### Source RAG
 
-### Canonical search
+#### Canonical search
 
 ```bash
-mf source sync --offline
+mf source sync --offline                       # build or refresh the corpus
 mf search "topic or claim" --output json --limit 20
 mf search "topic" --project notes --source reference
 mf source status --output json
@@ -236,7 +243,7 @@ and cite a result instead of re-deriving it. Search is read-only.
 
 `mf source search --mode ...` is retained only for old scripts.
 
-### Source dual-write
+#### Source dual-write
 
 When RAG is active, `mf source new` performs a deliberate dual write:
 
@@ -245,7 +252,8 @@ When RAG is active, `mf source new` performs a deliberate dual write:
 
 A projection warning does not mean the primary Source was lost. Run
 `mf source sync` to reconcile it. Repositories without RAG remain legacy-only
-until their first successful sync.
+until their first successful sync. Pass `--no-index` to register a Source
+without indexing it.
 
 Sync is local-first and non-destructive. It reads saved local Source files and
 discovers authored article prose (the `docs/` articles, not `outputs/` build
@@ -254,10 +262,15 @@ terms by default. Unchanged content is synchronized idempotently. The sync
 report includes per-kind `coverage` and item-by-item `skipped_items` (each with
 a `reason`) so nothing is silently dropped.
 
-`mf source new`/`add` accepts `--article <PATH>` to record the originating
-article as authoritative import provenance on the Source binding.
+`mf source new` accepts `--article <PATH>` to record the originating article as
+authoritative import provenance on the Source binding.
 
-### Maintenance and bundles
+> [!WARNING]
+> `mf source rename <old> <new>` now always treats `<new>` as a path
+> (cwd-relative or absolute). To rename in place, give the full path including
+> directory and extension, e.g. `mf source rename srcfile sources/pdf/renamed.pdf`.
+
+#### Maintenance and bundles
 
 ```bash
 mf source admin rebuild --offline
@@ -283,70 +296,179 @@ Optional semantic embeddings use an OpenAI-compatible `/v1/embeddings`
 provider. Credentials belong in environment variables or the gitignored
 `minds-secrets.yaml`, never in committed configuration.
 
-## Repository layout
+### Write in blocks
 
-```text
-my-repo/
-├── minds.yaml
-├── projects/
-│   └── notes/
-│       ├── mind.yaml
-│       ├── mind-index.yaml
-│       ├── docs/
-│       ├── sources/
-│       ├── prompts/        # intent and control plane
-│       ├── thinking/       # reasoning and work ledger
-│       └── outputs/
-└── .mind-forge/cache/source/advanced/  # rebuildable RAG state
+```bash
+mf article new "Design Review" --template arch --project notes
+mf article block new design-review risks --project notes
+mf article block move design-review risks --after context --project notes
+mf article block renumber design-review --project notes
 ```
 
-`minds.yaml` describes the repository; `mind.yaml` describes a project;
-`mind-index.yaml` is the project compatibility/index projection.
+| Template | Use |
+|---|---|
+| `blank` | Default; a single opening block |
+| `arch` | Architecture decision: context, decision, consequence, alternatives |
+| `prd` | Product requirements |
+| `blog` | Blog post |
+| `<path>` | Any template file under the project root |
+
+New articles are directories of numbered blocks (`01-opening.md`, ...). Pass
+`--file` to create a single-file article instead; `mf article convert
+--to-single-file|--to-directory` switches between the two forms.
+
+### Build
+
+`mf build` merges blocks in filename order and rewrites relative links so they
+resolve from the output directory. It can also run an asset pipeline declared
+in `mind.yaml`:
+
+```yaml
+build:
+  strip_first_h1: true
+  pipeline:
+    - name: d2-to-svg
+      input_extension: d2
+      output_extension: svg
+      command: "d2 {input} {output}"
+    - name: svg-to-png
+      input_extension: svg
+      output_extension: png
+      command: "rsvg-convert {input} --output {output}"
+```
+
+Only missing or stale outputs are rebuilt, and rebuilding a stage also
+rebuilds the stages after it. If an optional tool is missing or fails, `mf`
+prints a warning and leaves existing outputs in place. `mf build <article>
+--dry-run` prints the plan without running anything.
+
+#### Private content
+
+Private content stays in the authored files and is still indexed for your own
+RAG retrieval, but it is stripped once during assembly, so no build or publish
+target ever receives it.
+
+| Marker | Effect |
+|---|---|
+| `> [!mf-private]` / `> [!mind-forge-private]` callout | The callout is removed (markers inside fenced code are kept as examples) |
+| Block front matter `mind-forge-visibility: private` | The whole block is skipped |
+
+> [!IMPORTANT]
+> The build fails rather than emit a titleless artifact if the first/title block
+> is private, or if `mind-forge-visibility` is anything other than `public` or
+> `private`. `mf article lint` reports both cases.
+
+### Publish
+
+```yaml
+# projects/notes/mind.yaml
+publish:
+  default_target: local
+  targets:
+    - name: local
+      type: local
+      path: ../../published
+```
+
+```bash
+mf publish run first-note --project notes --dry-run
+mf publish run first-note --project notes
+```
+
+| Target type | Behavior |
+|---|---|
+| `local` | Copies the built article to `path` (relative paths resolve from the project directory; honors `config.prefix`) |
+| `yuque-prompt` | Writes a persistent prompt file for an agent to publish to Yuque |
+
+Without `--target`, `mf` uses `publish.default_target`. File-based publishers in
+`.mind-forge/publisher/<name>.yaml` are discovered as well. Front matter is kept
+by default; set `publish.strip_front_matter: true` or pass
+`--strip-front-matter` for one run (`--keep-front-matter` overrides the
+project setting).
+
+`mf render <article> --template report` writes a render prompt instead of a
+file. It is meant to be handed to an agent.
+
+### Terms
+
+```bash
+mf term new "Release Note" --project notes
+mf term lint --project notes
+mf term fix --project notes --ad-hoc 'listnode=>Release Note' --yes
+```
+
+By default, lint and fix leave blockquotes, inline code and `「verbatim spans」`
+alone. Pass `--include-quotes` when quoted text should be corrected too. See
+the [term lint guide](docs/term-lint.md).
+
+## Agent skills
+
+[`skills/`](skills/) contains Claude Code skills for the `mf` workflow:
+
+| Skill | Role |
+|---|---|
+| `mf-cli` | Full command, flag and JSON-envelope reference |
+| `mf-plan` | Research, evidence comparison, outline-first planning and feedback routing |
+| `mf-write` | Drafting, revision, assembly, build and explicit publishing |
+| `mf-source` | Safe source registration, RAG sync and search (manual invocation) |
+
+To install one, copy or symlink its directory into your agent's skills folder
+(for example `~/.claude/skills/`). [skills/README.md](skills/README.md) explains
+how the skills hand work to each other.
 
 ## Command groups
 
-```text
-mf init
-mf project new|list|show|update|rename|remove|archive|lint|index|import
-mf article new|list|show|update|rename|remove|lint|convert|index
-mf source new|list|show|update|rename|remove|index|clean
-mf source sync|status|export|import|trace
-mf source admin rebuild|clear|recover
-mf search <QUERY>
-mf asset ...     mf term ...     mf build ...
-mf publish ...   mf render ...   mf config ...
-```
+| Group | Subcommands |
+|---|---|
+| `mf init` | Initialize a directory as a Mind Repo |
+| `mf project` | `new` `list` `show` `update` `rename` `remove` `archive` `lint` `index` `import` |
+| `mf article` | `new` `list` `show` `update` `rename` `move` `remove` `lint` `index` `convert` `block` |
+| `mf article block` | `new` `move` `renumber` `rename` `rm` |
+| `mf prompt` / `mf thinking` | `list` `show` |
+| `mf source` | `new` `list` `show` `update` `rename` `move` `remove` `index` `clean` `sync` `status` `export` `import` `trace` `search` |
+| `mf source admin` | `rebuild` `clear` `recover` |
+| `mf search` | Repository-wide RAG search |
+| `mf asset` | `new` `list` `show` `update` `rename` `move` `remove` `index` `clean` |
+| `mf term` | `new` `list` `show` `update` `rename` `move` `remove` `lint` `fix` `correction` |
+| `mf term correction` | `add` `list` `show` `update` `remove` |
+| `mf build` | Build an article |
+| `mf publish` | `run` `update` `target list` `target show` |
+| `mf render` | Render prompts; `template list` `template show` |
+| `mf config` | `schema` `show` `generate` `default` `terminal` |
+| `mf completion` / `mf version` | Shell completion, version info |
 
-Use `mf <command> --help` for current flags. Most commands support
-`--project`, `--output text|json`, `--json`, and `-n`/`--dry-run` where
-applicable.
+Use `mf <command> --help` for current flags, or the generated
+[docs/manual.md](docs/manual.md) for the full reference. After changing CLI
+definitions, regenerate it with `scripts/generate-manual.sh`.
 
 ## Output and safety
 
 JSON commands use `{ "status", "command", "data" }` envelopes. Exit codes are:
 
-- `0` success;
-- `1` runtime/storage failure;
-- `2` invalid input or rejected operation.
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1` | Runtime/storage failure |
+| `2` | Invalid input or rejected operation |
+
+Global flags: `--root`, `--config`, `-p`/`--project`, `-o`/`--output text|json`,
+`--json`, `-q`, `-v`, `--no-color`.
 
 Read-only retrieval does not modify authored files. Destructive operations
 require explicit confirmation; use `-n`/`--dry-run` to preview what would change
-(`would index`, `would update`) before writing. `-q` silences successful output
-while preserving diagnostics and exit codes, for byte-silent automation.
+(`would index`, `would update`) before writing, and `-f`/`--force` to proceed
+past a safety check. `-q` silences successful output while preserving
+diagnostics and exit codes, for byte-silent automation.
 
 ## Development
 
 ```bash
-cargo ck                 # inner loop
-cargo t1 cli_article     # one test target
-cargo test               # pre-push gate
+cargo ck                 # fast type check while editing
+cargo t1 cli_article     # run one test target
+cargo test               # full suite, pre-push gate
 cargo fmt --check && cargo clippy -- -D warnings
 ```
 
-`mf` is a single ~50k-line crate, so the full suite is the expensive path — see
-[docs/build-workflow.md](docs/build-workflow.md) for when each tier is worth
-running. Commits use conventional commit messages.
-
-## License
-
-[MIT](LICENSE)
+`mf` is one ~50k-line crate, so the full suite is the slow path.
+[docs/build-workflow.md](docs/build-workflow.md) says when each tier is worth
+running. Commit messages follow Conventional Commits.
