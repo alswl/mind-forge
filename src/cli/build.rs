@@ -14,6 +14,7 @@ use crate::service::{build as build_svc, util as svc_util};
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct BuildArgs {
+    /// Article slug, project path (docs/my-article), or path to the article
     pub article: String,
     #[arg(long = "out")]
     pub output: Option<PathBuf>,
@@ -37,7 +38,7 @@ pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome>
     let (project_path, article_path, article_name) = if let Some(target) = args.article.strip_prefix('@') {
         let target_path = if Path::new(target).is_absolute() { PathBuf::from(target) } else { root.join(target) };
         let article_path = svc_util::canonicalize_within(root, &target_path)?;
-        let project_path = project_root_for_source(root, &article_path)?;
+        let project_path = svc_util::project_root_for_source(root, &article_path)?;
         let article_name = article_path
             .file_stem()
             .or_else(|| article_path.file_name())
@@ -146,35 +147,6 @@ pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome>
                 }
             }
         }
-    }
-}
-
-fn project_root_for_source(repo_root: &Path, article_path: &Path) -> Result<PathBuf> {
-    let mut current = if article_path.is_dir() {
-        article_path.to_path_buf()
-    } else {
-        article_path.parent().unwrap_or(article_path).to_path_buf()
-    };
-
-    loop {
-        if current.join("mind.yaml").exists() {
-            return Ok(current);
-        }
-        if current == repo_root {
-            return Err(MfError::usage(
-                format!("path '{}' is not under a Mind Project", article_path.display()),
-                Some("choose a path below a directory containing mind.yaml".to_string()),
-            ));
-        }
-        current = current
-            .parent()
-            .ok_or_else(|| {
-                MfError::usage(
-                    format!("path '{}' is not under a Mind Project", article_path.display()),
-                    Some("choose a path below a directory containing mind.yaml".to_string()),
-                )
-            })?
-            .to_path_buf();
     }
 }
 

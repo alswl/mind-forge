@@ -7,7 +7,7 @@ Build articles
 Usage: mf build [OPTIONS] <ARTICLE>
 
 Arguments:
-  <ARTICLE>  
+  <ARTICLE>  Article slug, project path (docs/my-article), or path to the article
 
 Options:
       --out <OUTPUT>            

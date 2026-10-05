@@ -20,7 +20,7 @@ use super::CommandOutcome;
 #[derive(Debug, Parser)]
 #[command(about = "Generate render prompts (emits prompts only, does not write output files)")]
 pub struct RenderCmd {
-    /// Article name to render
+    /// Article slug, project path (docs/my-article), or path to the article
     pub article: Option<String>,
     /// Render template name
     #[arg(long)]

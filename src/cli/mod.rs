@@ -33,11 +33,14 @@ use crate::service::repo;
 pub struct CommandCtx<'a> {
     app: &'a AppContext,
     diagnostics: &'a mut DeprecationContext<'a>,
+    /// Project derived from a path-form positional argument; consulted only
+    /// when `--project` was not given.
+    project_override: Option<String>,
 }
 
 impl<'a> CommandCtx<'a> {
     pub fn new(app: &'a AppContext, diagnostics: &'a mut DeprecationContext<'a>) -> Self {
-        Self { app, diagnostics }
+        Self { app, diagnostics, project_override: None }
     }
 
     // ── Delegating accessors ──
@@ -55,7 +58,33 @@ impl<'a> CommandCtx<'a> {
     }
 
     pub fn project(&self) -> Option<&str> {
-        self.app.project()
+        self.app.project().or(self.project_override.as_deref())
+    }
+
+    /// Let a path-form positional argument (e.g. `projects/blog/docs/post`)
+    /// select its own project. The argument is rewritten to the
+    /// project-relative form the commands already understand. Does nothing
+    /// when `--project` is given or the argument is not an existing path
+    /// inside a project.
+    fn adopt_path_selector(&mut self, selector: &mut String) {
+        use crate::service::util;
+
+        if self.app.project().is_some() {
+            return;
+        }
+        let Some(root) = self.app.repo_root() else { return };
+        let Some(path) = util::existing_path_selector(root, self.app.cwd(), selector) else { return };
+        let Ok(project_path) = util::project_root_for_source(root, &path) else { return };
+        let Ok(relative) = util::rel_posix_path(&project_path, &path) else { return };
+        if relative.is_empty() {
+            return;
+        }
+        let cwd_project = util::detect_current_project(root, self.app.cwd())
+            .and_then(|detected| util::resolve_project(root, Some(&detected), self.app.cwd()).ok());
+        if cwd_project.map(|p| util::try_canonicalize(&p)) != Some(util::try_canonicalize(&project_path)) {
+            self.project_override = Some(project_path.to_string_lossy().into_owned());
+        }
+        *selector = relative;
     }
 
     pub fn require_repo_path(&self) -> Result<&PathBuf> {
@@ -193,7 +222,10 @@ impl RootCli {
         self.command.as_ref().map(|c| c.requires_repo()).unwrap_or(RepoRequirement::NotRequired)
     }
 
-    pub fn dispatch(self, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+    pub fn dispatch(mut self, ctx: &mut CommandCtx) -> Result<CommandOutcome> {
+        if let Some(selector) = self.command.as_mut().and_then(TopLevelCommand::path_selector_mut) {
+            ctx.adopt_path_selector(selector);
+        }
         let outcome = match self.command {
             None => return Ok(CommandOutcome::RootHelp),
             Some(TopLevelCommand::Version) => version::handle_version(ctx),
@@ -217,6 +249,62 @@ impl RootCli {
 }
 
 impl TopLevelCommand {
+    /// The positional argument that names an existing article, prompt,
+    /// thinking, asset or source, if this command takes one.
+    fn path_selector_mut(&mut self) -> Option<&mut String> {
+        use article::{ArticleBlockSubcommand as Block, ArticleSubcommand as A};
+        use asset::AssetSubcommand as As;
+        use publish::PublishSubcommand as P;
+        use source::SourceSubcommand as S;
+
+        match self {
+            Self::Build(args) => Some(&mut args.article),
+            Self::Render(cmd) => cmd.article.as_mut(),
+            Self::Prompt(cmd) => match cmd.command.as_mut()? {
+                prompt::PromptSubcommand::Show { path } => Some(path),
+                _ => None,
+            },
+            Self::Thinking(cmd) => match cmd.command.as_mut()? {
+                thinking::ThinkingSubcommand::Show { path } => Some(path),
+                _ => None,
+            },
+            Self::Publish(cmd) => match cmd.command.as_mut()? {
+                P::Run(args) => Some(&mut args.article),
+                P::Update(args) => Some(&mut args.article),
+                P::Target(_) => None,
+            },
+            Self::Article(cmd) => match cmd.command.as_mut()? {
+                A::Show(args) => Some(&mut args.path),
+                A::Update(args) => Some(&mut args.path),
+                A::Remove(args) => Some(&mut args.path),
+                A::Move(args) => Some(&mut args.path),
+                A::Rename(args) => Some(&mut args.old_path),
+                A::Block(Block::New(args)) => Some(&mut args.article),
+                A::Block(Block::Move(args)) => Some(&mut args.article),
+                A::Block(Block::Renumber(args)) => Some(&mut args.article),
+                A::Block(Block::Rename(args)) => Some(&mut args.article),
+                A::Block(Block::Rm(args)) => Some(&mut args.article),
+                _ => None,
+            },
+            Self::Asset(cmd) => match cmd.command.as_mut()? {
+                As::Show(args) => Some(&mut args.path),
+                As::Remove(args) => Some(&mut args.path),
+                As::Rename(args) => Some(&mut args.old_path),
+                As::Move(args) => Some(&mut args.path),
+                _ => None,
+            },
+            Self::Source(cmd) => match cmd.command.as_mut()? {
+                S::Show(args) => Some(&mut args.path),
+                S::Update(args) => Some(&mut args.path),
+                S::Remove(args) => Some(&mut args.name_or_path),
+                S::Rename(args) => Some(&mut args.old_path),
+                S::Move(args) => Some(&mut args.path),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     pub fn requires_repo(&self) -> RepoRequirement {
         match self {
             Self::Init(_) | Self::Completion(_) | Self::Config(_) | Self::Version => RepoRequirement::NotRequired,

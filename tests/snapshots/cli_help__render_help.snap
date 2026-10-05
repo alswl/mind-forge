@@ -11,7 +11,7 @@ Commands:
 
 Arguments:
   [ARTICLE]
-          Article name to render
+          Article slug, project path (docs/my-article), or path to the article
 
 Options:
       --root <PATH>

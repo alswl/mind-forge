@@ -136,6 +136,11 @@ mf build first-note --project notes
 > `mf build` takes an article slug (`first-note`) or path (`docs/first-note`),
 > and `mf publish run` takes the slug. Neither accepts the title. Run
 > `mf article list` to see what is available.
+>
+> Commands that take an article, prompt, thinking, asset or source also accept
+> a path to an existing file or directory, such as
+> `mf build projects/notes/docs/first-note`, and pick the project from that
+> path. `--project` still wins when given.
 
 There is a longer offline walkthrough in [quickstart.md](quickstart.md).
 

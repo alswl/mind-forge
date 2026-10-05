@@ -7,7 +7,7 @@ Publish an article to a target
 Usage: mf publish run [OPTIONS] <ARTICLE>
 
 Arguments:
-  <ARTICLE>  Article name (kebab-case, no extension, no path separators)
+  <ARTICLE>  Article slug, project path (docs/my-article), or path to the article
 
 Options:
       --root <PATH>             Mind Repo root directory

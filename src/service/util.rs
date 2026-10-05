@@ -308,6 +308,54 @@ pub fn repo_relative_path(repo_root: &Path, file_path: &Path) -> String {
     file_path.strip_prefix(repo_root).unwrap_or(file_path).to_string_lossy().to_string()
 }
 
+/// Walk up from `article_path` to the nearest directory holding `mind.yaml`,
+/// stopping at `repo_root`.
+pub fn project_root_for_source(repo_root: &Path, article_path: &Path) -> Result<PathBuf> {
+    let mut current = if article_path.is_dir() {
+        article_path.to_path_buf()
+    } else {
+        article_path.parent().unwrap_or(article_path).to_path_buf()
+    };
+
+    let repo_canonical = try_canonicalize(repo_root);
+    loop {
+        if current.join("mind.yaml").exists() {
+            return Ok(current);
+        }
+        if current == repo_root || current == repo_canonical {
+            return Err(MfError::usage(
+                format!("path '{}' is not under a Mind Project", article_path.display()),
+                Some("choose a path below a directory containing mind.yaml".to_string()),
+            ));
+        }
+        current = current
+            .parent()
+            .ok_or_else(|| {
+                MfError::usage(
+                    format!("path '{}' is not under a Mind Project", article_path.display()),
+                    Some("choose a path below a directory containing mind.yaml".to_string()),
+                )
+            })?
+            .to_path_buf();
+    }
+}
+
+/// Locate an existing filesystem path named by a positional selector.
+///
+/// A selector is treated as a path only when it looks like one (contains a
+/// path separator or starts with `.`); a bare slug always stays a slug, even
+/// when a same-named directory happens to exist in `cwd`. The path is tried
+/// cwd-relative first, then repo-relative, and must stay inside `repo_root`.
+pub fn existing_path_selector(repo_root: &Path, cwd: &Path, selector: &str) -> Option<PathBuf> {
+    if !(selector.contains('/') || selector.contains('\\') || selector.starts_with('.')) {
+        return None;
+    }
+    let given = Path::new(selector);
+    let candidates =
+        if given.is_absolute() { vec![given.to_path_buf()] } else { vec![cwd.join(given), repo_root.join(given)] };
+    candidates.into_iter().find(|c| c.exists()).and_then(|c| canonicalize_within(repo_root, &c).ok())
+}
+
 /// Resolve a project path within a repo root.
 ///
 /// If `project` is `Some(selector)`, tries in order:
@@ -358,7 +406,10 @@ pub fn resolve_project(repo_root: &Path, project: Option<&str>, cwd: &Path) -> R
             let detected = detect_current_project(repo_root, cwd).ok_or_else(|| {
                 MfError::usage(
                     "could not detect current project; run from a project directory or specify --project",
-                    Some("use `mf project list` to see available projects".to_string()),
+                    Some(
+                        "use `mf project list` to see available projects; a path argument must lie inside a project"
+                            .to_string(),
+                    ),
                 )
             })?;
             // detected is a repo-relative path; join it directly under repo_root

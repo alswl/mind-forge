@@ -64,7 +64,7 @@ pub struct PublishTargetShowArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct PublishRunArgs {
-    /// Article name (kebab-case, no extension, no path separators)
+    /// Article slug, project path (docs/my-article), or path to the article
     pub article: String,
     #[arg(long)]
     pub target: Option<String>,
@@ -82,7 +82,7 @@ pub struct PublishRunArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct PublishUpdateArgs {
-    /// Article name (kebab-case, no extension, no path separators)
+    /// Article slug, project path (docs/my-article), or path to the article
     pub article: String,
     #[arg(long, required = true)]
     pub target: String,
