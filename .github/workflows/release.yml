@@ -71,7 +71,7 @@ jobs:
           path: mf-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
           if-no-files-found: error
 
-  release:
+  create-release:
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -94,6 +94,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true
+          overwrite_files: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
           previous_tag: ${{ steps.notes.outputs.prev_tag }}
