@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: [v*]
+    tags: ['v*']
 
 permissions:
   contents: write
@@ -12,80 +12,89 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Validate version tag
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          TAG="${{ github.ref_name }}"
-          if ! echo "$TAG" | grep -qP '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
-            echo "Invalid tag: $TAG"
-            echo "Expected format: v<MAJOR>.<MINOR>.<PATCH>"
+          if ! printf '%s\n' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
+            echo "Invalid tag: $TAG (expected v<MAJOR>.<MINOR>.<PATCH>)"
             exit 1
           fi
 
-  build-linux:
-    needs: [validate-tag]
-    runs-on: ubuntu-latest
+  build:
+    needs: validate-tag
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        target:
-          - x86_64-unknown-linux-gnu
-          - aarch64-unknown-linux-gnu
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
     steps:
       - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: ${{ matrix.target }}
       - name: Install protobuf compiler
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Install protobuf compiler
+        if: runner.os == 'macOS'
+        run: brew install protobuf
       - name: Install zig and cargo-zigbuild
+        if: runner.os == 'Linux'
         run: |
           curl -fsSL https://ziglang.org/download/0.14.0/zig-linux-x86_64-0.14.0.tar.xz | tar xJ -C /tmp
           echo "/tmp/zig-linux-x86_64-0.14.0" >> "$GITHUB_PATH"
           cargo install cargo-zigbuild
-      - run: cargo zigbuild --release --locked --target ${{ matrix.target }}
-      - name: Name binary by target
-        run: cp target/${{ matrix.target }}/release/mf mf-${{ matrix.target }}
+      - name: Build Linux
+        if: runner.os == 'Linux'
+        run: cargo zigbuild --release --locked --target ${{ matrix.target }}
+      - name: Build macOS
+        if: runner.os == 'macOS'
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          target='${{ matrix.target }}'
+          archive="mf-${GITHUB_REF_NAME}-${target}.tar.gz"
+          cp "target/${target}/release/mf" "mf-${target}"
+          tar czf "$archive" "mf-${target}"
       - uses: actions/upload-artifact@v6
         with:
           name: mf-${{ matrix.target }}
-          path: mf-${{ matrix.target }}
+          path: mf-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
 
-  build-macos:
-    needs: [validate-tag]
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        target:
-          - aarch64-apple-darwin
-          - x86_64-apple-darwin
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: ${{ matrix.target }}
-      - name: Install protobuf compiler
-        run: brew install protobuf
-      - run: cargo build --release --locked --target ${{ matrix.target }}
-      - name: Name binary by target
-        run: cp target/${{ matrix.target }}/release/mf mf-${{ matrix.target }}
-      - uses: actions/upload-artifact@v6
-        with:
-          name: mf-${{ matrix.target }}
-          path: mf-${{ matrix.target }}
-
-  create-release:
-    needs: [build-linux, build-macos]
+  release:
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v7
         with:
-          pattern: mf-*
+          path: dist
           merge-multiple: true
-          path: artifacts
-      - name: Create release
-        uses: ncipollo/release-action@v1
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum *.tar.gz > checksums.txt
+      - name: Find previous public release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          previous_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || true)"
+          echo "Previous published release: ${previous_tag:-<none>}"
+          echo "prev_tag=${previous_tag}" >> "$GITHUB_OUTPUT"
+        id: notes
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
         with:
-          artifacts: artifacts/*
-          tag: ${{ github.ref_name }}
           draft: true
-          generateReleaseNotes: true
-          allowUpdates: true
-          makeLatest: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          previous_tag: ${{ steps.notes.outputs.prev_tag }}
+          files: dist/*
