@@ -1,26 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.4.3] - 2026-10-20
+
+### Features
+- Let path-form positional arguments select their own project (by @alswl)
+- Publish installable tagged release artifacts
 
 ## [0.4.2] - 2026-10-01
-
-### Breaking Changes
-- `mf source rename <old> <new>`: `<new>` is now always interpreted as a
-  **path** (cwd-relative or absolute), not a bare name joined onto the old
-  file's parent directory with its extension appended. A separator-free
-  target like `mf source rename srcfile renamed` no longer means "rename in
-  place, keep the extension" — it now means "move to `<cwd>/renamed`",
-  literally, with no extension appended.
-  - **To rename in place**, write the full path including the original
-    directory and extension: `mf source rename srcfile sources/pdf/renamed.pdf`.
-  - `--project` no longer changes how the target resolves — it only adds a
-    check that the resolved path falls inside that project. Run the command
-    from inside the project (or use an absolute path) if the target is
-    written project-relative.
-  - This also removes a silent data-corruption bug: `mf source rename
-    srcfile renamed.md` used to succeed and write `sources/file/renamed.md.md`
-    with a registered name of the literal string `renamed.md`. That can no
-    longer happen.
 
 ### Features
 - Skills (by @alswl)
@@ -30,10 +17,10 @@ All notable changes to this project will be documented in this file.
 - Derive template-generated article timestamps from file mtime (by @alswl)
 - Align CLI selector and publish behavior (by @alswl)
 - Identity (by @alswl)
-- Name release binaries by target so artifacts do not collide
+- Name release binaries by target so artifacts do not collide (by @alswl)
 
 ### Documentation
-- Rewrite README for current CLI surface
+- Rewrite README for current CLI surface (by @alswl)
 
 ## [0.4.1] - 2026-09-10
 
