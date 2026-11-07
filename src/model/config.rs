@@ -100,6 +100,9 @@ pub struct BuildConfig {
     pub merge_order: Vec<String>,
     #[serde(default = "default_build_format")]
     pub format: String,
+    /// Project-relative static HTML body template with one {{content}} placeholder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub html_template: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub banner: Option<BannerConfig>,
     #[serde(default)]
@@ -116,6 +119,7 @@ impl Default for BuildConfig {
             output_dir: default_output_dir(),
             merge_order: Vec::new(),
             format: default_build_format(),
+            html_template: None,
             banner: None,
             strip_first_h1: false,
             pipeline: Vec::new(),
@@ -330,6 +334,13 @@ pub struct Templates {
 /// Top-level configuration for a mind-forge project (mind.yaml schema).
 #[derive(Debug, Clone, JsonSchema, Serialize, Deserialize)]
 pub struct MindConfig {
+    /// Project roots excluded from bundle mind discovery (including retained category placeholders).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reserved_roots: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_layout: Option<crate::model::mind::ContentLayout>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub minds: BTreeMap<String, crate::model::mind::MindRegistration>,
     #[serde(alias = "schema", default = "default_schema_version")]
     pub schema_version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -369,6 +380,9 @@ impl Default for MindConfig {
     fn default() -> Self {
         Self {
             schema_version: defaults::SCHEMA_VERSION.to_string(),
+            content_layout: None,
+            reserved_roots: Vec::new(),
+            minds: BTreeMap::new(),
             project: None,
             build: BuildConfig::default(),
             publish: PublishConfig::default(),

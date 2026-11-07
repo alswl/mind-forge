@@ -36,6 +36,33 @@ This document contains the help content for the `mf` command-line program.
 * [`mf article block rename`↴](#mf-article-block-rename)
 * [`mf article block rm`↴](#mf-article-block-rm)
 * [`mf article convert`↴](#mf-article-convert)
+* [`mf mind`↴](#mf-mind)
+* [`mf mind new`↴](#mf-mind-new)
+* [`mf mind list`↴](#mf-mind-list)
+* [`mf mind show`↴](#mf-mind-show)
+* [`mf mind index`↴](#mf-mind-index)
+* [`mf additional`↴](#mf-additional)
+* [`mf additional list`↴](#mf-additional-list)
+* [`mf additional show`↴](#mf-additional-show)
+* [`mf additional rename`↴](#mf-additional-rename)
+* [`mf additional remove`↴](#mf-additional-remove)
+* [`mf lifecycle`↴](#mf-lifecycle)
+* [`mf lifecycle convert`↴](#mf-lifecycle-convert)
+* [`mf lifecycle mind-rename`↴](#mf-lifecycle-mind-rename)
+* [`mf lifecycle mind-move`↴](#mf-lifecycle-mind-move)
+* [`mf lifecycle mind-remove`↴](#mf-lifecycle-mind-remove)
+* [`mf lifecycle output-rename`↴](#mf-lifecycle-output-rename)
+* [`mf lifecycle output-move`↴](#mf-lifecycle-output-move)
+* [`mf lifecycle output-remove`↴](#mf-lifecycle-output-remove)
+* [`mf lifecycle apply`↴](#mf-lifecycle-apply)
+* [`mf lifecycle resume`↴](#mf-lifecycle-resume)
+* [`mf lifecycle rollback`↴](#mf-lifecycle-rollback)
+* [`mf lifecycle status`↴](#mf-lifecycle-status)
+* [`mf output`↴](#mf-output)
+* [`mf output new`↴](#mf-output-new)
+* [`mf output list`↴](#mf-output-list)
+* [`mf output show`↴](#mf-output-show)
+* [`mf output index`↴](#mf-output-index)
 * [`mf prompt`↴](#mf-prompt)
 * [`mf prompt list`↴](#mf-prompt-list)
 * [`mf prompt show`↴](#mf-prompt-show)
@@ -119,15 +146,19 @@ mind-forge: a local-first knowledge management CLI
 
 * `init` — Initialize a directory as a Mind Repo
 * `project` — Manage projects
-* `article` — Manage articles
+* `article` — Manage legacy articles
+* `mind` — Manage minds, including minds without outputs
+* `additional` — Discover and manage additional files and directories
+* `lifecycle` — Apply and recover local layout lifecycle transactions
+* `output` — Manage editable outputs belonging to minds
 * `prompt` — View prompt projections
 * `thinking` — View thinking projections
 * `source` — Manage content sources
 * `search` — Search the repository-wide RAG corpus
 * `asset` — Manage project assets
 * `term` — Manage terminology
-* `build` — Build articles
-* `publish` — Publish articles to configured targets
+* `build` — Build a selected mind output or legacy article
+* `publish` — Publish selected outputs or legacy articles to configured targets
 * `render` — Generate render prompts (emits prompts only, no output files)
 * `config` — Manage configuration
 * `completion` — Generate shell completion scripts
@@ -147,7 +178,7 @@ mind-forge: a local-first knowledge management CLI
 
 * `--json` — Shorthand for --output json
 * `--no-color` — Disable colored output
-* `-p`, `--project <NAME>` — Project name for project-scoped operations
+* `-p`, `--project <NAME_OR_PATH>` — Project name or path (cwd-relative, repo-relative, or absolute)
 
 
 
@@ -196,6 +227,10 @@ Create a project
 
 ###### **Options:**
 
+* `--layout <LAYOUT>` — Content layout for a new mind/output project
+
+  Possible values: `category`, `bundle`
+
 * `--template <TEMPLATE>`
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-n`, `--dry-run` — Preview changes without writing
@@ -225,7 +260,7 @@ Archive a project
 
 ###### **Arguments:**
 
-* `<NAME_OR_PATH>`
+* `<NAME_OR_PATH>` — Project name or path (cwd-relative, repo-relative, or absolute)
 
 ###### **Options:**
 
@@ -273,7 +308,7 @@ Show project details
 
 ###### **Arguments:**
 
-* `<PATH>`
+* `<PATH>` — Project name or path (cwd-relative, repo-relative, or absolute)
 
 
 
@@ -285,7 +320,7 @@ Update project metadata
 
 ###### **Arguments:**
 
-* `<PATH>`
+* `<PATH>` — Project name or path (cwd-relative, repo-relative, or absolute)
 
 ###### **Options:**
 
@@ -323,8 +358,8 @@ Rename a project
 
 ###### **Arguments:**
 
-* `<OLD_PATH>`
-* `<NEW_PATH>`
+* `<OLD_PATH>` — Current project name or path
+* `<NEW_PATH>` — New project path
 
 ###### **Options:**
 
@@ -343,7 +378,7 @@ Remove a project
 
 ###### **Arguments:**
 
-* `<PATH>`
+* `<PATH>` — Project name or path (cwd-relative, repo-relative, or absolute)
 
 ###### **Options:**
 
@@ -355,7 +390,7 @@ Remove a project
 
 ## `mf article`
 
-Manage articles
+Manage legacy articles
 
 **Usage:** `mf article [COMMAND]`
 
@@ -456,8 +491,8 @@ Rename an article
 
 ###### **Arguments:**
 
-* `<OLD_PATH>` — Current article path or title
-* `<NEW_PATH>` — New slug (e.g. "new-slug") — renames the file/directory, title is unchanged
+* `<OLD_PATH>` — Current article path (project-relative) or indexed title
+* `<NEW_PATH>` — New article slug (what name), without a path; title is unchanged
 
 ###### **Options:**
 
@@ -474,11 +509,11 @@ Move an article to another project
 
 ###### **Arguments:**
 
-* `<PATH>` — Article path or title
+* `<PATH>` — Current article path, bare slug, or indexed title
 
 ###### **Options:**
 
-* `--to-project <TO_PROJECT>`
+* `--to-project <TO_PROJECT>` — Destination project name or path (cwd-relative, repo-relative, or absolute)
 * `-n`, `--dry-run` — Preview changes without writing
 
 
@@ -493,7 +528,7 @@ Remove an article
 
 ###### **Arguments:**
 
-* `<PATH>` — Article path (e.g. docs/weekly.md) or title
+* `<PATH>` — Article path (e.g. docs/weekly.md), bare slug, or title
 
 ###### **Options:**
 
@@ -511,7 +546,7 @@ Show article details
 
 ###### **Arguments:**
 
-* `<PATH>` — Article path (e.g. docs/weekly.md) or title
+* `<PATH>` — Article path (e.g. docs/weekly.md), bare slug, or title
 
 
 
@@ -523,7 +558,7 @@ Update article metadata
 
 ###### **Arguments:**
 
-* `<PATH>` — Article path (e.g. docs/weekly.md) or title
+* `<PATH>` — Article path (e.g. docs/weekly.md), bare slug, or title
 
 ###### **Options:**
 
@@ -557,13 +592,13 @@ Create a block within a directory article
 
 ###### **Arguments:**
 
-* `<ARTICLE>`
+* `<ARTICLE>` — Article path (e.g. docs/my-article), bare slug, or title
 * `<SLUG>` — New block slug without a numeric prefix
 
 ###### **Options:**
 
-* `--after <AFTER>`
-* `--start <START>`
+* `--after <AFTER>` — Insert after a block filename, numbered stem, slug, or completed path
+* `--start <START>` — Numbering origin applied after the insertion
 
   Default value: `1`
 * `-n`, `--dry-run` — Preview changes without writing
@@ -578,13 +613,13 @@ Move a block within a directory article
 
 ###### **Arguments:**
 
-* `<ARTICLE>`
-* `<BLOCK>`
+* `<ARTICLE>` — Article path (e.g. docs/my-article), bare slug, or title
+* `<BLOCK>` — Block filename, numbered stem, slug, or completed path
 
 ###### **Options:**
 
-* `--after <AFTER>`
-* `--start <START>`
+* `--after <AFTER>` — Move after a block filename, numbered stem, slug, or completed path
+* `--start <START>` — Numbering origin applied after the move
 
   Default value: `1`
 * `-n`, `--dry-run` — Preview changes without writing
@@ -599,7 +634,7 @@ Renumber blocks contiguously
 
 ###### **Arguments:**
 
-* `<ARTICLE>`
+* `<ARTICLE>` — Article path (e.g. docs/my-article), bare slug, or title
 
 ###### **Options:**
 
@@ -618,8 +653,8 @@ Rename a block within a directory article
 
 ###### **Arguments:**
 
-* `<ARTICLE>` — Article path (e.g. docs/my-article) or title
-* `<OLD_BLOCK>` — Current block filename (e.g. "02-notes.md") or slug (e.g. "notes")
+* `<ARTICLE>` — Article path (e.g. docs/my-article), bare slug, or title
+* `<OLD_BLOCK>` — Current block filename, numbered stem, slug, or completed path within the article
 * `<NEW_SLUG>` — New slug — the number prefix is preserved (e.g. "thoughts" → "02-thoughts.md")
 
 ###### **Options:**
@@ -639,8 +674,8 @@ Remove a block within a directory article
 
 ###### **Arguments:**
 
-* `<ARTICLE>` — Article path (e.g. docs/my-article) or title
-* `<BLOCK>` — Block filename (e.g. "02-notes.md"), stem (e.g. "02-notes"), or slug (e.g. "notes")
+* `<ARTICLE>` — Article path (e.g. docs/my-article), bare slug, or title
+* `<BLOCK>` — Block filename, numbered stem, slug, or completed path within the article
 
 ###### **Options:**
 
@@ -663,6 +698,399 @@ Convert article shape between directory and single-file
 * `--merge` — Allow `--to-single-file` to merge multi-block directory articles (concatenated in filename order) instead of skipping them
 * `--article <ARTICLE>` — Convert only this article (selector: bare slug, docs/<slug>, docs/<slug>.md, or exact title). Without it, converts every eligible article in the project (existing batch behaviour, unchanged)
 * `-n`, `--dry-run` — Preview changes without writing
+
+
+
+## `mf mind`
+
+Manage minds, including minds without outputs
+
+**Usage:** `mf mind <COMMAND>`
+
+###### **Subcommands:**
+
+* `new` — Register a mind without requiring an output
+* `list` —
+* `show` —
+* `index` — Reconcile the derived output index from authored files
+
+
+
+## `mf mind new`
+
+Register a mind without requiring an output
+
+**Usage:** `mf mind new [OPTIONS] <NAME>`
+
+###### **Arguments:**
+
+* `<NAME>`
+
+###### **Options:**
+
+* `--title <TITLE>`
+* `--default-output <DEFAULT_OUTPUT>`
+* `-n`, `--dry-run`
+
+
+
+## `mf mind list`
+
+**Usage:** `mf mind list`
+
+
+
+## `mf mind show`
+
+**Usage:** `mf mind show <IDENTITY>`
+
+###### **Arguments:**
+
+* `<IDENTITY>`
+
+
+
+## `mf mind index`
+
+Reconcile the derived output index from authored files
+
+**Usage:** `mf mind index [OPTIONS]`
+
+###### **Options:**
+
+* `--check` — Compare disk, projections and explicit bindings without writing (exit 1 on differences)
+* `-n`, `--dry-run`
+
+
+
+## `mf additional`
+
+Discover and manage additional files and directories
+
+**Usage:** `mf additional <COMMAND>`
+
+###### **Subcommands:**
+
+* `list` — List structural extensions, optionally for one mind
+* `show` — Inspect one exact identity or project-relative resource path
+* `rename` — Rename one file/directory to a concrete project-relative path (same mind and shape)
+* `remove` — Delete one resource, refusing inbound references
+
+
+
+## `mf additional list`
+
+List structural extensions, optionally for one mind
+
+**Usage:** `mf additional list [MIND]`
+
+###### **Arguments:**
+
+* `<MIND>`
+
+
+
+## `mf additional show`
+
+Inspect one exact identity or project-relative resource path
+
+**Usage:** `mf additional show <IDENTITY>`
+
+###### **Arguments:**
+
+* `<IDENTITY>`
+
+
+
+## `mf additional rename`
+
+Rename one file/directory to a concrete project-relative path (same mind and shape)
+
+**Usage:** `mf additional rename [OPTIONS] <IDENTITY> <DESTINATION>`
+
+###### **Arguments:**
+
+* `<IDENTITY>`
+* `<DESTINATION>`
+
+###### **Options:**
+
+* `-n`, `--dry-run` — Preview without creating directories, locks, journals, or caches
+* `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
+* `-y`, `--yes`
+
+
+
+## `mf additional remove`
+
+Delete one resource, refusing inbound references
+
+**Usage:** `mf additional remove [OPTIONS] <IDENTITY>`
+
+###### **Arguments:**
+
+* `<IDENTITY>`
+
+###### **Options:**
+
+* `-n`, `--dry-run` — Preview without creating directories, locks, journals, or caches
+* `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
+* `-y`, `--yes`
+
+
+
+## `mf lifecycle`
+
+Apply and recover local layout lifecycle transactions
+
+**Usage:** `mf lifecycle <COMMAND>`
+
+###### **Subcommands:**
+
+* `convert` — Convert every output, core role, and owned additional resource
+* `mind-rename` —
+* `mind-move` —
+* `mind-remove` —
+* `output-rename` —
+* `output-move` —
+* `output-remove` —
+* `apply` — Apply a saved hash-bound plan after revalidating its complete inventory
+* `resume` — Resume an interrupted transaction or safely abort unpublished partial preparation
+* `rollback` — Restore backed-up content, refusing to overwrite subsequent edits
+* `status` — Inspect the current transaction without writing
+
+
+
+## `mf lifecycle convert`
+
+Convert every output, core role, and owned additional resource
+
+**Usage:** `mf lifecycle convert [OPTIONS] --to <TO>`
+
+###### **Options:**
+
+* `--to <TO>`
+
+  Possible values: `category`, `bundle`
+
+* `-n`, `--dry-run` — Preview without creating directories, locks, journals, or caches
+* `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
+* `-y`, `--yes`
+
+
+
+## `mf lifecycle mind-rename`
+
+**Usage:** `mf lifecycle mind-rename [OPTIONS] <IDENTITY> <NAME>`
+
+###### **Arguments:**
+
+* `<IDENTITY>`
+* `<NAME>`
+
+###### **Options:**
+
+* `-n`, `--dry-run` — Preview without creating directories, locks, journals, or caches
+* `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
+* `-y`, `--yes`
+
+
+
+## `mf lifecycle mind-move`
+
+**Usage:** `mf lifecycle mind-move [OPTIONS] --to-project <TO_PROJECT> <IDENTITY>`
+
+###### **Arguments:**
+
+* `<IDENTITY>`
+
+###### **Options:**
+
+* `--to-project <TO_PROJECT>`
+* `-n`, `--dry-run` — Preview without creating directories, locks, journals, or caches
+* `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
+* `-y`, `--yes`
+
+
+
+## `mf lifecycle mind-remove`
+
+**Usage:** `mf lifecycle mind-remove [OPTIONS] <IDENTITY>`
+
+###### **Arguments:**
+
+* `<IDENTITY>`
+
+###### **Options:**
+
+* `-n`, `--dry-run` — Preview without creating directories, locks, journals, or caches
+* `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
+* `-y`, `--yes`
+
+
+
+## `mf lifecycle output-rename`
+
+**Usage:** `mf lifecycle output-rename [OPTIONS] <IDENTITY> <NAME>`
+
+###### **Arguments:**
+
+* `<IDENTITY>`
+* `<NAME>`
+
+###### **Options:**
+
+* `-n`, `--dry-run` — Preview without creating directories, locks, journals, or caches
+* `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
+* `-y`, `--yes`
+
+
+
+## `mf lifecycle output-move`
+
+**Usage:** `mf lifecycle output-move [OPTIONS] --to-mind <TO_MIND> --to-project <TO_PROJECT> <IDENTITY>`
+
+###### **Arguments:**
+
+* `<IDENTITY>`
+
+###### **Options:**
+
+* `--to-mind <TO_MIND>`
+* `--to-project <TO_PROJECT>`
+* `-n`, `--dry-run` — Preview without creating directories, locks, journals, or caches
+* `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
+* `-y`, `--yes`
+
+
+
+## `mf lifecycle output-remove`
+
+**Usage:** `mf lifecycle output-remove [OPTIONS] <IDENTITY>`
+
+###### **Arguments:**
+
+* `<IDENTITY>`
+
+###### **Options:**
+
+* `-n`, `--dry-run` — Preview without creating directories, locks, journals, or caches
+* `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
+* `-y`, `--yes`
+
+
+
+## `mf lifecycle apply`
+
+Apply a saved hash-bound plan after revalidating its complete inventory
+
+**Usage:** `mf lifecycle apply [OPTIONS] <PLAN>`
+
+###### **Arguments:**
+
+* `<PLAN>`
+
+###### **Options:**
+
+* `-n`, `--dry-run`
+* `-y`, `--yes`
+
+
+
+## `mf lifecycle resume`
+
+Resume an interrupted transaction or safely abort unpublished partial preparation
+
+**Usage:** `mf lifecycle resume [OPTIONS]`
+
+###### **Options:**
+
+* `--plan <PLAN>`
+
+
+
+## `mf lifecycle rollback`
+
+Restore backed-up content, refusing to overwrite subsequent edits
+
+**Usage:** `mf lifecycle rollback [OPTIONS]`
+
+###### **Options:**
+
+* `--plan <PLAN>`
+
+
+
+## `mf lifecycle status`
+
+Inspect the current transaction without writing
+
+**Usage:** `mf lifecycle status`
+
+
+
+## `mf output`
+
+Manage editable outputs belonging to minds
+
+**Usage:** `mf output <COMMAND>`
+
+###### **Subcommands:**
+
+* `new` — Create an editable output owned by an existing mind
+* `list` —
+* `show` —
+* `index` —
+
+
+
+## `mf output new`
+
+Create an editable output owned by an existing mind
+
+**Usage:** `mf output new [OPTIONS] <MIND> <NAME>`
+
+###### **Arguments:**
+
+* `<MIND>`
+* `<NAME>`
+
+###### **Options:**
+
+* `--title <TITLE>`
+* `--file` — Use one Markdown file instead of ordered blocks
+* `-n`, `--dry-run`
+
+
+
+## `mf output list`
+
+**Usage:** `mf output list [MIND]`
+
+###### **Arguments:**
+
+* `<MIND>`
+
+
+
+## `mf output show`
+
+**Usage:** `mf output show <IDENTITY>`
+
+###### **Arguments:**
+
+* `<IDENTITY>`
+
+
+
+## `mf output index`
+
+**Usage:** `mf output index [OPTIONS]`
+
+###### **Options:**
+
+* `--check` — Compare disk, projections and explicit bindings without writing (exit 1 on differences)
+* `-n`, `--dry-run`
 
 
 
@@ -809,7 +1237,7 @@ Update a source
 
 ###### **Arguments:**
 
-* `<PATH>` — Source path (e.g. sources/meeting/notes.md) or name
+* `<PATH>` — Project-relative source path or registered source name
 
 ###### **Options:**
 
@@ -841,7 +1269,7 @@ Remove a source
 
 ###### **Arguments:**
 
-* `<NAME_OR_PATH>` — Source path (e.g. sources/yuque/foo.md) or source name (deprecated)
+* `<NAME_OR_PATH>` — Project-relative source path or registered source name
 
 ###### **Options:**
 
@@ -860,8 +1288,8 @@ Rename a source
 
 ###### **Arguments:**
 
-* `<OLD_PATH>` — Current source path or name
-* `<NEW_PATH>` — New source path or name
+* `<OLD_PATH>` — Current project-relative source path or registered source name
+* `<NEW_PATH>` — New location as a path (cwd-relative or absolute) — e.g. "sources/yuque/renamed.md" or "renamed.md" for the current directory. `--project` does not change how this resolves; it only requires the result to fall inside that project
 
 ###### **Options:**
 
@@ -878,11 +1306,11 @@ Move a source to another project
 
 ###### **Arguments:**
 
-* `<PATH>`
+* `<PATH>` — Project-relative source path or registered source name
 
 ###### **Options:**
 
-* `--to-project <TO_PROJECT>`
+* `--to-project <TO_PROJECT>` — Destination project name or path (cwd-relative, repo-relative, or absolute)
 * `-n`, `--dry-run` — Preview changes without writing
 
 
@@ -907,7 +1335,7 @@ Show source details
 
 ###### **Arguments:**
 
-* `<PATH>` — Source path (e.g. sources/meeting/notes.md) or name
+* `<PATH>` — Project-relative source path or registered source name
 
 
 
@@ -927,7 +1355,7 @@ Search sources across the repository
 
   Possible values: `basic`, `advanced`, `both`
 
-* `-p`, `--project <PROJECT>` — Limit search to a specific project
+* `-p`, `--project <NAME_OR_PATH>` — Limit search to a project name or path (cwd-relative, repo-relative, or absolute)
 * `--file-kind <FILE_KIND>` — Filter by file kind
 * `--source <SOURCE>` — Filter by source identity
 * `--label <KEY=VALUE>` — Filter by label, `key=value` (repeatable; all must match)
@@ -946,7 +1374,7 @@ Synchronize sources and article content
 
 ###### **Options:**
 
-* `-p`, `--project <PROJECT>` — Limit sync to a specific project
+* `-p`, `--project <PROJECT>` — Limit sync to a project name or path (cwd-relative, repo-relative, or absolute)
 * `--source <SOURCE>` — Limit sync to a specific Source identity (requires unambiguous scope)
 * `--offline` — Forbid all network access (Web/RSS acquisition disabled)
 * `--rebuild` — Regenerate the Lance Source index to the current storage schema (full re-index/re-embed). Recovers from a schema-drift refusal in one command family instead of detouring to `source admin rebuild`
@@ -962,7 +1390,7 @@ Report source corpus status
 
 ###### **Options:**
 
-* `-p`, `--project <PROJECT>`
+* `-p`, `--project <PROJECT>` — Limit to a project name or path (cwd-relative, repo-relative, or absolute)
 * `--source <SOURCE>`
 
 
@@ -1006,7 +1434,7 @@ Trace source locations as Markdown links
 
 ###### **Options:**
 
-* `-p`, `--project <PROJECT>` — Limit to one project
+* `-p`, `--project <PROJECT>` — Limit to a project name or path (cwd-relative, repo-relative, or absolute)
 
 
 
@@ -1045,7 +1473,7 @@ Maintain the source corpus
 
 ###### **Options:**
 
-* `-p`, `--project <PROJECT>`
+* `-p`, `--project <PROJECT>` — Limit to a project name or path (cwd-relative, repo-relative, or absolute)
 * `--all`
 * `-n`, `--dry-run` — Preview changes without writing
 * `-y`, `--yes` — Skip interactive confirmation prompt
@@ -1076,7 +1504,7 @@ Search the repository-wide RAG corpus
 
 ###### **Options:**
 
-* `-p`, `--project <PROJECT>`
+* `-p`, `--project <NAME_OR_PATH>` — Limit search to a project name or path (cwd-relative, repo-relative, or absolute)
 * `--file-kind <FILE_KIND>`
 * `--source <SOURCE>`
 * `--label <KEY=VALUE>`
@@ -1596,15 +2024,21 @@ Move a term between scopes
 
 ## `mf build`
 
-Build articles
+Build a selected mind output or legacy article
 
 **Usage:** `mf build [OPTIONS] <ARTICLE>`
 
 ###### **Arguments:**
 
-* `<ARTICLE>`
+* `<ARTICLE>` — Mind/output identity, unique output name, or legacy article path
 
 ###### **Options:**
+
+* `--format <FORMAT>` — Artifact format (independent of the global --output envelope format)
+
+  Default value: `markdown`
+
+  Possible values: `markdown`, `html`
 
 * `--out <OUTPUT>`
 * `-n`, `--dry-run` — Preview changes without writing
@@ -1613,13 +2047,13 @@ Build articles
 
 ## `mf publish`
 
-Publish articles to configured targets
+Publish selected outputs or legacy articles to configured targets
 
 **Usage:** `mf publish [COMMAND]`
 
 ###### **Subcommands:**
 
-* `run` — Publish an article to a target
+* `run` — Publish a selected output or legacy article to a target
 * `update` — Update publish record metadata
 * `target` — List and manage publish targets
 
@@ -1627,22 +2061,21 @@ Publish articles to configured targets
 
 ## `mf publish run`
 
-Publish an article to a target
+Publish a selected output or legacy article to a target
 
 **Usage:** `mf publish run [OPTIONS] <ARTICLE>`
 
 ###### **Arguments:**
 
-* `<ARTICLE>` — Article name (kebab-case, no extension, no path separators)
+* `<ARTICLE>` — Mind/output identity, unique output name, or legacy article path
 
 ###### **Options:**
 
 * `--target <TARGET>`
-* `--strip-front-matter` — Remove the complete YAML front-matter block from the published payload. `--keep-front-matter` overrides `publish.strip_front_matter` for this run.
+* `--strip-front-matter` — Remove the complete front-matter block from the published payload
+* `--keep-front-matter` — Keep front matter even when publish.strip_front_matter is enabled
 * `-n`, `--dry-run` — Preview changes without writing
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
-
-Publish front matter is preserved by default. Set `publish.strip_front_matter: true` in `mind.yaml`, or pass `--strip-front-matter` for one run, to remove the whole block from the published payload. `--keep-front-matter` keeps it for one run when the project setting is enabled. Build artifacts continue to preserve user keys while removing mf-owned keys; publish also removes mf-owned keys for template-origin articles, which bypass build. Source articles and build artifacts are never rewritten by this publish option.
 
 
 
@@ -1654,7 +2087,7 @@ Update publish record metadata
 
 ###### **Arguments:**
 
-* `<ARTICLE>` — Article name (kebab-case, no extension, no path separators)
+* `<ARTICLE>` — Mind/output identity, unique output name, or legacy article path
 
 ###### **Options:**
 
@@ -1719,7 +2152,7 @@ Generate render prompts (emits prompts only, no output files)
 
 ###### **Arguments:**
 
-* `<ARTICLE>` — Article name to render
+* `<ARTICLE>` — Article slug, project path (docs/my-article), or path to the article
 
 ###### **Options:**
 

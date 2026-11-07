@@ -9,6 +9,7 @@ mod global_flags;
 mod helpers;
 mod list_show_modify_chain;
 mod mind_migration;
+mod mind_output_layout;
 mod mind_yaml;
 mod placeholders;
 mod project_index;

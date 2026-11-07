@@ -1,6 +1,6 @@
 ---
 name: mf-cli
-description: Use the mf Rust CLI to manage mind 0.3.0-compatible local knowledge repositories, including first-class Sources, Prompts, Thinking, and Articles, repository-wide RAG, assets, glossary terms, builds, publishing, render templates, configuration, JSON contracts, and exact command flags. Use for CLI operations, command lookup, automation safety, or structured output reference; use mf-plan or mf-write for article workflows.
+description: Use the mf Rust CLI to manage mind 0.3.0-compatible local knowledge repositories, including minds, zero-to-many editable outputs, category/bundle layouts, Sources, Prompts and Thinking, repository-wide RAG, assets, glossary terms, builds, publishing, render templates, configuration, JSON contracts, and exact command flags. Use for CLI operations, command lookup, automation safety, or structured output reference; use mf-plan or mf-write for mind/output workflows.
 ---
 
 # mf-cli — Knowledge Repo CLI
@@ -47,17 +47,19 @@ must invoke it explicitly. Restart the agent session to pick up new skills.
 ## Overview
 
 `mf` manages local mind-format knowledge repos. Sources preserve evidence,
-Prompts define intent, Thinking records working reasoning, and Articles carry
-the user-readable synthesis. The repository-wide RAG corpus makes all four
+Prompts define mind intent, Thinking records working reasoning, and selected outputs carry
+the user-readable synthesis. A mind may have no outputs; outputs are editable sources, while build products are derived. The repository-wide RAG corpus makes all four
 stores retrievable without erasing their different roles.
 
 **Key concepts:**
 - **Mind Repo**: A directory rooted at `minds.yaml`. Most commands require running inside one.
-- **Project**: A subdirectory with `docs/`, `sources/`, `assets/`, and `mind.yaml`. Article workflows add first-class authored `prompts/` and `thinking/` stores. Project identity is a repo-relative path.
+- **Project**: A directory defined by `mind.yaml`, with explicit `content_layout: category|bundle` for mind/output operations. Project identity is a repo-relative path.
+- **Mind**: A named owner of intent, reasoning, sources, assets, additional resources and zero to many outputs.
+- **Output source**: One named editable file or block directory belonging to a mind; Markdown/HTML are build formats, not separate minds.
 - **Prompt**: The authored control plane for objective, constraints, criteria, and durable decisions.
 - **Thinking**: The authored working ledger for reasoning, conflicts, feedback, blockers, and next steps.
 - **Index**: `mind-index.yaml` per project — authoritative metadata for indexed resources. Its `prompts:` and `thinking:` entries are derived projections of the Markdown files, not their source of truth.
-- **Output**: Text by default, JSON with `--json` or `--output json` (`-o json`).
+- **CLI response**: Text by default, JSON with `--json` or `--output json` (`-o json`).
 
 ## YAML Format
 
@@ -157,7 +159,78 @@ Import a directory as a project.
 `--assets <DIR>` — Assets directory override
 `-y`, `--non-interactive` — Skip prompts
 
-### `mf article` — Manage articles
+### Minds, selected outputs, additional resources and lifecycle
+
+```sh
+mf project new notes --layout category  # or bundle; never silently migrate an existing project
+mf mind new brief -p notes --json       # valid with zero outputs
+mf mind list -p notes --json
+mf mind show projects/notes::brief --json
+mf output new projects/notes::brief design --file --json
+mf output list projects/notes::brief --json
+mf output show projects/notes::brief::design --json
+mf mind index -p notes --json
+mf output index --check -p notes --json
+```
+
+Use returned canonical identities verbatim. A mind identity is
+`<project>::<mind>`; an output identity is `<project>::<mind>::<output>`.
+Root-project identities begin `::`. `mind show` returns existing `roles`
+(prompt/thinking/sources/assets), not suggested paths for absent roles.
+`output show` returns `path`, `shape`, `build_path` and all three owner identities.
+Paths are project-relative. Creation returns actual `path`; a dry run returns
+`path: null` and `details.proposed_path`, which is not proof of creation.
+
+`outputs/` holds authored source; `build/` holds derived artifacts. Category uses
+`outputs/<mind>/<output>.md` (or a block directory), `prompts/<mind>.md`, and
+`thinking/<mind>.md`; bundle uses `<mind>/outputs/<output>.md`, `<mind>/prompt.md`
+and `<mind>/thinking.md`. Use the resolver to locate existing roles instead of
+constructing these paths from output names. A missing optional role is valid;
+there is currently no CLI to return proposed missing role paths or create roles.
+If needed, use an explicitly provided role path or report this limitation.
+
+Build selection: zero outputs fails; one can be implicit; multiple require an
+explicit output or valid configured `default_output`. Ambiguity returns
+`error.kind: selection_ambiguous` and `error.candidates`; do not pick the first.
+Mind/output index replaces derived `outputs` and `additional` projections only.
+`--check` is read-only, exits 1 on differences, and returns `content_check` with
+`consistent`, `disk`, and sorted `issues`; it does not repair authored bindings.
+
+```sh
+mf additional list projects/notes::brief --json
+mf additional show projects/notes::brief::additional::reviews --json
+mf additional rename reviews/brief.md assessments/brief.md -p notes -n --json
+mf additional rename reviews/brief.md assessments/brief.md -p notes -y --json
+mf lifecycle output-rename projects/notes::brief::design proposal -n --json
+mf lifecycle output-rename projects/notes::brief::design proposal -y --json
+mf lifecycle mind-rename projects/notes::brief renamed -y --json
+mf lifecycle convert --to bundle -p notes -n --json
+mf lifecycle convert --to bundle -p notes -y --json
+mf lifecycle status --json
+```
+
+Additional resources are discovered, not registered in a kind whitelist. Rename
+uses a concrete same-owner destination path; bundle uses e.g.
+`brief/reviews.md` → `brief/assessments.md`. Additional content does not imply
+feedback state, execute automatically, or enter build/publish automatically.
+
+Lifecycle previews expose write sets and precondition hashes; apply verifies
+freshness and maintains supported inbound references. Removal refuses inbound
+references. Use existing authorization for the exact operation and documented
+`--yes`; `--force` is not a substitute for safety or confirmation. Never edit
+layout configuration to simulate conversion or hand-edit projections/records to
+simulate rename. Unfinished journals require `lifecycle resume` or `rollback`,
+which refuse later conflicting edits. Completed transactions are not undone by
+rollback. `--emit-plan` plans must be saved outside the watched repository.
+Lance-authority mutation is refused with `source_backend_unsupported`.
+
+There is no Feedback state command. Skills perform semantic review and bounded
+Markdown history edits. Feedback closure is not a universal delivery gate.
+
+### `mf article` — Legacy article commands
+
+These commands remain for legacy content. Do not use them to discover or maintain
+new mind outputs; they are not aliases for `mind`, `output`, or `lifecycle`.
 
 Subcommands: `new`, `list` (alias `ls`), `show`, `update`, `rename`, `move`, `remove` (alias `rm`), `block`, `convert`, `lint`, `index`.
 
@@ -479,12 +552,14 @@ Short (≤2 Han-character) pure-CJK `word` corrections are **advisory** (spec 07
 First-class alias for `term lint --fix`. Same flags as `term lint`, including `--include-suggested`/`--min-confidence` for suggested corrections and `--exclude-term`/`--exclude-original` to narrow scope.
 Accepts a repeatable `--term <NAME>` (canonical name, case-sensitive exact match) or `--term <NAME:ORIGINAL>` (a specific correction pair) to scope corrections. When omitted, all terms are applied (unchanged). Naming a term or pair that does not exist in scope exits with code 2 and lists the unknown term(s) on stderr — no edits are made. Deleting a single correction uses a separate existing command: `mf term correction remove <TERM> <ORIGINAL>`.
 
-### `mf build <ARTICLE>` — Build/assemble an article
+### `mf build <SELECTOR>` — Build a selected output (or legacy article)
 
-`-o`, `--output <PATH>` — Output file path
+`--out <PATH>` — Artifact file path (must not overwrite source)
+`--format <markdown|html>` — Artifact format, default Markdown
+`--output <text|json>` / `--json` — CLI response format
 `--dry-run` — Show build plan without rendering
 
-`ARTICLE` may be an indexed article name/slug or a repo-relative path prefixed with `@`, such as `@projects/blog/docs/2026-03-review/`. Directory articles are built by merging Markdown files in filename order. Relative image/link/reference paths are automatically rewritten to resolve from the output directory; paths inside fenced code blocks, absolute paths, and URLs are left unchanged.
+Prefer the exact selected output identity from `output show`. Legacy Article selectors remain available for existing legacy content. Directory articles are built by merging Markdown files in filename order. Relative image/link/reference paths are automatically rewritten to resolve from the output directory; paths inside fenced code blocks, absolute paths, and URLs are left unchanged.
 
 **Private content (spec 073).** At build time, private content is stripped from the assembled output while the source file stays intact — there is no CLI flag to author or toggle it; visibility lives entirely in the article markup. Two block-level entry points:
 
@@ -495,12 +570,12 @@ The build **fails** (rather than emit a titleless artifact) if the first/title b
 
 `build.strip_first_h1: true` removes the first content H1 after front matter and before banner injection. The default is `false`. An optional ordered `build.pipeline` registry runs configured external sibling-asset transformations (for example `d2 → svg → png`) only for missing or stale outputs. A successfully regenerated intermediate makes its downstream stage stale in the same build, even if the downstream artifact has a future mtime. `mf build --dry-run` reports the ordered stages without executing them. Inputs, outputs, and parents must remain under the configured asset directory; symlinks are refused. Failed optional tools warn, preserve existing outputs, skip only dependents, and do not fail the article build.
 
-### `mf publish` — Publish articles and manage targets
+### `mf publish` — Publish selected outputs and manage targets
 
 Subcommands: `run`, `update`, `target`.
 
 **`mf publish run <ARTICLE>`**
-Publish article to a target (supported: `local`, `yuque-prompt`).
+Publish the selected output (or legacy article) to a target (supported: `local`, `yuque-prompt`). Use exact output identity and explicit publication authorization; an update record is not proof of publication.
 `--target <TARGET>` — Publish target (optional when `publish.default_target` is configured)
 
 Without `--target`, `mf` resolves the configured `publish.default_target` from `mind.yaml`. File-based publishers (`.mind-forge/publisher/<name>.yaml`) are discovered for both explicit and default targets. Local publishers honor `config.prefix` for the destination filename.
@@ -557,7 +632,7 @@ JSON envelope `data`: `{ version, base_version, channel, commit, build_date, rus
 mf init                            # bootstrap a Mind Repo (creates minds.yaml + projects/)
 
 # Project management (path-based identity, Unicode/emoji/dates supported)
-mf project new my-project
+mf project new my-project --layout category
 mf project new workspaces/team/projects/2026-W21
 mf project new 2026-W21                                # from inside workspaces/team/projects/
 mf project list
@@ -593,49 +668,21 @@ mf asset index --refresh-metadata --project my-project
 mf asset remove diagram.png --project my-project
 mf asset clean --project my-project
 
-# Articles
-mf article new "My First Post" --project my-project
-mf article new "Auth Rewrite" --template arch --project my-project
-mf article new "Quick Note" --template blog --project my-project
-mf article new "Single Page" --file --project my-project
-mf article list --project my-project
-mf article show docs/my-first-post --project my-project
-mf article update docs/my-first-post --status published --project my-project
-mf article update docs/my-first-post --title "Better Title" --project my-project
-mf article rename docs/old-title new-slug --project my-project
-mf article index --project my-project
-mf article lint --fix --project my-project
-mf article convert --to-single-file --project my-project
-mf article convert --to-directory --project my-project
-mf article convert --dry-run --project my-project
+# Mind-owned editable outputs
+mf mind new brief --project my-project
+mf output new brief design --file --project my-project
+mf output list brief --project my-project
+mf output show projects/my-project::brief::design --json
+mf mind index --project my-project
+mf mind index --check --project my-project --json
 
-# Build & publish
-mf build my-first-post --project my-project
-mf build @projects/my-project/docs/2026-03-review/ --output ./_build/review.md
-mf build my-first-post --dry-run --project my-project
-mf publish run "My First Post" --target local --project my-project
-mf publish run "My First Post"                         # uses publish.default_target
-mf publish run "My First Post" --target yuque-prompt --project my-project
-mf publish update "My First Post" --target local --set status=published --project my-project
-mf publish target list
-mf publish target show local
-
-# Render templates
-mf render template list
-mf render template show arch
-
-# First-class Prompt & Thinking stores — surfaced via `mf article`
-mf article index --project my-project                  # reconciles articles + prompts: + thinking: in one run
-mf article list --project my-project                   # PROMPT/THINKING columns per article
-mf article show my-first-post --project my-project      # bound/orphan/duplicate status + thinking presence
-mf project lint --project my-project                    # surfaces orphan_prompt/duplicate_binding/missing_thinking
-mf prompt list --project my-project                     # read-only view of prompt projections
-mf thinking list --project my-project                   # read-only view of thinking projections
-
-# Cross-project moves (dry-run safe)
-mf article move docs/my-first-post --to-project other-project
-mf asset move image.png --to-project other-project
-mf source move ref-canonical --to-project other-project
+# Build and explicitly authorized publication
+mf build projects/my-project::brief::design --dry-run --json
+mf build projects/my-project::brief::design --format html --json
+mf publish target list --json
+mf publish run projects/my-project::brief::design --target local --json
+# Only if record maintenance was also requested:
+mf publish update projects/my-project::brief::design --target local --set status=published
 
 # Terms
 mf term new "Zettelkasten" --definition "A note-taking method" --project my-project

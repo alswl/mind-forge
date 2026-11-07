@@ -37,8 +37,12 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util
 # downloads/linking so every release target can compile offline.
 sha2 = "0.10"
 fs2 = "0.4"
+libc = "0.2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "blocking"] }
 scraper = "0.27"
+pulldown-cmark = "0.13"
+ammonia = "4.1"
+base64 = "0.22"
 feed-rs = "2.4"
 pdf-extract = "0.12"
 

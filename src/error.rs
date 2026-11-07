@@ -10,6 +10,12 @@ pub type Result<T> = std::result::Result<T, MfError>;
 #[derive(Debug, Error)]
 #[allow(dead_code)] // advanced variants used in later phases
 pub enum MfError {
+    #[error("{message}: {candidates:?}")]
+    ContentConflict { code: &'static str, message: String, candidates: Vec<String> },
+    #[error("{message}")]
+    Lifecycle { code: &'static str, message: String },
+    #[error("ambiguous selector {selector}: {candidates:?}")]
+    SelectionAmbiguous { selector: String, candidates: Vec<String> },
     /// User-provided input is invalid. Construct with [`MfError::usage`].
     /// Do NOT use for I/O, parsing, or serialization failures.
     #[error("{message}")]
@@ -210,7 +216,10 @@ impl MfError {
 
     pub fn exit_code(&self) -> ExitCode {
         match self {
-            Self::Usage { .. } => ExitCode::UsageError,
+            Self::ContentConflict { .. }
+            | Self::SelectionAmbiguous { .. }
+            | Self::Lifecycle { .. }
+            | Self::Usage { .. } => ExitCode::UsageError,
             Self::NotInMindRepo { .. }
             | Self::ParseError { .. }
             | Self::FileExists { .. }
@@ -239,6 +248,8 @@ impl MfError {
 
     pub fn kind(&self) -> &'static str {
         match self {
+            Self::ContentConflict { code, .. } | Self::Lifecycle { code, .. } => code,
+            Self::SelectionAmbiguous { .. } => "selection_ambiguous",
             Self::Usage { .. } => "usage",
             Self::NotInMindRepo { .. } => "not_in_mind_repo",
             Self::IncompatibleSchema { .. } => "incompatible_schema",
@@ -269,6 +280,9 @@ impl MfError {
 
     pub fn message(&self) -> String {
         match self {
+            Self::ContentConflict { .. } => self.to_string(),
+            Self::Lifecycle { message, .. } => message.clone(),
+            Self::SelectionAmbiguous { .. } => self.to_string(),
             Self::Usage { message, .. } => message.clone(),
             Self::NotInMindRepo { .. }
             | Self::IncompatibleSchema { .. }
@@ -301,6 +315,8 @@ impl MfError {
 
     pub fn hint(&self) -> Option<&str> {
         match self {
+            Self::ContentConflict { .. } | Self::Lifecycle { .. } => None,
+            Self::SelectionAmbiguous { .. } => Some("select an exact output identity or configure default_output"),
             Self::Usage { hint, .. } => hint.as_deref(),
             Self::NotInMindRepo { hint } => hint.as_deref(),
             Self::IncompatibleSchema { .. } => Some("run `mf upgrade` or update schema_version manually"),

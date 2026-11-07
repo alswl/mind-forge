@@ -1,4 +1,4 @@
 interface:
   display_name: "Mind Forge Plan"
-  short_description: "Research, compare, and maintain evolving articles"
-  default_prompt: "Use $mf-plan to research or replan this article and keep its prompt, sources, thinking, and current draft synchronized."
+  short_description: "Research, compare, and maintain minds and selected outputs"
+  default_prompt: "Use $mf-plan to research or replan this mind’s selected output and keep its prompt, sources, thinking, and current draft synchronized."

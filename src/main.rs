@@ -55,6 +55,28 @@ fn run(args: Vec<OsString>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> R
         render(stderr, context.format(), context.color(), Payload::Error(&err))?;
         return Ok(err.exit_code());
     }
+    let matches = RootCli::command().try_get_matches_from(&args).expect("already parsed command");
+    let access = cli::access::classify(&matches);
+    let guard = (|| -> Result<_> {
+        let Some(root) = context.repo_root() else { return Ok(None) };
+        if access == cli::access::Access::Recovery {
+            return Ok(None);
+        }
+        let lock = if access == cli::access::Access::Write {
+            Some(service::mind_lifecycle::transaction::write_lock(root)?)
+        } else {
+            None
+        };
+        service::mind_lifecycle::transaction::check_recovery(root)?;
+        Ok(lock)
+    })();
+    let _write_lock = match guard {
+        Ok(lock) => lock,
+        Err(err) => {
+            render(stderr, context.format(), context.color(), Payload::Error(&err))?;
+            return Ok(err.exit_code());
+        }
+    };
     let mut deprecation = DeprecationContext::new(stderr, !context.color());
 
     let mut cmd_ctx = CommandCtx::new(&context, &mut deprecation);

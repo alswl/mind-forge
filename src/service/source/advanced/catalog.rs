@@ -204,17 +204,64 @@ pub fn discovery_exclusion(rel_path: &str) -> Option<&'static str> {
 /// exported to the legacy Source projection or source-only bundles.
 pub fn discover_article_registrations(repo_root: &Path) -> Vec<CatalogRegistration> {
     let mut out = Vec::new();
-    let projects = repo_root.join("projects");
-    let Ok(entries) = std::fs::read_dir(projects) else { return out };
-    for entry in entries.flatten() {
-        let project_path = entry.path();
+    let projects = crate::service::mind::project_paths(repo_root).unwrap_or_else(|_| {
+        std::fs::read_dir(repo_root.join("projects")).into_iter().flatten().flatten().map(|e| e.path()).collect()
+    });
+    for project_path in projects {
         if !project_path.is_dir() {
             continue;
         }
-        let project_identity = entry.file_name().to_string_lossy().to_string();
+        let project_identity = project_path.file_name().unwrap_or_default().to_string_lossy().to_string();
         let project_rel =
             project_path.strip_prefix(repo_root).unwrap_or(&project_path).to_string_lossy().replace('\\', "/");
         let project_key = super::identity::project_key(&project_rel);
+        if crate::service::mind::config_for(&project_path).is_ok_and(|c| c.content_layout.is_some()) {
+            match crate::service::mind::discover(repo_root, &project_path) {
+                Ok(minds) => {
+                    for mind in minds {
+                        let mut entries: Vec<_> = mind
+                            .outputs
+                            .into_iter()
+                            .map(|o| { let annotations = serde_json::json!({"project_identity":o.project_identity,"mind_identity":o.mind_identity,"output_identity":o.output_identity,"identity":o.identity,"path":o.path,"shape":o.shape}).to_string(); (o.identity, o.path, "article", annotations) })
+                            .collect();
+                        for (role, path) in mind.roles {
+                            if role == "prompt" || role == "thinking" {
+                                entries.push((
+                                    format!("{}::{role}", mind.identity),
+                                    path,
+                                    if role == "prompt" { "article_prompt" } else { "article_thinking" },
+                                    serde_json::json!({"project_identity":project_rel,"mind_identity":mind.identity})
+                                        .to_string(),
+                                ));
+                            }
+                        }
+                        for (identity, location, kind, annotations) in entries {
+                            out.push(CatalogRegistration {
+                                registration_key: super::identity::registration_key(&project_key, kind, &location),
+                                project_key: project_key.clone(),
+                                project_identity: project_rel.clone(),
+                                project_path: project_rel.clone(),
+                                source_identity: identity.clone(),
+                                source_type: kind.into(),
+                                source_kind: Some(kind.into()),
+                                registered_location: location,
+                                tags_json: "[]".into(),
+                                labels_json: "{}".into(),
+                                annotations_json: annotations,
+                                state: "live".into(),
+                                context_json: None,
+                                imported_by_json: None,
+                                added_at: None,
+                                updated_at: None,
+                                extras_json: None,
+                            });
+                        }
+                    }
+                }
+                Err(error) => tracing::warn!("cannot discover mind outputs in {}: {error}", project_path.display()),
+            }
+            continue;
+        }
         for (directory, kind, prefix) in
             [("prompts", "article_prompt", "prompt:"), ("thinking", "article_thinking", "thinking:")]
         {
@@ -569,5 +616,49 @@ mod tests {
         let catalog = SourceCatalog::discover(&config, Path::new("/tmp")).unwrap();
         assert!(catalog.from_lance_primary);
         assert_eq!(catalog.backend, SourceBackend::Lance);
+    }
+}
+
+#[cfg(test)]
+mod mind_output_tests {
+    use super::*;
+
+    #[test]
+    fn both_layouts_register_authored_outputs_and_acquire_private_source_without_builds() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        std::fs::write(root.join("minds.yaml"), "schema: '1'\nprojects: [projects/category, projects/bundle]\n")
+            .unwrap();
+        for mode in ["category", "bundle"] {
+            let project = root.join(format!("projects/{mode}"));
+            std::fs::create_dir_all(&project).unwrap();
+            std::fs::write(
+                project.join("mind.yaml"),
+                format!("content_layout: {mode}\nminds:\n  brief: {{}}\n  empty: {{}}\n"),
+            )
+            .unwrap();
+            let base = if mode == "category" { "outputs/brief" } else { "brief/outputs" };
+            std::fs::create_dir_all(project.join(format!("{base}/design"))).unwrap();
+            std::fs::write(project.join(format!("{base}/design/01-title.md")), "# Design\n").unwrap();
+            std::fs::write(project.join(format!("{base}/design/02-body.md")), "> [!mf-private]\n> authored-secret\n")
+                .unwrap();
+            std::fs::write(project.join(format!("{base}/summary.md")), "# Summary\n").unwrap();
+            std::fs::create_dir_all(project.join("build/brief")).unwrap();
+            std::fs::write(project.join("build/brief/design.md"), "artifact-must-not-be-indexed").unwrap();
+        }
+        let registrations = discover_article_registrations(root);
+        assert_eq!(registrations.len(), 4);
+        for reg in registrations {
+            assert!(reg.source_identity.starts_with(&format!("{}::brief::", reg.project_path)));
+            assert!(!reg.registered_location.starts_with("build/"));
+            let acquired =
+                super::super::acquisition::acquire_article(&root.join(&reg.project_path), &reg.registered_location)
+                    .unwrap();
+            let content = String::from_utf8(acquired.raw_bytes).unwrap();
+            assert!(!content.contains("artifact-must-not-be-indexed"));
+            if reg.source_identity.ends_with("::design") {
+                assert!(content.contains("authored-secret"));
+            }
+        }
     }
 }

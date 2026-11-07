@@ -164,6 +164,12 @@ project:
 build:
   output_dir: _build
   format: md
+publish:
+  targets:
+    - name: local-blog
+      type: local
+      config:
+        path: publisher-output
 "#;
     fs::write(project.join("mind.yaml"), mind_yaml).unwrap();
 
@@ -185,4 +191,14 @@ build:
     assert_eq!(index_out2.2, 0, "second index should succeed: {}", index_out2.1);
     assert!(index_out2.0.contains("=1"), "should show 1 kept after second run: {}", index_out2.0);
     assert!(index_out2.0.contains("-0"), "nothing should be removed: {}", index_out2.0);
+
+    let update = run_in(
+        &project,
+        &["publish", "update", "docs/my-dir-article", "--target", "local-blog", "--set", "status=published", "--json"],
+    );
+    assert_eq!(update.2, 0, "publish update should resolve the indexed directory: {}", update.1);
+    let result: serde_json::Value = serde_json::from_str(&update.0).unwrap();
+    assert_eq!(result["data"]["record"]["path"], "docs/my-dir-article");
+    assert_eq!(result["data"]["action"], "created");
+    assert!(!project.join("publisher-output").exists(), "record update must not publish an artifact");
 }

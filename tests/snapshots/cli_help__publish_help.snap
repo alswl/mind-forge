@@ -2,12 +2,12 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Publish articles to configured targets
+Publish selected outputs or legacy articles to configured targets
 
 Usage: mf publish [OPTIONS] [COMMAND]
 
 Commands:
-  run     Publish an article to a target
+  run     Publish a selected output or legacy article to a target
   update  Update publish record metadata
   target  List and manage publish targets
 

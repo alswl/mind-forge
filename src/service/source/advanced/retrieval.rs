@@ -298,19 +298,10 @@ fn search_repository_with_store(
     let mut results = Vec::new();
     let repository = super::catalog::repository_identity(repo_root);
 
-    let projects_dir = repo_root.join("projects");
-    if !projects_dir.exists() {
-        return Ok(SourceSearchReport {
-            query: query.to_string(),
-            requested_mode: mode_to_str(mode),
-            resolved_mode: mode_to_str(mode),
-            scope: SearchScope { kind: "repository".to_string(), project: project_filter.map(|s| s.to_string()) },
-            actual_paths: vec!["basic".to_string()],
-            degraded: false,
-            results: vec![],
-            warnings: vec![],
-        });
+    if repo_root.join("minds.yaml").exists() {
+        crate::service::mind::validate_projects(repo_root)?;
     }
+    let projects_dir = repo_root.join("projects");
 
     // Enumerate all live project registrations
     let mut all_registrations: Vec<BasicCandidate> = Vec::new();
@@ -352,7 +343,7 @@ fn search_repository_with_store(
             });
         }
     } else {
-        for project_entry in std::fs::read_dir(&projects_dir)? {
+        for project_entry in std::fs::read_dir(&projects_dir).into_iter().flatten() {
             let project_entry = project_entry?;
             if !project_entry.file_type()?.is_dir() {
                 continue;
@@ -427,6 +418,33 @@ fn search_repository_with_store(
                     }
                 }
             }
+        }
+    }
+
+    if store.is_none() {
+        for registration in super::catalog::discover_article_registrations(repo_root) {
+            if project_filter.is_some_and(|f| f != registration.project_identity && f != registration.project_path)
+                || kind_filter.is_some_and(|f| f != registration.source_type)
+                || source_filter.is_some_and(|f| f != registration.source_identity)
+                || !label_filter.is_empty()
+            {
+                continue;
+            }
+            all_registrations.push(BasicCandidate {
+                registration_key: registration.registration_key,
+                project_identity: registration.project_identity,
+                project_path: registration.project_path,
+                source_identity: registration.source_identity,
+                source_type: registration.source_type,
+                registered_location: registration.registered_location,
+                source_kind: registration.source_kind,
+                tags: vec![],
+                labels: Default::default(),
+                annotations: serde_json::from_str(&registration.annotations_json).unwrap_or_default(),
+                match_field: String::new(),
+                context_json: None,
+                imported_by_json: None,
+            });
         }
     }
 

@@ -1,0 +1,8 @@
+{
+  "mind-index.yaml": "schema: '1'\narticles:\n  docs/single:\n    title: single\n    project: probe\n    type: blank\n    article_path: docs/single.md\n    status: draft\n    created_at: 2026-10-25T05:27:51Z\n    updated_at: 2026-10-25T05:27:51Z\n  docs/chunked:\n    title: chunked\n    project: probe\n    type: blank\n    article_path: docs/chunked\n    status: draft\n    created_at: 2026-10-25T05:27:51Z\n    updated_at: 2026-10-25T05:27:51Z\npublish_records:\n- path: docs/single.md\n  target_name: local\n  status: published\n  target_url: null\n  published_at: 2026-10-25T05:27:51Z\n",
+  "mind.yaml": "schema: '1'\nproject:\n  name: probe\nbuild:\n  output_dir: outputs\n  format: md\npublish:\n  targets:\n    - name: local\n      type: local\n      enabled: true\n      config:\n        path: /var/folders/qp/fw17s6nj6r7bfd8fft_1lt640000gn/T/mf-triage-hd4arsek/published\n",
+  "docs/single.md": "# Single\n\nVERSION_THREE_NOT_BUILT\n",
+  "outputs/chunked.md": "# chunked\n\n> Created: 2026-10-25T05:27:51Z\n",
+  "outputs/single.md": "# Single\n\nVERSION_TWO\n",
+  "docs/chunked/01-opening.md": "---\ntypora-copy-images-to: ../../assets\n---\n\n# chunked\n\n> Created: 2026-10-25T05:27:51Z"
+}

@@ -27,6 +27,9 @@ use crate::service::util;
 pub fn merge(base: MindConfig, overlay: MindConfig) -> MindConfig {
     MindConfig {
         schema_version: overlay.schema_version,
+        content_layout: overlay.content_layout,
+        reserved_roots: overlay.reserved_roots,
+        minds: overlay.minds,
         project: overlay.project.or(base.project),
         // BuildConfig, SourceConfig, TermConfig, PathsConfig have no optional
         // fields so "merge" = full replacement by overlay.

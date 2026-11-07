@@ -445,3 +445,109 @@ fn text_output_renders_record_table() {
     assert!(stdout.contains("target_url   https://example.com/post"), "{stdout}");
     assert!(stdout.contains("dry_run      false"), "{stdout}");
 }
+
+fn setup_article_shape(directory: bool) -> common::TempDir {
+    let repo = setup_repo_with_target();
+    let project = repo.path().join("my-project");
+    if directory {
+        let index = read_index_yaml(&repo).replace("docs/my-article.md", "docs/my-article");
+        fs::write(project.join("mind-index.yaml"), index).unwrap();
+        fs::create_dir_all(project.join("docs/my-article")).unwrap();
+        fs::write(project.join("docs/my-article/01-opening.md"), "# Article\n").unwrap();
+    } else {
+        fs::create_dir_all(project.join("docs")).unwrap();
+        fs::write(project.join("docs/my-article.md"), "# Article\n").unwrap();
+    }
+    repo
+}
+
+#[test]
+fn canonical_selectors_create_and_update_the_same_record() {
+    for (directory, path) in [(false, "docs/my-article.md"), (true, "docs/my-article")] {
+        let repo = setup_article_shape(directory);
+        let mut published_at = serde_json::Value::Null;
+        for (i, selector) in [path, ARTICLE].into_iter().enumerate() {
+            let out = run_update(
+                &repo,
+                &[
+                    "publish",
+                    "update",
+                    selector,
+                    "--target",
+                    "local-blog",
+                    "--set",
+                    "status=published",
+                    "--set",
+                    "url=https://example.com/post",
+                    "--json",
+                ],
+            );
+            assert!(out.status.success(), "{selector}: {}", String::from_utf8_lossy(&out.stderr));
+            let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+            assert_eq!(v["status"], "ok");
+            assert_eq!(v["data"]["article"], selector);
+            assert_eq!(v["data"]["action"], if i == 0 { "created" } else { "updated" });
+            assert_eq!(v["data"]["record"]["path"], path);
+            assert_eq!(v["data"]["record"]["target_url"], "https://example.com/post");
+            if i == 0 {
+                published_at = v["data"]["record"]["published_at"].clone();
+                assert!(published_at.is_string());
+            } else {
+                assert_eq!(v["data"]["record"]["published_at"], published_at);
+            }
+        }
+        assert_eq!(read_index_yaml(&repo).matches("target_name: local-blog").count(), 1);
+    }
+}
+
+#[test]
+fn canonical_selectors_dry_run_leaves_entire_tree_unchanged() {
+    for (directory, path) in [(false, "docs/my-article.md"), (true, "docs/my-article")] {
+        let repo = setup_article_shape(directory);
+        for selector in [path, ARTICLE] {
+            let before = common::snapshot_tree(repo.path());
+            let out = run_update(
+                &repo,
+                &[
+                    "publish",
+                    "update",
+                    selector,
+                    "--target",
+                    "local-blog",
+                    "--set",
+                    "status=published",
+                    "--dry-run",
+                    "--json",
+                ],
+            );
+            assert!(out.status.success(), "{selector}: {}", String::from_utf8_lossy(&out.stderr));
+            let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+            assert_eq!(v["data"]["record"]["path"], path);
+            assert_eq!(v["data"]["dry_run"], true);
+            common::assert_tree_unchanged(repo.path(), &before);
+        }
+    }
+}
+
+#[test]
+fn canonical_selectors_preserve_target_and_field_validation() {
+    for (directory, path) in [(false, "docs/my-article.md"), (true, "docs/my-article")] {
+        let repo = setup_article_shape(directory);
+        for (target, fields, code, kind) in [
+            ("ghost-target", vec!["--set", "status=published"], 1, "not_found"),
+            ("local-blog", vec![], 2, "usage"),
+            ("local-blog", vec!["--set", "status=archived"], 2, "usage"),
+            ("local-blog", vec!["--set", "url=https://example.com/post"], 2, "usage"),
+            ("local-blog", vec!["--set", "unknown=value"], 2, "usage"),
+        ] {
+            let before = common::snapshot_tree(repo.path());
+            let mut args = vec!["publish", "update", path, "--target", target, "--json"];
+            args.extend(fields);
+            let out = run_update(&repo, &args);
+            assert_eq!(out.status.code(), Some(code), "{path}: {}", String::from_utf8_lossy(&out.stderr));
+            let v: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
+            assert_eq!(v["error"]["kind"], kind);
+            common::assert_tree_unchanged(repo.path(), &before);
+        }
+    }
+}

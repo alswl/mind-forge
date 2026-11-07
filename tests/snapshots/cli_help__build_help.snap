@@ -2,17 +2,19 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Build articles
+Build a selected mind output or legacy article
 
 Usage: mf build [OPTIONS] <ARTICLE>
 
 Arguments:
-  <ARTICLE>  Article slug, project path (docs/my-article), or path to the article
+  <ARTICLE>  Mind/output identity, unique output name, or legacy article path
 
 Options:
-      --out <OUTPUT>            
+      --format <FORMAT>         Artifact format (independent of the global --output envelope format)
+                                [default: markdown] [possible values: markdown, html]
       --root <PATH>             Mind Repo root directory
       --config <PATH>           Config file path
+      --out <OUTPUT>            
   -n, --dry-run                 Preview changes without writing
   -v, --verbose...              Verbose output
   -q, --quiet                   Silence non-error output

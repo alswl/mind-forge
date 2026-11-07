@@ -1,0 +1,16 @@
+{
+  "destination/mind-index.yaml": "schema: '1'\narticles:\n  docs/new-name:\n    title: old-name\n    project: probe\n    type: blank\n    article_path: docs/new-name.md\n    status: draft\n    created_at: 2026-10-25T05:27:52Z\n    updated_at: 2026-10-25T05:27:52Z\nprompts:\n  new-name:\n    path: prompts/new-name.md\n    article: docs/new-name.md\n    updated_at: 2026-10-25T05:27:52Z\nthinking:\n  new-name:\n    path: thinking/new-name.md\n    article: docs/new-name.md\n    updated_at: 2026-10-25T05:27:52Z\n",
+  "destination/mind.yaml": "schema: '1'\n",
+  "probe/mind-index.yaml": "schema: '1'\nsources:\n  sources/file/alpha.md:\n    name: alpha\n    type: file\n    url: null\n    path: sources/file/alpha.md\n    tags: []\n    added_at: 2026-10-25T05:27:52Z\n    updated_at: 2026-10-25T05:27:52Z\narticles:\n  docs/chunked:\n    title: chunked\n    project: probe\n    type: blank\n    article_path: docs/chunked\n    status: draft\n    created_at: 2026-10-25T05:27:51Z\n    updated_at: 2026-10-25T05:27:51Z\n  docs/private-probe:\n    title: private-probe\n    project: probe\n    type: blank\n    article_path: docs/private-probe.md\n    status: draft\n    created_at: 2026-10-25T05:27:52Z\n    updated_at: 2026-10-25T05:27:52Z\n  docs/referrer:\n    title: referrer\n    project: probe\n    type: blog\n    article_path: docs/referrer.md\n    status: draft\n    created_at: 2026-10-25T05:27:52Z\n    updated_at: 2026-10-25T05:27:52Z\n  docs/single:\n    title: single\n    project: probe\n    type: blank\n    article_path: docs/single\n    status: draft\n    created_at: 2026-10-25T05:27:51Z\n    updated_at: 2026-10-25T05:27:52Z\npublish_records:\n- path: docs/single.md\n  target_name: local\n  status: published\n  target_url: null\n  published_at: 2026-10-25T05:27:51Z\n",
+  "probe/mind.yaml": "schema: '1'\nproject:\n  name: probe\nbuild:\n  output_dir: outputs\n  format: md\npublish:\n  targets:\n    - name: local\n      type: local\n      enabled: true\n      config:\n        path: /var/folders/qp/fw17s6nj6r7bfd8fft_1lt640000gn/T/mf-triage-hd4arsek/published\n",
+  "probe/docs/referrer.md": "# Referrer\n\n[Target](old-name.md)\n",
+  "probe/docs/private-probe.md": "# Public title\n\nPUBLIC_BEFORE\n\n> [!mf-private] A\n> SECRET_A\n\n> [!mf-private] B\n> SECRET_B\n\nPUBLIC_AFTER\n",
+  "probe/outputs/chunked.md": "# chunked\n\n> Created: 2026-10-25T05:27:51Z\n",
+  "probe/outputs/private-probe.md": "# Public title\n\nPUBLIC_BEFORE\n\nPUBLIC_AFTER\n",
+  "probe/outputs/single.md": "# Single\n\nVERSION_TWO\n",
+  "probe/docs/chunked/01-opening.md": "---\ntypora-copy-images-to: ../../assets\n---\n\n# chunked\n\n> Created: 2026-10-25T05:27:51Z",
+  "probe/docs/single/01-opening.md": "# Single\n\nVERSION_THREE_NOT_BUILT\n",
+  "destination/docs/new-name.md": "---\ntypora-copy-images-to: ../assets\n---\n\n# old-name\n\n> Created: 2026-10-25T05:27:52Z\n",
+  "destination/thinking/new-name.md": "Synthetic ledger\n",
+  "destination/prompts/new-name.md": "---\narticle: docs/new-name.md\n---\nSynthetic intent\n"
+}

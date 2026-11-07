@@ -30,24 +30,31 @@ pub fn run(args: &PublishRunArgs, repo_root: &Path, cwd: &Path, project: Option<
         ));
     }
 
-    let project_path = util::resolve_project(repo_root, project, cwd)?;
+    let project_path = crate::service::mind::project_for(repo_root, cwd, project, Some(&args.article))?;
     let config = config_svc::load_project(&project_path, Some(repo_root))?.ok_or_else(|| {
         MfError::usage("project missing mind.yaml".to_string(), Some("run `mf config init` to create one".to_string()))
     })?;
 
     let mut index = index::load(&project_path)?;
-    let article_entry = match index::resolve_article(&index, &args.article) {
-        Ok(resolved) => resolved.article.clone(),
-        Err(_) => {
-            // Auto-reindex on cache miss
-            let refreshed = crate::service::article::refresh_index(&project_path, &config)?;
-            index = refreshed;
-            index::resolve_article(&index, &args.article).map(|r| r.article.clone()).map_err(|_| {
-                MfError::not_found(
-                    format!("article '{}' not found in mind-index.yaml", args.article),
-                    Some("run `mf article index` to refresh the index".to_string()),
-                )
-            })?
+    let article_entry = if config.content_layout.is_some() {
+        crate::service::mind::as_article(
+            &crate::service::mind::resolve_output(repo_root, &project_path, &args.article)?,
+            &project_path,
+        )
+    } else {
+        match index::resolve_article(&index, &args.article) {
+            Ok(resolved) => resolved.article.clone(),
+            Err(_) => {
+                // Auto-reindex on cache miss
+                let refreshed = crate::service::article::refresh_index(&project_path, &config)?;
+                index = refreshed;
+                index::resolve_article(&index, &args.article).map(|r| r.article.clone()).map_err(|_| {
+                    MfError::not_found(
+                        format!("article '{}' not found in mind-index.yaml", args.article),
+                        Some("run `mf article index` to refresh the index".to_string()),
+                    )
+                })?
+            }
         }
     };
 
@@ -82,10 +89,10 @@ pub fn update(
     cwd: &Path,
     project: Option<&str>,
 ) -> Result<PublishUpdateOutcome> {
-    if args.article.is_empty() || args.article.contains('/') || args.article.contains('\\') {
+    if args.article.is_empty() || args.article.contains('\\') {
         return Err(MfError::usage(
             format!("invalid article name: '{}'", args.article),
-            Some("article must be kebab-case with no path separators".to_string()),
+            Some("provide an article slug or indexed article path".to_string()),
         ));
     }
 
@@ -97,26 +104,18 @@ pub fn update(
         ));
     }
 
-    let project_path = util::resolve_project(repo_root, project, cwd)?;
+    let project_path = crate::service::mind::project_for(repo_root, cwd, project, Some(&args.article))?;
     let config = config_svc::load_project(&project_path, Some(repo_root))?.ok_or_else(|| {
         MfError::usage("project missing mind.yaml".to_string(), Some("run `mf config init` to create one".to_string()))
     })?;
 
     let mut index = index::load(&project_path)?;
 
-    let layout = config_svc::effective_layout(&project_path)?;
-    let indexed_article_path = index
-        .articles
-        .iter()
-        .flat_map(|a| a.iter())
-        .find(|a| a.article_path == format!("{}/{}.{}", layout.articles, args.article, defaults::MARKDOWN_EXTENSION))
-        .map(|a| a.article_path.clone())
-        .ok_or_else(|| {
-            MfError::not_found(
-                format!("article '{}' not found in mind-index.yaml", args.article),
-                Some("run `mf article index` to refresh the index".to_string()),
-            )
-        })?;
+    let indexed_article_path = if config.content_layout.is_some() {
+        crate::service::mind::resolve_output(repo_root, &project_path, &args.article)?.path
+    } else {
+        index::resolve_article(&index, &args.article)?.article.article_path.clone()
+    };
 
     let targets = config.publish.targets.as_deref().unwrap_or(&[]);
     if !targets.iter().any(|t| t.name == args.target) {
@@ -340,6 +339,17 @@ fn resolve_local_path(
 }
 
 fn locate_build_artifact(project_path: &Path, config: &MindConfig, article_entry: &Article) -> Result<(PathBuf, u64)> {
+    if config.content_layout.is_some() {
+        let output = crate::service::mind::resolve_output(project_path, project_path, &article_entry.article_path)?;
+        let path = crate::service::mind::checked_path(project_path, &output.build_path)?;
+        let metadata = fs::metadata(&path).map_err(|_| {
+            MfError::build_artifact_missing(
+                format!("build artifact not found: {}", path.display()),
+                Some("build the selected output first".into()),
+            )
+        })?;
+        return Ok((path, metadata.len()));
+    }
     // FR-002 (R2): generated article — the article file IS the artifact
     if article_entry.template_origin.is_some() {
         let path = project_path.join(&article_entry.article_path);
@@ -394,8 +404,26 @@ fn run_local(
     let prefix = target.prefix.as_deref().unwrap_or("");
     let article_stem = args.article.rsplit_once('/').map(|(_, stem)| stem).unwrap_or(&args.article);
     let article_stem = article_stem.strip_suffix(".md").unwrap_or(article_stem);
-    let dest_file = dest_dir.join(format!("{prefix}{article_stem}.{format}"));
+    let dest_file = if config.content_layout.is_some() {
+        let output = crate::service::mind::resolve_output(project_path, project_path, &article_entry.article_path)?;
+        dest_dir.join(&output.mind).join(format!("{prefix}{}.md", output.name))
+    } else {
+        dest_dir.join(format!("{prefix}{article_stem}.{format}"))
+    };
 
+    if config.content_layout.is_some() {
+        let normalized = crate::service::mind::canonicalize_existing_prefix(&dest_file);
+        let canonical_project = util::try_canonicalize(project_path);
+        if let Ok(relative) = normalized.strip_prefix(&canonical_project) {
+            if !relative.starts_with("build") {
+                return Err(MfError::usage(
+                    "local publish destination inside a mind project must be under build/",
+                    None,
+                ));
+            }
+            crate::service::mind::checked_path(&canonical_project, &relative.to_string_lossy())?;
+        }
+    }
     if size_bytes == 0 {
         eprintln!("warning: build artifact is empty");
     }
@@ -412,7 +440,7 @@ fn run_local(
         });
     }
 
-    fs::create_dir_all(&dest_dir).map_err(MfError::Io)?;
+    fs::create_dir_all(dest_file.parent().unwrap_or(&dest_dir)).map_err(MfError::Io)?;
 
     if dest_file.exists() && !args.force.force {
         return Err(MfError::file_exists(dest_file));
@@ -548,6 +576,20 @@ fn resolve_yuque_prompt_destination(
     config: &MindConfig,
     article_entry: &Article,
 ) -> Result<PathBuf> {
+    if config.content_layout.is_some() {
+        let output = crate::service::mind::resolve_output(project_path, project_path, &article_entry.article_path)?;
+        let relative = target
+            .config
+            .as_ref()
+            .and_then(|c| c.get("out_path"))
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .unwrap_or_else(|| format!("build/{}/{}.yuque.md", output.mind, output.name));
+        if !Path::new(&relative).starts_with("build") {
+            return Err(MfError::usage("publish artifact must stay under project build/", None));
+        }
+        return crate::service::mind::checked_path(project_path, &relative);
+    }
     // Allow per-target override via config.out_path
     if let Some(cfg) = target.config.as_ref()
         && let Some(out_path) = cfg.get("out_path").and_then(|v| v.as_str())

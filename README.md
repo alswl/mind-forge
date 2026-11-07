@@ -6,29 +6,38 @@
 
 **A local-first, AI-native CLI for card-based writing and personal knowledge.**
 
-`mf` treats a knowledge base like a codebase. You capture evidence once, write
-several articles from it, and ship them through repeatable build and publish
-steps. Everything you author is plain Markdown and YAML that Git can diff and
-review. The search index is derived state and can be rebuilt locally at any
-time. A person, a shell script and an AI agent can all drive the CLI the same
-way.
+`mf` manages minds: named collections of intent, reasoning, evidence, and editable
+outputs. A mind can have zero, one, or several outputs. Each output can be a single
+Markdown file or ordered blocks. Build artifacts stay separate from authored
+sources, and private content is excluded from builds and publication.
 
-- **Four knowledge stores.** Sources (evidence), Prompts (intent), Thinking
-  (reasoning) and Articles (synthesis) are all first-class.
-- **Repository-wide local RAG.** `mf search` covers Sources, articles, prompts,
-  thinking, project goals and terms. Every hit says where it came from.
-- **Card-based articles.** Directory articles are ordered blocks that you can
-  create, move, renumber and rename.
-- **Deterministic builds.** Blocks merge into one output, private content is
-  stripped, and an opt-in asset pipeline (for example `d2 → svg → png`) runs.
-- **Publishing.** Built articles go to local or prompt-based targets, and
-  publish records are tracked.
-- **Terminology control.** A shared glossary drives lint and safe batch fixes
-  for transcription errors.
-- **Agent contract.** Commands return single JSON envelopes, use fixed exit
-  codes, support `--dry-run` and stop at explicit confirmation boundaries.
-- **Agent skills.** Claude Code skills for planning, writing and CLI reference
-  ship with the repo.
+New projects choose `category` or `bundle` layout in `mind.yaml`:
+
+```sh
+mf init
+mf project new research --layout category
+mf mind new brief -p research
+mf output new brief design -p research
+mf output new brief summary --file -p research
+mf output list projects/research::brief
+mf build projects/research::brief::design
+mf build projects/research::brief::design --format html
+```
+
+See [mind/output layout and command contracts](docs/mind-output-layout.md) for
+configuration, identity, indexing, retrieval, and publish behavior. Existing
+Article projects remain readable through the legacy commands below; they are not
+automatically migrated or assigned to minds. See [layout lifecycle](docs/layout-lifecycle.md)
+for conversion, reference maintenance and recovery, and [additional resources](docs/additional-cli.md)
+for dynamic discovery, specific-path rename/remove and `mf mind index --check`.
+See [HTML output](docs/build-html.md) for static templates, Mermaid and failure behavior.
+See [the current Skills guide](skills/README.md) for planning and writing selected
+outputs, and [Skill evaluation evidence](docs/skills-evals-verification.md) for
+the completed behavior comparison.
+
+The following philosophy and Article command examples document the existing
+legacy workflows. For new projects, the mind/output guide above defines ownership
+and distinguishes editable outputs from build artifacts.
 
 ## Philosophy
 

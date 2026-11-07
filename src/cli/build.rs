@@ -1,4 +1,3 @@
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use clap::Args;
@@ -9,13 +8,15 @@ use crate::cli::CommandOutcome;
 use crate::cli::shared_flags::DryRunFlag;
 use crate::error::{MfError, Result};
 use crate::output::warning::emit_warning;
-use crate::service::util::markdown;
 use crate::service::{build as build_svc, util as svc_util};
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct BuildArgs {
-    /// Article slug, project path (docs/my-article), or path to the article
+    /// Mind/output identity, unique output name, or legacy article path
     pub article: String,
+    /// Artifact format (independent of the global --output envelope format)
+    #[arg(long = "format", value_name = "FORMAT", value_enum, default_value_t = build_svc::BuildFormat::Markdown)]
+    pub artifact_format: build_svc::BuildFormat,
     #[arg(long = "out")]
     pub output: Option<PathBuf>,
     #[command(flatten)]
@@ -46,7 +47,7 @@ pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome>
             .unwrap_or_else(|| "article".to_string());
         (project_path, Some(article_path), article_name)
     } else {
-        (svc_util::resolve_project(root, project, cwd)?, None, args.article.clone())
+        (crate::service::mind::project_for(root, cwd, project, Some(&args.article))?, None, args.article.clone())
     };
 
     // Bug #22: `--out` must be normalized against the same canonical path
@@ -56,20 +57,33 @@ pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome>
     // descending into the asset tree.
     let output_override: Option<PathBuf> = args.output.as_deref().map(|p| normalize_output_override(cwd, p));
 
+    let location = if crate::service::mind::config_for(&project_path)?.content_layout.is_some() {
+        let selector = article_path
+            .as_ref()
+            .map(|p| svc_util::rel_posix_path(&project_path, p))
+            .transpose()?
+            .unwrap_or_else(|| article_name.clone());
+        Some(crate::service::mind::resolve_output(root, &project_path, &selector)?)
+    } else {
+        None
+    };
+
     let output = match article_path {
-        Some(article_path) => build_svc::build_article_path(
+        Some(article_path) => build_svc::build_article_path_format(
             &project_path,
             root,
             &article_path,
             args.dry_run.dry_run,
             output_override.as_deref(),
+            args.artifact_format,
         )?,
-        None => build_svc::build_article(
+        None => build_svc::build_article_format(
             &project_path,
             root,
             &article_name,
             args.dry_run.dry_run,
             output_override.as_deref(),
+            args.artifact_format,
         )?,
     };
 
@@ -77,6 +91,8 @@ pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome>
         build_svc::BuildOutput::Plan(plan) => {
             let data = serde_json::json!({
                 "article": plan.article,
+                "location": location,
+                "format": args.artifact_format,
                 "project": plan.project,
                 "article_path": plan.article_path,
                 "input_files": plan.input_files,
@@ -121,6 +137,8 @@ pub fn dispatch(args: BuildArgs, ctx: &mut CommandCtx) -> Result<CommandOutcome>
         build_svc::BuildOutput::Rendered(result) => {
             let data = serde_json::json!({
                 "article": article_name,
+                "location": location,
+                "format": args.artifact_format,
                 "output": result.output_path,
                 "size_bytes": result.size_bytes,
             });
@@ -157,27 +175,5 @@ fn normalize_output_override(cwd: &Path, output: &Path) -> PathBuf {
         let cwd_canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
         cwd_canonical.join(output)
     };
-    canonicalize_existing_prefix(&path)
-}
-
-fn canonicalize_existing_prefix(path: &Path) -> PathBuf {
-    let mut cursor = path.to_path_buf();
-    let mut suffix: Vec<OsString> = Vec::new();
-
-    while !cursor.exists() {
-        let Some(name) = cursor.file_name() else {
-            return markdown::normalize_lexical(path);
-        };
-        suffix.push(name.to_os_string());
-        let Some(parent) = cursor.parent() else {
-            return markdown::normalize_lexical(path);
-        };
-        cursor = parent.to_path_buf();
-    }
-
-    let mut normalized = cursor.canonicalize().unwrap_or(cursor);
-    for part in suffix.iter().rev() {
-        normalized.push(part);
-    }
-    markdown::normalize_lexical(&normalized)
+    crate::service::mind::canonicalize_existing_prefix(&path)
 }

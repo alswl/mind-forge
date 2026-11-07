@@ -3,6 +3,7 @@ pub mod asset;
 pub mod config;
 pub mod index;
 pub mod lifecycle;
+pub mod mind;
 pub mod project;
 pub mod prompt;
 pub mod publish;

@@ -5,7 +5,20 @@ decisions taken when `prompts/` and `thinking/` were promoted to first-class,
 queryable schema (spec `065-prompts-thinking-schema`). It exists so a future
 rename is a deliberate, already-reasoned change rather than a fresh debate.
 
-## Current entities
+## Current mind/output entities
+
+The current model is defined in [mind/output layout](mind-output-layout.md).
+`mind.yaml.content_layout` chooses `category` or `bundle`; `mind.yaml.minds` stores
+mind registration and optional `default_output`. `mind-index.yaml.outputs` is a
+derived projection, not authored content. Output formats are not output identities.
+Prompt and Thinking belong to the mind, as do Source and Asset paths. There is no
+project shared-material ownership layer in the new model. Unknown legacy ownership
+requires an explicit later migration.
+
+The spec 065 evaluation below records the legacy Article schema only. Its
+`article:` bindings and proposed noun renames do not override mind/output ownership.
+
+## Legacy entities
 
 | Directory | Entity / command | Holds |
 |-----------|------------------|-------|

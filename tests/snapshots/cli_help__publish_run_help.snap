@@ -2,12 +2,12 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Publish an article to a target
+Publish a selected output or legacy article to a target
 
 Usage: mf publish run [OPTIONS] <ARTICLE>
 
 Arguments:
-  <ARTICLE>  Article slug, project path (docs/my-article), or path to the article
+  <ARTICLE>  Mind/output identity, unique output name, or legacy article path
 
 Options:
       --root <PATH>             Mind Repo root directory

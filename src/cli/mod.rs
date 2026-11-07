@@ -1,9 +1,13 @@
+pub mod access;
+pub mod additional;
 pub mod article;
 pub mod asset;
 pub mod build;
 pub mod completion;
 pub mod config;
 pub mod deprecation;
+pub mod lifecycle;
+pub mod mind;
 pub mod project;
 pub mod prompt;
 pub mod publish;
@@ -168,8 +172,16 @@ pub enum TopLevelCommand {
     // ── Managed resources ──
     #[command(about = "Manage projects")]
     Project(project::ProjectCmd),
-    #[command(about = "Manage articles")]
+    #[command(about = "Manage legacy articles")]
     Article(article::ArticleCmd),
+    /// Manage minds, including minds without outputs
+    Mind(mind::MindCmd),
+    /// Discover and manage additional files and directories
+    Additional(additional::AdditionalCmd),
+    /// Apply and recover local layout lifecycle transactions
+    Lifecycle(lifecycle::LifecycleCmd),
+    /// Manage editable outputs belonging to minds
+    Output(mind::OutputCmd),
     #[command(about = "View prompt projections")]
     Prompt(prompt::PromptCmd),
     #[command(about = "View thinking projections")]
@@ -184,9 +196,9 @@ pub enum TopLevelCommand {
     Term(term::TermCmd),
 
     // ── Workflows ──
-    #[command(about = "Build articles")]
+    #[command(about = "Build a selected mind output or legacy article")]
     Build(build::BuildArgs),
-    #[command(about = "Publish articles to configured targets")]
+    #[command(about = "Publish selected outputs or legacy articles to configured targets")]
     Publish(publish::PublishCmd),
     #[command(about = "Generate render prompts (emits prompts only, no output files)")]
     Render(render::RenderCmd),
@@ -233,6 +245,10 @@ impl RootCli {
             Some(TopLevelCommand::Search(args)) => source::dispatch_global_search(args, ctx),
             Some(TopLevelCommand::Asset(command)) => asset::dispatch(command, ctx),
             Some(TopLevelCommand::Project(command)) => project::dispatch(command, ctx),
+            Some(TopLevelCommand::Mind(command)) => mind::dispatch(command, ctx),
+            Some(TopLevelCommand::Additional(command)) => additional::dispatch(command, ctx),
+            Some(TopLevelCommand::Lifecycle(command)) => lifecycle::dispatch(command, ctx),
+            Some(TopLevelCommand::Output(command)) => mind::dispatch_output(command, ctx),
             Some(TopLevelCommand::Article(command)) => article::dispatch(command, ctx),
             Some(TopLevelCommand::Prompt(command)) => prompt::dispatch(command, ctx),
             Some(TopLevelCommand::Thinking(command)) => thinking::dispatch(command, ctx),

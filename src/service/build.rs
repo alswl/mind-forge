@@ -9,7 +9,24 @@ use crate::model::config::{BannerConfig, BannerLevel};
 use crate::service::util::markdown;
 use crate::service::{config as config_svc, index, util};
 
+pub mod html;
 pub mod pipeline;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, clap::ValueEnum)]
+#[serde(rename_all = "snake_case")]
+pub enum BuildFormat {
+    #[default]
+    Markdown,
+    Html,
+}
+impl BuildFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Markdown => "md",
+            Self::Html => "html",
+        }
+    }
+}
 
 /// A single article file entry in a build plan.
 #[derive(Debug, Serialize)]
@@ -131,13 +148,26 @@ fn strip_first_h1(content: &str) -> String {
 /// `repo_root` is the mind-forge repository root for config resolution.
 /// `dry_run` controls whether to produce a plan or actual output.
 /// `output_override` optionally overrides the default output path.
-pub fn build_article(
+pub fn build_article_format(
     project_path: &Path,
     repo_root: &Path,
     article: &str,
     dry_run: bool,
     output_override: Option<&Path>,
+    format: BuildFormat,
 ) -> Result<BuildOutput> {
+    if crate::service::mind::config_for(project_path)?.content_layout.is_some() {
+        let output = crate::service::mind::resolve_output(repo_root, project_path, article)?;
+        return build_article_content(
+            project_path,
+            repo_root,
+            &output.identity,
+            &project_path.join(&output.path),
+            dry_run,
+            output_override,
+            format,
+        );
+    }
     // Check for configured article_dir in build.articles.<article>.article_dir
     let article_path = match config_svc::load_project(project_path, Some(repo_root)) {
         Ok(Some(config)) => config
@@ -163,22 +193,23 @@ pub fn build_article(
         Some(path) => path,
         None => resolve_indexed_article_path(project_path, article)?,
     };
-    build_article_content(project_path, repo_root, article, &article_path, dry_run, output_override)
+    build_article_content(project_path, repo_root, article, &article_path, dry_run, output_override, format)
 }
 
-pub fn build_article_path(
+pub fn build_article_path_format(
     project_path: &Path,
     repo_root: &Path,
     article_path: &Path,
     dry_run: bool,
     output_override: Option<&Path>,
+    format: BuildFormat,
 ) -> Result<BuildOutput> {
     let article = article_path
         .file_stem()
         .or_else(|| article_path.file_name())
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "article".to_string());
-    build_article_content(project_path, repo_root, &article, article_path, dry_run, output_override)
+    build_article_content(project_path, repo_root, &article, article_path, dry_run, output_override, format)
 }
 
 fn resolve_indexed_article_path(project_path: &Path, article: &str) -> Result<PathBuf> {
@@ -201,12 +232,18 @@ fn build_article_content(
     article_path: &Path,
     dry_run: bool,
     output_override: Option<&Path>,
+    format: BuildFormat,
 ) -> Result<BuildOutput> {
     // 1. Load project config (mind.yaml)
     let config = config_svc::load_project(project_path, Some(repo_root))?.ok_or_else(|| {
         MfError::usage("project missing mind.yaml".to_string(), Some("run `mf config init` to create one".to_string()))
     })?;
     let build_cfg = &config.build;
+    let html_template = if format == BuildFormat::Html {
+        Some(html::template(project_path, build_cfg.html_template.as_deref())?)
+    } else {
+        None
+    };
     let layout = config_svc::effective_layout(project_path)?;
     let assets_root = project_path.join(&layout.assets);
 
@@ -244,8 +281,44 @@ fn build_article_content(
         Some(path) => path.to_path_buf(),
         None => {
             let stem = crate::service::index::article_output_stem(article);
-            project_path.join(&layout.build_output).join(format!("{stem}.{}", build_cfg.format))
+            project_path.join(&layout.build_output).join(format!("{stem}.{}", format.extension()))
         }
+    };
+
+    let selected_output = if config.content_layout.is_some() {
+        let relative = util::rel_posix_path(project_path, article_path)?;
+        Some(crate::service::mind::resolve_output(repo_root, project_path, &relative)?)
+    } else {
+        None
+    };
+    let output_path = if let Some(selected) = &selected_output {
+        crate::service::mind::checked_path(project_path, &selected.path)?;
+        let path = output_override
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| project_path.join(&selected.build_path).with_extension(format.extension()));
+        let relative = path
+            .strip_prefix(project_path)
+            .map_err(|_| MfError::usage("mind output artifacts must stay under project build/", None))?;
+        if !relative.starts_with("build") {
+            return Err(MfError::usage("mind output artifacts must stay under project build/", None));
+        }
+        crate::service::mind::checked_path(project_path, &relative.to_string_lossy())?;
+        path
+    } else {
+        output_path
+    };
+    if output_path == article_path || (article_path.is_dir() && output_path.starts_with(article_path)) {
+        return Err(MfError::usage("build destination overlaps authored source", None));
+    }
+
+    let assets_root = if let Some(selected) = &selected_output {
+        let relative = match config.content_layout {
+            Some(crate::model::mind::ContentLayout::Bundle) => format!("{}/assets", selected.mind),
+            _ => format!("assets/{}", selected.mind),
+        };
+        crate::service::mind::checked_path(project_path, &relative)?
+    } else {
+        assets_root
     };
 
     // 5. Gather article files — single file or directory contents
@@ -378,6 +451,10 @@ fn build_article_content(
         content = insert_banner_into_content(&content, banner);
     }
 
+    if let Some(template) = html_template {
+        content = html::render(&content, article, &template);
+    }
+
     // Ensure output directory exists
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent).map_err(MfError::Io)?;
@@ -394,7 +471,9 @@ fn build_article_content(
     };
 
     // Auto-index: ensure the built article exists in mind-index.yaml
-    if let Err(e) = auto_index_article(project_path, article, article_path) {
+    if selected_output.is_some() {
+        crate::service::mind::index_outputs(repo_root, project_path, false)?;
+    } else if let Err(e) = auto_index_article(project_path, article, article_path) {
         tracing::warn!("failed to auto-index article '{}': {}", article, e);
     }
 

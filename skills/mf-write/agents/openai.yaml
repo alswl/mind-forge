@@ -1,4 +1,4 @@
 interface:
   display_name: "Mind Forge Write"
   short_description: "Draft, revise, incorporate feedback, and publish"
-  default_prompt: "Use $mf-write to revise this article from its prompt, sources, thinking ledger, current prose, and inline feedback."
+  default_prompt: "Use $mf-write to revise this mind’s selected output from its prompt, sources, thinking ledger, current prose, and inline feedback."
