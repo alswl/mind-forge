@@ -59,8 +59,10 @@ independent concurrency groups. README and Markdown-only changes under docs skip
 CI; executable docs and skills still run it. There are currently no required
 checks configured; revisit these filters before adding branch protection.
 
-Each job uses setup-rust-toolchain's built-in Rust cache, with a separate shared
-key per build target. Release builds use the same keys; cache reuse still depends
+Each job disables setup-rust-toolchain's built-in cache and uses one explicit
+Swatinem/rust-cache, with a separate shared key per build target. Keeping the
+existing explicit keys avoids the different environment hash computed inside the
+setup composite action. Release builds use the same keys; cache reuse still depends
 on GitHub ref visibility, toolchain, flags and lockfile compatibility. Tag pushes
 run Release rather than duplicating the CI matrix. CI artifacts and temporary
 release uploads expire after seven days; published release assets are unaffected.
