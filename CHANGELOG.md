@@ -1,11 +1,19 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.5.0] - 2026-11-10
+
+### Features
+- Add output workflows and recoverable content lifecycle (#10) (by @alswl)
+
+### Bug Fixes
+- Preserve release workflow contract and asset overwrite policy (by @alswl)
+
 ## [0.4.3] - 2026-10-20
 
 ### Features
 - Let path-form positional arguments select their own project (by @alswl)
-- Publish installable tagged release artifacts
+- Publish installable tagged release artifacts (by @alswl)
 
 ## [0.4.2] - 2026-10-01
 
