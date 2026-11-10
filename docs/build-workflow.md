@@ -48,9 +48,22 @@ Running the whole suite after every edit costs **6× the wall time and 14× the 
 of running the one test target that covers what you changed. `cargo t1` is faster
 because it skips both the unit-test compilation and the other ~111 test binaries.
 
-CI (`.github/workflows/ci.yml`) runs `cargo test --locked`, the e2e suite,
+CI (`.github/workflows/ci.yml`) runs `cargo test --locked` (including the e2e suite),
 `cargo clippy -- -D warnings`, and `cargo fmt --check`, so the full gate is
 enforced there. Locally, run the full suite before pushing — not after every edit.
+
+CI runs for branch pushes and PRs targeting master. When the same branch SHA has
+an open PR to master, only the PR event runs the heavy jobs; a failed PR lookup
+falls back to full checks. Only PR updates cancel older runs. Other pushes use
+independent concurrency groups. README and Markdown-only changes under docs skip
+CI; executable docs and skills still run it. There are currently no required
+checks configured; revisit these filters before adding branch protection.
+
+Each job uses setup-rust-toolchain's built-in Rust cache, with a separate shared
+key per build target. Release builds use the same keys; cache reuse still depends
+on GitHub ref visibility, toolchain, flags and lockfile compatibility. Tag pushes
+run Release rather than duplicating the CI matrix. CI artifacts and temporary
+release uploads expire after seven days; published release assets are unaffected.
 
 The aliases are defined in `.cargo/config.toml` at the repository root.
 

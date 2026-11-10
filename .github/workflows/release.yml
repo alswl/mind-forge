@@ -40,18 +40,26 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: ${{ matrix.target }}
+          cache-shared-key: ci-${{ runner.os == 'Linux' && 'build' || 'build-macos' }}-${{ matrix.target }}
       - name: Install protobuf compiler
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Install protobuf compiler
         if: runner.os == 'macOS'
         run: brew install protobuf
-      - name: Install zig and cargo-zigbuild
+      - name: Install Zig
         if: runner.os == 'Linux'
         run: |
-          curl -fsSL https://ziglang.org/download/0.14.0/zig-linux-x86_64-0.14.0.tar.xz | tar xJ -C /tmp
+          curl --retry 3 -fsSL https://ziglang.org/download/0.14.0/zig-linux-x86_64-0.14.0.tar.xz -o /tmp/zig.tar.xz
+          echo '473ec26806133cf4d1918caf1a410f8403a13d979726a9045b421b685031a982  /tmp/zig.tar.xz' | sha256sum -c -
+          tar xJf /tmp/zig.tar.xz -C /tmp
           echo "/tmp/zig-linux-x86_64-0.14.0" >> "$GITHUB_PATH"
-          cargo install cargo-zigbuild
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
+        if: runner.os == 'Linux'
+        with:
+          tool: cargo-zigbuild@0.24.1
+          checksum: true
+          fallback: none
       - name: Build Linux
         if: runner.os == 'Linux'
         run: cargo zigbuild --release --locked --target ${{ matrix.target }}
@@ -70,6 +78,7 @@ jobs:
           name: mf-${{ matrix.target }}
           path: mf-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
           if-no-files-found: error
+          retention-days: 7
 
   create-release:
     needs: build
