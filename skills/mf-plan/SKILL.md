@@ -2,25 +2,33 @@
 name: mf-plan
 metadata:
   version: 0.3.0
-description: Research, plan, or replan a mind and its selected output as an outline-first workflow from an idea, prompt, evidence, draft, or human feedback. Use when defining goals or constraints, collecting and comparing evidence, creating or changing structure, presenting private suggestions for user selection, routing Word-style feedback threads, inspecting progress, or deciding what to investigate next; leave detailed prose development to mf-write.
+description: Research, plan, or replan a legacy article or a mind and its selected output as an outline-first workflow from an idea, prompt, evidence, draft, or human feedback. Use when defining goals or constraints, collecting and comparing evidence, creating or changing structure, presenting private suggestions for user selection, routing Word-style feedback threads, inspecting progress, or deciding what to investigate next; leave detailed prose development to mf-write.
 ---
 
 # Research and plan a mind-forge article
 
 Own problem framing, evidence gathering, comparison, judgment, and the article outline. Planning ends with a reviewable structure and explicit user choices; it does not silently turn research into finished prose. `$mf-write` expands the approved structure in a later pass.
 
-## Resolve the mind and selected output
+## Resolve the project mode and writing target
 
-1. Locate the Mind Repo (`minds.yaml`) and project with `mf project list --json`. Use `mf mind list/show --json` to resolve the mind, and `mf output list/show --json` to select the requested output. Preserve returned identities, `project_identity`, `mind_identity`, `output_identity`, paths and shape. Read `$mf-cli` for exact flags.
-2. A mind owns zero to many outputs and one intent/reasoning workspace. Zero outputs is valid for research. Before editing, identify one output explicitly from the request or an unambiguous configured default; if ambiguous, show the CLI candidates and ask. Never choose the first match or derive identity from a title or basename.
-3. Read the mind's `roles` returned by `mind show`: prompt, thinking, sources, assets and applicable constitution. Paths are project-relative. Read the selected output's returned path; `outputs/` contains editable sources and `build/` contains derived artifacts. Do not write generated artifacts as source or mix sibling outputs.
-4. Optional roles can be absent. Do not pretend `mind show` returned a proposed role path: this CLI returns existing roles only. Continue with available explicit intent where sufficient; if a missing role must be authored, use an explicit user-provided path or report the missing-location capability. Never synthesize a prompt/thinking path from an output basename. Do not duplicate a mind prompt for each output.
-5. Honor the project's `category` or `bundle` layout and the existing output shape. Do not migrate an unconfigured legacy project, change layout configuration, or convert an existing draft incidentally. Use `mf lifecycle` for authorized identity/layout changes, preview then apply, and read back. Discover extra resources with `mf additional list/show`; their presence does not establish feedback or execution status.
-6. After authorized changes, use `mf mind index -p <project> --json` to reconcile projections and `mf mind index --check -p <project> --json` to verify disk and explicit bindings. Do not hand-edit indexes, implement path resolvers, or simulate lifecycle/build commands. A successful structural check does not establish editorial completion.
+1. Locate the Mind Repo (`minds.yaml`) and the requested project with `mf project list --json`; use the selected entry's repo-relative `path` for `mf project show <project-path> --json` and subsequent project scope. Require a successful `project show`, then read that project's actual `mind.yaml` before invoking `mf mind` or `mf output`. Route each project independently, including projects sharing one repo: absent `content_layout` uses legacy Article; explicit `category` or `bundle` uses Mind/Output. An unreadable or invalid configuration (including an invalid layout value) is an error to report, not a reason to fall back or migrate. Read the file itself for routing; `mf config show` can return defaults after a load error and is not proof that the project configuration is valid. Use `$mf-cli` for exact flags.
+2. Resolve the target using the matching column below. Preserve CLI-returned identities, paths, shape and bindings; never infer ownership from a title, basename, or a directory named `outputs`. If the request is ambiguous, show the CLI candidates and ask; never select the first match. For preliminary research without a requested deliverable, create no article, output or workflow files merely to satisfy the skill.
 
-For a requested new deliverable, create a missing mind with `mf mind new` and the requested output with `mf output new <mind> <name> --json`; use `--file` for short notes without independently maintained sections. Read the returned actual path (dry-run `path: null` is not a created file). For preliminary research, create no output merely to make the mind valid. Blocks are appropriate when the author requests independently maintained sections.
+| Operation | Legacy: no `content_layout` | Mind/Output: `category` or `bundle` |
+|---|---|---|
+| Locate and read | `mf article list -p <project> --json`, then `mf article show <article-selector> -p <project> --json` | `mf mind list/show --json`, then `mf output list/show --json`, scoped to the project/mind |
+| Requested new deliverable | `mf article new <title> -p <project> --json`; read `data.details.path`, refresh `article list`, then use the listed identity for that created path in `article show` (directory create responses may include a trailing `/`); do not create a parallel mind | Reuse the resolved mind; only create a missing mind with `mf mind new`, then `mf output new <mind> <name> --json`; read back actual identities and paths |
+| Reconcile after edits | `mf article index -p <project> --json`, then `mf article lint -p <project> --json` (Article index has no `--check`) | `mf mind index -p <project> --json`, then `mf mind index --check -p <project> --json` |
+| Build / authorized publish | `mf build <article-selector> -p <project> ...`; `mf publish run <article-selector> -p <project> --target <target> ...` | `mf build <output-identity> ...`; `mf publish run <output-identity> --target <target> ...` |
+
+3. In legacy mode, read existing `prompt` and `thinking` bindings returned by `article show`; use their returned paths and binding status. Stop on conflicting/duplicate bindings; do not repair or rebind an orphan by guessing. In Mind/Output mode, read `project_identity`, `mind_identity`, `output_identity` and the existing mind `roles` (prompt, thinking, sources, assets and applicable constitution). Role paths are project-relative; `mind show` returns existing roles only. Discover extra resources with `mf additional list/show` in Mind/Output mode; presence does not establish feedback status. A mind owns zero to many outputs and one intent/reasoning workspace. Choose one requested output or an unambiguous configured default before editing; do not duplicate a shared prompt for sibling outputs.
+4. Prompt and Thinking are optional in both modes. Read and maintain existing bound files and any applicable constitution; do not create missing stores or block writing because they are absent. Use explicit user intent, authored prose, selected Suggestions, Feedback and verified evidence. Throughout the steps below, instructions to read/update Prompt or Thinking apply only when that resource exists. Keep necessary working decisions or open questions in local `mf-private` regions of the resolved source, or in conversation during preliminary research; missing stores are not completion prerequisites. Explicit requests to author a new resource require a verified location and binding, not a path synthesized from the target basename.
+5. Preserve directory articles and single-file articles as found. For a new target, use `--file` when a single note is appropriate; use blocks for independently maintained sections. In legacy projects, editable source is the configured article path (often `docs/`), while `outputs/` is usually generated. In category/bundle projects, `outputs/` can contain editable sources, and `build/` contains generated artifacts. In both modes, configuration and CLI-returned source/artifact paths decide; never edit a generated draft as source or overwrite source during build. Dry-run `path: null` is not a created file.
+6. Retain the selected mode and selector for indexing, build, publishing and metadata updates throughout this workflow. Do not add `content_layout`, move files, convert shapes, or migrate a project as a compatibility repair: setting the field disables the legacy Article entry without converting existing articles. For separately authorized lifecycle changes, use the mode's CLI, preview then apply, and read back identities, paths and bindings. Do not hand-edit indexes or simulate CLI operations. A structural check does not establish editorial completion.
 
 Prompt holds durable intent; Thinking holds comparisons, conflicts and open questions; Source holds evidence and provenance. Register new sources with the real CLI and inspect the returned location before citing it. An already-owned source should be referenced rather than copied to another mind. Retrieval results from prompts and thinking provide context, not factual evidence. If RAG is unavailable, report that limitation and continue only from verified available materials. A local writing/planning request does not authorize corpus activation or backend changes.
+
+In the rest of this skill, “selected output” also means the resolved legacy article source. Prompt/Thinking references remain conditional on existing bindings; they never require backfilling files.
 
 ## Read and reconcile in order
 
@@ -32,11 +40,11 @@ At the start of every turn, read and reconcile:
 4. current article source;
 5. every `<!-- mf-feedback ... -->` annotation and every `mf-private` suggestion or feedback block in the article.
 
-Use the resolved mind roles and output identity as the ownership context. After a CLI lifecycle operation, read back identities, roles, links and index checks. Stop on conflicting explicit bindings; never infer mappings from title similarity.
+Use the resolved legacy article bindings or mind roles and output identity as the ownership context. After an authorized CLI lifecycle operation, read back identities, bindings and the mode-specific index validation. Stop on conflicting explicit bindings; never infer mappings from title similarity.
 
 ## Maintain the prompt deliberately
 
-Select a mode and record it in prompt frontmatter:
+Select a mode; record it in existing prompt frontmatter, or retain it with the working decisions when no prompt exists:
 
 - `editorial`: thesis, argument, narrative, and audience are primary.
 - `research`: a current synthesis of gathered facts is primary.
@@ -89,18 +97,18 @@ rather than silently falling back to an incomplete source list.
   Give each item an article-local stable ID. In `Suggestions`, `[x]` means the user selected that option for `$mf-write`; `[ ]` means it remains unselected. Leave new suggestions unchecked unless the user has already selected one explicitly. Selection persists after drafting.
 - Treat each `Feedback` item like a Word comment thread anchored beside the section it governs. The first line is the immutable request. Append dated `Author` or `Agent` replies beneath it; never rewrite earlier messages. `[ ]` means open, `[x]` means resolved by `$mf-write` after implementation and verification. Reopening changes `[x]` back to `[ ]` and appends a dated reason while preserving the earlier resolution.
 - The private thread is authoritative for current feedback status. Thinking may reference `FB-NNN` for reasoning and audit history, but must not maintain a competing open/resolved flag.
-- Do not invent feedback or resolve private Feedback in this skill. If the user explicitly defers an item, move the complete thread, including its ID, original request and ordered replies, to the existing prompt Open Loop with the explicit reason and source anchor; verify the destination before removing the original; every remaining open Feedback thread is current work.
+- Do not invent feedback or resolve private Feedback in this skill. If the user explicitly defers an item, move the complete thread, including its ID, original request and ordered replies, to the existing prompt Open Loop with the explicit reason and source anchor; verify the destination before removing the original; every remaining open Feedback thread is current work. If no prompt exists, keep the complete thread at its source anchor and append the deferral reason; do not create a prompt or mark it resolved.
 - Use as many suggestion/feedback pairs as the decisions require, normally adjacent to the section they govern. Keep factual detail and citations in the registered sources or thinking ledger; private blocks should contain concise choices, rationale, and user direction rather than hidden draft prose.
 - Prune the plan actively: remove redundant or obsolete headings, duplicated choices, and branches that no longer serve the objective. Preserve substantive authored material and decision history in the appropriate store; preview broad structural deletions before applying them.
 - Finish the planning pass with a coherent outline and clearly report which choices still need the user's selection. Do not proceed to detailed prose merely because enough evidence exists.
 
-A research turn is complete only when all affected stores agree: prompt for changed control information, sources for new evidence, thinking for changed reasoning or feedback state, and the selected output for the current outline and private choices. A detailed conclusion remains a `$mf-write` deliverable.
+A research turn is complete when the affected existing resources agree: any bound prompt for changed control information, registered sources for new evidence, any bound thinking for changed reasoning, and the selected source for the current outline and private choices. Preserve feedback status in its authoritative private thread. Missing Prompt/Thinking stores need no backfill; retain necessary decisions privately in the source or, for preliminary research, in conversation. A detailed conclusion remains a `$mf-write` deliverable.
 
 ## Process human feedback
 
 Classify legacy Markdown comments beginning with `mf-feedback` before acting:
 
-- Resolve research, comparison, goal, choice, and structure comments here. Record the request and resolution in the thinking Feedback ledger, update the outline, then remove the comment.
+- Resolve research, comparison, goal, choice, and structure comments here. Record the request and resolution in existing thinking or an anchored private Feedback thread, update the outline, verify the history is preserved, then remove the comment.
 - Migrate prose, expression, and local-edit comments into an open private `Feedback` thread with a stable ID and the original wording, then remove the legacy comment. `$mf-write` owns resolution.
 - If one comment contains both kinds, resolve the planning part and create an open thread for the writing part.
 - Promote feedback to the prompt only when it establishes a durable goal, constraint, criterion, protocol, or writing rule.
