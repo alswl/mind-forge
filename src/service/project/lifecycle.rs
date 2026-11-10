@@ -144,6 +144,9 @@ fn check_missing_directory(
     unfixed_count: &mut u64,
 ) -> Result<()> {
     let layout = config_svc::effective_layout(project_path)?;
+    if config_svc::load_project(project_path, Some(project_path))?.is_some_and(|c| c.content_layout.is_some()) {
+        return Ok(());
+    }
     let required_dirs = [&layout.articles, &layout.sources, &layout.assets];
     for dir in required_dirs {
         let dir_path = project_path.join(dir);

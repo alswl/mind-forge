@@ -4,7 +4,7 @@
 
 Quoted text is protected by default: blockquotes and CJK verbatim spans (`「…」`)
 are never rewritten. A correctable hit inside one is reported as a distinct
-`, quote-protected` finding (spec 081) — visible and countable, but never
+`, quote-protected` finding — visible and countable, but never
 auto-applied, not even with `--term`. Use `--include-quotes` to opt in for one
 invocation and have those hits treated as ordinary, fixable findings. One-time
 rules can be supplied with repeatable `--ad-hoc 'ORIGINAL=>CORRECT'` or
@@ -44,18 +44,20 @@ my_aidc_db             → skipped (underscore neighbours, snake_case)
 独立 aidc 站点          → matched (whitespace neighbour on both sides)
 ```
 
-### CJK `word` corrections (spec 074 #30)
+### CJK `word` corrections
 
-A `word`-matched CJK correction must fire on an **exact jieba token**. For the
-ambiguous short class (≤2 Han characters, e.g. 「以可」), the matched span must be
-one contiguous jieba token — a span that merely sits between two separately
-emitted tokens (`以` + `可` in 「以可独立验证」) is not flagged. Genuine standalone
-short-CJK occurrences still lint, but as **advisory**: `replacement_eligible:
+For a pure-CJK `word` correction of at most two Han characters (for example,
+「以可」), the matched span must be one contiguous jieba token.
+A span that merely sits between two separately
+emitted tokens (`以` + `可` in 「以可独立验证」) is not flagged.
+Longer or mixed CJK corrections use token-edge alignment.
+
+Genuine standalone short-CJK occurrences still lint, but as **advisory**: `replacement_eligible:
 false` with `safety_reason: "short-cjk-advisory"`, so `term fix` never
 auto-applies them. Opt in explicitly with `--term <NAME>` or
 `--term <NAME:ORIGINAL>` to apply such a finding.
 
-### Held-back corrections (spec 075 #40)
+### Held-back corrections
 
 An advisory finding is never silently discarded. `mf term lint` marks it
 `, held back` in text output and sets `held_back: true` alongside its
@@ -74,7 +76,7 @@ instead of genuinely absent. Apply a held-back finding explicitly with
 above. No corrections change which ones are applied automatically; this is
 purely a reporting completeness fix.
 
-### Longest match wins (spec 075 #41)
+### Longest match wins
 
 When two registered corrections overlap at the same text position — one's
 `original` is a prefix of the other's — the longer, more specific
@@ -99,7 +101,7 @@ the longer correction. The shorter correction still fires normally when it
 appears standing alone, outside any longer match. Exact ties (same span
 length) break by declaration order in `mind-index.yaml`.
 
-### Cross-term shadowing warning (spec 075 #42)
+### Cross-term shadowing warning
 
 Registering a correction whose `original` is a prefix of — or equal to —
 another term's name or one of its registered originals warns and names the

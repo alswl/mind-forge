@@ -1,10 +1,9 @@
 ---
-article: docs/example
-title: Example article
+title: Example mind
 mode: editorial
 ---
 
-# Prompt: Example article
+# Prompt: Example mind
 
 ## Intent
 
@@ -31,6 +30,7 @@ mode: editorial
 
 ## Deliverable contract
 
+- **Selected output identity:**
 - **Format:**
 - **Update policy:**
 - **Completion condition:**

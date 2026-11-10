@@ -1,7 +1,8 @@
 ---
 name: mf-write
-version: 0.2.0
-description: Develop an outline-first mind-forge article into detailed prose using its framework, selected private suggestions, Word-style feedback threads, prompt, sources, and thinking ledger; resolve verified feedback with [x]. Use for drafting, editorial revision, feedback incorporation, assembly, review, build, or explicit publishing; use mf-plan when the primary work is research, comparison, user choice, or changing goals, criteria, and structure.
+metadata:
+  version: 0.3.0
+description: Develop a selected output of a mind into detailed prose using its framework, selected private suggestions, Word-style feedback threads, prompt, sources, and thinking ledger; resolve verified feedback with [x]. Use for drafting, editorial revision, feedback incorporation, assembly, review, build, or explicit publishing; use mf-plan when the primary work is research, comparison, user choice, or changing goals, criteria, and structure.
 ---
 
 # Write and ship a mind-forge article
@@ -10,35 +11,14 @@ Own the outline-to-article pass, expression, editorial quality, assembly, and de
 
 ## Resolve and reconcile context
 
-1. Locate the Mind Repo and resolve the project and article through `mf article list/show --json`; preserve the returned canonical identity.
-2. Resolve exactly one prompt by frontmatter `article`, using `prompts/<article-key>.md` only as its canonical discovery convention. If none or several match, stop and recommend `$mf-plan`; do not guess.
-3. Read in order: the prompt and `prompts/constitution.md`, relevant RAG hits
-   from `mf search`, registered sources and terms, `<project>/thinking/<article-key>.md`,
-   current article source, then all `mf-private` suggestion/feedback regions and `<!-- mf-feedback ... -->` annotations.
-4. Create the thinking file if absent. Keep it as the working ledger for planned-vs-done deviations, evidence conflicts, assumptions, feedback, decisions, blockers, follow-ups, and prompt-improvement signals.
-5. Respect the article shape: write a single file in place or selected top-level Markdown blocks in a directory article. Only the first block uses H1; later blocks start at H2.
+1. Locate the Mind Repo (`minds.yaml`) and project with `mf project list --json`. Use `mf mind list/show --json` to resolve the mind, and `mf output list/show --json` to select the requested output. Preserve returned identities, `project_identity`, `mind_identity`, `output_identity`, paths and shape. Read `$mf-cli` for exact flags.
+2. A mind owns zero to many outputs and one intent/reasoning workspace. Zero outputs is valid for research. Before editing, identify one output explicitly from the request or an unambiguous configured default; if ambiguous, show the CLI candidates and ask. Never choose the first match or derive identity from a title or basename.
+3. Read the mind's `roles` returned by `mind show`: prompt, thinking, sources, assets and applicable constitution. Paths are project-relative. Read the selected output's returned path; `outputs/` contains editable sources and `build/` contains derived artifacts. Do not write generated artifacts as source or mix sibling outputs.
+4. Optional roles can be absent. Do not pretend `mind show` returned a proposed role path: this CLI returns existing roles only. Continue with available explicit intent where sufficient; if a missing role must be authored, use an explicit user-provided path or report the missing-location capability. Never synthesize a prompt/thinking path from an output basename. Do not duplicate a mind prompt for each output.
+5. Honor the project's `category` or `bundle` layout and the existing output shape. Do not migrate an unconfigured legacy project, change layout configuration, or convert an existing draft incidentally. Use `mf lifecycle` for authorized identity/layout changes, preview then apply, and read back. Discover extra resources with `mf additional list/show`; their presence does not establish feedback or execution status.
+6. After authorized changes, use `mf mind index -p <project> --json` to reconcile projections and `mf mind index --check -p <project> --json` to verify disk and explicit bindings. Do not hand-edit indexes, implement path resolvers, or simulate lifecycle/build commands. A successful structural check does not establish editorial completion.
 
-Use the four first-class authored stores consistently:
-
-- Prompts control objective, mode, constraints, criteria, deliverable contract, and durable decisions.
-- Sources preserve evidence and provenance.
-- Thinking preserves reasoning and work state.
-- Articles under `docs/` contain the current user-readable result.
-
-Keep planning material out of public prose except for the explicit private `Suggestions` and `Feedback` regions used by the outline-first workflow. Never copy source bodies into the prompt or hand-edit `outputs/`.
-
-When a Source is added or changed, remember that an active RAG repository
-dual-writes: Lance is the primary registration store and `mind-index.yaml` is a
-compatibility projection. Run `mf source sync --offline` before drafting, then
-use `mf search "<claim or topic>" --output json` to search Sources, Prompts,
-Thinking, Articles, project goals, and terms before drafting or reusing existing
-material. Each hit's `registrations[].context` gives repository/project
-attribution, project goal, content kind, article lifecycle, `relations`, and —
-for source hits — `imported_by` provenance; consume it to place and cite the hit
-correctly. Prompt and Thinking hits provide intent or reasoning context, not
-evidence by themselves. Verify Source provenance before citing a factual claim.
-If the corpus is empty or unavailable, continue without retrieval and report the
-degradation rather than stalling.
+Read the selected output, relevant sources and terms, existing prompt/thinking, all Suggestions and Feedback, and available retrieval provenance before editing. If RAG fails, report the limitation; use verified local evidence without inventing unavailable results. Inspect status before maintenance: `source sync --offline` can activate Lance and change `minds.yaml`. Local revision authorization does not permit backend changes or corpus activation; without explicit maintenance scope, skip sync and use the supplied evidence.
 
 ## Draft or revise
 
@@ -58,7 +38,7 @@ degradation rather than stalling.
 
 When writing uncovers new evidence, register it in sources. Record new reasoning, conflicts, deviations, and follow-ups in thinking. Update prompt open loops or decisions when needed; hand off to `$mf-plan` when the objective, hard constraints, evaluation criteria, research protocol, or overall structure must change.
 
-For `research` and `decision-research` modes, never leave `docs/` behind the known state. Each material turn must leave the article showing the current synthesis or recommendation, comparable evidence, exclusions, and material uncertainty, even when research remains incomplete.
+For `research` and `decision-research` modes, keep the selected output consistent within the authorized scope. Each material turn must leave the article showing the current synthesis or recommendation, comparable evidence, exclusions, and material uncertainty, even when research remains incomplete.
 
 ## Incorporate human feedback
 
@@ -72,7 +52,7 @@ Treat each private `Feedback` item as a Word-style anchored comment thread:
 - Leave partial, ambiguous, or blocked threads open and append what remains. Ask for clarification when the missing choice materially changes the result.
 - When the user reopens a resolved thread, change `[x]` back to `[ ]` and append the new dated request or reason. Keep the earlier resolution visible.
 - New requirements receive new stable IDs. Do not repurpose an old thread or change its original request.
-- To defer feedback, move it to a prompt Open Loop with the user's reason and remove it from the current Feedback region. Every unchecked Feedback thread therefore blocks publication.
+- To defer feedback, require an explicit user reason. Copy the complete thread, stable ID, original request, ordered replies and source anchor to the existing prompt Open Loop, append the reason, verify that history survived, then remove the original. Deferral is not resolution. Without that authorization keep the thread open.
 
 - Classify each annotation before acting. Material — content or phrasing the author supplies — folds into the prose with the author's own wording taking precedence over any rewrite. An instruction — a directive such as cut, move, merge, or emphasize — is executed and never pasted into the prose as content. A single annotation may carry both; separate them.
 - Resolve local prose, structure, and style feedback directly.
@@ -82,7 +62,7 @@ Treat each private `Feedback` item as a Word-style anchored comment thread:
 - Promote feedback to the prompt only when it establishes a durable goal, constraint, criterion, protocol, or writing rule.
 - Never silently delete feedback.
 
-Because current build behavior does not guarantee removal of these comments, unresolved `mf-feedback` annotations block publication. Every unchecked item in a private `Feedback` region also blocks publication.
+Feedback is development state. There is no Feedback state CLI and no universal all-feedback-closed build or publication gate. Report remaining issues for the author to judge, and honor any explicit delivery constraints. Preserve history with bounded Markdown edits after semantic verification.
 
 ## Private content: annotations and internal blocks
 
@@ -104,32 +84,24 @@ workflow described above, while the blocks themselves remain private and may sta
   rather than produce a titleless artifact); an unrecognized `mind-forge-visibility` value
   also fails rather than silently publishing.
 
+## Revise old prose with new material
+
+Map the supplied evidence against the old draft first: new facts, conflicts, affected section, original judgment, authorized edits and unresolved choices. Record that map in the same Thinking. Update only durable intent in Prompt and keep source provenance. Preserve valid author sentences and unselected sections verbatim; do not create a second prompt, invent a stance, or rewrite the whole output. When the target and edit are already authorized, perform and verify them without asking again.
+
 ## Review and build
 
-For revision or publication readiness:
+1. Verify intent, source support, selected suggestions, author voice and feedback history within the selected output and authorized scope. Partial feedback stays open with a concrete remaining condition; never confuse an attempt with resolution.
+2. Use `mf term lint <returned-output-path> --project <project> --json` where applicable. Preview bounded fixes with `--fix --dry-run`; an existing authorization for that exact fix is sufficient to apply using the documented noninteractive flags. Ask only for missing authorization or a material scope change.
+3. Reconcile with `mf mind index -p <project> --json`, then `mf mind index --check -p <project> --json`. Read issues and errors; do not replace the CLI with handwritten index edits or treat check success as semantic review.
+4. When build is requested or needed for authorized publication, inspect `mf build <output-identity> --dry-run --json`, then run `mf build <output-identity> --format markdown|html --json`. Use `--out` for an artifact path; global `--output json` controls the response envelope. Verify returned artifact bytes and private-content exclusion. Never overwrite source or build sibling outputs implicitly.
+5. Nonzero exit requires reading the real error. Repair only authorized prerequisites or report failure and unfinished work. A failed build cannot be replaced by a handwritten artifact or a success claim.
 
-1. confirm prompt, sources, thinking, docs, selected suggestions, and feedback state agree; verify every retained or developed section serves the intent and traces to authored material, a selected suggestion, explicit feedback, or evidence;
-2. run `mf term lint <article-path> --project <project> --json`; preview fixes with `--fix --dry-run` and require confirmation before applying them;
-3. run `mf article lint --project <project> --json` and review intent coverage, evidence, clarity, structure, duplication, and unresolved annotations;
-4. reconcile manual source edits with `mf article index --project <project> --json`;
-5. run `mf build "<article>" --dry-run --project <project> --json` and verify ordered inputs;
-6. run the real build only when requested or needed for publication.
+A clean check proves mechanical consistency only. Review evidence, intent, author wording and limited scope separately. When a reliable before/after author revision exists, record its cause in Thinking and promote only durable rules into Prompt; otherwise use explicit feedback and do not invent a delta.
 
-A clean lint exit is necessary but not sufficient. Reject empty stubs, unintended files, stale research conclusions, and unresolved feedback. When the author revises a delivered article and both versions are identifiable, record the observed delta and its cause in thinking, keep concrete wording in docs, and promote only a durable rule or decision inferred from recurring changes into the prompt so the next draft starts closer. If no reliable baseline exists, use only changes the author explicitly identifies; do not reconstruct or guess the delta. Report what changed in the prompt so the author can revert.
+## Publish only with explicit authorization
 
-## Publish through a hard gate
+Ordinary writing, readiness review or build intent does not authorize publication. Confirm the selected output and known destination from the existing user instructions; do not ask again for an already authorized action. Read targets with `mf publish target list/show --json`, build fresh from verified inputs, run the authorized `mf publish run <output-identity> --target <target> --json`, and inspect the actual destination content.
 
-Ordinary writing or build intent never implies publication. In the current run require:
+Report unresolved Feedback and evidence gaps for the human delivery decision. They do not impose a universal closure gate. Honor the user's specific release constraints. Never publish to another target or expand a local-only authorization to a remote service.
 
-- unique article and prompt resolution;
-- reconciled prompt, sources, thinking, and docs;
-- no unresolved `mf-feedback` annotations or unaccepted pending items in private `Feedback` regions;
-- fresh lint and editorial review against current sources;
-- a fresh build from verified inputs;
-- every critical open loop resolved or explicitly accepted with the user's reason;
-- an explicit target and confirmed destination;
-- an explicit user request to publish after the destination is known.
-
-List targets with `mf publish target list --json`. If a gate fails, do not publish or update a publish record. Otherwise run the verified target workflow and confirm the result with `mf article show <canonical-identity> --json`.
-
-Use JSON envelopes and exit codes. Destructive fixes require dry-run and explicit confirmation; consult `$mf-cli` for exact flags.
+`mf publish update` records metadata; it does not publish content. Use it only when registration is requested, after actual publication succeeded, and read back the record. If build or publish fails, stop dependent publication/registration and state the failure accurately; an existing destination file does not prove this run succeeded.

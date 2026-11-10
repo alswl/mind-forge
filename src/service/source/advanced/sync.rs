@@ -200,6 +200,7 @@ fn sync_lance_catalog(
     offline: bool,
     store: &LanceStore,
 ) -> Result<SyncReport> {
+    crate::service::mind::validate_projects(repo_root)?;
     // Bring a schema-v1 registrations table up to the current schema before any
     // context-bearing append (spec 071 v1→v2 migration). No-op once migrated.
     if !dry_run {

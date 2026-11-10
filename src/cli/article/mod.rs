@@ -276,6 +276,15 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
     let cwd = ctx.cwd();
     let format = ctx.format();
     let project = ctx.project();
+    if command.command.is_some()
+        && let Ok(path) = svc_util::resolve_project(root, project, cwd)
+        && crate::service::mind::config_for(&path)?.content_layout.is_some()
+    {
+        return Err(MfError::usage(
+            "this project uses minds and outputs; use `mf mind` or `mf output`; Article lifecycle commands do not operate on this layout",
+            None,
+        ));
+    }
 
     match command.command {
         None => Ok(CommandOutcome::GroupHelp("article")),

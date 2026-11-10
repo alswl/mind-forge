@@ -9,12 +9,21 @@ Use these terms consistently when describing the writing workflow.
 | --- | --- |
 | Mind Repo | A local repository that contains `minds.yaml`. It is the root for project discovery and repo-relative paths. |
 | Project | A path-backed workspace inside a Mind Repo. A project directory contains `mind.yaml`. |
-| Article | A publishable writing unit inside a project. Articles are selected by project-relative path. |
+| Mind | A named collection within a project, registered independently of its outputs. |
+| Output | An editable deliverable source belonging to one mind; zero or more per mind, each single-file or block-based. Markdown/HTML are formats, not output identities. |
+| Build artifact | A derived result under `build/<mind>/<output>.md` or `.html`, separate from editable outputs. |
+| Article | Legacy writing unit and internal transition adapter. It is not the new management subject and does not turn an output into a mind. |
+| Prompt | Authored intent, audience, constraints, criteria, and durable decisions for a mind. Legacy projects can bind it to an Article. |
+| Thinking | Authored reasoning, comparisons, assumptions, feedback, and follow-ups for a mind. |
 | Source | Reference material tracked by `mf source`. Do not use this term for an article's own content path. |
 | Asset | A project file tracked by `mf asset`, usually media or other article-supporting files. |
 | Block | An ordered Markdown file that forms part of a block article. |
 
-## Identity And Paths
+For current paths, commands, and ownership see [mind/output layout](content-layout.md).
+Mind identity is `<project>::<mind>`; output identity is `<project>::<mind>::<output>`.
+Project identities are repository-relative. Titles are presentation fields.
+
+## Legacy Article Identity And Paths
 
 | Term | Meaning |
 | --- | --- |
@@ -24,7 +33,7 @@ Use these terms consistently when describing the writing workflow.
 | Selector | User input that resolves to a canonical path identity. Shorthand selectors may be accepted only when unambiguous. |
 | Source Path | The project-relative file or directory path used by build and publish as article content input. For article commands, prefer `Article Path` unless discussing build/publish internals. |
 
-## Article Content
+## Legacy Article Content
 
 | Term | Meaning |
 | --- | --- |
@@ -33,7 +42,7 @@ Use these terms consistently when describing the writing workflow.
 | Single File | An article shape created with `--file`. Its article path is one Markdown file. |
 | Missing | A declared article whose expected article path does not exist on disk. It remains visible so the declaration can be fixed. |
 
-## Article Discovery
+## Legacy Article Discovery
 
 | Term | Meaning |
 | --- | --- |

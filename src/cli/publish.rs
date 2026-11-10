@@ -27,7 +27,7 @@ pub struct PublishCmd {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum PublishSubcommand {
-    #[command(about = "Publish an article to a target")]
+    #[command(about = "Publish a selected output or legacy article to a target")]
     Run(PublishRunArgs),
     #[command(about = "Update publish record metadata")]
     Update(PublishUpdateArgs),
@@ -64,7 +64,7 @@ pub struct PublishTargetShowArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct PublishRunArgs {
-    /// Article slug, project path (docs/my-article), or path to the article
+    /// Mind/output identity, unique output name, or legacy article path
     pub article: String,
     #[arg(long)]
     pub target: Option<String>,
@@ -82,7 +82,7 @@ pub struct PublishRunArgs {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct PublishUpdateArgs {
-    /// Article slug, project path (docs/my-article), or path to the article
+    /// Mind/output identity, unique output name, or legacy article path
     pub article: String,
     #[arg(long, required = true)]
     pub target: String,
@@ -192,7 +192,7 @@ pub fn dispatch(command: PublishCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
         Some(PublishSubcommand::Run(args)) => {
             let root = ctx.require_repo_path()?;
             let outcome = publish_svc::run(&args, root, ctx.cwd(), ctx.project())?;
-            render_run_outcome(outcome, ctx.format())
+            attach_location(render_run_outcome(outcome, ctx.format())?, &args.article, ctx)
         }
         Some(PublishSubcommand::Update(args)) => {
             // Emit deprecation warnings for --status and --target-url
@@ -208,7 +208,7 @@ pub fn dispatch(command: PublishCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
 
             let root = ctx.require_repo_path()?;
             let outcome = publish_svc::update(&merged_args, root, ctx.cwd(), ctx.project())?;
-            render_update_outcome(outcome, ctx.format())
+            attach_location(render_update_outcome(outcome, ctx.format())?, &merged_args.article, ctx)
         }
         Some(PublishSubcommand::Target(target_cmd)) => match target_cmd.command {
             None => Ok(CommandOutcome::GroupHelp("publish target")),
@@ -358,4 +358,15 @@ fn render_update_outcome(outcome: PublishUpdateOutcome, format: Format) -> Resul
             Ok(CommandOutcome::Raw(lines.join("\n"), None))
         }
     }
+}
+
+fn attach_location(mut outcome: CommandOutcome, selector: &str, ctx: &CommandCtx) -> Result<CommandOutcome> {
+    let root = ctx.require_repo_path()?;
+    let project = crate::service::mind::project_for(root, ctx.cwd(), ctx.project(), Some(selector))?;
+    if crate::service::mind::config_for(&project)?.content_layout.is_some()
+        && let CommandOutcome::Success(data, _, _) = &mut outcome
+    {
+        data["location"] = serde_json::to_value(crate::service::mind::resolve_output(root, &project, selector)?)?;
+    }
+    Ok(outcome)
 }

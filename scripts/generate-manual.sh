@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Generate the user-facing command reference from the current Clap command tree.
-# Do not edit docs/manual.md directly; run this script after changing commands.
+# Do not edit docs/manual/cli.md directly; run this script after changing commands.
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-manual_path="$repo_root/docs/manual.md"
+manual_path="$repo_root/docs/manual/cli.md"
+mkdir -p "$(dirname -- "$manual_path")"
 if [ -z "${MF_BIN:-}" ]; then
   (
     cd "$repo_root"

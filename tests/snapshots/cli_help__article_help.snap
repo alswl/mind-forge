@@ -2,7 +2,7 @@
 source: tests/cli_help.rs
 expression: stdout
 ---
-Manage articles
+Manage legacy articles
 
 Usage: mf article [OPTIONS] [COMMAND]
 

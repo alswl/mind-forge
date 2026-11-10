@@ -1,6 +1,8 @@
-# mind-forge quickstart
+# Legacy Article quickstart
 
-This walkthrough uses only local files and the offline search index.
+This walkthrough uses only local files and the offline search index. It creates
+a legacy project without `content_layout`. For new category/bundle projects, use
+[minds and outputs](docs/guide/minds-and-outputs.md).
 
 ```bash
 mkdir my-repo && cd my-repo

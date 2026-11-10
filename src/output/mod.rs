@@ -31,6 +31,8 @@ struct ErrorDetail<'a> {
     kind: &'a str,
     message: &'a str,
     hint: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    candidates: Option<&'a Vec<String>>,
 }
 
 pub enum Payload<'a> {
@@ -125,7 +127,16 @@ pub(super) fn render_error_inner(writer: &mut dyn Write, format: Format, _color:
             let envelope = ErrorEnvelope {
                 status: "error",
                 command: "mf",
-                error: ErrorDetail { kind: error.kind(), message: &message, hint: error.hint() },
+                error: ErrorDetail {
+                    kind: error.kind(),
+                    message: &message,
+                    hint: error.hint(),
+                    candidates: match error {
+                        MfError::SelectionAmbiguous { candidates, .. }
+                        | MfError::ContentConflict { candidates, .. } => Some(candidates),
+                        _ => None,
+                    },
+                },
             };
             serde_json::to_writer(&mut *writer, &envelope)?;
             writeln!(writer)?;

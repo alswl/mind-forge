@@ -1,11 +1,15 @@
+pub mod additional;
 pub mod article;
 pub mod asset;
 pub mod build;
 pub mod config;
+pub mod content_check;
 pub mod effective_date;
 pub mod identity;
 pub mod index;
 pub mod lifecycle;
+pub mod mind;
+pub mod mind_lifecycle;
 pub mod project;
 pub mod prompt;
 pub mod publish;

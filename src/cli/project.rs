@@ -72,6 +72,9 @@ pub enum ProjectSubcommand {
 
 #[derive(Debug, Clone, Args, Serialize)]
 pub struct ProjectNewArgs {
+    /// Content layout for a new mind/output project
+    #[arg(long, value_enum)]
+    pub layout: Option<crate::model::mind::ContentLayout>,
     /// Project path (cwd-relative, repo-relative, or simple name).
     pub path: String,
     #[arg(long)]
@@ -218,6 +221,12 @@ fn handle_new(args: ProjectNewArgs, ctx: &CommandCtx) -> Result<CommandOutcome> 
         ));
     }
 
+    if args.layout.is_some() && identity.resolved_path.exists() {
+        return Err(MfError::usage(
+            "--layout is only for a new project; existing content requires explicit migration",
+            None,
+        ));
+    }
     if args.dry_run.dry_run {
         let result = VerbResult {
             verb: Verb::Create,
@@ -245,6 +254,14 @@ fn handle_new(args: ProjectNewArgs, ctx: &CommandCtx) -> Result<CommandOutcome> 
         &identity.resolved_path,
         args.force.force,
     )?;
+    if let Some(mode) = args.layout {
+        let mut raw = svc::mind::raw_config(&identity.resolved_path)?;
+        if raw.get("content_layout").is_some() {
+            return Err(MfError::usage("layout already configured; conversion is a separate operation", None));
+        }
+        raw["content_layout"] = serde_yaml::to_value(mode).map_err(|e| MfError::Internal(e.into()))?;
+        svc::mind::save_config_value(&identity.resolved_path, &raw)?;
+    }
     let entry = svc::project::upsert_project_entry(root, &identity.path, &report.created_at, args.force.force)?;
     record_project_intent(root, MutationOperation::New, &entry.name);
 
@@ -459,7 +476,18 @@ fn handle_index(args: ProjectIndexArgs, ctx: &CommandCtx) -> Result<CommandOutco
         crate::model::manifest::MindsManifest::create_default()
     };
 
-    let scanned = repo::scan_project_dirs(&root, &manifest.projects_dir);
+    let mut scanned = repo::scan_project_dirs(&root, &manifest.projects_dir);
+    for entry in &manifest.projects {
+        let path = root.join(entry.path.trim_start_matches("./"));
+        if entry.archived_at.is_none()
+            && path.join("mind.yaml").is_file()
+            && svc::mind::config_for(&path)?.content_layout.is_some()
+            && !scanned.iter().any(|p| p.path.trim_start_matches("./") == entry.path.trim_start_matches("./"))
+        {
+            scanned.push(repo::ScannedProject { name: entry.name.clone(), path: entry.path.clone() });
+        }
+    }
+
     let diff = repo::compute_diff(&manifest, &scanned);
 
     let _added_count = diff.added.len();
@@ -475,6 +503,10 @@ fn handle_index(args: ProjectIndexArgs, ctx: &CommandCtx) -> Result<CommandOutco
     let mut warnings: Vec<String> = Vec::new();
     for sp in &scanned {
         let project_path = root.join(&sp.path);
+        if svc::mind::config_for(&project_path)?.content_layout.is_some() {
+            svc::mind::index_outputs(&root, &project_path, args.dry_run.dry_run)?;
+            continue;
+        }
         match svc::article::reconcile_project_docs(&project_path, args.dry_run.dry_run) {
             Ok((added, removed)) => {
                 for p in added {
@@ -569,6 +601,24 @@ fn handle_show(args: ProjectShowArgs, ctx: &CommandCtx) -> Result<CommandOutcome
     let format = ctx.format();
     let cwd = ctx.cwd();
     let project_path = svc::project::resolve_project(root, Some(&args.path), cwd)?;
+    if let Some(mode) = svc::mind::config_for(&project_path)?.content_layout {
+        let minds = svc::mind::discover(root, &project_path)?;
+        let identity = svc::util::rel_posix_path(root, &project_path)?;
+        let data = serde_json::json!({"kind":"project", "identity":identity,"project_identity":identity,"content_layout":mode,"mind_count":minds.len(),"output_count":minds.iter().map(|m|m.outputs.len()).sum::<usize>(),"minds":minds});
+        return if format == Format::Json {
+            Ok(CommandOutcome::Success(data, vec![], None))
+        } else {
+            Ok(CommandOutcome::Raw(
+                format!(
+                    "Project:  {identity}\nLayout:  {}\nMinds:  {}\nOutputs:  {}",
+                    data["content_layout"].as_str().unwrap_or_default(),
+                    data["mind_count"],
+                    data["output_count"]
+                ),
+                None,
+            ))
+        };
+    }
     let details = svc::project::show(&project_path, &args.path)?;
 
     let mut fields: Vec<ShowField> = vec![
