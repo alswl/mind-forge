@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.5.1] - 2026-11-10
+
+### Bug Fixes
+- Route legacy article workflows by project layout
+
+### Documentation
+- Refine README and add Chinese translation (by @alswl)
+
 ## [0.5.0] - 2026-11-10
 
 ### Features
