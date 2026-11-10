@@ -44,7 +44,7 @@ lock, cache or journal; it can be passed to `mf lifecycle apply`. Adding resourc
 or inbound references makes the saved plan stale. The established local-filesystem
 and YAML-authority constraints apply; Lance authority is still explicitly refused
 by lifecycle mutation. Recovery applies to interrupted operations; a completed
-transaction cannot be reversed with rollback. See [lifecycle](layout-lifecycle.md).
+transaction cannot be reversed with rollback. See [lifecycle](manage-content.md).
 
 ## Disk, projections and bindings
 

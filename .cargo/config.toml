@@ -11,7 +11,7 @@
 #
 # The full suite compiles the 50k-line crate twice (once as the binary, once as
 # the `cfg(test)` unit-test target) and links a ~490MB artifact each time. Use
-# it as the pre-push gate, not as the inner loop. See docs/build-workflow.md.
+# it as the pre-push gate, not as the inner loop. See docs/dev/build-workflow.md.
 
 [alias]
 # Inner loop: type-check only, no codegen, no link.

@@ -1,9 +1,9 @@
 # Layout lifecycle
 
 `mf lifecycle` explicitly converts project layouts and changes mind/output path
-identities. Titles are preserved. This package does not import legacy articles,
-assign unowned resources, or migrate real repositories.
-[Additional-resource commands](additional-cli.md) reuse this planner, reference
+identities. Titles are preserved. Lifecycle operations do not import legacy Articles or
+assign resources with unknown ownership.
+[Additional-resource commands](additional-resources.md) reuse this planner, reference
 maintenance and recovery engine for concrete file/directory operations.
 
 ```sh
@@ -24,8 +24,7 @@ Unknown ownership, legacy `docs` content, collisions, symlinks, hard links and
 cross-device paths are refused. Configurations without explicit `content_layout`
 are not converted. Nonstandard configured legacy core roots containing files
 require explicit ownership mapping and are refused. These are legacy Article
-settings, not new mind/output core-role overrides (see [the first-package
-contract](mind-output-layout.md)). Config-only or empty custom roots do not block
+settings, not new mind/output core-role overrides (see [content layout reference](../manual/content-layout.md)). Config-only or empty custom roots do not block
 conversion; the new model retains its fixed core paths.
 
 Root projects are supported: select `-p .` from the repository root and use
@@ -70,20 +69,19 @@ mf lifecycle resume
 mf lifecycle rollback
 ```
 
-The inventory watches repository files, including new references and additional
-resources, while excluding root `.git` and `.mind-forge` runtime state. Apply
-revalidates it under an exclusive advisory lock on the repository root directory
-inode. All CLI write command families cooperate with this lock; dry-run does not
-acquire it. External editors do not cooperate, so this is a local recovery
-protocol, not multi-file ACID or protection against concurrent manual editing.
+The saved plan watches repository files, including new references and additional
+resources. Apply revalidates the plan before writing. CLI write commands share a
+repository lock. External editors do not share that lock. Avoid manual edits
+while an operation is running.
 
-Backups and desired contents are fsynced before authored changes. Files and new
-directories are staged with their final permissions before being renamed into
-place. Recovery accepts only before/after states and refuses subsequent edits.
-Completed resume/rollback retries do not rewrite files; reversing a completed
+Recovery accepts only the expected before/after states and refuses subsequent
+edits. Repeating completed recovery does not rewrite files. Reversing a completed
 transaction requires a new plan. Ordinary commands refuse unfinished journals.
-Only known local APFS/HFS/ext/XFS/Btrfs/tmpfs filesystems are supported. Watched
-directories must retain owner read/write/execute permissions for recovery.
+
+Only known local APFS/HFS/ext/XFS/Btrfs/tmpfs filesystems are supported.
+Watched directories must retain owner read/write/execute permissions for recovery.
+See [lifecycle implementation](../dev/content-lifecycle.md) for the locking,
+backup, and persistence model.
 
 Initial preparation uses a private `.mind-forge/lifecycle-preparing` directory.
 Only after the complete backup is fsynced is the directory atomically published

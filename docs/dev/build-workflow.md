@@ -98,11 +98,8 @@ directory sits outside `./target` so `cargo clean` does not discard it.
 
 The first run still pays the full cost. Subsequent ones do not.
 
-## What remains
+## Compile cost
 
-The two tiers above address how *often* the expensive path runs. They do not make
-the expensive path itself cheaper — the full suite still compiles a 50k-line crate
-twice and links 490MB twice.
-
-Reducing that requires removing the LanceDB family from the core binary's
-dependency graph, which is the subject of spec `078-split-rag-binary`.
+The build tiers control how often the expensive path runs.
+They do not change the crate's compilation unit or linking cost.
+Use targeted checks during editing and the full suite at the pre-push gate.

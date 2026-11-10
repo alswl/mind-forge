@@ -7,7 +7,7 @@ description: Use the mf Rust CLI to manage mind 0.3.0-compatible local knowledge
 
 ## Generated manual
 
-`docs/manual.md` is generated from the built CLI help surface. Do not edit it
+`docs/manual/cli.md` is generated from the built CLI help surface. Do not edit it
 by hand: after changing command definitions, run
 `scripts/generate-manual.sh` from the repository root and review the generated
 diff. Keep workflow guidance in this skill, the README, or focused documents

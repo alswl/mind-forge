@@ -25,3 +25,9 @@ specs
 specs/
 AGENTS.md
 CLAUDE.md
+
+# Execution evidence belongs in ignored workspaces or the external specs repo.
+/docs/**/*-evidence/
+/docs/**/*-verification.md
+/docs/**/*-progress*.md
+/docs/**/*-report.html

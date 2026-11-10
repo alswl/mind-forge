@@ -69,7 +69,7 @@ mf build projects/notes::first-note::summary
 
 Then ask an agent to take it further — the relevant skill auto-loads. The full
 repo-level walkthrough is in [quickstart.md](../quickstart.md) and the product
-manual in [docs/manual.md](../docs/manual.md).
+manual in [docs/manual/cli.md](../docs/manual/cli.md).
 
 ## Picking a skill
 

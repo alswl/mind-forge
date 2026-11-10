@@ -11,13 +11,15 @@ Use these terms consistently when describing the writing workflow.
 | Project | A path-backed workspace inside a Mind Repo. A project directory contains `mind.yaml`. |
 | Mind | A named collection within a project, registered independently of its outputs. |
 | Output | An editable deliverable source belonging to one mind; zero or more per mind, each single-file or block-based. Markdown/HTML are formats, not output identities. |
-| Build artifact | A derived result under `build/<mind>/<output>.md`, separate from editable outputs. |
+| Build artifact | A derived result under `build/<mind>/<output>.md` or `.html`, separate from editable outputs. |
 | Article | Legacy writing unit and internal transition adapter. It is not the new management subject and does not turn an output into a mind. |
+| Prompt | Authored intent, audience, constraints, criteria, and durable decisions for a mind. Legacy projects can bind it to an Article. |
+| Thinking | Authored reasoning, comparisons, assumptions, feedback, and follow-ups for a mind. |
 | Source | Reference material tracked by `mf source`. Do not use this term for an article's own content path. |
 | Asset | A project file tracked by `mf asset`, usually media or other article-supporting files. |
 | Block | An ordered Markdown file that forms part of a block article. |
 
-For current paths, commands, and ownership see [mind/output layout](mind-output-layout.md).
+For current paths, commands, and ownership see [mind/output layout](content-layout.md).
 Mind identity is `<project>::<mind>`; output identity is `<project>::<mind>::<output>`.
 Project identities are repository-relative. Titles are presentation fields.
 

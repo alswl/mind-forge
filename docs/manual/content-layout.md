@@ -38,7 +38,7 @@ minds:
 ```
 
 `content_layout` is `category` or `bundle`. Absence identifies a legacy project;
-new mind/output operations refuse to infer ownership there. The existing `layout`
+mind/output operations refuse to infer ownership there. The existing `layout`
 path settings continue to configure legacy Article features. New mind/output
 source and build paths use the fixed mappings below; configured legacy build,
 template, asset, source, and article roots are also reserved in bundle discovery.
@@ -98,7 +98,7 @@ with the same name are a `shape_conflict`.
 `mf mind index`, `mf output index`, and `mf project index` reconcile the derived
 `outputs` projection in `mind-index.yaml`. Mind/output index also reconcile the
 `additional` projection; `--check` compares disk, projections and explicit bindings
-without writing (see [additional resources](additional-cli.md)). They preserve other index sections,
+without writing (see [additional resources](../guide/additional-resources.md)). They preserve other index sections,
 including publish records. Source files and mind registrations remain authoritative;
 list/show/build resolve from disk, including before indexing. No output is stored
 as a separate mind or persisted as an `articles` entry.
@@ -116,8 +116,8 @@ and additional files are not added to the output corpus.
 Build sorts Markdown blocks by filename, rebases relative links, and applies the
 existing banner, first-H1, pipeline, and private-content rules. Private callouts
 and private non-title blocks are excluded from the build without editing the
-source. A private title block or invalid visibility value fails. Only Markdown is
-implemented in this package. `--out` for a mind output must remain under the
+source. A private title block or invalid visibility value fails. Markdown is the default build format. Use `--format html` for HTML. See
+[HTML output](../guide/build-html.md) for templates and rendering constraints. `--out` for a mind output must remain under the
 project's `build/`; source and symlink destinations are rejected, including in
 previews. Build names are scoped by both mind and output.
 
@@ -134,12 +134,13 @@ A local destination inside the project must be under `build/`. Yuque-prompt file
 also stay under `build/`, defaulting to `<mind>/<output>.yuque.md`. Publishing does
 not build automatically. No external publication is needed to test these contracts.
 
-## Scope of this package
+## Compatibility
 
-The initial package added creation, reading, indexing, retrieval location, Markdown
-build, and publish location. Subsequent packages provide [lifecycle operations](layout-lifecycle.md)
-and [additional management and consistency checks](additional-cli.md). [HTML rendering](build-html.md) is also available.
-The completed [Skill behavior evaluation](skills-evals-verification.md) covers
-the current planning and writing workflows. Legacy `mf article` commands remain a separate
-transition surface for old content; their lifecycle operations are not mind/output
-lifecycle commands; project-scoped Article commands reject new layouts. F16's directory-article publish-update resolution is retained.
+Legacy projects without `content_layout` continue to use `mf article` commands.
+Mind/output operations do not infer ownership for those projects.
+Project-scoped Article commands reject projects with the new layouts.
+Use [lifecycle operations](../guide/manage-content.md) to convert an explicitly
+configured layout, not to import legacy Articles.
+
+For related tasks, see [additional resources](../guide/additional-resources.md),
+[HTML output](../guide/build-html.md), and [planning and writing skills](../../skills/README.md).
