@@ -42,8 +42,7 @@ with `inbound_reference`. Unsafe or unsupported affected references fail instead
 of guessing. `-n --emit-plan` returns a hash-bound plan without creating any file,
 lock, cache or journal; it can be passed to `mf lifecycle apply`. Adding resources
 or inbound references makes the saved plan stale. The established local-filesystem
-and YAML-authority constraints apply; Lance authority is still explicitly refused
-by lifecycle mutation. Recovery applies to interrupted operations; a completed
+and YAML-authority constraints apply. Recovery applies to interrupted operations; a completed
 transaction cannot be reversed with rollback. See [lifecycle](manage-content.md).
 
 ## Disk, projections and bindings
@@ -70,7 +69,7 @@ repair authority bindings, change authored files, or decide whether a result is
 ready for delivery. Removing an index row never removes the corresponding file.
 Repeated checks against unchanged files produce the same JSON.
 
-Additional content does not automatically participate in build, publish, RAG,
+Additional content does not automatically participate in build, publish,
 feedback state classification, or execution. List/show and index checks ignore
 tool and child-project subtrees; lifecycle mutation retains the accepted complete
 repository snapshot and safety checks, so an unsafe unrelated repository entry

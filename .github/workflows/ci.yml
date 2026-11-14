@@ -58,8 +58,6 @@ jobs:
         with:
           shared-key: ci-quality
           cache-on-failure: true
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - run: cargo test --locked
       - run: cargo clippy --locked -- -D warnings
       - run: cargo fmt --check
@@ -83,8 +81,6 @@ jobs:
         with:
           shared-key: ci-build-${{ matrix.target }}
           cache-on-failure: true
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Install Zig
         run: |
           curl --retry 3 -fsSL https://ziglang.org/download/0.14.0/zig-linux-x86_64-0.14.0.tar.xz -o /tmp/zig.tar.xz
@@ -123,8 +119,6 @@ jobs:
         with:
           shared-key: ci-build-macos-${{ matrix.target }}
           cache-on-failure: true
-      - name: Install protobuf compiler
-        run: brew install protobuf
       - run: cargo build --release --locked --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v6
         with:

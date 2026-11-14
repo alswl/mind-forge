@@ -551,7 +551,6 @@ fn metadata(
                 extensions.sort_by(|a, b| a.identity.cmp(&b.identity));
                 index["additional"] = serde_yaml::to_value(extensions).map_err(yaml_error)?;
             }
-            index["rag_stale"] = true.into();
         }
         let path = scoped(project, "mind-index.yaml");
         if index != &raw(before, &path)? {
@@ -630,19 +629,5 @@ mod tests {
                 stage += 1;
             }
         }
-    }
-    #[test]
-    fn actual_lance_tables_are_refused_without_touching_authority() {
-        use crate::service::source::advanced::{advanced_store_dir, lance_store::LanceStore};
-        let (dir, plan) = fixture();
-        let store_path = advanced_store_dir(dir.path());
-        let store = LanceStore::create(&store_path).unwrap();
-        store.ensure_tables().unwrap();
-        let tables = store.rt().block_on(store.db().table_names().execute()).unwrap();
-        assert!(!tables.is_empty());
-        assert_eq!(transaction::apply(dir.path(), &plan, None).unwrap_err().kind(), "source_backend_unsupported");
-        assert_eq!(store.rt().block_on(store.db().table_names().execute()).unwrap(), tables);
-        assert_eq!(transaction::snapshot(dir.path(), &plan.watches).unwrap(), plan.before);
-        assert!(!dir.path().join(".mind-forge/lifecycle").exists());
     }
 }

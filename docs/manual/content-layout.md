@@ -103,16 +103,6 @@ including publish records. Source files and mind registrations remain authoritat
 list/show/build resolve from disk, including before indexing. No output is stored
 as a separate mind or persisted as an `articles` entry.
 
-Repository search discovers authored outputs and mind prompts/thinking from the
-same resolver, including registered projects outside `projects/`. Metadata search
-works without embeddings. The existing Lance content acquisition path uses an
-internal `article` registration type for output assembly; `source_identity` is
-the exact output identity, `registered_location` is the source path, and ownership
-is carried in annotations. This adapter does not make the output a mind. Advanced
-content indexing still requires the existing embedding/backend configuration.
-Private content remains available to the author's RAG, as before. Build products
-and additional files are not added to the output corpus.
-
 Build sorts Markdown blocks by filename, rebases relative links, and applies the
 existing banner, first-H1, pipeline, and private-content rules. Private callouts
 and private non-title blocks are excluded from the build without editing the

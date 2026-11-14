@@ -179,30 +179,6 @@ fn local_filesystem(root: &Path) -> Result<()> {
     }
 }
 
-/// The current transaction engine can restore the YAML-authoritative backend.
-/// A declared or existing Lance store is refused until authority participates
-/// in this journal; a YAML projection is never treated as its primary state.
-fn ensure_backend(root: &Path) -> Result<()> {
-    let path = root.join("minds.yaml");
-    if path.exists() {
-        let manifest = crate::service::repo::load_manifest(&path)?;
-        if manifest.source.is_some_and(|s| s.backend == crate::model::manifest::SourceBackend::Lance) {
-            return Err(rejected(
-                "source_backend_unsupported",
-                "Lance authority cannot be restored by this local file journal",
-            ));
-        }
-    }
-    let store = crate::service::source::advanced::advanced_store_dir(root);
-    if store.exists() {
-        return Err(rejected(
-            "source_backend_unsupported",
-            "an existing Lance store requires authoritative backend recovery support",
-        ));
-    }
-    Ok(())
-}
-
 /// No directories, cache, locks, or journals are created by inspection.
 pub fn snapshot(root: &Path, watches: &[String]) -> Result<Snapshot> {
     let mut result = Snapshot::new();
@@ -260,7 +236,7 @@ impl Plan {
     ) -> Result<Self> {
         let root = fs::canonicalize(root)?;
         local_filesystem(&root)?;
-        ensure_backend(&root)?;
+
         let mut plan = Self {
             version: 1,
             root: root.to_string_lossy().into_owned(),
@@ -488,7 +464,7 @@ fn verify_root(root: &Path, plan: &Plan) -> Result<()> {
         return Err(rejected("wrong_worktree", "plan is bound to a different root"));
     }
     local_filesystem(root)?;
-    ensure_backend(root)?;
+
     plan.validate_shape()?;
     if plan.compute_digest()? != plan.digest {
         return Err(rejected("invalid_plan", "digest mismatch"));
@@ -976,34 +952,5 @@ mod tests {
         fs::rename(dir.path().join(JOURNAL), dir.path().join(format!("{JOURNAL}.next"))).unwrap();
         recover(dir.path(), false, None).unwrap();
         assert_eq!(snapshot(dir.path(), &plan.watches).unwrap(), plan.after);
-    }
-}
-
-#[cfg(test)]
-mod backend_tests {
-    use super::*;
-
-    #[test]
-    fn declared_and_existing_lance_authority_are_refused_without_projection_writes() {
-        for declared in [true, false] {
-            let temp = tempfile::tempdir().unwrap();
-            fs::create_dir(temp.path().join("project")).unwrap();
-            fs::write(temp.path().join("project/mind-index.yaml"), "sources: {}\n").unwrap();
-            if declared {
-                fs::write(temp.path().join("minds.yaml"), "schema: '1'\nsource:\n  backend: lance\n").unwrap();
-            } else {
-                let store = crate::service::source::advanced::advanced_store_dir(temp.path());
-                fs::create_dir_all(&store).unwrap();
-                fs::write(store.join("current.json"), "synthetic authority pointer").unwrap();
-            }
-            let watches = vec!["project".into()];
-            let before = snapshot(temp.path(), &watches).unwrap();
-            let error =
-                Plan::new(temp.path(), "rename".into(), watches.clone(), before.clone(), before.clone()).unwrap_err();
-            assert_eq!(error.kind(), "source_backend_unsupported");
-            assert_eq!(snapshot(temp.path(), &watches).unwrap(), before);
-            assert!(!temp.path().join(STATE).exists());
-            assert!(!temp.path().join(".mind-forge/write.lock").exists());
-        }
     }
 }

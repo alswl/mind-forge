@@ -29,17 +29,7 @@ pub fn classify(matches: &ArgMatches) -> Access {
     let Some(leaf) = path.last().copied() else { return Access::Read };
     if matches!(
         leaf,
-        "list"
-            | "show"
-            | "status"
-            | "search"
-            | "trace"
-            | "schema"
-            | "default"
-            | "terminal"
-            | "version"
-            | "completion"
-            | "render"
+        "list" | "show" | "status" | "schema" | "default" | "terminal" | "version" | "completion" | "render"
     ) {
         return Access::Read;
     }
@@ -70,8 +60,8 @@ mod tests {
             vec!["output", "new", "a", "b"],
             vec!["project", "index"],
             vec!["article", "index"],
-            vec!["source", "sync"],
-            vec!["source", "admin", "rebuild"],
+            vec!["source", "index"],
+            vec!["source", "clean"],
             vec!["asset", "index"],
             vec!["term", "new", "a"],
             vec!["term", "fix"],
@@ -86,7 +76,7 @@ mod tests {
         for args in [
             vec!["mind", "new", "a", "-n"],
             vec!["project", "lint"],
-            vec!["source", "status"],
+            vec!["source", "list"],
             vec!["mind", "list"],
             vec!["output", "show", "a"],
         ] {

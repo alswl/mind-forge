@@ -25,33 +25,27 @@ flowchart LR
   Build --> MD[Markdown]
   Build --> HTML[HTML]
   MD --> Publish[Publish]
-  Evidence -.-> Search["Local RAG · retrieve and attribute"]
-  Article -.-> Search
-  Summary -.-> Search
-  Search -.-> Reason
 ```
 
 A Mind can begin with research alone and grow into several deliverables. Each
 Output is editable as one file or ordered Markdown blocks; Markdown and HTML
-builds are derived artifacts. Private content stays in the authored files and
-remains available to your own retrieval.
+builds are derived artifacts. Private content stays in the authored files for direct reading and editing.
 
 ## Why mind-forge
 
 | Principle | What it means |
 | --- | --- |
-| **Diffusion** | Reuse evidence and authored knowledge across outputs; retrieve it with provenance. |
+| **Diffusion** | Reuse evidence and authored knowledge across outputs; preserve its provenance. |
 | **Document as Code** | Review Markdown and YAML in Git, lint structure, and build deterministically. |
 | **AI Native CLI** | Compose commands with structured JSON, predictable exit codes, and dry-run previews. |
-| **Local first** | Keep authored content in your repository and rebuild the search corpus locally. |
+| **Local first** | Keep authored content and source registrations in ordinary repository files. |
 
 ## Features
 
 | Capability | What you can do |
 | --- | --- |
 | **Card-based writing** | Compose an Output from ordered Markdown blocks, or keep it in one file. Develop an article and a summary from the same Mind. |
-| **Knowledge reuse** | Search Sources, Outputs, Prompts, Thinking, project goals, and terms in one local RAG corpus, with provenance for attribution. |
-| **Private authoring, public delivery** | Keep private callouts and blocks alongside drafts; builds remove them while author retrieval retains them. |
+| **Private authoring, public delivery** | Keep private callouts and blocks alongside drafts; builds remove them while authored files retain them. |
 | **Build and publish** | Generate Markdown or HTML, render Mermaid in HTML, customize page templates, and run asset pipelines. Publish built Markdown locally or prepare a Yuque publishing prompt. |
 | **Safe organization** | Preview layout conversions, moves, and renames; maintain supported references and recover interrupted changes. [Storage constraints](docs/guide/manage-content.md) apply. |
 | **Consistent terminology** | Maintain a shared glossary, lint usage, and apply corrections while respecting quoted and verbatim text by default. |
@@ -104,13 +98,6 @@ The results are `projects/research/build/brief/design.md` and `design.html`.
 Use `--layout bundle` to keep each Mind's files together instead of grouping
 by role. See [Minds and Outputs](docs/guide/minds-and-outputs.md) for the full flow.
 
-Search your repository's saved sources and authored content:
-
-```bash
-mf source sync --offline
-mf search "topic or claim" --output json
-```
-
 Builds exclude private content. Publishing is an explicit step that uses an
 existing Markdown build. See [build and publish](docs/guide/build-and-publish.md)
 for private markers and target configuration.
@@ -126,15 +113,14 @@ flowchart LR
 ```
 
 Both skills work on the same Mind and selected Output. `mf-cli` provides the
-command reference; `mf-source` handles explicitly requested source and retrieval
-work. Install them from [skills/](skills/README.md).
+command reference, including Source management. Install them from [skills/](skills/README.md).
 
 ## Documentation
 
 | Task | Guide |
 | --- | --- |
 | Create and organize content | [Minds and Outputs](docs/guide/minds-and-outputs.md) · [Move, rename, and recover](docs/guide/manage-content.md) |
-| Find and reuse knowledge | [Search and sources](docs/guide/search.md) · [Terms](docs/guide/terms.md) |
+| Find and reuse knowledge | [Sources](docs/guide/sources.md) · [Terms](docs/guide/terms.md) |
 | Produce deliverables | [Build and publish](docs/guide/build-and-publish.md) · [HTML and diagrams](docs/guide/build-html.md) |
 | Look up exact behavior | [CLI reference](docs/manual/cli.md) · [Content layouts](docs/manual/content-layout.md) |
 | Develop mind-forge | [Build and test](docs/dev/build-workflow.md) |

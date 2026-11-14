@@ -31,9 +31,8 @@ prints a warning and leaves existing outputs in place. `mf build <article>
 
 ## Private content
 
-Private content stays in the authored files and is still indexed for your own
-RAG retrieval, but it is stripped once during assembly, so no build or publish
-target ever receives it.
+Private content stays in the authored files and is stripped during assembly,
+so no build or publish target receives it.
 
 | Marker | Effect |
 |---|---|

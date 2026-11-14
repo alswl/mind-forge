@@ -11,13 +11,9 @@ mf init
 mf project new notes
 mf article new "First Note" --project notes        # creates docs/first-note/
 
-# Capture evidence; new sources are indexed for search by default
+# Capture evidence
 printf '# Reference\n\nA local reference about gateways.\n' > reference.md
 mf source new ./reference.md --project notes
-
-# Sync the whole repository into the local RAG corpus, then query it
-mf source sync --offline
-mf search "gateways" --project notes --output json
 
 # Assemble the article into projects/notes/outputs/first-note.md
 mf build first-note --project notes
@@ -57,8 +53,7 @@ flowchart TD
   Repo[Mind Repo: minds.yaml] --> Project[Project: mind.yaml]
   Project --> Knowledge[Sources, Prompts, Thinking, Articles]
   Project --> Support[Assets and Terms]
-  Knowledge --> RAG[Local RAG corpus]
-  RAG --> Work[Human or agent workflow]
+  Knowledge --> Work[Human or agent workflow]
   Work --> Articles[Legacy Articles]
   Articles --> Build[Build and Publish]
 ```
@@ -66,7 +61,7 @@ flowchart TD
 ```text
 my-repo/
 ├── minds.yaml                  # repository config
-├── projects/
+└── projects/
 │   └── notes/
 │       ├── mind.yaml           # project config (build, publish, ...)
 │       ├── mind-index.yaml     # index projection
@@ -75,7 +70,6 @@ my-repo/
 │       ├── prompts/            # intent and constraints
 │       ├── thinking/           # reasoning ledger
 │       └── outputs/            # build products
-└── .mind-forge/cache/source/advanced/  # rebuildable RAG state
 ```
 
 `minds.yaml` describes the repository; `mind.yaml` describes a project;

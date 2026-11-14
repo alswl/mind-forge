@@ -86,8 +86,8 @@ pub(crate) fn infer_kind_from_path(p: &Path) -> crate::model::source::FileKind {
     }
 }
 
+pub(crate) mod acquisition;
 pub mod add;
-pub mod advanced;
 pub mod clean;
 pub mod index;
 pub mod list;

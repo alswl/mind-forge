@@ -23,14 +23,11 @@ pub fn init(global: &GlobalOpts) -> Result<()> {
         }
     };
 
-    // Build an EnvFilter so we can pin noisy dependencies (LanceDB / Arrow /
-    // reqwest / …) to WARN while keeping mf at the user-requested level.
+    // Keep HTTP dependency logs quiet while respecting the requested mf level.
     // The RUST_LOG env var takes precedence when set.
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         let level_str = level_to_str(level);
-        EnvFilter::new(format!(
-            "{level_str},lancedb=warn,lance=warn,lance_index=warn,arrow=warn,datafusion=warn,reqwest=warn"
-        ))
+        EnvFilter::new(format!("{level_str},reqwest=warn"))
     });
 
     // Diagnostics go to stderr so stdout stays a clean machine-readable

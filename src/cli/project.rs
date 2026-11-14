@@ -8,22 +8,6 @@ use crate::cli::shared_flags::DryRunFlag;
 use crate::cli::shared_flags::ForceFlag;
 use crate::cli::shared_flags::LintFlags;
 use crate::cli::shared_flags::NoHeadersFlag;
-use crate::model::source_advanced::MutationOperation;
-use std::path::Path;
-
-/// Record a completed Lance lifecycle intent after a project mutation.
-/// Best-effort: silently no-ops when Lance is not active.
-fn record_project_intent(root: &Path, operation: MutationOperation, project_name: &str) {
-    if let Some(baseline) = svc::source::advanced::lifecycle::current_baseline_id(root) {
-        let advanced_dir = svc::source::advanced::advanced_store_dir(root);
-        // ignore errors — intent recording is best-effort for CLI commands
-        if let Ok(intent) =
-            svc::source::advanced::lifecycle::notify_project_change(root, operation, project_name, &baseline)
-        {
-            let _ = svc::source::advanced::lifecycle::complete_project_intent(&advanced_dir, intent);
-        }
-    }
-}
 use crate::cli::shared_flags::NoTruncFlag;
 use crate::cli::shared_flags::YesFlag;
 use crate::cli::{CommandOutcome, RepoRequirement};
@@ -263,7 +247,6 @@ fn handle_new(args: ProjectNewArgs, ctx: &CommandCtx) -> Result<CommandOutcome> 
         svc::mind::save_config_value(&identity.resolved_path, &raw)?;
     }
     let entry = svc::project::upsert_project_entry(root, &identity.path, &report.created_at, args.force.force)?;
-    record_project_intent(root, MutationOperation::New, &entry.name);
 
     let result = VerbResult {
         verb: Verb::Create,
@@ -725,7 +708,6 @@ fn handle_archive(args: ProjectArchiveArgs, ctx: &CommandCtx) -> Result<CommandO
     }
 
     let report = svc::project::archive_project(root, &args.name_or_path)?;
-    record_project_intent(root, MutationOperation::Archive, &report.name);
 
     let result = VerbResult {
         verb: Verb::Remove,
@@ -761,7 +743,6 @@ fn handle_import(args: ProjectImportArgs, ctx: &CommandCtx) -> Result<CommandOut
         args.force.force,
         args.yes.yes,
     )?;
-    record_project_intent(root, MutationOperation::Import, &report.name);
 
     match format {
         Format::Json => {
@@ -843,7 +824,6 @@ fn handle_rename(args: ProjectRenameArgs, ctx: &CommandCtx) -> Result<CommandOut
     }
 
     let report = svc::project::rename_project(root, &args.old_path, &args.new_path)?;
-    record_project_intent(root, MutationOperation::Rename, &report.old_name);
 
     let result = VerbResult {
         verb: Verb::Rename,
@@ -906,9 +886,6 @@ fn handle_remove(args: ProjectRemoveArgs, ctx: &CommandCtx) -> Result<CommandOut
     }
 
     let report = svc::project::remove_project(root, &args.path, args.force.force, args.dry_run.dry_run)?;
-    if !args.dry_run.dry_run {
-        record_project_intent(root, MutationOperation::Remove, &report.before.name);
-    }
 
     let result = VerbResult {
         verb: Verb::Remove,

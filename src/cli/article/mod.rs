@@ -744,17 +744,6 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
             let source_project = svc_util::resolve_project(root, project, cwd)?;
             let target_project = svc_util::resolve_project(root, Some(&args.to_project), cwd)?;
             let report = article_svc::move_article(&source_project, &target_project, &args.path, args.dry_run.dry_run)?;
-            let mut warnings = Vec::new();
-            let mut rag_indexed = report.rag_indexed;
-            if !report.dry_run
-                && let Ok(config) = crate::service::source::advanced::config::load_repository_config(root)
-                && config.is_lance()
-            {
-                match crate::service::source::advanced::sync::sync_repository(root, &config, None, None, false, true) {
-                    Ok(_) => rag_indexed = true,
-                    Err(error) => warnings.push(format!("RAG re-key deferred; run `mf source sync` ({error})")),
-                }
-            }
             let result = VerbResult {
                 verb: Verb::Move,
                 kind: "article",
@@ -768,16 +757,15 @@ pub fn dispatch(command: ArticleCmd, ctx: &mut CommandCtx) -> Result<CommandOutc
                     "moved_prompts": report.moved_prompts,
                     "moved_thinking": report.moved_thinking,
                     "moved_publish_records": report.moved_publish_records,
-                    "rag_indexed": rag_indexed,
                     "from_scope": source_project.display().to_string(),
                     "to_scope": target_project.display().to_string(),
                 }),
             };
             match format {
-                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings.clone(), None)),
+                Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
                 Format::Text => Ok(CommandOutcome::Success(
                     serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
-                    warnings,
+                    Vec::new(),
                     None,
                 )),
             }

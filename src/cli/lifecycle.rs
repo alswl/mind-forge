@@ -188,7 +188,7 @@ pub(crate) fn execute(
     let root = ctx.require_repo_path()?;
     let project = crate::service::mind::project_for(root, ctx.cwd(), ctx.project(), selector)?;
     let plan = planner::plan(root, &project, operation)?;
-    let mut data = json!({"kind":"lifecycle", "dry_run":flags.dry_run, "digest":plan.digest, "writes":plan.preview(), "rag":"stale after apply", "unverified":"references outside this repository"});
+    let mut data = json!({"kind":"lifecycle", "dry_run":flags.dry_run, "digest":plan.digest, "writes":plan.preview(), "unverified":"references outside this repository"});
     if flags.dry_run {
         if flags.emit_plan {
             data["plan"] = serde_json::to_value(&plan)?;

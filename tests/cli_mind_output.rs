@@ -148,7 +148,7 @@ fn exact_identity_project_mismatch_and_role_discovery() {
 }
 
 #[test]
-fn publish_and_metadata_search_share_output_location() {
+fn publish_uses_output_location() {
     let repo = setup();
     let root = repo.path();
     for mode in ["category", "bundle"] {
@@ -170,8 +170,6 @@ fn publish_and_metadata_search_share_output_location() {
             assert!(pub_result.to_string().contains(&format!("build/{mind}/summary.md")), "{pub_result}");
             assert!(pub_result.to_string().contains(&format!("{mind}/summary.md")));
             ok(root, &["publish", "update", id, "--target", "test-local", "--set", "status=published"]);
-            let result = ok(root, &["search", id]);
-            assert!(result.to_string().contains(id), "{result}");
         }
         let index: serde_yaml::Value =
             serde_yaml::from_str(&fs::read_to_string(project.join("mind-index.yaml")).unwrap()).unwrap();
@@ -194,7 +192,7 @@ fn tree(root: &Path) -> std::collections::BTreeMap<String, Vec<u8>> {
 }
 
 #[test]
-fn previews_and_queries_are_byte_preserving_and_registered_paths_are_searchable() {
+fn previews_and_queries_are_byte_preserving_for_registered_paths() {
     let repo = setup();
     let root = repo.path();
     ok(root, &["project", "new", "nested/team/research", "--layout", "bundle"]);
@@ -211,8 +209,6 @@ fn previews_and_queries_are_byte_preserving_and_registered_paths_are_searchable(
     ok(root, &["output", "index", "-p", project, "--dry-run"]);
     ok(root, &["build", identity, "--dry-run"]);
     assert_eq!(tree(root), before, "preview and reads must not add even directories/locks/caches");
-    let result = ok(root, &["search", identity]);
-    assert!(result.to_string().contains(identity), "{result}");
     ok(root, &["project", "index"]);
     assert!(root.join(project).join("mind-index.yaml").is_file());
     assert!(fs::read_to_string(root.join("minds.yaml")).unwrap().contains(project));

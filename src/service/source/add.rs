@@ -19,18 +19,6 @@ pub enum AddMode {
     Register,
 }
 
-/// Result of indexing a freshly added source into RAG (spec 069 #28).
-pub struct IndexingSummary {
-    /// Whether the source's content was indexed with chunks/embeddings.
-    pub indexed: bool,
-    /// Chunks persisted for the source this add (0 when skipped/degraded).
-    pub chunks: u64,
-    /// Set when indexing was skipped or degraded; carries a retry hint.
-    pub warning: Option<String>,
-    /// Backend that handled (or declined) indexing: "lance" or "legacy".
-    pub backend: &'static str,
-}
-
 /// Outcome returned by the `add()` function.
 pub struct AddOutcome {
     pub source: Source,
@@ -40,12 +28,6 @@ pub struct AddOutcome {
     /// the command can name what was destroyed instead of only that something
     /// was. `None` when nothing was replaced.
     pub replaced_location: Option<String>,
-    /// Lance-primary registration key (set only when Lance backend is active).
-    pub registration_key: Option<String>,
-    /// Whether the compatibility projection export degraded (set when Lance active).
-    pub projection_degraded: bool,
-    /// RAG indexing result (set only when the Lance backend indexes on add).
-    pub indexing: Option<IndexingSummary>,
 }
 
 /// Parameters for `add()`.
@@ -143,9 +125,6 @@ pub fn register_only(
                 mode: AddMode::Register,
                 replaced: false,
                 replaced_location: None,
-                registration_key: None,
-                projection_degraded: false,
-                indexing: None,
             });
         }
     }
@@ -186,15 +165,7 @@ pub fn register_only(
         }
         index::save(project_path, &index)?;
     }
-    Ok(AddOutcome {
-        source,
-        mode: AddMode::Register,
-        replaced,
-        replaced_location,
-        registration_key: None,
-        projection_degraded: false,
-        indexing: None,
-    })
+    Ok(AddOutcome { source, mode: AddMode::Register, replaced, replaced_location })
 }
 
 /// Internal enum for classifying `mf source add` input.
@@ -245,9 +216,9 @@ pub fn add(repo_root: &Path, project_path: &Path, cwd: &Path, args: &AddArgs) ->
 
 /// Fetch a URL and persist it as a local source file under `sources/<kind>/`.
 ///
-/// Returns the repo-relative local path and the raw bytes. The file is written
-/// atomically (temp → rename) so a failure never leaves a half-written file.
-pub(crate) fn fetch_url_to_local_file(
+/// Returns the project-relative local path. The file is written atomically
+/// (temp → rename) so a failure never leaves a half-written file.
+fn fetch_url_to_local_file(
     url: &str,
     name: &str,
     kind: &str,
@@ -255,8 +226,8 @@ pub(crate) fn fetch_url_to_local_file(
     max_bytes: u64,
     timeout_seconds: u32,
     max_redirects: u32,
-) -> Result<(String, Vec<u8>)> {
-    use crate::service::source::advanced::acquisition;
+) -> Result<String> {
+    use crate::service::source::acquisition;
 
     let content = acquisition::acquire_http(url, max_bytes, timeout_seconds, max_redirects)?;
     let ext = file_extension_for_url(url, kind);
@@ -265,10 +236,10 @@ pub(crate) fn fetch_url_to_local_file(
     let dest = kind_dir.join(format!("{name}.{ext}"));
     let tmp = kind_dir.join(format!(".{name}.tmp"));
     // Write to a temp file then rename so a crash never leaves a half-written file.
-    std::fs::write(&tmp, &content.raw_bytes).map_err(MfError::Io)?;
+    std::fs::write(&tmp, &content).map_err(MfError::Io)?;
     std::fs::rename(&tmp, &dest).map_err(MfError::Io)?;
     let rel_path = util::rel_posix_path(project_path, &dest)?;
-    Ok((rel_path, content.raw_bytes))
+    Ok(rel_path)
 }
 
 /// Derive a file extension from a URL path. Falls back to `html` for web and
@@ -317,9 +288,8 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
 
     let kind_str = model_kind.as_str();
 
-    // Fetch the URL and persist as a local file (Bug B: all sources become
-    // local files — `sync` no longer fetches URLs).
-    let (rel_path, _raw_bytes) = fetch_url_to_local_file(
+    // Preserve the fetched evidence locally alongside its original URL.
+    let rel_path = fetch_url_to_local_file(
         args.input,
         &name,
         kind_str,
@@ -378,15 +348,7 @@ fn add_url(project_path: &Path, args: &AddArgs) -> Result<AddOutcome> {
     };
 
     index::save(project_path, &index)?;
-    Ok(AddOutcome {
-        source,
-        mode,
-        replaced: replaced_location.is_some(),
-        replaced_location,
-        registration_key: None,
-        projection_degraded: false,
-        indexing: None,
-    })
+    Ok(AddOutcome { source, mode, replaced: replaced_location.is_some(), replaced_location })
 }
 
 fn add_path(repo_root: &Path, project_path: &Path, cwd: &Path, args: &AddArgs) -> Result<AddOutcome> {
@@ -525,15 +487,7 @@ fn add_path(repo_root: &Path, project_path: &Path, cwd: &Path, args: &AddArgs) -
 
     index::save(project_path, &index)?;
 
-    Ok(AddOutcome {
-        source,
-        mode,
-        replaced: replaced_location.is_some(),
-        replaced_location,
-        registration_key: None,
-        projection_degraded: false,
-        indexing: None,
-    })
+    Ok(AddOutcome { source, mode, replaced: replaced_location.is_some(), replaced_location })
 }
 
 #[cfg(test)]

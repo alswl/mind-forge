@@ -21,14 +21,9 @@ Directory names do not need to match entity names. Legacy `article:` bindings do
 not override explicit Mind/Output ownership. Proposed noun renames are not part
 of the current schema.
 
-The Lance acquisition adapter uses an internal `article` registration for Output
-assembly. This does not register a new Article or Mind. `source_identity` carries
-the Output identity. `registered_location` carries the editable source location.
-Ownership is carried in annotations.
-
-Source storage and lifecycle mutation have different constraints. Source/RAG can
-use Lance authority. Lifecycle refuses existing or configured Lance authority
-instead of falling back to YAML. See [lifecycle implementation](content-lifecycle.md).
+Source registrations remain authoritative in `mind-index.yaml`; Source files
+contain the saved evidence. Lifecycle operations update files and YAML together.
+See [lifecycle implementation](content-lifecycle.md).
 
 The [layout reference](../manual/content-layout.md) defines paths, identities, and
 projection behavior. The [glossary](../manual/glossary.md) defines public terms.

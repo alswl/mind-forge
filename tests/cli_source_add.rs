@@ -1054,7 +1054,6 @@ fn register_only_force_overwrites_existing_name_registration() {
             "--project",
             "alpha",
             "--register-only",
-            "--no-index",
             "--name",
             "shared",
         ])
@@ -1073,7 +1072,6 @@ fn register_only_force_overwrites_existing_name_registration() {
             "--project",
             "alpha",
             "--register-only",
-            "--no-index",
             "--name",
             "shared",
         ])
@@ -1092,7 +1090,6 @@ fn register_only_force_overwrites_existing_name_registration() {
             "--project",
             "alpha",
             "--register-only",
-            "--no-index",
             "--name",
             "shared",
             "--force",

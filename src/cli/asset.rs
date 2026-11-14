@@ -651,17 +651,6 @@ fn handle_move(
     let target_project = svc_util::resolve_project(root, Some(&args.to_project), cwd)?;
     identity::validate_entity_path(&source_project, &args.path)?;
     let report = asset_svc::move_asset(&source_project, &target_project, &args.path, args.dry_run.dry_run)?;
-    let mut rag_indexed = false;
-    let mut warnings = Vec::new();
-    if !report.dry_run
-        && let Ok(config) = crate::service::source::advanced::config::load_repository_config(root)
-        && config.is_lance()
-    {
-        match crate::service::source::advanced::sync::sync_repository(root, &config, None, None, false, true) {
-            Ok(_) => rag_indexed = true,
-            Err(error) => warnings.push(format!("RAG re-key deferred; run `mf source sync` ({error})")),
-        }
-    }
     let result = VerbResult {
         verb: Verb::Move,
         kind: "asset",
@@ -674,14 +663,13 @@ fn handle_move(
             "new_path": report.new_path,
             "from_scope": source_project.display().to_string(),
             "to_scope": target_project.display().to_string(),
-            "rag_indexed": rag_indexed,
         }),
     };
     match format {
-        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), warnings.clone(), None)),
+        Format::Json => Ok(CommandOutcome::Success(verb_json(&result), Vec::new(), None)),
         Format::Text => Ok(CommandOutcome::Success(
             serde_json::Value::String(verb_text(&result, &VerbOpts::from_repo_root(Some(root)))),
-            warnings,
+            Vec::new(),
             None,
         )),
     }

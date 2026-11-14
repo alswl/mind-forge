@@ -95,7 +95,6 @@ fn bidirectional_full_conversion_and_dry_run() {
         }
     }
     let index = fs::read_to_string(root.join("projects/p/mind-index.yaml")).unwrap();
-    assert!(index.contains("rag_stale: true"));
     assert!(index.contains("path: sources/brief/evidence.md"));
     assert!(index.contains("path: outputs/brief/design.md"));
 }
@@ -161,7 +160,7 @@ fn every_writer_family_cooperates_with_root_lock_and_reads_gate_on_recovery() {
         vec!["output", "index", "-p", "p"],
         vec!["project", "index"],
         vec!["article", "index", "-p", "p"],
-        vec!["source", "sync"],
+        vec!["source", "index", "-p", "p"],
         vec!["asset", "index", "-p", "p"],
         vec!["term", "new", "blocked"],
         vec!["build", "projects/p::brief::design"],
@@ -183,7 +182,7 @@ fn every_writer_family_cooperates_with_root_lock_and_reads_gate_on_recovery() {
     for args in [
         vec!["mind", "list", "-p", "p"],
         vec!["output", "show", "projects/p::brief::design"],
-        vec!["source", "status"],
+        vec!["source", "list", "-p", "p"],
         vec!["mind", "new", "blocked", "-p", "p"],
     ] {
         fail(root, &args, "recovery_required");
