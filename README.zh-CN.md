@@ -31,7 +31,7 @@ flowchart LR
 
 | 理念 | 含义 |
 | --- | --- |
-| **知识流动（Diffusion）** | 让资料和已有创作在多个成果之间复用，保留引用来源。 |
+| **知识流动（Diffusion）** | 让资料和已有创作在多个成果之间复用，检索时保留来源。 |
 | **文档即代码（Document as Code）** | 用 Git 评审 Markdown 与 YAML，检查结构，以确定性的构建生成交付物。 |
 | **面向 AI 的 CLI（AI Native CLI）** | 用结构化 JSON、可预测的退出码和 dry-run 预览，让 Agent 组合命令。 |
 | **本地优先（Local first）** | 创作内容与资料登记保存在自己的仓库文件中。 |

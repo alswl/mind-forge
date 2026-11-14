@@ -35,7 +35,7 @@ builds are derived artifacts. Private content stays in the authored files for di
 
 | Principle | What it means |
 | --- | --- |
-| **Diffusion** | Reuse evidence and authored knowledge across outputs; preserve its provenance. |
+| **Diffusion** | Reuse evidence and authored knowledge across outputs; retrieve it with provenance. |
 | **Document as Code** | Review Markdown and YAML in Git, lint structure, and build deterministically. |
 | **AI Native CLI** | Compose commands with structured JSON, predictable exit codes, and dry-run previews. |
 | **Local first** | Keep authored content and source registrations in ordinary repository files. |
