@@ -58,16 +58,10 @@ fn archive_workflow_completes_with_no_documented_workarounds() {
     let (stdout, stderr, code) = run_in(ds.root(), &["term", "lint", "--project", "alpha", "sources/archive-notes.md"]);
     assert_eq!(code, 0, "lint after fix should be clean\nstdout:\n{stdout}\nstderr:\n{stderr}");
 
-    // 5. Search: the freshly registered and indexed content is retrievable
-    // without a separate manual sync step, no legacy-backend fallback.
-    let (stdout, stderr, code) = run_in(ds.root(), &["source", "sync", "--offline"]);
-    assert_eq!(code, 0, "sync failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
-    let (stdout, stderr, code) = run_in(ds.root(), &["source", "search", "machine failure", "--mode", "basic"]);
-    assert_eq!(code, 0, "search failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
-    assert!(
-        stdout.to_lowercase().contains("machine") || stdout.to_lowercase().contains("archive"),
-        "the fixed, freshly indexed content must be searchable: {stdout}"
-    );
+    // 5. The source remains registered and its saved file contains the correction.
+    let (stdout, stderr, code) = run_in(ds.root(), &["source", "list", "--project", "alpha"]);
+    assert_eq!(code, 0, "list failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+    assert!(stdout.contains("archive-notes"), "{stdout}");
 
     // 6. The project index diff is additive only — no unrelated reordering
     // or reformatting of untouched keys (spec 075 I-2/FR-013).

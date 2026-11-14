@@ -6,8 +6,7 @@ Four ideas shape the product.
 
 Knowledge should move instead of being copied. A Source, term, or reusable
 Block can contribute to several outputs. an output can then flow to several
-publishers. The repository preserves those connections — including the RAG path
-that finds existing knowledge and its provenance before new prose is written.
+publishers. The repository preserves those connections and source provenance.
 
 ```mermaid
 flowchart LR
@@ -17,7 +16,6 @@ flowchart LR
     T[Term]
   end
   subgraph Compose
-    R[RAG retrieval]
     A1[Output: Report]
     A2[Output: Essay]
   end
@@ -25,11 +23,10 @@ flowchart LR
     P1[Local]
     P2[Yuque prompt]
   end
-  S --> R
-  B --> R
+  S --> A1
+  B --> A1
   T --> A2
-  R --> A1
-  R --> A2
+  S --> A2
   A1 --> Build[Markdown artifacts]
   A2 --> Build
   Build --> P1
@@ -60,8 +57,7 @@ and audit.
 ## Local first
 
 The repository remains useful without a cloud service. Authored content stays
-in ordinary files, secrets stay outside committed configuration, and the
-embedded RAG corpus rebuilds locally. External services extend the workflow;
+in ordinary files and secrets stay outside committed configuration. External services extend the workflow;
 they do not own it.
 
 See the [glossary](../manual/glossary.md) for Mind, Output, Source, Prompt, and Thinking.

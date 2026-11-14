@@ -15,7 +15,6 @@ pub struct ArticleMoveReport {
     pub moved_prompts: Vec<String>,
     pub moved_thinking: Vec<String>,
     pub moved_publish_records: usize,
-    pub rag_indexed: bool,
     pub dry_run: bool,
 }
 
@@ -103,7 +102,6 @@ pub fn move_article(
         moved_prompts: moved_prompts.clone(),
         moved_thinking: moved_thinking.clone(),
         moved_publish_records: publish_records.len(),
-        rag_indexed: false,
         dry_run,
     };
     if dry_run {

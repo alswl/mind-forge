@@ -9,7 +9,7 @@ The [manual](manual/README.md) defines commands, identities, paths, and fields.
 | Install and create a project | [Install](guide/install.md), then [minds and outputs](guide/minds-and-outputs.md) |
 | Organize or recover content | [Manage content](guide/manage-content.md) |
 | Build and publish | [Build and publish](guide/build-and-publish.md) |
-| Search local material | [Search and sources](guide/search.md) |
+| Manage local evidence | [Sources](guide/sources.md) |
 | Maintain a legacy project | [Legacy Articles](guide/legacy-articles.md) |
 | Contribute code | [Build and test](dev/build-workflow.md) |
 

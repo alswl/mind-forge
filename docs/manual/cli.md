@@ -79,17 +79,6 @@ This document contains the help content for the `mf` command-line program.
 * [`mf source move`↴](#mf-source-move)
 * [`mf source clean`↴](#mf-source-clean)
 * [`mf source show`↴](#mf-source-show)
-* [`mf source search`↴](#mf-source-search)
-* [`mf source sync`↴](#mf-source-sync)
-* [`mf source status`↴](#mf-source-status)
-* [`mf source export`↴](#mf-source-export)
-* [`mf source import`↴](#mf-source-import)
-* [`mf source trace`↴](#mf-source-trace)
-* [`mf source admin`↴](#mf-source-admin)
-* [`mf source admin rebuild`↴](#mf-source-admin-rebuild)
-* [`mf source admin clear`↴](#mf-source-admin-clear)
-* [`mf source admin recover`↴](#mf-source-admin-recover)
-* [`mf search`↴](#mf-search)
 * [`mf asset`↴](#mf-asset)
 * [`mf asset list`↴](#mf-asset-list)
 * [`mf asset new`↴](#mf-asset-new)
@@ -154,7 +143,6 @@ mind-forge: a local-first knowledge management CLI
 * `prompt` — View prompt projections
 * `thinking` — View thinking projections
 * `source` — Manage content sources
-* `search` — Search the repository-wide RAG corpus
 * `asset` — Manage project assets
 * `term` — Manage terminology
 * `build` — Build a selected mind output or legacy article
@@ -1169,13 +1157,6 @@ Manage content sources
 * `move` — Move a source to another project
 * `clean` — Clean source index
 * `show` — Show source details
-* `search` — Search sources across the repository
-* `sync` — Synchronize sources and article content
-* `status` — Report source corpus status
-* `export` — Export the source corpus
-* `import` — Import a source corpus bundle
-* `trace` — Trace source locations as Markdown links
-* `admin` — Maintain the source corpus
 
 
 
@@ -1222,8 +1203,6 @@ Create a source
 
 * `--link` — Create a symlink instead of copying a local file
 * `--register-only` — Register a file already inside the project's sources directory without copying it
-* `--no-index` — Register only, without indexing the source into RAG (Lance backend). By default a new source is chunked and embedded so it is searchable at once
-* `--article <ARTICLE>` — Originating article that introduced this source (project-relative path). Captured as authoritative import provenance (spec 071). Must stay within the project; an escaping path is a usage error
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-n`, `--dry-run` — Preview changes without writing
 
@@ -1336,182 +1315,6 @@ Show source details
 ###### **Arguments:**
 
 * `<PATH>` — Project-relative source path or registered source name
-
-
-
-## `mf source search`
-
-Search sources across the repository
-
-**Usage:** `mf source search [OPTIONS] <QUERY>`
-
-###### **Arguments:**
-
-* `<QUERY>` — Search query
-
-###### **Options:**
-
-* `--mode <MODE>` — Search mode: basic (metadata), advanced (content), or both (fused)
-
-  Possible values: `basic`, `advanced`, `both`
-
-* `-p`, `--project <NAME_OR_PATH>` — Limit search to a project name or path (cwd-relative, repo-relative, or absolute)
-* `--file-kind <FILE_KIND>` — Filter by file kind
-* `--source <SOURCE>` — Filter by source identity
-* `--label <KEY=VALUE>` — Filter by label, `key=value` (repeatable; all must match)
-* `--revision <REV>` — Search a specific content revision instead of the current version. Accepts an integer revision number, a date (2026-07-25), or a relative date (yesterday, "7 days ago")
-* `--limit <LIMIT>` — Maximum results to return
-
-  Default value: `20`
-
-
-
-## `mf source sync`
-
-Synchronize sources and article content
-
-**Usage:** `mf source sync [OPTIONS]`
-
-###### **Options:**
-
-* `-p`, `--project <PROJECT>` — Limit sync to a project name or path (cwd-relative, repo-relative, or absolute)
-* `--source <SOURCE>` — Limit sync to a specific Source identity (requires unambiguous scope)
-* `--offline` — Forbid all network access (Web/RSS acquisition disabled)
-* `--rebuild` — Regenerate the Lance Source index to the current storage schema (full re-index/re-embed). Recovers from a schema-drift refusal in one command family instead of detouring to `source admin rebuild`
-* `-n`, `--dry-run` — Preview changes without writing
-
-
-
-## `mf source status`
-
-Report source corpus status
-
-**Usage:** `mf source status [OPTIONS]`
-
-###### **Options:**
-
-* `-p`, `--project <PROJECT>` — Limit to a project name or path (cwd-relative, repo-relative, or absolute)
-* `--source <SOURCE>`
-
-
-
-## `mf source export`
-
-Export the source corpus
-
-**Usage:** `mf source export [OPTIONS] --output-dir <DIR>`
-
-###### **Options:**
-
-* `--output-dir <DIR>` — Destination bundle directory
-* `--force` — Allow writing into an existing/non-empty output directory
-* `-n`, `--dry-run` — Preview changes without writing
-
-
-
-## `mf source import`
-
-Import a source corpus bundle
-
-**Usage:** `mf source import [OPTIONS] <BUNDLE>`
-
-###### **Arguments:**
-
-* `<BUNDLE>` — Bundle directory produced by `export`
-
-###### **Options:**
-
-* `--overwrite` — Required when the target already has a published corpus
-* `-n`, `--dry-run` — Preview changes without writing
-
-
-
-## `mf source trace`
-
-Trace source locations as Markdown links
-
-**Usage:** `mf source trace [OPTIONS]`
-
-###### **Options:**
-
-* `-p`, `--project <PROJECT>` — Limit to a project name or path (cwd-relative, repo-relative, or absolute)
-
-
-
-## `mf source admin`
-
-Maintain the source corpus
-
-**Usage:** `mf source admin <COMMAND>`
-
-###### **Subcommands:**
-
-* `rebuild` —
-* `clear` —
-* `recover` —
-
-
-
-## `mf source admin rebuild`
-
-**Usage:** `mf source admin rebuild [OPTIONS]`
-
-###### **Options:**
-
-* `--offline`
-* `-n`, `--dry-run` — Preview changes without writing
-
-
-
-## `mf source admin clear`
-
-**Usage:** `mf source admin clear [OPTIONS] [SOURCE]`
-
-###### **Arguments:**
-
-* `<SOURCE>`
-
-###### **Options:**
-
-* `-p`, `--project <PROJECT>` — Limit to a project name or path (cwd-relative, repo-relative, or absolute)
-* `--all`
-* `-n`, `--dry-run` — Preview changes without writing
-* `-y`, `--yes` — Skip interactive confirmation prompt
-
-
-
-## `mf source admin recover`
-
-**Usage:** `mf source admin recover [OPTIONS] --snapshot <SNAPSHOT>`
-
-###### **Options:**
-
-* `--snapshot <SNAPSHOT>`
-* `-n`, `--dry-run` — Preview changes without writing
-* `-y`, `--yes` — Skip interactive confirmation prompt
-
-
-
-## `mf search`
-
-Search the repository-wide RAG corpus
-
-**Usage:** `mf search [OPTIONS] <QUERY>`
-
-###### **Arguments:**
-
-* `<QUERY>`
-
-###### **Options:**
-
-* `-p`, `--project <NAME_OR_PATH>` — Limit search to a project name or path (cwd-relative, repo-relative, or absolute)
-* `--file-kind <FILE_KIND>`
-* `--source <SOURCE>`
-* `--label <KEY=VALUE>`
-* `--revision <REV>`
-* `--limit <LIMIT>`
-
-  Default value: `20`
 
 
 

@@ -165,9 +165,7 @@ pub fn json_envelope(result: &VerbResult) -> serde_json::Value {
             map.insert("removed".to_string(), serde_json::Value::Bool(true));
         }
         Verb::Move => {
-            for key in
-                ["old_path", "new_path", "moved_prompts", "moved_thinking", "moved_publish_records", "rag_indexed"]
-            {
+            for key in ["old_path", "new_path", "moved_prompts", "moved_thinking", "moved_publish_records"] {
                 if let Some(value) = result.details.get(key) {
                     map.insert(key.to_string(), value.clone());
                 }

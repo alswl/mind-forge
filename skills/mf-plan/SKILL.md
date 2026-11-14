@@ -26,7 +26,7 @@ Own problem framing, evidence gathering, comparison, judgment, and the article o
 5. Preserve directory articles and single-file articles as found. For a new target, use `--file` when a single note is appropriate; use blocks for independently maintained sections. In legacy projects, editable source is the configured article path (often `docs/`), while `outputs/` is usually generated. In category/bundle projects, `outputs/` can contain editable sources, and `build/` contains generated artifacts. In both modes, configuration and CLI-returned source/artifact paths decide; never edit a generated draft as source or overwrite source during build. Dry-run `path: null` is not a created file.
 6. Retain the selected mode and selector for indexing, build, publishing and metadata updates throughout this workflow. Do not add `content_layout`, move files, convert shapes, or migrate a project as a compatibility repair: setting the field disables the legacy Article entry without converting existing articles. For separately authorized lifecycle changes, use the mode's CLI, preview then apply, and read back identities, paths and bindings. Do not hand-edit indexes or simulate CLI operations. A structural check does not establish editorial completion.
 
-Prompt holds durable intent; Thinking holds comparisons, conflicts and open questions; Source holds evidence and provenance. Register new sources with the real CLI and inspect the returned location before citing it. An already-owned source should be referenced rather than copied to another mind. Retrieval results from prompts and thinking provide context, not factual evidence. If RAG is unavailable, report that limitation and continue only from verified available materials. A local writing/planning request does not authorize corpus activation or backend changes.
+Prompt holds durable intent; Thinking holds comparisons, conflicts and open questions; Source holds evidence and provenance. Register new sources with the real CLI and inspect the returned location before citing it. An already-owned source should be referenced rather than copied to another mind. Retrieval results from prompts and thinking provide context, not factual evidence. Locate existing evidence with `mf source list`/`show` and file search; read the source before relying on it.
 
 In the rest of this skill, “selected output” also means the resolved legacy article source. Prompt/Thinking references remain conditional on existing bindings; they never require backfilling files.
 
@@ -58,23 +58,10 @@ Use stable open-loop IDs with severity (`critical`, `major`, `minor`) and status
 
 ## Research and materialize
 
-Before retrieval, inspect `mf source status --json`. If the corpus is missing or unavailable, use verified local sources and report the limitation. Do not activate a corpus, switch its backend, or run a synchronization that changes repository configuration without explicit maintenance authorization. `source sync --offline` can activate Lance and rewrite `minds.yaml`; offline does not mean read-only. For an existing corpus, refresh only when necessary and within the authorized write scope:
-
-```bash
-mf source sync --offline
-mf search "<research question>" --output json
-```
-
-Search is read-only; inspect result provenance and registration identity before
-using a hit as evidence. Each hit's `registrations[].context` carries structured
-attribution — repository, owning project and its goal, content kind, article
-lifecycle status, internal `relations` (with dangling links marked
-`resolved:false`), and, for source hits, `imported_by` provenance. Consume and
-cite this context when placing a hit; the corpus now also covers `project` goals
-and `term` definitions, so search for related work, prior decisions, terminology,
-and source origins before adding new material. If the corpus is missing or
-degraded, check `mf source status --output json` and report the limitation
-rather than silently falling back to an incomplete source list.
+Locate related work, prior decisions and terminology with repository file search.
+Use `mf source list` and `mf source show` to inspect registrations, then read the
+saved files. Prompts and Thinking provide intent and reasoning context; verify
+factual claims against Sources and their provenance. Report missing evidence.
 
 - Ask first only for missing hard constraints that would invalidate the work. Continue with explicit assumptions when uncertainty is non-blocking.
 - For comparisons, normalize the basis before ranking: applicable dates, people or units, variant, currency, taxes or fees, cancellation terms, access time, and other domain-specific conditions.
@@ -115,7 +102,7 @@ Classify legacy Markdown comments beginning with `mf-feedback` before acting:
 
 Never silently delete feedback. Feedback is development state, not a universal build or publication gate. Report unresolved issues for the author to judge; ordinary planning does not authorize publication. There is no Feedback state CLI: preserve and edit Markdown history directly after semantic review.
 
-For a persistent private aside — a process-discussion note or exploratory passage that must stay in the source but never ship — use mind-forge private content rather than `mf-feedback`: wrap it in a `> [!mf-private]` callout, or set `mind-forge-visibility: private` on a whole block file. `mf build`/`mf publish` exclude it while it stays intact in the source, and it remains available for the author's own RAG retrieval. A generic private aside has no workflow state; only private regions titled `Suggestions` or `Feedback` use the checkbox lifecycle defined above. See `$mf-write` / `$mf-cli` for the exact rules (block-level only; the title block cannot be private).
+For a persistent private aside — a process-discussion note or exploratory passage that must stay in the source but never ship — use mind-forge private content rather than `mf-feedback`: wrap it in a `> [!mf-private]` callout, or set `mind-forge-visibility: private` on a whole block file. `mf build`/`mf publish` exclude it while it stays intact in the source, and it remains directly readable in the authored files. A generic private aside has no workflow state; only private regions titled `Suggestions` or `Feedback` use the checkbox lifecycle defined above. See `$mf-write` / `$mf-cli` for the exact rules (block-level only; the title block cannot be private).
 
 ## Hand off by concern
 

@@ -326,13 +326,6 @@ fn render_template_list_help_snapshot() {
     assert_snapshot!("render_template_list_help", stdout);
 }
 
-#[test]
-fn source_search_help_snapshot() {
-    let (stdout, _, code) = run(&["source", "search", "--help"]);
-    assert_eq!(code, 0);
-    assert_snapshot!("source_search_help", stdout);
-}
-
 // ── Init help snapshots ──
 
 #[test]

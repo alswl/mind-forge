@@ -45,12 +45,6 @@ jobs:
         with:
           shared-key: ci-${{ runner.os == 'Linux' && 'build' || 'build-macos' }}-${{ matrix.target }}
           cache-on-failure: true
-      - name: Install protobuf compiler
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-      - name: Install protobuf compiler
-        if: runner.os == 'macOS'
-        run: brew install protobuf
       - name: Install Zig
         if: runner.os == 'Linux'
         run: |

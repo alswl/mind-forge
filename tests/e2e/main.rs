@@ -17,8 +17,6 @@ mod project_lifecycle;
 mod prompt_thinking_workflow;
 mod publisher;
 mod repo_lifecycle;
-mod source_advanced;
-mod source_advanced_roundtrip;
 mod source_index;
 mod spec_079_workflow;
 mod term_global;

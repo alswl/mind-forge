@@ -1,6 +1,15 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [Unreleased]
+
+### Removed
+- Remove built-in RAG and LanceDB storage, corpus search and maintenance commands,
+  embedding configuration, and the `mf-source` skill. Sources use local files and
+  `mind-index.yaml`; URL imports and ordinary Source operations remain available.
+- Remove Source `--no-index` and `--article` flags and RAG-specific result fields.
+  Historical corpus data is not migrated or deleted.
+
 ## [0.5.1] - 2026-11-10
 
 ### Bug Fixes

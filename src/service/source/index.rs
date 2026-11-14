@@ -68,8 +68,6 @@ fn scan_recursive_dir(dir: &Path) -> Result<Vec<PathBuf>> {
 }
 
 /// One file found on disk under a project's `sources/` layout during a scan.
-/// Reused by both the legacy [`reconcile`] and the Lance-mode adoption pass
-/// (spec 075 US2) so there is exactly one directory walk per project.
 #[derive(Debug, Clone)]
 pub(crate) struct DiskSource {
     pub(crate) path: String,

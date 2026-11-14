@@ -17,7 +17,6 @@ Commands:
   prompt      View prompt projections
   thinking    View thinking projections
   source      Manage content sources
-  search      Search the repository-wide RAG corpus
   asset       Manage project assets
   term        Manage terminology [aliases: terms]
   build       Build a selected mind output or legacy article

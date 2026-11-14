@@ -1,5 +1,9 @@
 # Build workflow
 
+> The measurements below predate removal of the RAG/Lance backend. Keep them as
+> historical profiling evidence; remeasure the current build before using the
+> timings, dependency counts, or artifact sizes for a new decision.
+
 How to keep compile cost proportional to the size of a change. All numbers below
 were measured on this repository after a one-line edit to `src/model/manifest.rs`,
 with a warm cargo cache on a 10-core machine.

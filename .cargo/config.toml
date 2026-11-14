@@ -1,5 +1,6 @@
 # Repository-local cargo configuration. Merged with (not replacing) the user's
 # global ~/.cargo/config.toml.
+# Measurements below predate RAG/Lance removal; remeasure the current build.
 #
 # These aliases exist because the edit loop's cost is dominated by how much of
 # the `mf` crate cargo is asked to rebuild, not by dependencies — those are

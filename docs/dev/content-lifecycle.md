@@ -21,7 +21,7 @@ not multi-file ACID or protection against external editing.
 
 Lifecycle is restricted to supported local filesystems and YAML authority.
 It rejects symlinks, hard links, cross-device moves, unsafe permissions, unknown
-ownership, and existing or configured Lance authority. It does not verify
+ownership. It does not verify
 references outside the repository.
 
 Additional rename/remove reuse the same planner, reference handling, journal, and

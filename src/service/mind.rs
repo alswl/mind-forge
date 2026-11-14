@@ -385,15 +385,6 @@ pub fn child_project_roots(root: &Path, project: &Path) -> Result<BTreeSet<Strin
     Ok(excluded)
 }
 
-pub fn validate_projects(root: &Path) -> Result<()> {
-    for project in project_paths(root)? {
-        if config_for(&project)?.content_layout.is_some() {
-            discover(root, &project)?;
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

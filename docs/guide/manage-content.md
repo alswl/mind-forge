@@ -18,8 +18,7 @@ mf lifecycle mind-remove projects/other::renamed --yes
 ```
 
 Conversion includes every output shape, prompt, thinking, Source, Asset and
-structurally owned additional root. Source/Asset authority remains in YAML only
-for repositories without Lance. `imported_by` does not establish ownership.
+structurally owned additional root. Source/Asset authority remains in YAML. `imported_by` does not establish ownership.
 Unknown ownership, legacy `docs` content, collisions, symlinks, hard links and
 cross-device paths are refused. Configurations without explicit `content_layout`
 are not converted. Nonstandard configured legacy core roots containing files
@@ -40,10 +39,7 @@ remain editable sources; derived build files are not renamed as new source
 identities.
 
 Paths in Source/Asset registrations, output projections and publish records move
-with their files. Affected project indexes carry `rag_stale: true`; run the
-appropriate Source synchronization after reviewing the change. Existing or
-configured Lance authority is explicitly refused with
-`source_backend_unsupported`. No YAML-only operation claims to restore Lance.
+with their files.
 
 Markdown links, images, reference definitions and HTML `src`/`href` are rebased
 by default. Query strings, fragments, link titles, code and unrelated bytes are
