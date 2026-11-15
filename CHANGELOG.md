@@ -3,6 +3,8 @@
 All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-15
+
 ### Removed
 - Remove built-in RAG and LanceDB storage, corpus search and maintenance commands,
   embedding configuration, and the `mf-source` skill. Sources use local files and
