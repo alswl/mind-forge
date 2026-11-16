@@ -1,5 +1,26 @@
 # Build workflow
 
+## Current development and verification rules
+
+The active implementation plan declares the language/toolchain and exact local
+formatting, static-analysis, unit-test and build checks. The constitution fixes
+no language, compiler, build command or source-directory layout.
+
+Keep component unit tests beside the code they validate. Complete CLI,
+integration/E2E, HTTP/PTY/process, recovery, installation and platform acceptance
+reuse the designated external verification repository and its cases. Do not
+build another black-box harness in this repository. Local checks must work
+without that repository or its credentials; slice and final acceptance still
+require external evidence for the exact candidate and harness revision.
+
+This checkout still contains the Rust implementation. Its commands below remain
+useful for that reference while the Go rewrite is planned; keep existing coverage
+until it has been mapped and reused or migrated. The planned Go source paths and
+commands are not available yet. Changing this guidance does not complete the
+implementation or prove any build-cost improvement.
+
+## Historical Rust build workflow
+
 > The measurements below predate removal of the RAG/Lance backend. Keep them as
 > historical profiling evidence; remeasure the current build before using the
 > timings, dependency counts, or artifact sizes for a new decision.
