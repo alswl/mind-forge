@@ -46,7 +46,7 @@ func lifecycleCommand(command *cobra.Command, application *app.Context, args []s
 	if err != nil {
 		return err
 	}
-	data, err := executeLifecyclePlan(command, application, lifecycle.Engine{}, plan, stderr)
+	data, err := executeLifecyclePlan(command, application, lifecycleEngine(), plan, stderr)
 	if err != nil {
 		return err
 	}
@@ -72,7 +72,7 @@ func loadLifecyclePlan(cwd, name string) (lifecycle.Plan, error) {
 // Recovery commands own their locks through Engine; Run deliberately skips its
 // normal write lock and recovery guard for these public endpoints.
 func lifecycleRecoveryCommand(command *cobra.Command, application *app.Context, args []string, stdout, stderr io.Writer) error {
-	engine := lifecycle.Engine{}
+	engine := lifecycleEngine()
 	root := application.RepoRoot
 	data := map[string]any{"kind": "lifecycle"}
 	switch command.Name() {

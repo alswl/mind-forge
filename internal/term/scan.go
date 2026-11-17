@@ -218,7 +218,11 @@ func scanDocument(content, path string, terms []model.Term, selection Selection,
 		}
 		line := uint32(strings.Count(content[:start], "\n") + 1)
 		lineStart := strings.LastIndexByte(content[:start], '\n') + 1
-		f := model.TermFinding{Path: path, Line: line, Column: uint32(utf8.RuneCountInString(content[lineStart:start]) + 1), Original: original, Correct: c.Correct, Term: r.term.Term, Description: r.term.Description, Confidence: r.term.Confidence, ReplacementEligible: !advisory && !protected, MatchKind: kind, FixKind: fix, Boundary: boundary, BoundaryMode: mode, Context: excerpt(content, start, end), QuoteProtected: protected}
+		severity := "warning"
+		if fix == "suggested" {
+			severity = "info"
+		}
+		f := model.TermFinding{Path: path, Line: line, Column: uint32(utf8.RuneCountInString(content[lineStart:start]) + 1), Original: original, Correct: c.Correct, Term: r.term.Term, Description: r.term.Description, Confidence: r.term.Confidence, ReplacementEligible: !advisory && !protected, MatchKind: kind, Rule: "term_" + kind, Severity: severity, FixKind: fix, Boundary: boundary, BoundaryMode: mode, Context: excerpt(content, start, end), QuoteProtected: protected}
 		if advisory {
 			f.SafetyReason = stringPtr("short-cjk-advisory")
 		}

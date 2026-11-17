@@ -13,6 +13,8 @@ type TermFinding struct {
 	SafetyReason          *string                  `json:"safety_reason,omitempty"`
 	Candidates            JSONArray[CandidateTerm] `json:"candidates,omitempty"`
 	MatchKind             string                   `json:"match_kind"`
+	Rule                  string                   `json:"rule,omitempty"`
+	Severity              string                   `json:"severity,omitempty"`
 	FixKind               string                   `json:"fix_kind"`
 	Boundary              string                   `json:"boundary"`
 	BoundaryMode          string                   `json:"boundary_mode"`

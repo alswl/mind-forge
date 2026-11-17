@@ -146,6 +146,42 @@ func termLintReport(c *cobra.Command, a *app.Context, args []string, selection t
 	return term.LintFiles(base, target, terms, term.LintOptions{Selection: selection, Fix: fix, DryRun: dry})
 }
 
+var termLintRules = map[string]struct{}{
+	"term_word": {}, "term_substring": {}, "term_pinyin": {},
+}
+
+func filterTermLintFindings(findings []model.TermFinding, rules []string, severity string) ([]model.TermFinding, error) {
+	selectedRules := make(map[string]struct{}, len(rules))
+	for _, rule := range rules {
+		if _, ok := termLintRules[rule]; !ok {
+			return nil, output.Usage(fmt.Sprintf("unknown term lint rule %q", rule), "valid rules: term_word, term_substring, term_pinyin")
+		}
+		selectedRules[rule] = struct{}{}
+	}
+	if severity != "" && severity != "error" && severity != "warning" && severity != "info" {
+		return nil, output.Usage(fmt.Sprintf("invalid severity %q", severity), "valid severities: error, warning, info")
+	}
+	threshold := -1
+	if severity != "" {
+		threshold = severityRank(severity)
+	}
+	filtered := make([]model.TermFinding, 0, len(findings))
+	for _, finding := range findings {
+		if len(selectedRules) > 0 {
+			if _, ok := selectedRules[finding.Rule]; !ok {
+				continue
+			}
+		}
+		if threshold >= 0 {
+			if finding.Severity == "" || severityRank(finding.Severity) > threshold {
+				continue
+			}
+		}
+		filtered = append(filtered, finding)
+	}
+	return filtered, nil
+}
+
 func termLintCommand(c *cobra.Command, a *app.Context, args []string, stdout, stderr io.Writer) error {
 	selection, err := termSelection(c, a)
 	if err != nil {
@@ -195,6 +231,14 @@ func termLintCommand(c *cobra.Command, a *app.Context, args []string, stdout, st
 	if err != nil {
 		return err
 	}
+	severity := ""
+	if flagPresent(c, "severity") {
+		severity, _ = c.Flags().GetString("severity")
+	}
+	r.Findings, err = filterTermLintFindings(r.Findings, termArray(c, "rule"), severity)
+	if err != nil {
+		return err
+	}
 	warnings := []string{}
 	for _, f := range r.Findings {
 		if f.SubstringAdjacentWord {
@@ -208,7 +252,18 @@ func termLintCommand(c *cobra.Command, a *app.Context, args []string, stdout, st
 	data["issues"] = data["findings"]
 	delete(data, "findings")
 	data["kind"], data["dry_run"], data["target_type"], data["term_filter"] = "term", dry, targetType, termArray(c, "term")
-	data["summary"] = map[string]any{"errors": 0, "warnings": len(r.Findings), "info": 0, "fixed": r.FixedCount}
+	warningCount, infoCount := 0, 0
+	for _, finding := range r.Findings {
+		switch finding.Severity {
+		case "error":
+			// Term findings currently have no error classification.
+		case "info":
+			infoCount++
+		default:
+			warningCount++
+		}
+	}
+	data["summary"] = map[string]any{"errors": 0, "warnings": warningCount, "info": infoCount, "fixed": r.FixedCount}
 	text := formatTermLint(r, fix, dry, targetType, pathHint)
 	if a.Format != "json" {
 		for _, warning := range warnings {
@@ -231,7 +286,7 @@ func termLintCommand(c *cobra.Command, a *app.Context, args []string, stdout, st
 		code = 1
 	}
 	maximum, _ := c.Flags().GetInt64("max-warnings")
-	if flagPresent(c, "max-warnings") && int64(len(r.Findings)) > maximum {
+	if flagPresent(c, "max-warnings") && int64(warningCount) > maximum {
 		code = 1
 	}
 	if code != 0 {
