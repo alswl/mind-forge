@@ -28,14 +28,19 @@ parser.add_argument("--edit-to")
 parser.add_argument("--release-only", action="store_true", help="collect cold release samples without repeating the development workloads")
 parser.add_argument("--working-tree", action="store_true", help="overlay the current tracked/untracked, non-ignored files without committing; record the snapshot identity")
 parser.add_argument("--component-tests", action="store_true", help="execute each implementation's colocated unit gate after builds and include its retained test cache in disk accounting")
+parser.add_argument("--development-tests-only", action="store_true", help="measure development builds and component tests, sample their isolated temporary high-water, and skip release/install workloads")
 parser.add_argument("--cold-install-only", action="store_true", help="measure fresh source installs and sampled installation disk high-water without repeating build workloads")
 args = parser.parse_args()
 if args.samples < 5:
     parser.error("at least five samples are required")
 if any((args.edit_file, args.edit_from, args.edit_to)) and not all((args.edit_file, args.edit_from, args.edit_to)):
     parser.error("provide all three --edit-* arguments")
-if args.cold_install_only and (args.release_only or args.component_tests):
+if args.development_tests_only and (args.release_only or args.cold_install_only):
+    parser.error("--development-tests-only excludes release and source-install workloads")
+if args.cold_install_only and (args.release_only or args.component_tests or args.development_tests_only):
     parser.error("--cold-install-only is separate from build/component-test workloads")
+if args.development_tests_only:
+    args.component_tests = True
 if args.language == "go" and not args.edit_file and not args.cold_install_only:
     parser.error("Go measurements require an explicit equivalent business edit via --edit-*")
 
@@ -54,7 +59,7 @@ result = {"schema_version": 1, "language": args.language, "requested_revision": 
                       "cpu_count": os.cpu_count(), "load_average_start": os.getloadavg()},
           "workloads": {}, "commands": [],
           "scope": "Build-only measurements. Equivalent full tests and final SC verdict require the external fixed-harness acceptance record.",
-          "selected_workloads": "cold-release-and-warm-install" if args.release_only else "development-release-and-warm-install",
+          "selected_workloads": "development-build-and-component-tests-only" if args.development_tests_only else ("cold-release-and-warm-install" if args.release_only else "development-release-and-warm-install"),
           "not_measured": ["cold source installation", "temporary disk peak", "external fixed-harness test runtime"],
           "cache_policy": "Dedicated dependency source cache, fresh compiler cache per cold sample; never cleans global caches.",
           "flags": {"cgo": False, "rust_dev": "Cargo profile.dev", "rust_release": "Cargo profile.release (not stripped)", "go": "default compiler/linker flags (not stripped)"}}
@@ -110,10 +115,120 @@ def disk(path):
     return {"apparent_bytes": apparent, "allocated_bytes": allocated}
 
 
+def disk_roots(paths):
+    apparent = allocated = 0
+    visited = set()
+    for path in paths:
+        path = Path(path)
+        files = [path] if path.is_file() else [Path(directory) / name
+                                               for directory, _, names in os.walk(path)
+                                               for name in names]
+        for file in files:
+            info = file.lstat()
+            if (info.st_dev, info.st_ino) in visited:
+                continue
+            visited.add((info.st_dev, info.st_ino))
+            apparent += info.st_size
+            allocated += info.st_blocks * 512
+    return {"apparent_bytes": apparent, "allocated_bytes": allocated}
+
+
 def series(label, values):
     result["workloads"][label] = {"seconds": values, "median": statistics.median(values),
                                    "min": min(values), "max": max(values)}
     save()
+
+
+def run_sampled_development_test_sequence():
+    cache = run / "sequence-cache"
+    temporary = run / "_sequence-tmp"
+    cache.mkdir()
+    temporary.mkdir()
+    sequence_env = env.copy()
+    sequence_env["TMPDIR"] = str(temporary)
+    if args.language == "rust":
+        sequence_env["CARGO_TARGET_DIR"] = str(cache)
+        commands = [[cargo, "build", "--locked", "--offline"],
+                    [cargo, "test", "--locked", "--offline", "--bin", "mf"]]
+    else:
+        sequence_env.update(GOCACHE=str(cache), GOTMPDIR=str(temporary))
+        commands = [[go, "build", "-o", "bin/mf", "./cmd/mf"],
+                    [go, "test", "-count=1", "./internal/..."]]
+    observations = []
+    stop = threading.Event()
+    started = time.monotonic()
+
+    def sample_temporary():
+        apparent = allocated = races = 0
+        visited = set()
+        for parent, _, names in os.walk(temporary):
+            for name in names:
+                try:
+                    info = (Path(parent) / name).stat()
+                except FileNotFoundError:
+                    races += 1
+                    continue
+                key = (info.st_dev, info.st_ino)
+                if key in visited:
+                    continue
+                visited.add(key)
+                apparent += info.st_size
+                allocated += info.st_blocks * 512
+        observations.append({"elapsed_seconds": time.monotonic() - started,
+                             "apparent_bytes": apparent, "allocated_bytes": allocated,
+                             "stat_races": races})
+
+    def observe_temporary():
+        while not stop.wait(0.1):
+            sample_temporary()
+
+    sample_temporary()
+    observer = threading.Thread(target=observe_temporary, name="development-test-disk-sampler")
+    observer.start()
+    command_results = []
+    try:
+        for index, command in enumerate(commands):
+            log = run / f"sequence-{index}.log"
+            command_started = time.monotonic()
+            with log.open("wb") as stream:
+                process = subprocess.run(command, cwd=source, env=sequence_env,
+                                         stdout=stream, stderr=subprocess.STDOUT)
+            command_results.append({"argv": command, "seconds": time.monotonic() - command_started,
+                                    "exit": process.returncode, "log": log.name})
+            save()
+            if process.returncode:
+                raise RuntimeError(f"sampled development/test command exited {process.returncode}; retained {log}")
+    finally:
+        stop.set()
+        observer.join()
+        sample_temporary()
+    if not observations:
+        raise RuntimeError("temporary disk sampler recorded no observations")
+    output_roots = [cache]
+    development_binary = cache / "debug/mf" if args.language == "rust" else source / "bin/mf"
+    if args.language == "go":
+        output_roots.append(source / "bin")
+    version = subprocess.run([str(development_binary), "--version"], capture_output=True,
+                             text=True, env=sequence_env)
+    result["development_test_sequence"] = {
+        "commands": command_results,
+        "temporary_root": str(temporary),
+        "temporary_directory_was_empty_before": True,
+        "sampling": "Isolated TMPDIR/GOTMPDIR, sampled every 100ms while a fresh-cache dev build and complete colocated unit gate run; non-atomic directory scans may miss brief peaks.",
+        "disk_observations": observations,
+        "sampled_temporary_high_water": {key: max(row[key] for row in observations)
+                                          for key in ("apparent_bytes", "allocated_bytes")},
+        "max_observation_gap_seconds": max((b["elapsed_seconds"] - a["elapsed_seconds"]
+                                             for a, b in zip(observations, observations[1:])), default=0),
+        "stat_races": sum(row["stat_races"] for row in observations),
+        "compiler_and_worktree_outputs_disk": disk_roots(output_roots),
+        "development_binary_disk": disk_roots([development_binary]),
+        "development_binary": {"sha256": hashlib.sha256(development_binary.read_bytes()).hexdigest(),
+                               "bytes": development_binary.stat().st_size,
+                               "version_probe": {"exit": version.returncode, "stdout": version.stdout,
+                                                 "stderr": version.stderr}},
+    }
+    result["not_measured"] = ["release builds", "source installation", "external fixed-harness test runtime"]
 
 
 try:
@@ -309,6 +424,22 @@ try:
         measure(f"restore-edit-{index}", build)
     if edits:
         series("business-edit", edits)
+    if args.development_tests_only:
+        tests = ([cargo, "test", "--locked", "--offline", "--bin", "mf"] if args.language == "rust"
+                 else [go, "test", "-count=1", "./internal/..."])
+        series("component-unit-first-then-warm", [measure(f"component-unit-{index}", tests) for index in range(args.samples)])
+        result["component_tests"] = {
+            "argv": tests, "actual_executions": args.samples,
+            "sampling": "First unit target compilation then warm repeats; tests execute every time. No product CLI/integration harness is invoked.",
+            "comparison_boundary": "Each implementation's complete colocated unit gate; declaration counts and structure differ. Equivalent behavior is evaluated separately by the fixed external harness."
+        }
+        run_sampled_development_test_sequence()
+        result["source_disk_including_git_metadata"] = disk(source)
+        result["load_average_end"] = os.getloadavg()
+        result["status"] = "measured-development-unit-and-sampled-temporary-high-water"
+        save()
+        print(f"Results: {run / 'results.json'}", flush=True)
+        sys.exit(0)
     if args.release_only:
         compile_cache = run / "release-cache"
         env["CARGO_TARGET_DIR" if args.language == "rust" else "GOCACHE"] = str(compile_cache)
