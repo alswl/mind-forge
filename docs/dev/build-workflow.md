@@ -71,6 +71,11 @@ local checks do not constitute a remote CI or native four-platform acceptance.
 
 ## Go archive preparation
 
+The manual **Prepare Go candidate archives** workflow uses
+`.github/workflows/go-package.yml` to build review artifacts. The existing
+Rust tag-release workflow remains in place until migration acceptance; preparing
+Go archives does not publish a release or switch the installation default.
+
 Run `bash scripts/package.sh --tag v0.6.0` to prepare the four macOS/Linux
 x86_64/ARM64 archives in a new `release/v0.6.0` directory. `--out` selects another
 new directory; an existing destination is refused. The tag's core version must
