@@ -1,6 +1,7 @@
 package term
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -91,5 +92,60 @@ func TestExplicitFileCountsOnlyAppliedOverlappingPinyinSpans(t *testing.T) {
 	raw, _ := os.ReadFile(target)
 	if string(raw) != "时时实\n" {
 		t.Fatalf("overlap applied twice: %q", raw)
+	}
+}
+
+func TestLintFileProvenanceUsesTheSamePhysicalRoot(t *testing.T) {
+	for _, directory := range []bool{false, true} {
+		for _, dry := range []bool{true, false} {
+			for _, baseAlias := range []bool{true, false} {
+				t.Run(fmt.Sprintf("directory=%v/dry=%v/baseAlias=%v", directory, dry, baseAlias), func(t *testing.T) {
+					root := t.TempDir()
+					physical, err := filepath.EvalSymlinks(root)
+					if err != nil {
+						t.Fatal(err)
+					}
+					alias := filepath.Join(t.TempDir(), "alias")
+					if err := os.Symlink(physical, alias); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Mkdir(filepath.Join(physical, "docs"), 0755); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(physical, "docs", "doc.md"), []byte("api\n"), 0640); err != nil {
+						t.Fatal(err)
+					}
+					base, target := physical, alias
+					if baseAlias {
+						base, target = alias, physical
+					}
+					target = filepath.Join(target, "docs")
+					if !directory {
+						target = filepath.Join(target, "doc.md")
+					}
+					report, err := LintFiles(base, target, []model.Term{termRule("API", "api", "API", "word", "standalone")}, LintOptions{Fix: true, DryRun: dry})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(report.Findings) != 1 || report.Findings[0].Path != "docs/doc.md" {
+						t.Fatalf("path provenance: %+v", report)
+					}
+					if !dry && (len(report.ModifiedFiles) != 1 || report.ModifiedFiles[0] != "docs/doc.md") {
+						t.Fatalf("modified provenance: %+v", report)
+					}
+					raw, err := os.ReadFile(filepath.Join(physical, "docs", "doc.md"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					want := "API\n"
+					if dry {
+						want = "api\n"
+					}
+					if string(raw) != want {
+						t.Fatalf("content=%q want %q", raw, want)
+					}
+				})
+			}
+		}
 	}
 }

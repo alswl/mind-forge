@@ -34,6 +34,8 @@ func LintFiles(base, target string, terms []model.Term, options LintOptions) (mo
 	if err != nil {
 		return r, output.Usage("file not found: "+target, "provide a path relative to the search root")
 	}
+	// Compare physical paths for provenance while preserving the I/O paths.
+	reportBase := physicalLintPath(base)
 	directory := info.IsDir()
 	paths := []string{target}
 	if directory {
@@ -55,7 +57,7 @@ func LintFiles(base, target string, terms []model.Term, options LintOptions) (mo
 		})
 	}
 	for _, path := range paths {
-		relative, err := filepath.Rel(base, path)
+		relative, err := filepath.Rel(reportBase, physicalLintPath(path))
 		if err != nil {
 			continue
 		}
@@ -154,4 +156,14 @@ func LintFiles(base, target string, terms []model.Term, options LintOptions) (mo
 	sort.Strings(r.ModifiedFiles)
 	sort.SliceStable(r.Failures, func(i, j int) bool { return r.Failures[i].Path < r.Failures[j].Path })
 	return r, nil
+}
+
+func physicalLintPath(path string) string {
+	if absolute, err := filepath.Abs(path); err == nil {
+		path = absolute
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	return path
 }
