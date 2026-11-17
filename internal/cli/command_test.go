@@ -1,12 +1,43 @@
 package cli
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 )
+
+func TestParserPreservesEarlierUnknownSubcommand(t *testing.T) {
+	for _, test := range []struct {
+		name, kind, value string
+		path, args        []string
+	}{
+		{"removed-command", "unknown_command", "learn", []string{"term"}, []string{"learn", "--original"}},
+		{"noun-alias", "unknown_command", "learn", []string{"terms"}, []string{"learn", "--original"}},
+		{"later-invalid-value", "unknown_command", "learn", []string{"term"}, []string{"learn", "--output", "invalid"}},
+		{"prior-global-value", "unknown_command", "learn", []string{"term"}, []string{"--project", "lab", "learn", "--original"}},
+		{"removed-project-command", "unknown_command", "status", []string{"project"}, []string{"status", "--bogus"}},
+		{"nested-command", "unknown_command", "bogus", []string{"config"}, []string{"bogus", "--bogus"}},
+		{"earlier-flag", "unexpected_flag", "--original", []string{"term"}, []string{"--original", "learn"}},
+		{"flag-value-is-not-command", "unexpected_flag", "--original", []string{"term"}, []string{"--project", "learn", "--original"}},
+		{"leaf-positional", "unexpected_flag", "--bogus", []string{"source", "new"}, []string{"synthetic.md", "--bogus"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command := parserCommand(t, test.path)
+			err := command.ParseFlags(test.args)
+			if err == nil {
+				t.Fatal("expected a flag parser error")
+			}
+			err = flagParseError(command, err)
+			var failure *parseFailure
+			if !errors.As(err, &failure) || failure.kind != test.kind || failure.value != test.value {
+				t.Fatalf("failure = %v, want %s: %s", err, test.kind, test.value)
+			}
+		})
+	}
+}
 
 func parserCommand(t *testing.T, path []string) *cobra.Command {
 	t.Helper()

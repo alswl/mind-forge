@@ -37,6 +37,18 @@ func flagLabel(flag FlagSpec) string {
 }
 
 func flagParseError(command *cobra.Command, err error) error {
+	// pflag continues past positional tokens. A command group must reject an
+	// unknown subcommand before reporting an error in a later option.
+	if args := command.Flags().Args(); command.HasSubCommands() && len(args) > 0 {
+		spec, loadError := LoadSpec()
+		if loadError != nil {
+			return loadError
+		}
+		item, ok := spec.Lookup(strings.Fields(command.CommandPath())[1:])
+		if ok && len(item.Arguments) == 0 {
+			return &parseFailure{kind: "unknown_command", value: args[0]}
+		}
+	}
 	var failure *parseFailure
 	if errors.As(err, &failure) {
 		return failure
