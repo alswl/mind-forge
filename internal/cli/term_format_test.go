@@ -28,10 +28,13 @@ func TestTermWarningsRetainPrefixAndJSONPayload(t *testing.T) {
 			}
 			if format == "json" && !quiet {
 				var body struct {
-					Data     struct{ Created bool }
+					Data struct {
+						Created  bool
+						Warnings []string
+					}
 					Warnings []string
 				}
-				if err := json.Unmarshal(stdout.Bytes(), &body); err != nil || !body.Data.Created || len(body.Warnings) != 1 || body.Warnings[0] != warnings[0] {
+				if err := json.Unmarshal(stdout.Bytes(), &body); err != nil || !body.Data.Created || len(body.Data.Warnings) != 1 || body.Data.Warnings[0] != warnings[0] || body.Warnings != nil {
 					t.Fatalf("warning envelope changed: %s (%v)", stdout.String(), err)
 				}
 			}
@@ -79,6 +82,33 @@ func TestTermFormatterPreviewRetainsFindingProvenance(t *testing.T) {
 	for _, part := range []string{"target: file (dry-run preview)", "synthetic.md:2:4:", "match=pinyin confidence=none selection=suggested_disabled", "before old after", "selected 0"} {
 		if !strings.Contains(text, part) {
 			t.Errorf("missing %q in %s", part, text)
+		}
+	}
+}
+
+func TestWarningRendererPreservesPayloadNumbersAndCallerData(t *testing.T) {
+	for _, enveloped := range []bool{false, true} {
+		original := map[string]any{"size_bytes": json.Number("9007199254740993"), "created": true}
+		var payload any = original
+		if enveloped {
+			payload = map[string]any{"status": "ok", "command": "mf", "data": original}
+		}
+		var out, errout bytes.Buffer
+		if err := renderTerm(&app.Context{Format: "json"}, &out, &errout, payload, "", []string{"notice"}); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out.String(), `"size_bytes":9007199254740993`) || !strings.Contains(out.String(), `"warnings":["notice"]`) {
+			t.Fatal(out.String())
+		}
+		var body map[string]json.RawMessage
+		if err := json.Unmarshal(out.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if body["warnings"] != nil {
+			t.Fatalf("warning at top level: %s", out.String())
+		}
+		if _, mutated := original["warnings"]; mutated {
+			t.Fatal("renderer mutated caller data")
 		}
 	}
 }

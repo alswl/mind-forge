@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
@@ -49,7 +50,10 @@ func termUpdateCommand(c *cobra.Command, a *app.Context, name string, stdout, st
 		result.Details = map[string]any{"scope": scope, "changes": planned}
 		return termVerb(a, stdout, stderr, result, warnings)
 	}
-	_, scope, warnings, err := termFallback(c, a, name, func(s term.Scope) (model.Term, error) { return s.Update(name, p, false) })
+	_, scope, warnings, err := termFallback(c, a, name, func(s term.Scope) (model.Term, error) {
+		tm, err := s.Update(name, p, false)
+		return tm, termUpdateError(s.Kind, err)
+	})
 	if err != nil {
 		return err
 	}
@@ -93,4 +97,14 @@ func termUpdateCommand(c *cobra.Command, a *app.Context, name string, stdout, st
 		result.Details["scope"] = scope
 	}
 	return termVerb(a, stdout, stderr, result, warnings)
+}
+
+func termUpdateError(scope string, err error) error {
+	var failure *output.Error
+	if scope == "project" && !term.IsMissingTerm(err) && errors.As(err, &failure) && failure.Kind == "not_found" {
+		usage := *failure
+		usage.Kind = "usage"
+		return &usage
+	}
+	return err
 }

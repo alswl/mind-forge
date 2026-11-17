@@ -159,9 +159,16 @@ func (s Scope) render(d *termDocument, sortTerms bool) ([]byte, error) {
 	return d.global.ReplaceProtectedSection("terms", rendered)
 }
 
+var errMissingTerm = errors.New("canonical term missing")
+
+// IsMissingTerm distinguishes an absent canonical term from an absent correction.
+func IsMissingTerm(err error) bool {
+	return errors.Is(err, errMissingTerm)
+}
+
 func missingTerm(name string) error {
 	hint := "use `mf term list` or `mf term new`"
-	return &output.Error{Kind: "not_found", Message: fmt.Sprintf("term '%s' not found", name), Hint: &hint}
+	return &output.Error{Kind: "not_found", Message: fmt.Sprintf("term '%s' not found", name), Hint: &hint, Cause: errMissingTerm}
 }
 
 func findTerm(terms []model.Term, name string) (int, error) {

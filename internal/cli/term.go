@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -35,8 +34,7 @@ func termScope(c *cobra.Command, a *app.Context) (term.Scope, error) {
 	return term.Scope{Root: a.RepoRoot, Kind: "global"}, nil
 }
 func termMissing(err error) bool {
-	var e *output.Error
-	return errors.As(err, &e) && e.Kind == "not_found"
+	return term.IsMissingTerm(err)
 }
 
 func termFallback[T any](c *cobra.Command, a *app.Context, name string, operation func(term.Scope) (T, error)) (T, string, []string, error) {
@@ -74,7 +72,27 @@ func renderTermWarningPrefix(a *app.Context, stdout, stderr io.Writer, data any,
 	}
 	if a.Format == "json" {
 		if len(warnings) > 0 {
-			return output.RenderSuccess(stdout, "json", map[string]any{"status": "ok", "command": "mf", "data": data, "warnings": warnings})
+			payload, err := jsonObject(data)
+			if err != nil {
+				return err
+			}
+			if payload == nil {
+				return fmt.Errorf("success data must be an object")
+			}
+			target := payload
+			if _, status := payload["status"]; status {
+				if _, command := payload["command"]; command {
+					if nested, exists := payload["data"]; exists {
+						var ok bool
+						target, ok = nested.(map[string]any)
+						if !ok || target == nil {
+							return fmt.Errorf("success data must be an object")
+						}
+					}
+				}
+			}
+			target["warnings"] = warnings
+			return output.RenderSuccess(stdout, "json", payload)
 		}
 		return output.RenderSuccess(stdout, "json", data)
 	}
@@ -186,6 +204,9 @@ func termShowCommand(c *cobra.Command, a *app.Context, name string, stdout, stde
 	if err != nil && scope.Kind == "project" && termMissing(err) {
 		scope = term.Scope{Root: a.RepoRoot, Kind: "global"}
 		tm, err = scope.Show(name)
+	}
+	if termMissing(err) {
+		return output.Usage(err.Error(), "use `mf term list` to see all terms")
 	}
 	if err != nil {
 		return err
