@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"go.yaml.in/yaml/v3"
@@ -53,13 +54,13 @@ func (correction *Correction) UnmarshalYAML(node *yaml.Node) error {
 		return err
 	}
 	if err := enumValue(result.Match, "word", "substring", "pinyin"); err != nil {
-		return err
+		return &correctionEnumError{field: "match", cause: err}
 	}
 	if err := enumValue(result.Fix, "required", "suggested"); err != nil {
-		return err
+		return &correctionEnumError{field: "fix", cause: err}
 	}
 	if err := enumValue(result.Boundary, "loose", "standalone"); err != nil {
-		return err
+		return &correctionEnumError{field: "boundary", cause: err}
 	}
 	*correction = Correction(result)
 	return nil
@@ -118,7 +119,7 @@ func (term *Term) UnmarshalYAML(node *yaml.Node) error {
 	type wire Term
 	result := wire{Aliases: []string{}, Tags: []string{}, Corrections: []Correction{}}
 	if err := decodeYAMLRecord(node, &result); err != nil {
-		return err
+		return termCorrectionError(fields["corrections"], err)
 	}
 	for i := 0; i < len(node.Content); i += 2 {
 		key := node.Content[i].Value
@@ -150,4 +151,33 @@ func (term Term) MarshalYAML() (any, error) {
 		node.Content = append(node.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: field.Key}, &value)
 	}
 	return &node, nil
+}
+
+type correctionEnumError struct {
+	field string
+	cause error
+}
+
+func (err *correctionEnumError) Error() string { return err.field + ": " + err.cause.Error() }
+func (err *correctionEnumError) Unwrap() error { return err.cause }
+
+func termCorrectionError(sequence *yaml.Node, err error) error {
+	var field *correctionEnumError
+	if !errors.As(err, &field) {
+		return err
+	}
+	for sequence != nil && sequence.Kind == yaml.AliasNode {
+		sequence = sequence.Alias
+	}
+	if sequence == nil || sequence.Kind != yaml.SequenceNode {
+		return err
+	}
+	// Locate the correction only on failure; successful records decode once.
+	for i, node := range sequence.Content {
+		var correction Correction
+		if cause := node.Decode(&correction); cause != nil {
+			return fmt.Errorf("corrections[%d].%w", i, cause)
+		}
+	}
+	return err
 }
