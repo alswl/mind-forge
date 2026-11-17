@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -116,10 +117,11 @@ func termLintReport(c *cobra.Command, a *app.Context, args []string, selection t
 			return empty, output.Usage(fmt.Sprintf("file not found\n  input:    %s\n  resolved: %s", args[0], target), "")
 		}
 		if scope.Kind == "project" {
-			target, err = store.CanonicalWithin(scope.Root, target)
-			if err != nil {
-				return empty, err
+			canonicalTarget, pathErr := store.CanonicalWithin(scope.Root, target)
+			if pathErr != nil {
+				return empty, termProjectBoundaryError(scope.Root, target, pathErr)
 			}
+			target = canonicalTarget
 		} else if info, err := os.Stat(target); err == nil && info.IsDir() {
 			canonical, err := filepath.EvalSymlinks(target)
 			if err != nil {
@@ -360,4 +362,12 @@ func formatTermLint(r model.TermLintReport, fix, dry bool, targetType, pathHint 
 		lines = append(lines, fmt.Sprintf("%d finding%s inside quotes/blockquotes left untouched; pass --include-quotes to scan them", r.QuoteProtectedCount, s))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func termProjectBoundaryError(project, target string, err error) error {
+	var failure *output.Error
+	if errors.As(err, &failure) && failure.Kind == "usage" {
+		return output.Usage(fmt.Sprintf("path '%s' is not under project root '%s'", target, project), "")
+	}
+	return err
 }
