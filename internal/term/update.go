@@ -37,6 +37,9 @@ func (s Scope) Update(name string, patch Patch, dry bool) (model.Term, error) {
 	}
 	i, err := findTerm(d.terms, name)
 	if err != nil {
+		if s.Kind == "global" {
+			return model.Term{}, output.Usage(err.Error(), "use `mf term list` or `mf term new`")
+		}
 		return model.Term{}, err
 	}
 	count := 0

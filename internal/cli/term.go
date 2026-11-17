@@ -56,8 +56,12 @@ func termFallback[T any](c *cobra.Command, a *app.Context, name string, operatio
 }
 
 func renderTerm(a *app.Context, stdout, stderr io.Writer, data any, text string, warnings []string) error {
+	return renderTermWarningPrefix(a, stdout, stderr, data, text, warnings, "warning: ")
+}
+
+func renderTermWarningPrefix(a *app.Context, stdout, stderr io.Writer, data any, text string, warnings []string, prefix string) error {
 	for _, w := range warnings {
-		if _, err := fmt.Fprintln(stderr, "WARN: "+w); err != nil {
+		if _, err := fmt.Fprintln(stderr, prefix+w); err != nil {
 			return err
 		}
 	}
@@ -75,7 +79,7 @@ func renderTerm(a *app.Context, stdout, stderr io.Writer, data any, text string,
 
 func termVerb(a *app.Context, stdout, stderr io.Writer, result output.VerbResult, warnings []string) error {
 	profile := commandProfile(stdout, a)
-	return renderTerm(a, stdout, stderr, output.VerbEnvelope(result), output.RenderVerb(result, output.DisplayOptions{RepoRoot: a.RepoRoot, Hyperlinks: profile.Hyperlinks}), warnings)
+	return renderTermWarningPrefix(a, stdout, stderr, output.VerbEnvelope(result), output.RenderVerb(result, output.DisplayOptions{RepoRoot: a.RepoRoot, Hyperlinks: profile.Hyperlinks}), warnings, "WARN: ")
 }
 
 func termCommand(c *cobra.Command, a *app.Context, args []string, stdout, stderr io.Writer) error {

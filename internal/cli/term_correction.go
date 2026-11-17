@@ -153,7 +153,9 @@ func termCorrectionCommand(c *cobra.Command, a *app.Context, args []string, stdo
 	}
 	data := map[string]any{"term": name, "scope": scope.Kind, "created": created, "correction": corr}
 	if dry {
-		return termVerb(a, stdout, stderr, output.VerbResult{Verb: output.Add, Kind: "term_correction", Identity: name + "::" + corr.Original, DryRun: true, Details: data}, warnings)
+		result := output.VerbResult{Verb: output.Add, Kind: "term_correction", Identity: name + "::" + corr.Original, DryRun: true, Details: data}
+		profile := commandProfile(stdout, a)
+		return renderTerm(a, stdout, stderr, output.VerbEnvelope(result), output.RenderVerb(result, output.DisplayOptions{RepoRoot: a.RepoRoot, Hyperlinks: profile.Hyperlinks}), warnings)
 	}
 	text := fmt.Sprintf("added correction \"%s\" → \"%s\" to term \"%s\"", corr.Original, corr.Correct, name)
 	if !created {

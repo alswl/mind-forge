@@ -1,11 +1,45 @@
 package term
 
 import (
+	"errors"
 	"os"
 	"testing"
 
 	"github.com/alswl/mind-forge/internal/model"
+	"github.com/alswl/mind-forge/internal/output"
 )
+
+func TestMissingTermUpdateRetainsScopeSpecificError(t *testing.T) {
+	for _, kind := range []string{"project", "global"} {
+		t.Run(kind, func(t *testing.T) {
+			scope := Scope{Root: t.TempDir(), Kind: kind}
+			original := []byte("schema: '1'\nterms: []\n")
+			if err := os.WriteFile(scope.Path(), original, 0600); err != nil {
+				t.Fatal(err)
+			}
+			for _, patch := range []Patch{{Tags: []string{"new"}}, {CorrectionMatches: []string{"missing:word"}}} {
+				_, err := scope.Update("Absent", patch, false)
+				var failure *output.Error
+				wantKind, wantExit := "not_found", 1
+				if kind == "global" {
+					wantKind, wantExit = "usage", 2
+				}
+				if !errors.As(err, &failure) || failure.Kind != wantKind || failure.ExitCode() != wantExit || failure.Message != "term 'Absent' not found" || failure.Hint == nil || *failure.Hint != "use `mf term list` or `mf term new`" {
+					t.Fatalf("missing %s update = %#v, want %s/exit%d", kind, failure, wantKind, wantExit)
+				}
+				current, readError := os.ReadFile(scope.Path())
+				if readError != nil || string(current) != string(original) {
+					t.Fatal("rejected update changed terms", readError)
+				}
+			}
+			_, err := scope.Show("Absent")
+			var failure *output.Error
+			if !errors.As(err, &failure) || failure.Kind != "not_found" || failure.ExitCode() != 1 {
+				t.Fatalf("show category changed: %v", err)
+			}
+		})
+	}
+}
 
 func legacySyntheticScope(t *testing.T) Scope {
 	t.Helper()
