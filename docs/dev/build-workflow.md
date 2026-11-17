@@ -51,6 +51,20 @@ and skipped or unavailable native checks do not establish final acceptance.
 Follow the pass's plan and retain its run/acceptance records; no external CLI
 verification is added to `go test` or the local gate.
 
+The C257 functional checkpoint is a dirty review candidate: product head
+`fd9b483e286666bc1fc265006e8c4a62c348673c`, patch SHA-256
+`fe2ae87c470ed797b3aba35f8612cd5310c2fc7b52320223ee6d78f06237c39b`, and
+binary SHA-256
+`28458677c75bc41468163f22f6678cb6b5ae5905123797c7ac110f8371025eb3`. Its
+fixed 508-case non-distribution selection passed five times with 0 failures and
+0 skips; 18 distribution cases were not selected. The 506 non-diagnostic cases
+have five cost samples each, with median selected execution time 340.124 s.
+Harness and case-input identities, run IDs and artifact hashes are recorded in
+`my-tests/specs/094-mf-go-content/verification/history/acceptance-c257-external-cost-508.md`
+and `specs/085-go-rewrite/migration/candidate-c257-external-functional-cost-508.json`.
+This checkpoint does not establish a clean final candidate, release/archive,
+shell-completion or native-platform acceptance.
+
 ## Independent Go CI candidate
 
 The Go quality job runs only this repository's format/vet/component-unit/build

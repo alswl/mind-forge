@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -10,46 +11,67 @@ import (
 	"github.com/alswl/mind-forge/internal/output"
 )
 
-func scan(project, directory string) []string {
+func scan(project, directory string) ([]string, error) {
 	files := map[string]bool{}
 	active := map[string]bool{}
-	var walk func(string)
-	walk = func(name string) {
+	var walk func(string) error
+	walk = func(name string) error {
 		canonical, err := filepath.EvalSymlinks(name)
-		if err != nil || active[canonical] {
-			return
+		if err != nil {
+			if info, statErr := os.Lstat(name); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
+				return nil
+			}
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if active[canonical] {
+			return nil
+		}
+		relative, err := filepath.Rel(project, name)
+		if err != nil {
+			return err
 		}
 		info, err := os.Stat(name)
 		if err != nil {
-			return
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
 		}
 		if !info.IsDir() {
 			if !info.Mode().IsRegular() || strings.HasPrefix(filepath.Base(name), ".") || filepath.Base(name) == "Thumbs.db" {
-				return
+				return nil
 			}
-			rel, err := filepath.Rel(project, name)
-			if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-				files[strings.ReplaceAll(filepath.ToSlash(rel), "\\", "/")] = true
-			}
-			return
+			files[strings.ReplaceAll(filepath.ToSlash(relative), "\\", "/")] = true
+			return nil
 		}
 		active[canonical] = true
 		defer delete(active, canonical)
 		entries, err := os.ReadDir(name)
 		if err != nil {
-			return
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
 		}
 		for _, entry := range entries {
-			walk(filepath.Join(name, entry.Name()))
+			if err := walk(filepath.Join(name, entry.Name())); err != nil {
+				return err
+			}
 		}
+		return nil
 	}
-	walk(directory)
+	if err := walk(directory); err != nil {
+		return nil, err
+	}
 	result := make([]string, 0, len(files))
 	for name := range files {
 		result = append(result, name)
 	}
 	sort.Strings(result)
-	return result
+	return result, nil
 }
 
 func (service Service) Reconcile(project string, dryRun, refreshMetadata bool) (model.AssetIndexReport, error) {
@@ -89,7 +111,10 @@ func (service Service) Reconcile(project string, dryRun, refreshMetadata bool) (
 	if err != nil {
 		return report, err
 	}
-	paths := scan(canonical, filepath.Join(canonical, relativeDirectory))
+	paths, err := scan(canonical, filepath.Join(canonical, relativeDirectory))
+	if err != nil {
+		return report, err
+	}
 	disk := map[string]bool{}
 	for _, path := range paths {
 		disk[path] = true

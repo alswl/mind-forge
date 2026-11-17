@@ -258,7 +258,11 @@ func LintRepository(root string, rules []string, fix bool) ([]map[string]any, Pr
 	}
 	objects := []map[string]any{}
 	total := ProjectLintSummary{}
-	for _, entry := range ScanProjects(root, manifest.ProjectsDir) {
+	projects, err := ScanProjects(root, manifest.ProjectsDir)
+	if err != nil {
+		return nil, total, err
+	}
+	for _, entry := range projects {
 		issues, summary, err := LintProject(joinProjectPath(root, strings.TrimPrefix(entry.Path, "./")), rules, fix)
 		if err != nil {
 			return nil, total, err

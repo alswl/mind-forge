@@ -50,3 +50,25 @@ func TestProjectIndexPreviewsAndReconcilesOnlyAbsentDocs(t *testing.T) {
 		t.Fatalf("%#v %v", m, err)
 	}
 }
+
+func TestProjectIndexDoesNotDropLegacyEntriesWhenContainerScanFails(t *testing.T) {
+	root := canonicalPath(t.TempDir())
+	putContent(t, root, "unreadable", "not a directory")
+	putContent(t, root, "legacy/mind.yaml", "schema: '1'\n")
+	putContent(t, root, "minds.yaml", "schema: '1'\nprojects_dir: unreadable\nprojects: [legacy]\n")
+	manifestPath := filepath.Join(root, "minds.yaml")
+	before, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := IndexProjects(root, false, time.Now()); err == nil {
+		t.Fatal("index accepted a non-directory projects container")
+	}
+	after, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("index scan error removed a registered legacy project")
+	}
+}

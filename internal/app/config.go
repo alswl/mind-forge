@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -182,6 +183,29 @@ func normalizeLayoutPath(value string) (string, bool) {
 	return filepath.Join(parts...), len(parts) != 0
 }
 
+func resolveLayoutPath(path string) (string, error) {
+	probe := path
+	var suffix []string
+	for {
+		resolved, err := filepath.EvalSymlinks(probe)
+		if err == nil {
+			return filepath.Join(append([]string{resolved}, suffix...)...), nil
+		}
+		if info, statErr := os.Lstat(probe); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
+			return "", err
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(probe)
+		if parent == probe {
+			return "", err
+		}
+		suffix = append([]string{filepath.Base(probe)}, suffix...)
+		probe = parent
+	}
+}
+
 func ValidateLayout(projectRoot string, layout model.EffectiveLayout) error {
 	entries := layoutEntries(layout)
 	for _, entry := range entries {
@@ -202,12 +226,15 @@ func ValidateLayout(projectRoot string, layout model.EffectiveLayout) error {
 		if !valid {
 			return escape()
 		}
-		fullPath := filepath.Join(projectRoot, normalized)
-		if resolved, err := filepath.EvalSymlinks(fullPath); err == nil {
-			relative, err := filepath.Rel(canonical(projectRoot), resolved)
-			if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-				return escape()
-			}
+		root := canonical(projectRoot)
+		fullPath := filepath.Join(root, normalized)
+		resolved, err := resolveLayoutPath(fullPath)
+		if err != nil {
+			return escape()
+		}
+		relative, err := filepath.Rel(root, resolved)
+		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return escape()
 		}
 		if info, err := os.Stat(fullPath); err == nil && info.Mode().IsRegular() {
 			return output.Usage(fmt.Sprintf("%s points to an existing file: '%s'", entry.name, entry.value), "remove the file or choose a different directory name")

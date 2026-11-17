@@ -7,6 +7,19 @@ All notable changes to this project will be documented in this file.
 - Build and install the CLI with Go 1.26.11 and CGO disabled. Source installation
   and manual generation now use Go by default; release archives keep their
   existing platform names and checksum verification.
+- Prepare product version 0.6.0 with Go compiler metadata under FR-016: text output
+  reports the real Go compiler, JSON retains the `rustc` field as
+  `not applicable` and adds `compiler`/`go_version`, and platform names remain
+  compatible.
+
+### Fixed
+- Apply the 0.6.0 contract corrections recorded as D001–D013: preserve real
+  optional Mind paths and schema discriminators; retain sibling conversion
+  outputs, registered Source evidence, unrelated project authority and opaque
+  term metadata; keep previews read-only while committing explicit refreshes;
+  prevent unsafe global term writes; disclose empty glossary registration;
+  classify and filter term lint findings; and align help and shell suggestions
+  with the published command contract.
 
 ### Removed
 - Remove the Rust implementation, Cargo toolchain and local CLI/E2E harness.

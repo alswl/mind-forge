@@ -146,6 +146,34 @@ func TestReconcileRefreshUsesOneCommitAndDoesNotResurrectMissingRows(t *testing.
 	}
 }
 
+func TestReconcileDoesNotDropAssetsWhenNestedScanFails(t *testing.T) {
+	root := assetProject(t)
+	path := putAsset(t, root, "assets/private/chart.png", "image bytes")
+	registerAssets(t, root, []model.Asset{{Name: "chart", Kind: "image", Path: "assets/private/chart.png"}})
+	indexPath := filepath.Join(root, "mind-index.yaml")
+	before, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(path), 0); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(filepath.Dir(path), 0o755) }()
+	if _, err := os.ReadDir(filepath.Dir(path)); err == nil {
+		t.Skip("filesystem permits reading mode-000 directory")
+	}
+	if _, err := fixedService().Reconcile(root, false, false); err == nil {
+		t.Fatal("asset index accepted an incomplete nested scan")
+	}
+	after, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("scan error removed an asset index entry")
+	}
+}
+
 func TestPublicationPreviewPreservesBytesAndRealUpdateAppendsRecord(t *testing.T) {
 	root := assetProject(t)
 	before, _ := os.ReadFile(filepath.Join(root, "mind-index.yaml"))

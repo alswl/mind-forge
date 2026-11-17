@@ -175,6 +175,13 @@ func TestLayoutValidationAndConflictOrdering(t *testing.T) {
 	if err := ValidateLayout(root, layout); err != nil {
 		t.Fatalf("safe normalization rejected: %v", err)
 	}
+	if err := os.Symlink(outside, filepath.Join(root, "linked-output")); err != nil {
+		t.Fatal(err)
+	}
+	layout.BuildOutput = "linked-output/new"
+	if err := ValidateLayout(root, layout); err == nil || !strings.Contains(err.Error(), "escapes") {
+		t.Fatalf("symlink escape with missing suffix accepted: %v", err)
+	}
 }
 
 func TestProjectConfigRejectsInvalidDocuments(t *testing.T) {

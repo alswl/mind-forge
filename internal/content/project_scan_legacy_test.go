@@ -19,7 +19,10 @@ func TestLegacyProjectDirectoryScan(t *testing.T) {
 			t.Fatal(err)
 		}
 		putContent(t, root, "flat-project/mind.yaml", "")
-		got := ScanProjects(root, "projects")
+		got, err := ScanProjects(root, "projects")
+		if err != nil {
+			t.Fatal(err)
+		}
 		slices.SortFunc(got, func(a, b ScannedProject) int { return cmp.Compare(a.Name, b.Name) })
 		want := []ScannedProject{{Name: "project-a", Path: "./projects/project-a"}, {Name: "project-b", Path: "./projects/project-b"}}
 		if !reflect.DeepEqual(got, want) {
@@ -30,7 +33,10 @@ func TestLegacyProjectDirectoryScan(t *testing.T) {
 		root := t.TempDir()
 		putContent(t, root, "minds.yaml", "")
 		putContent(t, root, "flat-project/mind.yaml", "")
-		got := ScanProjects(root, ".")
+		got, err := ScanProjects(root, ".")
+		if err != nil {
+			t.Fatal(err)
+		}
 		want := []ScannedProject{{Name: "flat-project", Path: "./flat-project"}}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("scanned flat projects = %#v, want %#v", got, want)

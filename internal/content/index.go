@@ -1,6 +1,7 @@
 package content
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +15,7 @@ import (
 
 type ScannedProject struct{ Name, Path string }
 
-func ScanProjects(root, container string) []ScannedProject {
+func ScanProjects(root, container string) ([]ScannedProject, error) {
 	directory := strings.Trim(container, "/")
 	base := root
 	if directory != "" && directory != "." {
@@ -22,18 +23,28 @@ func ScanProjects(root, container string) []ScannedProject {
 	}
 	entries, err := os.ReadDir(base)
 	if err != nil {
-		return []ScannedProject{}
+		if errors.Is(err, os.ErrNotExist) {
+			return []ScannedProject{}, nil
+		}
+		return nil, err
 	}
 	result := []ScannedProject{}
 	for _, entry := range entries {
 		path := filepath.Join(base, entry.Name())
-		if isDirectory(path) {
-			if _, err := os.Stat(filepath.Join(path, "mind.yaml")); err == nil {
-				result = append(result, ScannedProject{Name: entry.Name(), Path: store.ProjectRelativePath(container, entry.Name())})
-			}
+		info, err := os.Stat(path)
+		if errors.Is(err, os.ErrNotExist) || err == nil && !info.IsDir() {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if _, err := os.Stat(filepath.Join(path, "mind.yaml")); err == nil {
+			result = append(result, ScannedProject{Name: entry.Name(), Path: store.ProjectRelativePath(container, entry.Name())})
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
 		}
 	}
-	return result
+	return result, nil
 }
 
 func ReconcileProjectDocs(project string, dryRun bool, now time.Time) ([]string, []string, error) {
@@ -101,7 +112,10 @@ func IndexProjects(root string, dryRun bool, now time.Time) (output.VerbResult, 
 	if err != nil {
 		return result, nil, err
 	}
-	scanned := ScanProjects(root, manifest.ProjectsDir)
+	scanned, err := ScanProjects(root, manifest.ProjectsDir)
+	if err != nil {
+		return result, nil, err
+	}
 	for _, entry := range manifest.Projects {
 		project := joinProjectPath(root, strings.TrimPrefix(entry.Path, "./"))
 		if entry.ArchivedAt != nil || !isRegularFile(filepath.Join(project, "mind.yaml")) {
