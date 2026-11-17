@@ -18,7 +18,7 @@ func TestMetadataPreservesVersionContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]string{
-		"version": "0.6.0-dev+abc1234", "base_version": "0.6.0", "channel": "dev",
+		"version": BaseVersion + "-dev+abc1234", "base_version": BaseVersion, "channel": "dev",
 		"commit": "abc1234", "build_date": "2026-11-16", "rustc": "not applicable",
 		"compiler": "gc", "go_version": "go1.26.11", "target_triple": "aarch64-macos",
 	}
@@ -30,7 +30,7 @@ func TestMetadataPreservesVersionContract(t *testing.T) {
 			t.Errorf("%s = %q, want %q", key, fields[key], value)
 		}
 	}
-	if got := info.Text(); got != "mf 0.6.0-dev+abc1234 (built 2026-11-16, gc go1.26.11)\n" {
+	if got := info.Text(); got != "mf "+BaseVersion+"-dev+abc1234 (built 2026-11-16, gc go1.26.11)\n" {
 		t.Fatalf("version text: %q", got)
 	}
 }
