@@ -37,6 +37,23 @@ The four preparation checkpoints and partial journal fault have an optional
 `mf_testfaults` CLI build tag for external process acceptance. The default build
 does not read its environment variable or contain its injection code.
 
+The current clean functional candidate is commit
+`91dc935b8be3de184ad79ade6dc8abd1950e3329`, binary SHA256
+`251fbad9f85c0943c55656f86004c25b3c46d29531965d66b9b9385e4da769d1`, version
+`0.6.0-dev+91dc935`, built with Go 1.26.11 for Darwin ARM64. On the C258-specific
+378-file input manifest, the external fixed non-distribution selection passed
+508/508 cases with no failures or skips. A separate same-candidate selection
+passed source install, prebuilt HTTP installer using a local one-member archive
+fixture, published-manual consistency and manual generation outside the repo
+(4/4, no failures or skips). Both selections remain partial: the first left 18
+distribution cases unselected; the second left 522 catalogue cases unselected.
+The archive fixture is not official release evidence. Harness, case-input and
+raw artifact hashes are recorded in `specs/085-go-rewrite/migration/candidate-c258-clean-functional.json`
+and `my-tests/specs/094-mf-go-content/verification/history/acceptance-c258-clean-functional.md`.
+Official release/archive, shell completion, native cross-platform, repeated
+C258 cost and final complete acceptance remain open; release, shell and
+cross-platform work are deferred by user priority.
+
 ## External CLI acceptance
 
 Use the designated `my-tests` checkout/pass and its documented batch. Set
