@@ -48,7 +48,8 @@ case "$scope" in
   minor) minor=$((minor + 1)); patch=0 ;;
   patch) patch=$((patch + 1)) ;;
 esac
-next="$major.$minor.$patch"
+next_base="$major.$minor.$patch"
+next="$next_base"
 [ -z "$suffix" ] || next="$next-$suffix"
 
 command -v git-cliff > /dev/null || { echo "git-cliff is required (brew install git-cliff)"; exit 1; }
@@ -69,7 +70,7 @@ if [ "$dry_run" = "true" ]; then
   echo "  Stage           : $stage"
   echo "------------------------------"
   echo "  Actions (if DRY_RUN=false):"
-  echo "    1. Write $next to internal/version/version.go"
+  echo "    1. Write $next_base to internal/version/version.go"
   echo "    2. Regenerate CHANGELOG.md (via git-cliff)"
   echo "    3. git commit \"chore: bump version to $next\""
   echo "    4. git tag v$next"
@@ -88,7 +89,7 @@ if [ "$dry_run" = "true" ]; then
 fi
 
 # 1. Update the base version.
-NEXT="$next" perl -pi -e 's/^const BaseVersion = ".*"/const BaseVersion = "$ENV{NEXT}"/' internal/version/version.go
+NEXT="$next_base" perl -pi -e 's/^const BaseVersion = ".*"/const BaseVersion = "$ENV{NEXT}"/' internal/version/version.go
 gofmt -w internal/version/version.go
 
 # 2. Regenerate CHANGELOG.md from commit history

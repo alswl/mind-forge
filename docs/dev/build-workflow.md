@@ -148,3 +148,11 @@ Rust CI, local black-box suite or Rust source-install path. For controlled
 migration comparisons, `scripts/benchmark-build.sh rust <frozen-revision>` checks
 out that historical revision in an isolated directory; it is separate from all
 daily build, install and acceptance commands.
+
+## Version tags
+
+`scripts/bump.sh` updates `internal/version/version.go`, regenerates the changelog,
+and creates a commit and tag. It previews by default. `--stage candidate` adds
+`-rc` to the tag; `--stage alpha` and `--stage beta` select those suffixes.
+`base_version` always contains the core `MAJOR.MINOR.PATCH`, including for
+prerelease tags, so the same archive builder accepts the resulting tag.
