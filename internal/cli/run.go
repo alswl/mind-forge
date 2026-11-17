@@ -70,6 +70,11 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 				return err
 			}
 		}
+		if len(item.Path) >= 2 && item.Path[0] == "article" {
+			if err := checkArticleLayout(application, optionalFlag(command, "project")); err != nil {
+				return err
+			}
+		}
 		if len(item.Path) >= 1 && item.Path[0] == "prompt" {
 			return promptCommand(command, application, positional, stdout)
 		}
