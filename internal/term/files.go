@@ -22,7 +22,7 @@ type LintOptions struct {
 // LintFiles scans one selected file or one directory tree. Repository and
 // article selection, global fallback and confirmation stay with the caller.
 func LintFiles(base, target string, terms []model.Term, options LintOptions) (model.TermLintReport, error) {
-	r := model.TermLintReport{Findings: []model.TermFinding{}, SkippedFiles: []string{}, ModifiedFiles: []string{}, Failures: []model.TermLintFailure{}}
+	r := model.TermLintReport{NoTermsRegistered: len(terms) == 0, Findings: []model.TermFinding{}, SkippedFiles: []string{}, ModifiedFiles: []string{}, Failures: []model.TermLintFailure{}}
 	if options.Fix && options.DryRun {
 		zero := uint64(0)
 		r.WouldFixCount = &zero

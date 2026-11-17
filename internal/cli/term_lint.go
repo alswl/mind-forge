@@ -87,6 +87,7 @@ func termLintReport(c *cobra.Command, a *app.Context, args []string, selection t
 		}
 		terms = term.MergeTerms(terms, global)
 	}
+	empty.NoTermsRegistered = len(terms) == 0
 	if err := selection.Validate(terms); err != nil {
 		return empty, output.Usage(err.Error(), "")
 	}
@@ -238,6 +239,9 @@ func termLintCommand(c *cobra.Command, a *app.Context, args []string, stdout, st
 }
 
 func formatTermLint(r model.TermLintReport, fix, dry bool, targetType, pathHint string) string {
+	if r.NoTermsRegistered && len(r.Findings) == 0 && len(r.Failures) == 0 {
+		return "No terms registered."
+	}
 	lines := []string{}
 	if targetType != "" {
 		mode := ""
@@ -254,7 +258,7 @@ func formatTermLint(r model.TermLintReport, fix, dry bool, targetType, pathHint 
 			if targetType == "directory" {
 				return "No eligible files found."
 			}
-			return "No terms registered."
+			return "No term issues found."
 		}
 		if len(r.Failures) == 0 {
 			return "No term issues found."

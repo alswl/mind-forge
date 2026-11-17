@@ -112,3 +112,39 @@ func TestWarningRendererPreservesPayloadNumbersAndCallerData(t *testing.T) {
 		}
 	}
 }
+
+func TestEmptyGlossaryDisclosureDoesNotMasqueradeAsCleanContent(t *testing.T) {
+	for _, fix := range []bool{false, true} {
+		for _, dry := range []bool{false, true} {
+			empty := model.TermLintReport{NoTermsRegistered: true, ScannedFiles: 1}
+			if got := formatTermLint(empty, fix, dry, "project", ""); got != "No terms registered." {
+				t.Fatalf("empty fix=%v dry=%v: %s", fix, dry, got)
+			}
+			clean := model.TermLintReport{ScannedFiles: 1}
+			if got := formatTermLint(clean, fix, dry, "project", ""); got != "No term issues found." {
+				t.Fatalf("clean fix=%v dry=%v: %s", fix, dry, got)
+			}
+		}
+	}
+	if got := formatTermLint(model.TermLintReport{}, false, false, "project", ""); got != "No term issues found." {
+		t.Fatalf("registered glossary without files: %s", got)
+	}
+	failed := model.TermLintReport{NoTermsRegistered: true, Failures: []model.TermLintFailure{{Path: "broken.md", Reason: "invalid encoding"}}}
+	if got := formatTermLint(failed, true, false, "project", ""); !strings.Contains(got, "broken.md") || strings.Contains(got, "No terms registered.") {
+		t.Fatalf("registration disclosure hid failure: %s", got)
+	}
+	ordinary := model.TermLintReport{ScannedFiles: 1}
+	empty := ordinary
+	empty.NoTermsRegistered = true
+	a, err := json.Marshal(ordinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(a, b) {
+		t.Fatalf("registration disclosure changed JSON: %s != %s", a, b)
+	}
+}

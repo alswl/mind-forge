@@ -149,3 +149,20 @@ func TestLintFileProvenanceUsesTheSamePhysicalRoot(t *testing.T) {
 		}
 	}
 }
+
+func TestLintReportKeepsEmptyGlossaryDistinctFromNoFindings(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "doc.md")
+	if err := os.WriteFile(path, []byte("clean prose\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, terms := range [][]model.Term{nil, {{Term: "EmptyCorrections"}}, {termRule("API", "api", "API", "word", "standalone")}} {
+		report, err := LintFiles(root, path, terms, LintOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.NoTermsRegistered != (len(terms) == 0) || len(report.Findings) != 0 || report.ScannedFiles != 1 {
+			t.Fatalf("terms=%d report=%+v", len(terms), report)
+		}
+	}
+}

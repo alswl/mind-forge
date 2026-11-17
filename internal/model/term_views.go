@@ -94,6 +94,7 @@ type TermIdentity struct {
 }
 
 type TermLintReport struct {
+	NoTermsRegistered    bool                       `json:"-"`
 	Findings             JSONArray[TermFinding]     `json:"findings"`
 	ScannedFiles         uint64                     `json:"scanned_files"`
 	SkippedFiles         JSONArray[string]          `json:"skipped_files"`
