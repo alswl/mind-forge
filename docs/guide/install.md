@@ -3,9 +3,7 @@
 > [!NOTE]
 > Prebuilt binaries for tagged versions are attached to
 > [GitHub Releases](https://github.com/alswl/mind-forge/releases). Building from
-> source for the Go candidate requires Go `1.26.11`. During migration, choose the
-> Go source mode explicitly as shown below; the source-installer default remains
-> the Rust reference until final acceptance.
+> source requires Go `1.26.11`.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/alswl/mind-forge/master/scripts/install.sh | sh
@@ -15,33 +13,29 @@ export PATH="${MF_INSTALL_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}:$PATH"
 The installer downloads the latest stable tagged release for macOS or Linux on
 x86_64 or ARM64 and verifies its SHA-256 checksum. Set `MF_VERSION=vX.Y.Z` to
 install a specific tag, or `MF_INSTALL_DIR` to choose the install directory.
-For a source install, run the installer from a checkout that contains the
-selected implementation. Go source builds use the pinned toolchain and its
-normal module/compiler caches; `MF_INSTALL_TARGET_DIR` chooses the binary output
-directory. The retained Rust source mode is a migration reference, not a
-requirement for building the Go candidate.
+For a source install, run the installer from a checkout. Source builds use the
+pinned Go toolchain and its normal module/compiler caches; `MF_INSTALL_TARGET_DIR`
+chooses the binary output directory.
 
 Shell completion supports `bash`, `zsh`, `fish`, `powershell`, and `elvish` via
 `mf completion <shell>`. Load the generated program in that shell; save a
 PowerShell program as a `.ps1` script. Elvish completion belongs in its
 interactive editor configuration.
 
-## Go migration candidate
+## Build from source
 
-Until final migration acceptance, select the Go source installer explicitly:
+Install Go `1.26.11`, then run:
 
 ```bash
-MF_IMPLEMENTATION=go scripts/install.sh
+scripts/install.sh
 ```
 
-Install Go `1.26.11` first. This mode builds with CGO disabled and does not require
-Rust, Cargo, a C compiler or Zig. The resulting candidate is `bin/mf` when built
-with `bash scripts/build.sh`; use that explicit path for verification. The source
-installer accepts no additional command arguments. A checkout with `go.mod` is recognized even when
-it has no Cargo manifest. `MF_INSTALL_TARGET_DIR` chooses the reusable build
-output directory; relative paths are resolved from the caller's working directory.
-`MF_INSTALL_DIR` still overrides `XDG_BIN_HOME`, then `~/.local/bin`. The existing
-Rust source mode remains the migration reference until the final default switch.
+Source builds disable CGO. `bash scripts/build.sh` writes `bin/mf`; use this
+explicit artifact path for verification. The installer accepts no additional
+arguments. `MF_IMPLEMENTATION=go` is accepted for existing callers; other values
+are refused. `MF_INSTALL_TARGET_DIR` chooses the reusable build output directory;
+relative paths resolve from the caller's working directory. `MF_INSTALL_DIR`
+overrides `XDG_BIN_HOME`, then `~/.local/bin`.
 
 Downloaded installs keep the four existing archive names and the matching
 `checksums.txt` entry. They verify the checksum, require a regular executable,

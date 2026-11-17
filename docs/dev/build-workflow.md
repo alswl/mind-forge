@@ -13,32 +13,26 @@ build another black-box harness in this repository. Local checks must work
 without that repository or its credentials; slice and final acceptance still
 require external evidence for the exact candidate and harness revision.
 
-The Go candidate uses Go 1.26.11, pinned in `.tool-versions` and `go.mod`.
+The CLI uses Go 1.26.11, pinned in `.tool-versions` and `go.mod`.
 Run `go test ./internal/<changed-package>/...` while editing, then
 `bash scripts/check.sh` for the full local format/vet/unit/build gate. This gate
 needs no external verification checkout. It writes the explicit candidate to
 `bin/mf`. Component tests live under `internal/`; the `cmd/mf` package is the
-process entry point. The candidate covers the CLI command families, including
+process entry point. The executable covers the CLI command families, including
 build/publish and lifecycle recovery, while final compatibility, assertion
 equivalence, native platform and cost gates remain open.
 
-Use `bash scripts/build.sh` for a candidate stamped with the current commit and
-UTC build date. The source installer and manual generator accept
-`MF_IMPLEMENTATION=go` to select this candidate explicitly; their default remains
-the Rust reference during migration. `MF_BIN=/absolute/path/to/mf` also selects an
-already-built artifact for manual generation. Installation honors `MF_INSTALL_DIR`
-and `MF_INSTALL_TARGET_DIR`; use isolated directories for external acceptance.
+`bash scripts/build.sh` builds `bin/mf` with the current commit and UTC build
+date. `scripts/install.sh` and `scripts/generate-manual.sh` build Go by default.
+`MF_BIN=/absolute/path/to/mf` selects an existing executable for manual generation.
+Installation honors `MF_INSTALL_DIR` and `MF_INSTALL_TARGET_DIR`; use isolated
+directories for external acceptance.
 
-The Rust implementation remains the working reference until migration acceptance.
-Keep its coverage until it has been mapped and reused or migrated. CI retains
-the Rust jobs alongside the independent Go gate. A passing local Go gate does
-not prove business compatibility or build-cost improvement.
-
-At each business slice, use the designated external `my-tests` pass with
-`VERIFY_MF_BIN` set to the freshly built candidate's absolute path. Record its
-revision, dirty state, digest and version alongside the harness revision and
-actual selected batch. Final acceptance is a separate external gate; partial
-results cannot replace it.
+The Rust implementation, Cargo manifests, local CLI/E2E tests and containers
+were removed at the owner's request. Original tests remain traceable to frozen
+Git revision `3864e883bdb338139c9f09b5b0f622db5a61f332`; independent acceptance uses
+the separately frozen reference executable. Removal does not close the remaining
+original assertion, native platform, final candidate or cost verification gates.
 
 ## External CLI acceptance
 
@@ -65,16 +59,15 @@ On a clean Linux x86_64 CI checkout, the job verifies the binary's embedded
 revision and uploads `mf-go-<commit>-linux-amd64` with `mf`, `version.json`,
 `build-info.txt`, `source.txt` and `checksums.txt`. The job also exposes its
 artifact name and binary SHA256 as outputs. External verification consumes that
-fixed artifact independently. The retained Rust reference jobs are separate
-while migration coverage/cutover gates remain open. Workflow preparation and
+fixed artifact independently. Workflow preparation and
 local checks do not constitute a remote CI or native four-platform acceptance.
 
 ## Go archive preparation
 
 The manual **Prepare Go candidate archives** workflow uses
-`.github/workflows/go-package.yml` to build review artifacts. The existing
-Rust tag-release workflow remains in place until migration acceptance; preparing
-Go archives does not publish a release or switch the installation default.
+`.github/workflows/go-package.yml` to build review artifacts. The tag-release
+workflow uses the same Go packager and uploads a draft release. Manual archive
+preparation creates review artifacts without publishing a release.
 
 Run `bash scripts/package.sh --tag v0.6.0` to prepare the four macOS/Linux
 x86_64/ARM64 archives in a new `release/v0.6.0` directory. `--out` selects another
@@ -149,110 +142,9 @@ and repeated matched external-test timing remain unmeasured. The earlier
 
 ## Historical Rust build workflow
 
-> The measurements below predate removal of the RAG/Lance backend. Keep them as
-> historical profiling evidence; remeasure the current build before using the
-> timings, dependency counts, or artifact sizes for a new decision.
-
-How to keep compile cost proportional to the size of a change. All numbers below
-were measured on this repository after a one-line edit to `src/model/manifest.rs`,
-with a warm cargo cache on a 10-core machine.
-
-## Where the cost actually is
-
-Dependencies are **not** rebuilt during the edit loop. `cargo build --timings`
-attributes 100% of an incremental rebuild to the single `mf` unit; the other ~490
-dependency crates hit cache and never appear.
-
-The cost comes from three properties of the crate itself:
-
-1. **Cargo's recompilation unit is the crate**, and `mf` is one crate of ~50,000
-   lines. A one-line edit and a thousand-line edit cost the same.
-2. **`cargo test` compiles that crate twice** — once as the binary, once as the
-   `cfg(test)` unit-test target. Roughly 9s each.
-3. **Each of those links a ~490MB artifact** against 66 crates of the LanceDB
-   family (`liblance.rlib` alone is 211MB). Linking is single-threaded.
-
-The high CPU figure is parallelism, not waste: each compilation splits into 256
-codegen units, so ~30s of wall time consumes ~113s of CPU.
-
-Ruled out by measurement — do not spend time on these:
-
-- **Debug info.** Dropping `debug = "line-tables-only"` to `debug = 0` moved the
-  rebuild by 0.5s and the binary from 490MB to 485MB. The size is monomorphised
-  dependency code, not debug information.
-- **The 112 integration test binaries.** They drive the CLI as a subprocess
-  rather than linking it, are ~3.2MB each, and are not rebuilt when crate source
-  changes. Consolidating them would gain nothing.
-- **Linker choice.** The system linker is current (`ld-1267`).
-- **sccache for the edit loop.** Incremental compilation passes `-C incremental`,
-  which is not cacheable. sccache only helps cold builds.
-
-## The three tiers
-
-| Command | Wall | CPU | Use it for |
-|---|---|---|---|
-| `cargo ck` (alias for `cargo check`) | 2.0s | — | The inner loop while writing code |
-| `cargo t1 <name>` (alias for `cargo test --test <name>`) | 5.2s | 6.0s | Verifying one area, e.g. `cargo t1 cli_article` |
-| `cargo build` | 5.75s | ~20s | When you need the binary itself |
-| `cargo check --all-targets` | 9.9s | 22.8s | Type-checking tests too, without codegen |
-| `cargo test` | 30.2s | 84.9s | The pre-push gate |
-
-Running the whole suite after every edit costs **6× the wall time and 14× the CPU**
-of running the one test target that covers what you changed. `cargo t1` is faster
-because it skips both the unit-test compilation and the other ~111 test binaries.
-
-CI (`.github/workflows/ci.yml`) runs `cargo test --locked` (including the e2e suite),
-`cargo clippy -- -D warnings`, and `cargo fmt --check`, so the full gate is
-enforced there. Locally, run the full suite before pushing — not after every edit.
-
-CI runs for branch pushes and PRs targeting master. When the same branch SHA has
-an open PR to master, only the PR event runs the heavy jobs; a failed PR lookup
-falls back to full checks. Only PR updates cancel older runs. Other pushes use
-independent concurrency groups. README and Markdown-only changes under docs skip
-CI; executable docs and skills still run it. There are currently no required
-checks configured; revisit these filters before adding branch protection.
-
-Each job disables setup-rust-toolchain's built-in cache and uses one explicit
-Swatinem/rust-cache, with a separate shared key per build target. Keeping the
-existing explicit keys avoids the different environment hash computed inside the
-setup composite action. Release builds use the same keys; cache reuse still depends
-on GitHub ref visibility, toolchain, flags and lockfile compatibility. Tag pushes
-run Release rather than duplicating the CI matrix. CI artifacts and temporary
-release uploads expire after seven days; published release assets are unaffected.
-
-The aliases are defined in `.cargo/config.toml` at the repository root.
-
-Every one of these must run with the command sandbox disabled: sccache cannot
-write its cache under the sandbox, so even `cargo ck` fails with
-`sccache: error: Operation not permitted` before compiling anything.
-
-## Reading a failing run
-
-Cargo runs the ~113 test binaries in sequence and abandons the rest as soon as one
-fails, so a red run reports far fewer results than a green one — a single failing
-unit test truncated a 2386-test run to 856, hiding whether the CLI-level tests for
-the same behaviour would also have failed. Nothing in the output says it stopped
-early.
-
-When the question is *how much* a change breaks — impact assessment, deletion
-experiments, judging whether a fix is load-bearing — pass `--no-fail-fast` and read
-the whole failure list.
-
-## Installing
-
-Use `scripts/install.sh` rather than `cargo install --path .`.
-
-Plain `cargo install --path .` builds into a throwaway temporary directory, so
-every install recompiles all ~491 dependency crates from scratch in release mode.
-The script points `--target-dir` at a persistent directory
-(`~/.cache/mind-forge/install-target`, override with `MF_INSTALL_TARGET_DIR`), so
-dependencies are compiled once and later installs rebuild only `mf` itself. The
-directory sits outside `./target` so `cargo clean` does not discard it.
-
-The first run still pays the full cost. Subsequent ones do not.
-
-## Compile cost
-
-The build tiers control how often the expensive path runs.
-They do not change the crate's compilation unit or linking cost.
-Use targeted checks during editing and the full suite at the pre-push gate.
+Earlier Rust build measurements and commands belong to the frozen revision
+`3864e883bdb338139c9f09b5b0f622db5a61f332`. The current tree has no Cargo build,
+Rust CI, local black-box suite or Rust source-install path. For controlled
+migration comparisons, `scripts/benchmark-build.sh rust <frozen-revision>` checks
+out that historical revision in an isolated directory; it is separate from all
+daily build, install and acceptance commands.

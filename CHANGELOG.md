@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
+### Changed
+- Build and install the CLI with Go 1.26.11 and CGO disabled. Source installation
+  and manual generation now use Go by default; release archives keep their
+  existing platform names and checksum verification.
+
+### Removed
+- Remove the Rust implementation, Cargo toolchain and local CLI/E2E harness.
+  Component tests live beside Go code; full CLI and platform acceptance runs in
+  the external verification repository.
+
 ## [0.5.2] - 2026-11-15
 
 ### Removed

@@ -25,10 +25,8 @@ export PATH="${MF_INSTALL_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}:$PATH"
 mf version
 ```
 
-For the Go migration candidate, install Go `1.26.11` and run
-`MF_IMPLEMENTATION=go scripts/install.sh` from a checkout containing the Go
-implementation. Source mode still defaults to the Rust reference until final
-migration acceptance. Installation honors `MF_INSTALL_DIR`, then `XDG_BIN_HOME`,
+For a source build, install Go `1.26.11` and run `scripts/install.sh` from a
+checkout. Installation honors `MF_INSTALL_DIR`, then `XDG_BIN_HOME`,
 then `~/.local/bin`; `MF_INSTALL_TARGET_DIR` selects the reusable binary output
 directory. See [installation](../../docs/guide/install.md).
 

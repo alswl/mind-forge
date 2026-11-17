@@ -1,9 +1,5 @@
 target/
-debug/
 release/
-*.rs.bk
-*.rlib
-*.prof*
 bin/
 tmp/
 *.exe

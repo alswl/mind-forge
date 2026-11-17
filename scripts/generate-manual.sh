@@ -3,21 +3,16 @@
 # Do not edit docs/manual/cli.md directly; run this script after changing commands.
 set -euo pipefail
 
-repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 manual_path="$repo_root/docs/manual/cli.md"
 mkdir -p "$(dirname -- "$manual_path")"
 if [ -z "${MF_BIN:-}" ]; then
-  case "${MF_IMPLEMENTATION:-rust}" in
-    go)
-      bash "$repo_root/scripts/build.sh"
-      mf_bin="$repo_root/bin/mf"
-      ;;
-    rust)
-      (cd "$repo_root" && cargo build --quiet)
-      mf_bin="$repo_root/target/debug/mf"
-      ;;
-    *) printf 'MF_IMPLEMENTATION must be rust or go.\n' >&2; exit 2 ;;
-  esac
+  if [ "${MF_IMPLEMENTATION:-go}" != go ]; then
+    printf 'Only the Go implementation is available.\n' >&2
+    exit 2
+  fi
+  bash "$repo_root/scripts/build.sh"
+  mf_bin="$repo_root/bin/mf"
 else
   mf_bin="$MF_BIN"
   if [ ! -x "$mf_bin" ]; then

@@ -1,6 +1,6 @@
 pre-commit:
   commands:
-    cargo-fmt:
-      glob: "*.rs"
-      run: cargo fmt --check
-      fail_text: "Formatting errors found. Run 'cargo fmt' to fix."
+    go-fmt:
+      glob: "*.go"
+      run: test -z "$(gofmt -l cmd internal)"
+      fail_text: "Run gofmt on the changed Go files."
