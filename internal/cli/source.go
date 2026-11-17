@@ -15,7 +15,7 @@ import (
 
 func sourceCommand(command *cobra.Command, application *app.Context, args []string, stdout, stderr io.Writer) error {
 	if command.Name() == "remove" && len(args) > 0 && !strings.Contains(args[0], "/") && !strings.HasPrefix(args[0], "sources") {
-		if _, err := fmt.Fprintln(stderr, "[deprecated] positional NAME is deprecated, use full PATH (e.g., sources/yuque/foo.md) instead"); err != nil {
+		if err := output.WarnDeprecation(stderr, "positional NAME", "full PATH (e.g., sources/yuque/foo.md)", !application.Color); err != nil {
 			return err
 		}
 	}

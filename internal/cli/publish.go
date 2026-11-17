@@ -30,12 +30,12 @@ func publishCommand(c *cobra.Command, a *app.Context, args []string, stdout, std
 		status, url := optionalFlag(c, "status"), optionalFlag(c, "target-url")
 		warnings := []string{}
 		if status != nil {
-			if _, err := fmt.Fprintln(stderr, "[deprecated] --status is deprecated, use --set status=<value> instead"); err != nil {
+			if err := output.WarnDeprecation(stderr, "--status", "--set status=<value>", !a.Color); err != nil {
 				return err
 			}
 		}
 		if url != nil {
-			if _, err := fmt.Fprintln(stderr, "[deprecated] --target-url is deprecated, use --set url=<value> instead"); err != nil {
+			if err := output.WarnDeprecation(stderr, "--target-url", "--set url=<value>", !a.Color); err != nil {
 				return err
 			}
 		}
