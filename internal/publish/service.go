@@ -146,7 +146,7 @@ func Run(root, project, selector string, opts RunOptions) (model.PublishRunOutco
 	}
 	target := resolved.Target
 	if target.Type != "local" && target.Type != "yuque-prompt" {
-		return result, selected, nil, problem("not_implemented", "publish target type '"+target.Type+"' is not yet implemented", "tracked in upcoming ROADMAP-004; use type 'local' or 'yuque-prompt' instead")
+		return result, selected, nil, output.NotImplemented("publish target type '"+target.Type+"' is not yet implemented", "tracked in upcoming ROADMAP-004; use type 'local' or 'yuque-prompt' instead")
 	}
 	artifact, size, err := LocateArtifact(project, config, article, selected)
 	if err != nil {

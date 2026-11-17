@@ -153,7 +153,7 @@ func projectCommand(command *cobra.Command, application *app.Context, args []str
 		text += fmt.Sprintf("  articles: %d", report.ArticleCount)
 		return output.RenderRaw(stdout, "text", text)
 	default:
-		return &output.Error{Kind: "not_implemented", Message: "project " + command.Name() + " is not yet implemented"}
+		return output.NotImplemented("project "+command.Name()+" is not yet implemented", "")
 	}
 }
 

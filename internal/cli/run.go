@@ -162,7 +162,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			}
 			return output.RenderRaw(stdout, application.Format, metadata.Text())
 		}
-		return &output.Error{Kind: "not_implemented", Message: strings.Join(item.Path, " ") + " is not yet implemented"}
+		return output.NotImplemented(strings.Join(item.Path, " ")+" is not yet implemented", "")
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, "internal error:", err)

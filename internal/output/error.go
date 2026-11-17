@@ -98,3 +98,11 @@ func ParseError(path, detail string) *Error {
 	hint := "check the file format and try again"
 	return &Error{Kind: "parse_error", Message: "yaml parse error in " + path + ": " + strings.TrimSpace(detail), Hint: &hint}
 }
+
+func NotImplemented(message, hint string) *Error {
+	failure := &Error{Kind: "not_implemented", Message: message}
+	if hint != "" {
+		failure.Hint = &hint
+	}
+	return failure
+}
