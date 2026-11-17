@@ -133,3 +133,67 @@ func TestFullConversionEveryDurableStageRecovers(t *testing.T) {
 		})
 	}
 }
+
+func TestFullConversionPreparationFaultsRecoverOrRetry(t *testing.T) {
+	for _, fixture := range fullConversionFixtures(t) {
+		if fixture.Subject != "go" || fixture.RootProject {
+			continue
+		}
+		t.Run("subject=go/project", func(t *testing.T) {
+			for _, stage := range []string{"namespace", "directory", "backup", "publish", "partial"} {
+				for _, rollback := range []bool{false, true} {
+					t.Run(fmt.Sprintf("stage=%s/rollback=%t", stage, rollback), func(t *testing.T) {
+						root, plan := fullConversionInput(t, fixture.Plan)
+						engine := Engine{Checkpoint: func(name string) error {
+							if stage != "partial" && name == "prepare:"+stage {
+								return errComponentFault
+							}
+							return nil
+						}}
+						if stage == "partial" {
+							fs := &faultFilesystem{root: root, fail: "write:" + preparing + "/journal.json.next", partialWrite: true}
+							engine = Engine{Filesystem: fs}
+						}
+						if _, err := engine.Apply(root, plan); !errors.Is(err, errComponentFault) {
+							t.Fatalf("preparation fault not reached: %v", err)
+						}
+						assertSnapshot(t, root, plan.Before)
+						if stage == "namespace" {
+							if _, err := (Engine{}).RecoverUnpublished(root, rollback); err != nil {
+								t.Fatal(err)
+							}
+							if _, err := (Engine{}).Recover(root, rollback); err == nil {
+								t.Fatal("namespace-only interruption unexpectedly had a journal")
+							}
+						} else {
+							archived, err := (Engine{}).RecoverUnpublished(root, rollback)
+							if err != nil {
+								t.Fatal(err)
+							}
+							if archived {
+								assertSnapshot(t, root, plan.Before)
+							} else {
+								journal, err := (Engine{}).Recover(root, rollback)
+								if err != nil {
+									t.Fatal(err)
+								}
+								want, phase := plan.After, "complete"
+								if rollback {
+									want, phase = plan.Before, "rolled_back"
+								}
+								if journal.Phase != phase {
+									t.Fatalf("phase %q want %q", journal.Phase, phase)
+								}
+								assertSnapshot(t, root, want)
+							}
+						}
+						if _, err := (Engine{}).Apply(root, plan); err != nil {
+							t.Fatalf("retry original conversion: %v", err)
+						}
+						assertSnapshot(t, root, plan.After)
+					})
+				}
+			}
+		})
+	}
+}
