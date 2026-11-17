@@ -4,6 +4,12 @@ release/
 *.rs.bk
 *.rlib
 *.prof*
+bin/
+tmp/
+*.exe
+*.test
+*.out
+vendor/
 .DS_Store
 Thumbs.db
 *.tmp

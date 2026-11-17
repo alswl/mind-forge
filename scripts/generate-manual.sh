@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generate the user-facing command reference from the current Clap command tree.
+# Generate the user-facing command reference from the selected command tree.
 # Do not edit docs/manual/cli.md directly; run this script after changing commands.
 set -euo pipefail
 
@@ -7,11 +7,17 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 manual_path="$repo_root/docs/manual/cli.md"
 mkdir -p "$(dirname -- "$manual_path")"
 if [ -z "${MF_BIN:-}" ]; then
-  (
-    cd "$repo_root"
-    cargo build --quiet
-  )
-  mf_bin="$repo_root/target/debug/mf"
+  case "${MF_IMPLEMENTATION:-rust}" in
+    go)
+      bash "$repo_root/scripts/build.sh"
+      mf_bin="$repo_root/bin/mf"
+      ;;
+    rust)
+      (cd "$repo_root" && cargo build --quiet)
+      mf_bin="$repo_root/target/debug/mf"
+      ;;
+    *) printf 'MF_IMPLEMENTATION must be rust or go.\n' >&2; exit 2 ;;
+  esac
 else
   mf_bin="$MF_BIN"
   if [ ! -x "$mf_bin" ]; then

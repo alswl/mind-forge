@@ -1,0 +1,369 @@
+$schema: http://json-schema.org/draft-07/schema#
+definitions:
+  ArticleBuildConfig:
+    description: Per-article build settings.
+    properties:
+      article_dir:
+        type:
+        - string
+        - 'null'
+    type: object
+  BannerConfig:
+    description: Optional banner injected into generated article output.
+    properties:
+      level:
+        anyOf:
+        - $ref: '#/definitions/BannerLevel'
+        - type: 'null'
+      text:
+        type: string
+    required:
+    - text
+    type: object
+  BannerLevel:
+    description: Banner presentation level for generated article output.
+    enum:
+    - note
+    - tip
+    - warning
+    - danger
+    type: string
+  BuildConfig:
+    description: Build configuration for the project.
+    properties:
+      articles:
+        additionalProperties:
+          $ref: '#/definitions/ArticleBuildConfig'
+        default: {}
+        type: object
+      banner:
+        anyOf:
+        - $ref: '#/definitions/BannerConfig'
+        - type: 'null'
+      format:
+        default: md
+        type: string
+      html_template:
+        description: Project-relative static HTML body template with one {{content}} placeholder.
+        type:
+        - string
+        - 'null'
+      merge_order:
+        default: []
+        items:
+          type: string
+        type: array
+      output_dir:
+        default: outputs
+        type: string
+      pipeline:
+        items:
+          $ref: '#/definitions/BuildPipelineRule'
+        type: array
+      strip_first_h1:
+        default: false
+        type: boolean
+    type: object
+  BuildPipelineRule:
+    description: One project-configured external asset transformation.
+    properties:
+      command:
+        type: string
+      dark:
+        default: false
+        type: boolean
+      input_extension:
+        type: string
+      name:
+        type: string
+      output_extension:
+        type: string
+    required:
+    - command
+    - input_extension
+    - name
+    - output_extension
+    type: object
+  ContentLayout:
+    enum:
+    - category
+    - bundle
+    type: string
+  LayoutConfig:
+    description: |-
+      Canonical layout configuration for project directories.
+
+      `articles` accepts `docs` as a compatibility alias. `build_output` accepts `output_dir` as a compatibility alias.
+    properties:
+      articles:
+        default: null
+        description: 'Project-relative path for articles (compat alias: `docs`).'
+        type:
+        - string
+        - 'null'
+      assets:
+        default: null
+        description: Project-relative path for assets.
+        type:
+        - string
+        - 'null'
+      build_output:
+        default: null
+        description: 'Project-relative path for build output (compat alias: `output_dir`).'
+        type:
+        - string
+        - 'null'
+      sources:
+        default: null
+        description: Project-relative path for source materials.
+        type:
+        - string
+        - 'null'
+      templates:
+        default: null
+        description: Project-relative path for article-creation guide templates.
+        type:
+        - string
+        - 'null'
+    type: object
+  MindRegistration:
+    properties:
+      default_output:
+        default: null
+        type:
+        - string
+        - 'null'
+      title:
+        default: null
+        type:
+        - string
+        - 'null'
+    type: object
+  PathsConfig:
+    description: |-
+      Default paths for project directories (compatibility layer).
+
+      Accepted on read for backward compatibility with mind 0.3.0 projects. `archive` is not a Layout category and remains here.
+    properties:
+      archive:
+        default: _archived
+        type: string
+      assets:
+        default: assets
+        type: string
+      docs:
+        default: docs
+        type: string
+      sources:
+        default: sources
+        type: string
+    type: object
+  PluginsConfig:
+    description: |-
+      Forward-compatible plugins configuration block.
+
+      Known plugin keys are typed; unknown keys are preserved round-trip for future plugins.
+    properties:
+      typora-front-matter:
+        anyOf:
+        - $ref: '#/definitions/TyporaFrontMatterPluginConfig'
+        - type: 'null'
+        default: null
+        description: Configuration for the Typora front-matter plugin.
+    type: object
+  ProjectMeta:
+    description: Project metadata for a mind-forge project.
+    properties:
+      created_at:
+        type:
+        - string
+        - 'null'
+      description:
+        type:
+        - string
+        - 'null'
+      name:
+        type: string
+    required:
+    - name
+    type: object
+  PublishConfig:
+    description: Publish configuration for the project.
+    properties:
+      default_target:
+        type:
+        - string
+        - 'null'
+      strip_front_matter:
+        description: Remove the complete YAML front-matter block from publish payloads.
+        type:
+        - boolean
+        - 'null'
+      targets:
+        items:
+          $ref: '#/definitions/PublishTarget'
+        type:
+        - array
+        - 'null'
+    type: object
+  PublishTarget:
+    description: A single publish target definition.
+    properties:
+      book_slug:
+        type:
+        - string
+        - 'null'
+      config: true
+      enabled:
+        default: true
+        type: boolean
+      name:
+        type: string
+      namespace:
+        type:
+        - string
+        - 'null'
+      path:
+        type:
+        - string
+        - 'null'
+      prefix:
+        type:
+        - string
+        - 'null'
+      type:
+        $ref: '#/definitions/PublishTargetType'
+    required:
+    - name
+    - type
+    type: object
+  PublishTargetType:
+    description: 'Publish target type: where to publish content.'
+    oneOf:
+    - enum:
+      - local
+      - yuque-prompt
+      - yuque
+      - github_pages
+      - custom
+      type: string
+    - description: Recognized for loading/lint compatibility; full publish is out of scope.
+      enum:
+      - yuque_cc
+      type: string
+  SourceConfig:
+    description: Source scanning configuration.
+    properties:
+      scan_paths:
+        default: []
+        items:
+          type: string
+        type: array
+      types:
+        default: []
+        items:
+          type: string
+        type: array
+    type: object
+  TermConfig:
+    description: Terminology checking configuration.
+    properties:
+      case_sensitive:
+        default: false
+        type: boolean
+      enabled:
+        default: true
+        type: boolean
+    type: object
+  TyporaFrontMatterPluginConfig:
+    description: Configuration for the typora-front-matter plugin.
+    properties:
+      enabled:
+        default: null
+        description: Whether Typora front-matter injection is enabled. Defaults to true when absent.
+        type:
+        - boolean
+        - 'null'
+    type: object
+description: Top-level configuration for a mind-forge project (mind.yaml schema).
+properties:
+  articles: true
+  build:
+    allOf:
+    - $ref: '#/definitions/BuildConfig'
+    default:
+      articles: {}
+      format: md
+      merge_order: []
+      output_dir: outputs
+      strip_first_h1: false
+  content_layout:
+    anyOf:
+    - $ref: '#/definitions/ContentLayout'
+    - type: 'null'
+  created:
+    type:
+    - string
+    - 'null'
+  description:
+    type:
+    - string
+    - 'null'
+  layout:
+    anyOf:
+    - $ref: '#/definitions/LayoutConfig'
+    - type: 'null'
+    default: null
+  minds:
+    additionalProperties:
+      $ref: '#/definitions/MindRegistration'
+    type: object
+  name:
+    type:
+    - string
+    - 'null'
+  paths:
+    allOf:
+    - $ref: '#/definitions/PathsConfig'
+    writeOnly: true
+  plugins:
+    anyOf:
+    - $ref: '#/definitions/PluginsConfig'
+    - type: 'null'
+  project:
+    anyOf:
+    - $ref: '#/definitions/ProjectMeta'
+    - type: 'null'
+  publish:
+    allOf:
+    - $ref: '#/definitions/PublishConfig'
+    default:
+      default_target: null
+  reserved_roots:
+    description: Project roots excluded from bundle mind discovery (including retained category placeholders).
+    items:
+      type: string
+    type: array
+  schema_version:
+    default: '1'
+    type: string
+  source:
+    allOf:
+    - $ref: '#/definitions/SourceConfig'
+    default:
+      scan_paths: []
+      types: []
+  term:
+    allOf:
+    - $ref: '#/definitions/TermConfig'
+    default:
+      case_sensitive: false
+      enabled: true
+  updated:
+    type:
+    - string
+    - 'null'
+required:
+- paths
+title: MindConfig
+type: object

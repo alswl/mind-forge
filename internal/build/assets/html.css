@@ -1,0 +1,14 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.65; }
+body { max-width: 60rem; margin: 3rem auto; padding: 0 1.5rem; }
+h1, h2, h3 { line-height: 1.25; margin-top: 1.6em; }
+a { color: #2773b8; }
+img, svg { max-width: 100%; height: auto; }
+pre { padding: 1rem; overflow: auto; background: light-dark(#f4f5f7, #22262c); border-radius: .3rem; }
+code { font-family: ui-monospace, monospace; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid #8886; padding: .5rem .75rem; text-align: left; }
+blockquote { border-left: .2rem solid #8886; margin-left: 0; padding-left: 1rem; }
+.mf-diagram { margin: 1.5rem 0; padding: 1rem; border: 1px solid #8886; }
+.mf-diagram-status { font-size: .9rem; }
+.mf-diagram[data-state$="error"] .mf-diagram-status { color: light-dark(#a12b19, #ffaf9e); font-weight: 600; }
+summary { cursor: pointer; }

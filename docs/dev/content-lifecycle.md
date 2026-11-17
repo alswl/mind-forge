@@ -14,6 +14,10 @@ place. Preparation occurs in a private `.mind-forge/lifecycle-preparing` directo
 The complete backup is fsynced before that directory becomes the active journal.
 No authored changes occur before journal publication.
 
+The Go recovery component synchronizes a validated backup file and its directory
+again before publication or authored changes. A readable complete `.next` image
+can remain after a failed fsync; valid JSON alone does not prove durability.
+
 Recovery accepts only expected before/after states. It rejects conflicting later
 edits. Completed recovery retries do not rewrite files. Reversing a completed
 transaction requires a new plan. This is a cooperative local recovery protocol,
@@ -30,3 +34,11 @@ because of an unrelated unsafe entry.
 
 See [manage content](../guide/manage-content.md) for the CLI sequence, preparation
 recovery states, filesystem list, and legacy incomplete-journal recovery option.
+
+The active published journal is `.mind-forge/lifecycle/journal.json`. Its public
+`phase` is `prepared` while recovery remains possible, `complete` after resume or
+apply, and `rolled_back` after rollback. A monitor may observe that file together
+with authored source/destination paths to identify an interrupted application.
+A prepared journal plus both original and relocated authored entries demonstrates
+partial application; it does not identify an individual fsync boundary. Runtime
+metadata under `.mind-forge` is recovery evidence, not authored content.

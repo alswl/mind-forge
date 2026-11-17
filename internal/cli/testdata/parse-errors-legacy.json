@@ -1,0 +1,198 @@
+[
+  {
+    "path": [],
+    "args": [
+      "--wrong"
+    ],
+    "kind": "unexpected_flag",
+    "value": "--wrong",
+    "text": "error: unexpected argument '--wrong' found\n\n  tip: a similar argument exists: '--config'\n\nUsage: mf --config <PATH>\n\nFor more information, try '--help'.\n"
+  },
+  {
+    "path": [],
+    "args": [
+      "--zzzz"
+    ],
+    "kind": "unexpected_flag",
+    "value": "--zzzz",
+    "text": "error: unexpected argument '--zzzz' found\n\nUsage: mf [OPTIONS] [COMMAND]\n\nFor more information, try '--help'.\n"
+  },
+  {
+    "path": [
+      "version"
+    ],
+    "args": [
+      "version",
+      "extra"
+    ],
+    "kind": "unexpected_argument",
+    "value": "extra",
+    "text": "error: unexpected argument 'extra' found\n\nUsage: mf version [OPTIONS]\n\nFor more information, try '--help'.\n"
+  },
+  {
+    "path": [],
+    "args": [
+      "nonesuch"
+    ],
+    "kind": "unknown_command",
+    "value": "nonesuch",
+    "text": "error: unrecognized subcommand 'nonesuch'\n\nUsage: mf [OPTIONS] [COMMAND]\n\nFor more information, try '--help'.\n"
+  },
+  {
+    "path": [
+      "config"
+    ],
+    "args": [
+      "config",
+      "shema"
+    ],
+    "kind": "unknown_command",
+    "value": "shema",
+    "text": "error: unrecognized subcommand 'shema'\n\n  tip: a similar subcommand exists: 'schema'\n\nUsage: mf config [OPTIONS] [COMMAND]\n\nFor more information, try '--help'.\n"
+  },
+  {
+    "path": [
+      "config",
+      "generate"
+    ],
+    "args": [
+      "config",
+      "generate"
+    ],
+    "kind": "missing",
+    "missing": [
+      "--out <OUTPUT>"
+    ],
+    "text": "error: the following required arguments were not provided:\n  --out <OUTPUT>\n\nUsage: mf config generate --out <OUTPUT>\n\nFor more information, try '--help'.\n"
+  },
+  {
+    "path": [
+      "config",
+      "generate"
+    ],
+    "args": [
+      "config",
+      "generate",
+      "--output-format",
+      "json"
+    ],
+    "kind": "missing",
+    "missing": [
+      "--out <OUTPUT>"
+    ],
+    "text": "error: the following required arguments were not provided:\n  --out <OUTPUT>\n\nUsage: mf config generate --out <OUTPUT> --output-format <OUTPUT_FORMAT>\n\nFor more information, try '--help'.\n"
+  },
+  {
+    "path": [
+      "config",
+      "generate"
+    ],
+    "args": [
+      "config",
+      "generate",
+      "--out"
+    ],
+    "kind": "value_required",
+    "flag": "out",
+    "text": "error: a value is required for '--out <OUTPUT>' but none was supplied\n\nFor more information, try '--help'.\n"
+  },
+  {
+    "path": [
+      "version"
+    ],
+    "args": [
+      "--output",
+      "invalid",
+      "version"
+    ],
+    "kind": "invalid_value",
+    "value": "invalid",
+    "flag": "output",
+    "text": "error: invalid value 'invalid' for '--output <FORMAT>'\n  [possible values: text, json]\n\nFor more information, try '--help'.\n"
+  },
+  {
+    "path": [
+      "completion"
+    ],
+    "args": [
+      "completion",
+      "bsh"
+    ],
+    "kind": "invalid_value",
+    "value": "bsh",
+    "label": "<SHELL>",
+    "choices": [
+      "bash",
+      "zsh",
+      "fish",
+      "powershell",
+      "elvish"
+    ],
+    "text": "error: invalid value 'bsh' for '<SHELL>'\n  [possible values: bash, zsh, fish, powershell, elvish]\n\n  tip: a similar value exists: 'bash'\n\nFor more information, try '--help'.\n"
+  },
+  {
+    "path": [],
+    "args": [
+      "--root",
+      "a",
+      "--root",
+      "b"
+    ],
+    "kind": "duplicate",
+    "flag": "root",
+    "text": "error: the argument '--root <PATH>' cannot be used multiple times\n\nUsage: mf [OPTIONS] [COMMAND]\n\nFor more information, try '--help'.\n"
+  },
+  {
+    "path": [],
+    "args": [
+      "--no-color=false"
+    ],
+    "kind": "unexpected_value",
+    "flag": "no-color",
+    "value": "false",
+    "text": "error: unexpected value 'false' for '--no-color' found; no more were expected\n\nUsage: mf --no-color\n\nFor more information, try '--help'.\n"
+  },
+  {
+    "path": [
+      "mind"
+    ],
+    "args": [
+      "mind"
+    ],
+    "kind": "subcommand_required",
+    "text": "Manage minds, including minds without outputs\n\nUsage: mf mind [OPTIONS] <COMMAND>\n\nCommands:\n  new    Register a mind without requiring an output\n  list   \n  show   \n  index  Reconcile the derived output index from authored files\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values: text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n"
+  },
+  {
+    "path": [
+      "article",
+      "convert"
+    ],
+    "args": [
+      "article",
+      "convert",
+      "--to-single-file",
+      "--to-directory"
+    ],
+    "kind": "conflict",
+    "flag": "to-single-file",
+    "other": "--to-directory",
+    "text": "error: the argument '--to-single-file' cannot be used with '--to-directory'\n\nUsage: mf article convert --to-single-file\n\nFor more information, try '--help'.\n"
+  },
+  {
+    "path": [
+      "additional",
+      "remove"
+    ],
+    "args": [
+      "additional",
+      "remove",
+      "foo",
+      "--emit-plan"
+    ],
+    "kind": "missing",
+    "missing": [
+      "--dry-run"
+    ],
+    "text": "error: the following required arguments were not provided:\n  --dry-run\n\nUsage: mf additional remove --dry-run --emit-plan <IDENTITY>\n\nFor more information, try '--help'.\n"
+  }
+]
