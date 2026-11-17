@@ -17,7 +17,7 @@ func TestTermWarningsRetainPrefixAndJSONPayload(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			context := &app.Context{Format: format, Quiet: quiet}
 			warnings := []string{"original 'variant' overlaps term 'Synthetic'"}
-			if err := renderTerm(context, &stdout, &stderr, map[string]any{"created": true}, "added", warnings); err != nil {
+			if err := renderCorrection(context, &stdout, &stderr, map[string]any{"created": true}, "added", warnings); err != nil {
 				t.Fatal(err)
 			}
 			if got := stderr.String(); got != "warning: "+warnings[0]+"\n" {
@@ -45,6 +45,16 @@ func TestTermWarningsRetainPrefixAndJSONPayload(t *testing.T) {
 				t.Fatalf("scope warning changed: %q", stderr.String())
 			}
 		}
+	}
+}
+
+func TestSharedRendererPreservesBuildWarningPrefix(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if err := renderTerm(&app.Context{Format: "text"}, &stdout, &stderr, nil, "built", []string{"merged private callout"}); err != nil {
+		t.Fatal(err)
+	}
+	if stderr.String() != "WARN: merged private callout\n" {
+		t.Fatalf("shared warning = %q", stderr.String())
 	}
 }
 

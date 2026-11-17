@@ -56,6 +56,10 @@ func termFallback[T any](c *cobra.Command, a *app.Context, name string, operatio
 }
 
 func renderTerm(a *app.Context, stdout, stderr io.Writer, data any, text string, warnings []string) error {
+	return renderTermWarningPrefix(a, stdout, stderr, data, text, warnings, "WARN: ")
+}
+
+func renderCorrection(a *app.Context, stdout, stderr io.Writer, data any, text string, warnings []string) error {
 	return renderTermWarningPrefix(a, stdout, stderr, data, text, warnings, "warning: ")
 }
 

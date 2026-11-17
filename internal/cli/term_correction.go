@@ -155,11 +155,11 @@ func termCorrectionCommand(c *cobra.Command, a *app.Context, args []string, stdo
 	if dry {
 		result := output.VerbResult{Verb: output.Add, Kind: "term_correction", Identity: name + "::" + corr.Original, DryRun: true, Details: data}
 		profile := commandProfile(stdout, a)
-		return renderTerm(a, stdout, stderr, output.VerbEnvelope(result), output.RenderVerb(result, output.DisplayOptions{RepoRoot: a.RepoRoot, Hyperlinks: profile.Hyperlinks}), warnings)
+		return renderCorrection(a, stdout, stderr, output.VerbEnvelope(result), output.RenderVerb(result, output.DisplayOptions{RepoRoot: a.RepoRoot, Hyperlinks: profile.Hyperlinks}), warnings)
 	}
 	text := fmt.Sprintf("added correction \"%s\" → \"%s\" to term \"%s\"", corr.Original, corr.Correct, name)
 	if !created {
 		text = fmt.Sprintf("correction \"%s\" → \"%s\" already exists on term \"%s\", skipped", corr.Original, corr.Correct, name)
 	}
-	return renderTerm(a, stdout, stderr, data, text, warnings)
+	return renderCorrection(a, stdout, stderr, data, text, warnings)
 }
