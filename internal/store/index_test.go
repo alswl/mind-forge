@@ -99,6 +99,9 @@ func TestIndexMissingStrictLenientAndSchema(t *testing.T) {
 	if !errors.As(err, &typed) || typed.Kind != "incompatible_schema" || typed.ExitCode() != 2 {
 		t.Fatalf("schema rejection: %v", err)
 	}
+	if typed.Hint == nil || *typed.Hint != "use a Mind Forge version that supports this schema" {
+		t.Fatalf("schema hint = %v", typed.Hint)
+	}
 }
 
 func TestIndexTermWritePreservesYAMLMetadataThatCannotSerializeToJSON(t *testing.T) {

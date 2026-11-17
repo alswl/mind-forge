@@ -45,7 +45,7 @@ func ValidateSchema(version, path string) error {
 	if version == model.SchemaVersion {
 		return nil
 	}
-	hint := "run `mf upgrade` or update schema_version manually"
+	hint := "use a Mind Forge version that supports this schema"
 	return &output.Error{Kind: "incompatible_schema", Message: fmt.Sprintf("incompatible schema: found '%s', expected one of [\"1\"]", version), Hint: &hint}
 }
 
