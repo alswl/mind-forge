@@ -149,3 +149,10 @@ func truncateCell(text string, width, available int) string {
 	}
 	return prefix.String() + "…"
 }
+
+func JSONCollection[T any](plural string, items []T) map[string]any {
+	if items == nil {
+		items = make([]T, 0)
+	}
+	return map[string]any{plural: items}
+}

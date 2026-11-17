@@ -262,7 +262,7 @@ func assetReadCommand(command *cobra.Command, application *app.Context, args []s
 			object["identity"] = item.Path
 			objects = append(objects, object)
 		}
-		return output.RenderSuccess(stdout, "json", map[string]any{"assets": objects})
+		return output.RenderSuccess(stdout, "json", output.JSONCollection("assets", objects))
 	}
 	view := output.List{Headers: []string{"NAME", "TYPE", "PATH", "SIZE"}, Plural: "assets"}
 	for _, item := range items {

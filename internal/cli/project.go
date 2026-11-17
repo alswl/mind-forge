@@ -174,7 +174,7 @@ func listProjects(command *cobra.Command, application *app.Context, stdout, stde
 			path := strings.TrimPrefix(entry.Path, "./")
 			items = append(items, map[string]any{"identity": entry.Name, "name": entry.Name, "path": path, "created_at": entry.CreatedAt, "archived_at": entry.ArchivedAt, "document_count": entry.DocumentCount, "last_activity_at": entry.LastActivityAt})
 		}
-		return output.RenderSuccess(stdout, "json", map[string]any{"projects": items})
+		return output.RenderSuccess(stdout, "json", output.JSONCollection("projects", items))
 	}
 	profile := commandProfile(stdout, application)
 	options := output.ListOptionsFromProfile(profile, boolFlag(command, "no-headers"), boolFlag(command, "no-trunc"))

@@ -192,7 +192,7 @@ func termListCommand(c *cobra.Command, a *app.Context, stdout, stderr io.Writer)
 		view.Rows = append(view.Rows, output.TextCells(tm.Term.Term, definition, aliases, tags, count))
 	}
 	text := output.RenderList(view, output.ListOptionsFromProfile(commandProfile(stdout, a), boolFlag(c, "no-headers"), boolFlag(c, "no-trunc")))
-	return renderTerm(a, stdout, stderr, map[string]any{"terms": items}, text, nil)
+	return renderTerm(a, stdout, stderr, output.JSONCollection("terms", items), text, nil)
 }
 
 func termShowCommand(c *cobra.Command, a *app.Context, name string, stdout, stderr io.Writer) error {

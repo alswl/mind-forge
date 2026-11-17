@@ -250,7 +250,7 @@ func sourceReadCommand(command *cobra.Command, application *app.Context, args []
 			object["identity"] = item.Name
 			objects = append(objects, object)
 		}
-		return output.RenderSuccess(stdout, "json", map[string]any{"sources": objects})
+		return output.RenderSuccess(stdout, "json", output.JSONCollection("sources", objects))
 	}
 	view := output.List{Headers: []string{"NAME", "TYPE", "LOCATION"}, Plural: "sources"}
 	for _, item := range items {
