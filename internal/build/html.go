@@ -29,7 +29,7 @@ const DefaultHTMLTemplate = `<main class="mf-content">{{content}}</main>`
 
 func cleanHTML(value string) string {
 	p := bluemonday.UGCPolicy()
-	p.AllowElements("main", "figure", "figcaption", "details", "summary")
+	p.AllowNoAttrs().OnElements("main", "figure", "figcaption", "details", "summary")
 	p.AllowAttrs("class", "aria-live").Globally()
 	p.AllowAttrs("open").OnElements("details")
 	p.RequireNoFollowOnLinks(false)

@@ -80,3 +80,18 @@ func TestHTMLTitleCannotIntroduceURLOrPlaceholder(t *testing.T) {
 		t.Fatalf("body placeholders substituted: %s %v", got, err)
 	}
 }
+
+func TestHTMLTemplatePreservesContentSlotBesideTitle(t *testing.T) {
+	input := `<header class="custom">PROJECT TEMPLATE {{title}}</header><main>{{content}}</main><script>window.templateExecuted=true</script>`
+	template, err := PrepareHTMLTemplate(input)
+	if err != nil {
+		t.Fatalf("valid title/content template refused: %v; sanitized=%q", err, cleanHTML(input))
+	}
+	if !strings.Contains(template, "PROJECT TEMPLATE {{title}}") || strings.Contains(template, "window.templateExecuted") {
+		t.Fatalf("template lost title or retained script: %s", template)
+	}
+	output, err := RenderHTML("# Public", "Synthetic", template)
+	if err != nil || !strings.Contains(output, "PROJECT TEMPLATE Synthetic") || !strings.Contains(output, "<h1>Public</h1>") || strings.Contains(output, "window.templateExecuted") {
+		t.Fatalf("rendered title/content template: %s, %v", output, err)
+	}
+}
