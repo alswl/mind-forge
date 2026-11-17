@@ -76,7 +76,7 @@ func replaceProtectedSection(raw []byte, section string, rendered []byte) ([]byt
 		blocks[name] = block
 		names = append(names, name)
 	}
-	fallback := false
+	fallback := root.Style&yaml.FlowStyle != 0
 	for i := 0; i < len(root.Content); i += 2 {
 		if _, changed := blocks[root.Content[i].Value]; changed {
 			if _, _, span := topLevelSpan(raw, root.Content[i].Value); !span {
