@@ -19,8 +19,8 @@ Run `go test ./internal/<changed-package>/...` while editing, then
 needs no external verification checkout. It writes the explicit candidate to
 `bin/mf`. Component tests live under `internal/`; the `cmd/mf` package is the
 process entry point. The executable covers the CLI command families, including
-build/publish and lifecycle recovery, while final compatibility, assertion
-equivalence, native platform and cost gates remain open.
+build/publish and lifecycle recovery, while matched Rust/Go acceptance, native
+platform and final cost gates remain open.
 
 `bash scripts/build.sh` builds `bin/mf` with the current commit and UTC build
 date. `scripts/install.sh` and `scripts/generate-manual.sh` build Go by default.
@@ -32,7 +32,10 @@ The Rust implementation, Cargo manifests, local CLI/E2E tests and containers
 were removed at the owner's request. Original tests remain traceable to frozen
 Git revision `3864e883bdb338139c9f09b5b0f622db5a61f332`; independent acceptance uses
 the separately frozen reference executable. Removal does not close the remaining
-original assertion, native platform, final candidate or cost verification gates.
+matched-run, native platform, final clean-candidate or cost verification gates.
+The four preparation checkpoints and partial journal fault have an optional
+`mf_testfaults` CLI build tag for external process acceptance. The default build
+does not read its environment variable or contain its injection code.
 
 ## External CLI acceptance
 
