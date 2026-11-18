@@ -16,11 +16,5 @@ if [[ $# -gt 0 ]]; then
     fi
     artifact="$2"
 fi
-revision=$(git rev-parse --short HEAD)
-build_date=$(date -u +%Y-%m-%d)
-mkdir -p "$(dirname "$artifact")"
-# Go can discover the enclosing checkout instead of a nested worktree. Bind its
-# Git subprocesses to the same worktree used for the explicit version stamp.
-source_git_dir=$(git rev-parse --absolute-git-dir)
-source_worktree=$(git rev-parse --show-toplevel)
-GIT_DIR="$source_git_dir" GIT_WORK_TREE="$source_worktree" go build -ldflags "-X github.com/alswl/mind-forge/internal/version.Commit=$revision -X github.com/alswl/mind-forge/internal/version.BuildDate=$build_date" -o "$artifact" ./cmd/mf
+# The shared makefile-go build module owns compilation and version stamping.
+exec make --no-print-directory build MF_BUILD_OUT="$artifact"

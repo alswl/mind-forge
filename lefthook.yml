@@ -2,5 +2,5 @@ pre-commit:
   commands:
     go-fmt:
       glob: "*.go"
-      run: test -z "$(gofmt -l cmd internal)"
+      run: test -z "$(gofmt -l cmd pkg internal)"
       fail_text: "Run gofmt on the changed Go files."

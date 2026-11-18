@@ -153,7 +153,7 @@ def run_sampled_development_test_sequence():
     else:
         sequence_env.update(GOCACHE=str(cache), GOTMPDIR=str(temporary))
         commands = [[go, "build", "-o", "bin/mf", "./cmd/mf"],
-                    [go, "test", "-count=1", "./internal/..."]]
+                    [go, "test", "-count=1", "./..."]]
     observations = []
     stop = threading.Event()
     started = time.monotonic()
@@ -426,7 +426,7 @@ try:
         series("business-edit", edits)
     if args.development_tests_only:
         tests = ([cargo, "test", "--locked", "--offline", "--bin", "mf"] if args.language == "rust"
-                 else [go, "test", "-count=1", "./internal/..."])
+                 else [go, "test", "-count=1", "./..."])
         series("component-unit-first-then-warm", [measure(f"component-unit-{index}", tests) for index in range(args.samples)])
         result["component_tests"] = {
             "argv": tests, "actual_executions": args.samples,
@@ -462,7 +462,7 @@ try:
     series("source-install-warm", [measure(f"source-install-{index}", install) for index in range(args.samples)])
     if args.component_tests:
         tests = ([cargo, "test", "--locked", "--offline", "--bin", "mf"] if args.language == "rust"
-                 else [go, "test", "-count=1", "./internal/..."])
+                 else [go, "test", "-count=1", "./..."])
         series("component-unit-first-then-warm", [measure(f"component-unit-{index}", tests) for index in range(args.samples)])
         result["component_tests"] = {
             "argv": tests, "actual_executions": args.samples,

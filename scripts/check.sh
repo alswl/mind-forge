@@ -10,12 +10,15 @@ if [[ "$(go env GOVERSION)" != "$expected_go" ]]; then
     exit 1
 fi
 
-unformatted=$(gofmt -l cmd internal)
+unformatted=$(gofmt -l cmd pkg internal)
 if [[ -n "$unformatted" ]]; then
     printf 'Run gofmt on:\n%s\n' "$unformatted" >&2
     exit 1
 fi
 
 go vet ./...
-go test -count=1 ./internal/...
+bash scripts/lint.sh
+go mod verify
+go mod tidy -diff
+go test -count=1 ./cmd/... ./pkg/... ./internal/...
 bash scripts/build.sh

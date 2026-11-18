@@ -2,9 +2,13 @@ from pathlib import Path
 import json,hashlib,subprocess
 import argparse
 ap=argparse.ArgumentParser();ap.add_argument('--workspace',type=Path,required=True);args=ap.parse_args()
-R=Path.cwd(); A=args.workspace.resolve(); F=A/'fixtures'; F.mkdir(exist_ok=True)
-BIN=R/'target/debug/mf'
-assert hashlib.sha256(BIN.read_bytes()).hexdigest()=='e6b28cf014ecb358689ada4c1bfeb43332308319e6740f45eb3f4ac655e809f6'
+R=Path.cwd(); A=args.workspace.resolve()
+BIN=A/'bin/mf'
+manifest=json.loads((A/'run-manifest.json').read_text())
+expected=manifest.get('frozen',{}).get('bin/mf')
+if not expected or hashlib.sha256(BIN.read_bytes()).hexdigest()!=expected:
+ raise SystemExit('Freeze the selected CLI as workspace bin/mf and record its SHA-256 in run-manifest.json frozen["bin/mf"]')
+F=A/'fixtures'; F.mkdir(exist_ok=True)
 def write(p,s):p.parent.mkdir(parents=True,exist_ok=True);p.write_text(s)
 def fixture(name,layout='category',body=None,blocks=False,zero=False):
  p=F/name;p.mkdir();write(p/'minds.yaml',"schema: '1'\nprojects: ['.']\n")

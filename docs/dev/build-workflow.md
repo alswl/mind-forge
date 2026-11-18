@@ -2,6 +2,15 @@
 
 ## Current development and verification rules
 
+The adopted [Go CLI requirements](go-cli-guidelines.md) map the pinned
+`alswl/guides` baseline to this implementation and list outstanding differences.
+Install development-only `golangci-lint` v2.12.2 with
+`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2`.
+`make check` wraps the same full gate as `bash scripts/check.sh`; the gate now
+also runs pinned correctness lint, `go mod verify` and `go mod tidy -diff`.
+`make help` lists the other local targets. Build and core runtime still require
+the pinned Go compiler and Make, not the linter.
+
 The active implementation plan declares the language/toolchain and exact local
 formatting, static-analysis, unit-test and build checks. The constitution fixes
 no language, compiler, build command or source-directory layout.
@@ -14,15 +23,18 @@ without that repository or its credentials; slice and final acceptance still
 require external evidence for the exact candidate and harness revision.
 
 The CLI uses Go 1.26.11, pinned in `.tool-versions` and `go.mod`.
-Run `go test ./internal/<changed-package>/...` while editing, then
+Run `go test ./pkg/<layer>/<changed-package>/...` while editing, then
 `bash scripts/check.sh` for the full local format/vet/unit/build gate. This gate
 needs no external verification checkout. It writes the explicit candidate to
-`bin/mf`. Component tests live under `internal/`; the `cmd/mf` package is the
+`bin/mf`. Component tests live beside their code under `cmd/`, `pkg/` and `internal/`; the `cmd/mf` package is the
 process entry point. The executable covers the CLI command families, including
 build/publish and lifecycle recovery, while matched Rust/Go acceptance, native
 platform and final cost gates remain open.
 
-`bash scripts/build.sh` builds `bin/mf` with the current commit and UTC build
+The [code structure](code-structure.md) describes command factories, application
+layers and the retained configuration/output contracts. `make build` uses the
+pinned shared makefile-go build module. `bash scripts/build.sh` delegates to
+that target and builds `bin/mf` with the current commit and UTC build
 date. `scripts/install.sh` and `scripts/generate-manual.sh` build Go by default.
 `MF_BIN=/absolute/path/to/mf` selects an existing executable for manual generation.
 Installation honors `MF_INSTALL_DIR` and `MF_INSTALL_TARGET_DIR`; use isolated
