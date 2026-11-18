@@ -1,6 +1,7 @@
 package content
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,7 +27,7 @@ func exactArticle(index model.Index, selector, hint string) (model.Article, int,
 }
 
 func PlanArticleRename(root, project, selector, newSlug string, force bool, now time.Time) (ContentMutation, error) {
-	inventory, err := readContentInventory(root)
+	inventory, err := readContentInventory(context.Background(), root)
 	if err != nil {
 		return ContentMutation{}, err
 	}
@@ -234,7 +235,7 @@ func PlanArticleRemove(root, project, selector string, dryRun bool) (ContentMuta
 	if strings.TrimSpace(selector) == "" {
 		return ContentMutation{}, output.Usage("article title must not be empty", "")
 	}
-	inventory, err := readContentInventory(root)
+	inventory, err := readContentInventory(context.Background(), root)
 	if err != nil {
 		return ContentMutation{}, err
 	}
@@ -270,7 +271,7 @@ func PlanArticleMove(root, sourceProject, targetProject, selector string, dryRun
 	if canonicalPath(sourceProject) == canonicalPath(targetProject) {
 		return ContentMutation{}, output.Usage("article source and destination projects must differ", "")
 	}
-	inventory, err := readContentInventory(root)
+	inventory, err := readContentInventory(context.Background(), root)
 	if err != nil {
 		return ContentMutation{}, err
 	}

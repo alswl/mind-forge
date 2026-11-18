@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -86,11 +87,11 @@ func ResolveRuntime(in RuntimeInput) (RuntimeSettings, error) {
 	} else {
 		directory := in.UserConfigDir
 		if directory == nil {
-			directory = os.UserConfigDir
+			directory = func() (string, error) { return snapshotUserConfigDir(runtime.GOOS, in.Env) }
 		}
 		dir, err := directory()
 		if err != nil {
-			return fail(output.Usage("runtime config directory: "+err.Error(), ""))
+			return fail(&output.Error{Kind: "usage", Message: "runtime config directory: " + err.Error(), Cause: err})
 		}
 		config = filepath.Join(dir, "mf", "config.toml")
 		s.Sources["config"] = "default"
@@ -103,15 +104,15 @@ func ResolveRuntime(in RuntimeInput) (RuntimeSettings, error) {
 	raw, err := os.ReadFile(s.Config)
 	if err != nil {
 		if explicit || !os.IsNotExist(err) {
-			return fail(output.Usage("read runtime config "+s.Config+": "+err.Error(), ""))
+			return fail(&output.Error{Kind: "usage", Message: "read runtime config " + s.Config + ": " + err.Error(), Cause: err})
 		}
 	} else {
 		decoder, err := viper.NewCodecRegistry().Decoder("toml")
 		if err != nil {
-			return fail(output.Usage(err.Error(), ""))
+			return fail(&output.Error{Kind: "usage", Message: err.Error(), Cause: err})
 		}
 		if err := decoder.Decode(raw, fileValues); err != nil {
-			return fail(output.Usage("invalid runtime TOML "+s.Config+": "+err.Error(), ""))
+			return fail(&output.Error{Kind: "usage", Message: "invalid runtime TOML " + s.Config + ": " + err.Error(), Cause: err})
 		}
 		s.Output = knownRuntimeFormat(in.CLI, in.Env, fileValues)
 		for key, value := range fileValues {
@@ -151,7 +152,7 @@ func ResolveRuntime(in RuntimeInput) (RuntimeSettings, error) {
 		s.Sources[key] = "default"
 	}
 	if err := v.MergeConfigMap(fileValues); err != nil {
-		return fail(output.Usage(err.Error(), ""))
+		return fail(&output.Error{Kind: "usage", Message: err.Error(), Cause: err})
 	}
 	for key, kind := range runtimeKinds {
 		if _, ok := fileValues[key]; ok {
@@ -170,7 +171,7 @@ func ResolveRuntime(in RuntimeInput) (RuntimeSettings, error) {
 				return fail(err)
 			}
 			if err := v.BindFlagValue(key, snapshotFlag{key, fmt.Sprint(validated), kind}); err != nil {
-				return fail(output.Usage(err.Error(), ""))
+				return fail(&output.Error{Kind: "usage", Message: err.Error(), Cause: err})
 			}
 			s.Sources[key] = origin
 			s.Present[key] = true

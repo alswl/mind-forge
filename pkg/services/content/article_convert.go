@@ -1,6 +1,7 @@
 package content
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -35,7 +36,7 @@ func (inspection ConversionInspection) Result(status string, indexUpdated, sourc
 }
 
 func InspectArticleConversions(root, project string, paths []string, direction string, merge bool) ([]ConversionInspection, error) {
-	inventory, err := readContentInventory(root)
+	inventory, err := readContentInventory(context.Background(), root)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +120,7 @@ func inspectArticleConversion(inventory *contentInventory, project, path, direct
 }
 
 func PlanArticleConversion(root, project string, inspection ConversionInspection, now time.Time) (ContentMutation, error) {
-	inventory, err := readContentInventory(root)
+	inventory, err := readContentInventory(context.Background(), root)
 	if err != nil {
 		return ContentMutation{}, err
 	}

@@ -121,3 +121,30 @@ func TestPipelineDiagnosticsRouteBothStreamsAndQuietRetainsErrors(t *testing.T) 
 		})
 	}
 }
+
+func TestNilRunnerCompatibilityStreamsAndExplicitQuiet(t *testing.T) {
+	streams := defaultPipelineIO()
+	streams.Run = func(cmd *exec.Cmd) error {
+		require.NotNil(t, cmd.Stdin)
+		require.NotNil(t, cmd.Stdout)
+		require.NotNil(t, cmd.Stderr)
+		require.Same(t, os.Stdin, cmd.Stdin)
+		require.Same(t, os.Stdout, cmd.Stdout)
+		require.Same(t, os.Stderr, cmd.Stderr)
+		require.Nil(t, cmd.Process)
+		return nil
+	}
+	require.NoError(t, NewPipelineRunner(context.Background(), streams)("synthetic-not-launched", "", ""))
+	quiet := defaultPipelineIO().Diagnostics(os.Stderr, true)
+	quiet.Run = func(cmd *exec.Cmd) error {
+		require.NotNil(t, cmd.Stdin)
+		require.NotNil(t, cmd.Stdout)
+		require.NotNil(t, cmd.Stderr)
+		require.Same(t, os.Stdin, cmd.Stdin)
+		require.Equal(t, io.Discard, cmd.Stdout)
+		require.Same(t, os.Stderr, cmd.Stderr)
+		require.Nil(t, cmd.Process)
+		return nil
+	}
+	require.NoError(t, NewPipelineRunner(context.Background(), quiet)("synthetic-not-launched", "", ""))
+}

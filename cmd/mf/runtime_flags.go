@@ -26,7 +26,7 @@ func runtimeInput(command *cobra.Command, cwd string, env map[string]string) app
 			cli[key] = command.Flags().Lookup(key).Value.String()
 		}
 	}
-	return app.RuntimeInput{CWD: cwd, Env: env, CLI: cli, UserConfigDir: os.UserConfigDir}
+	return app.RuntimeInput{CWD: cwd, Env: env, CLI: cli}
 }
 
 func snapshotEnvironment() map[string]string {

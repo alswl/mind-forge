@@ -4,6 +4,7 @@ package task
 
 import (
 	"context"
+	"io"
 	"os"
 	"os/exec"
 	"syscall"
@@ -26,4 +27,10 @@ func Command(ctx context.Context, name string, args ...string) *exec.Cmd {
 	}
 	command.WaitDelay = time.Second
 	return command
+}
+
+// ProcessStreams captures the standard streams at a process-facing compatibility
+// boundary; explicit invocation IO remains owned by the caller.
+func ProcessStreams() (io.Reader, io.Writer, io.Writer) {
+	return os.Stdin, os.Stdout, os.Stderr
 }

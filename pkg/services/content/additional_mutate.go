@@ -2,6 +2,7 @@ package content
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"path"
 	"sort"
@@ -38,7 +39,7 @@ func PlanAdditional(root, project, selector string, destination *string) (lifecy
 			return lifecycle.Plan{}, err
 		}
 	}
-	inventory, err := readContentInventory(root)
+	inventory, err := readContentInventory(context.Background(), root)
 	if err != nil {
 		return lifecycle.Plan{}, err
 	}

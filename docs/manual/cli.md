@@ -1511,14 +1511,17 @@ Apply a saved hash-bound plan after revalidating its complete inventory
 ```text
 Examples (use a disposable directory for setup):
   Prerequisites:
+    mf_example_workspace=$(mktemp -d)
+    mkdir "$mf_example_workspace/repo" "$mf_example_workspace/exports"
+    cd "$mf_example_workspace/repo"
     mf init .
     mf project new projects/lab --layout category --root .
     mf mind new brief -p lab --root .
     mf output new brief summary --file -p lab --root .
-    mf lifecycle convert --to bundle -p lab --dry-run --emit-plan --json --root . > ../preview.json
-    python3 -c 'import json; p=json.load(open("../preview.json"))["data"]["plan"]; json.dump(p,open("../plan.json","w"))'
+    mf lifecycle convert --to bundle -p lab --dry-run --emit-plan --json --root . > ../exports/preview.json
+    python3 -c 'import json; p=json.load(open("../exports/preview.json"))["data"]["plan"]; json.dump(p,open("../exports/plan.json","w"))'
   Command:
-    mf lifecycle apply ../plan.json --dry-run --root .
+    mf lifecycle apply ../exports/plan.json --dry-run --root .
   Effect: Validate a saved plan outside the watched repository and preview writes without applying it.
 ```
 

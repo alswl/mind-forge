@@ -2,9 +2,11 @@ package content
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/alswl/mind-forge/pkg/common/task"
+	"github.com/alswl/mind-forge/pkg/managers/lifecycle"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,4 +36,24 @@ func TestLifecycleInventoryHasInvocationStage(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, plan.Digest)
 	require.Equal(t, []task.Stage{{Operation: "lifecycle", Name: "inventorying content"}}, stages)
+}
+
+func TestLifecycleInventoryCancellationPreservesTree(t *testing.T) {
+	root, project := lifecycleFixture(t, "category")
+	require.NoDirExists(t, filepath.Join(root, ".mind-forge"))
+	before, err := lifecycle.SnapshotFiles(root, []string{"."})
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx = task.WithObserver(ctx, func(stage task.Stage) {
+		if stage.Operation == "lifecycle" && stage.Name == "inventorying content" {
+			cancel()
+		}
+	})
+	_, err = PlanLifecycle(root, project, LifecycleOperation{Context: ctx, Kind: "convert", Layout: "bundle"})
+	require.ErrorIs(t, err, context.Canceled)
+	after, err := lifecycle.SnapshotFiles(root, []string{"."})
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+	require.NoDirExists(t, filepath.Join(root, ".mind-forge"))
 }

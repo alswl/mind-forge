@@ -40,3 +40,8 @@ func (streams ProcessIO) Diagnostics(stderr io.Writer, quiet bool) ProcessIO {
 	}
 	return streams
 }
+
+func defaultPipelineIO() ProcessIO {
+	stdin, stdout, stderr := task.ProcessStreams()
+	return ProcessIO{Stdin: stdin, Stdout: stdout, Stderr: stderr}
+}

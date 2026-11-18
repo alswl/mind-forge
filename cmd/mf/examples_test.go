@@ -45,3 +45,27 @@ func TestHelpAndManualShareStructuredExamples(t *testing.T) {
 		require.Contains(t, manual, shared)
 	}
 }
+
+func TestLifecyclePlanExampleKeepsExportsInsideFreshWorkspace(t *testing.T) {
+	spec, err := LoadSpec()
+	require.NoError(t, err)
+	found := false
+	for _, item := range spec.Commands {
+		if strings.Join(item.Path, " ") != "lifecycle apply" {
+			continue
+		}
+		found = true
+		for _, example := range item.Examples {
+			require.GreaterOrEqual(t, len(example.Prerequisites), 3)
+			require.Equal(t, "mf_example_workspace=$(mktemp -d)", example.Prerequisites[0])
+			require.Equal(t, `mkdir "$mf_example_workspace/repo" "$mf_example_workspace/exports"`, example.Prerequisites[1])
+			require.Equal(t, `cd "$mf_example_workspace/repo"`, example.Prerequisites[2])
+			all := strings.Join(example.Prerequisites, "\n") + "\n" + example.Command
+			require.NotContains(t, all, "../preview.json")
+			require.NotContains(t, all, "../plan.json")
+			require.Contains(t, all, "../exports/preview.json")
+			require.Contains(t, all, "../exports/plan.json")
+		}
+	}
+	require.True(t, found)
+}

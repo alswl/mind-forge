@@ -112,7 +112,7 @@ func PlanLifecycle(root, project string, operation LifecycleOperation) (lifecycl
 	if config.ContentLayout == nil {
 		return lifecycle.Plan{}, lifecycleFailure("ownership_unresolved", "explicit layout required")
 	}
-	inventory, err := readContentInventory(root)
+	inventory, err := readContentInventory(task.Context(operation.Context), root)
 	if err != nil {
 		return lifecycle.Plan{}, err
 	}

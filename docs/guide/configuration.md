@@ -30,7 +30,9 @@ no-color = false
 | `--no-color` | `MF_NO_COLOR` | false |
 
 `--config` overrides `MF_CONFIG` to select a TOML file; `config` is not a TOML key.
-Otherwise the default is `mf/config.toml` under the standard user configuration
+Otherwise the default follows Go 1.26.11 standard user-directory rules and diagnostics,
+resolved lazily from the same captured invocation environment without temporary
+environment mutation. It is `mf/config.toml` under the standard user configuration
 directory: macOS `~/Library/Application Support`, Linux `$XDG_CONFIG_HOME` or
 `~/.config`. Missing default files are normal. Explicit missing files, directories,
 unreadable files, invalid TOML/types and unknown keys fail with usage exit 2 before

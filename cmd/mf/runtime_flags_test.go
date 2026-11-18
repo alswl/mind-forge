@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	app "github.com/alswl/mind-forge/pkg/config"
@@ -70,4 +71,30 @@ func TestRuntimeProjectAutoPathRespectsEffectiveValue(t *testing.T) {
 		require.Equal(t, "other", selected.Project)
 		require.Equal(t, "projects/lab/docs/post", selected.Args[0])
 	}
+}
+
+func TestRuntimeDirectoryUsesCapturedEnvironment(t *testing.T) {
+	home := t.TempDir()
+	xdg := t.TempDir()
+	directory := filepath.Join(home, "Library", "Application Support", "mf")
+	if runtime.GOOS == "linux" {
+		directory = filepath.Join(xdg, "mf")
+	}
+	require.NoError(t, os.MkdirAll(directory, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(directory, "config.toml"), []byte("output='json'\n"), 0644))
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	env := snapshotEnvironment()
+	command := parserCommand(t, []string{"article", "list"})
+	in := runtimeInput(command, t.TempDir(), env)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	settings, err := app.ResolveRuntime(in)
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(directory, "config.toml"), settings.Config)
+	require.Equal(t, "json", settings.Output)
+	// Creating another adapter from the same frozen input must not read live env.
+	again, err := app.ResolveRuntime(runtimeInput(command, in.CWD, env))
+	require.NoError(t, err)
+	require.Equal(t, settings, again)
 }

@@ -169,7 +169,7 @@ func RunPipelineContext(ctx context.Context, project, assets string, rules []mod
 		return stages, warnings, err
 	}
 	if runner == nil {
-		runner = NewPipelineRunner(ctx, ProcessIO{})
+		runner = NewPipelineRunner(ctx, defaultPipelineIO())
 	}
 
 	collisions := map[string]string{}
