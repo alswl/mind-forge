@@ -54,6 +54,20 @@ Official release/archive, shell completion, native cross-platform, repeated
 C258 cost and final complete acceptance remain open; release, shell and
 cross-platform work are deferred by user priority.
 
+The local development/test cost gate was rerun after the user authorized
+removing regenerable benchmark caches. On current clean HEAD
+`13853e7d08216330b475f55bd7943ad41721aa15` versus frozen Rust
+`3864e883bdb338139c9f09b5b0f622db5a61f332`, five samples per workload passed
+the SC-001–003 numerical bounds: allocated compiler/test cache plus worktree
+outputs 1,070,759,936 B Rust / 228,569,088 B Go (21.35%); cold build median
+22.615 s / 5.256 s (23.24%); equivalent edit median 2.146 s / 0.612 s
+(28.53%). Each side's complete colocated unit gate ran five times. The Go
+runtime source is unchanged from the externally tested `91dc935`; the only
+intervening path is this build-workflow documentation. Raw series and sampling
+caveats are in `specs/085-go-rewrite/migration/candidate-c258-clean-development-test-cost.json`.
+T072 remains open for repeated fixed-profile C258 external runs and release
+workload; these local measurements do not close overall SC acceptance.
+
 ## External CLI acceptance
 
 Use the designated `my-tests` checkout/pass and its documented batch. Set
