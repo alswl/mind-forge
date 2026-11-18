@@ -107,7 +107,7 @@ func Prepare(repo, project, selector string, opts Options) (*Prepared, error) {
 	if format == "html" {
 		ext = "html"
 	}
-	p := &Prepared{processIO: opts.ProcessIO, Context: opts.Context, project: project, config: config.Build, assets: joined(project, layout.Assets)}
+	p := &Prepared{processIO: opts.ProcessIO.preparedStreams(), Context: opts.Context, project: project, config: config.Build, assets: joined(project, layout.Assets)}
 	p.Plan = Plan{Article: selector, Project: filepath.Base(project), Format: format, DryRun: opts.DryRun, StripFirstH1: config.Build.StripFirstH1, InputFiles: []InputFile{}, Pipeline: []PipelineStage{}}
 	if format == "html" {
 		p.template, err = loadHTMLTemplate(project, config.Build.HTMLTemplate)

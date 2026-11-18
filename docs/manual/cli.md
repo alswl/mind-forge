@@ -1511,18 +1511,22 @@ Apply a saved hash-bound plan after revalidating its complete inventory
 ```text
 Examples (use a disposable directory for setup):
   Prerequisites:
-    mf_example_workspace=$(mktemp -d)
-    mkdir "$mf_example_workspace/repo" "$mf_example_workspace/exports"
-    cd "$mf_example_workspace/repo"
-    mf init .
-    mf project new projects/lab --layout category --root .
-    mf mind new brief -p lab --root .
-    mf output new brief summary --file -p lab --root .
-    mf lifecycle convert --to bundle -p lab --dry-run --emit-plan --json --root . > ../exports/preview.json
-    python3 -c 'import json; p=json.load(open("../exports/preview.json"))["data"]["plan"]; json.dump(p,open("../exports/plan.json","w"))'
+    # Requires mf, mktemp, mkdir and python3 on PATH; no existing repository needed.
+    # Copy the complete Command block below; its subshell isolates cwd and stops on failure.
   Command:
-    mf lifecycle apply ../exports/plan.json --dry-run --root .
-  Effect: Validate a saved plan outside the watched repository and preview writes without applying it.
+    (
+      mf_example_workspace=$(mktemp -d) &&
+      mkdir "$mf_example_workspace/repo" "$mf_example_workspace/exports" &&
+      cd "$mf_example_workspace/repo" &&
+      mf init . &&
+      mf project new projects/lab --layout category --root . &&
+      mf mind new brief -p lab --root . &&
+      mf output new brief summary --file -p lab --root . &&
+      mf lifecycle convert --to bundle -p lab --dry-run --emit-plan --json --root . > ../exports/preview.json &&
+      python3 -c 'import json; p=json.load(open("../exports/preview.json"))["data"]["plan"]; json.dump(p,open("../exports/plan.json","w"))' &&
+      mf lifecycle apply ../exports/plan.json --dry-run --root .
+    )
+  Effect: Create an isolated workspace and preview the saved plan; setup failures stop before later writes and leave the calling shell cwd unchanged.
 ```
 
 

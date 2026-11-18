@@ -148,3 +148,51 @@ func TestNilRunnerCompatibilityStreamsAndExplicitQuiet(t *testing.T) {
 	}
 	require.NoError(t, NewPipelineRunner(context.Background(), quiet)("synthetic-not-launched", "", ""))
 }
+
+func TestPreparedExecuteSelectsDefaultOrExplicitStreams(t *testing.T) {
+	var diagnostics bytes.Buffer
+	input := strings.NewReader("synthetic input")
+	for _, item := range []struct {
+		name             string
+		streams          ProcessIO
+		wantIn           io.Reader
+		wantOut, wantErr io.Writer
+	}{
+		{"unspecified", ProcessIO{}, os.Stdin, os.Stdout, os.Stderr},
+		{"partial-explicit", ProcessIO{Stdout: &diagnostics}, nil, &diagnostics, nil},
+		{"explicit-all-nil", ProcessIO{Explicit: true}, nil, nil, nil},
+		{"nil-diagnostics", (ProcessIO{}).Diagnostics(nil, false), nil, nil, nil},
+		{"run-only-explicit", ProcessIO{Run: func(*exec.Cmd) error { return nil }}, nil, nil, nil},
+		{"quiet", (ProcessIO{Stdin: input}).Diagnostics(&diagnostics, true), input, io.Discard, &diagnostics},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			root := buildTestRoot(t)
+			putBuildFile(t, root, "mind.yaml", "schema: '1'\n")
+			putBuildFile(t, root, "mind-index.yaml", "schema: '1'\narticles:\n- title: Post\n  article_path: docs/post.md\n")
+			putBuildFile(t, root, "docs/post.md", "# Post\n")
+			putBuildFile(t, root, "assets/flow.svg", "synthetic asset")
+			prepared, err := Prepare(root, root, "post", Options{ProcessIO: item.streams})
+			require.NoError(t, err)
+			prepared.config.Pipeline = []model.BuildPipelineRule{pipelineRule("svg-png", "svg", "png")}
+			calls := 0
+			// Inject only the process-execution boundary after Prepare chose the IO.
+			prepared.processIO.Run = func(cmd *exec.Cmd) error {
+				calls++
+				require.Nil(t, cmd.Process)
+				require.Equal(t, item.wantIn, cmd.Stdin)
+				require.Equal(t, item.wantOut, cmd.Stdout)
+				require.Equal(t, item.wantErr, cmd.Stderr)
+				return nil
+			}
+			_, _, err = prepared.Execute(root, nil)
+			require.NoError(t, err)
+			require.Equal(t, 1, calls)
+			// Explicit Execute runner wins even when the stored process hook would fail.
+			prepared.processIO.Run = func(*exec.Cmd) error { t.Fatal("explicit runner ignored"); return nil }
+			explicitCalls := 0
+			_, _, err = prepared.Execute(root, func(_, _, _ string) error { explicitCalls++; return nil })
+			require.NoError(t, err)
+			require.Equal(t, 1, explicitCalls)
+		})
+	}
+}

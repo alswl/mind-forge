@@ -17,10 +17,15 @@ func TestEveryPublicCommandHasUsefulExamples(t *testing.T) {
 			for _, example := range item.Examples {
 				require.NotEmpty(t, example.Prerequisites)
 				require.NotEmpty(t, example.Effect)
-				require.True(t, strings.HasPrefix(example.Command, "mf "))
+				command := strings.TrimSpace(example.Command)
+				if strings.HasPrefix(command, "(\n") && strings.HasSuffix(command, "\n)") {
+					lines := strings.Split(command, "\n")
+					command = strings.TrimSpace(lines[len(lines)-2])
+				}
+				require.True(t, strings.HasPrefix(command, "mf "))
 				require.NotContains(t, example.Command, "--help", "example must demonstrate command behavior")
 				prefix := strings.TrimSpace("mf " + strings.Join(item.Path, " "))
-				require.True(t, strings.HasPrefix(example.Command, prefix), "example belongs to another command")
+				require.True(t, strings.HasPrefix(command, prefix), "example belongs to another command")
 			}
 		})
 	}
@@ -56,15 +61,26 @@ func TestLifecyclePlanExampleKeepsExportsInsideFreshWorkspace(t *testing.T) {
 		}
 		found = true
 		for _, example := range item.Examples {
-			require.GreaterOrEqual(t, len(example.Prerequisites), 3)
-			require.Equal(t, "mf_example_workspace=$(mktemp -d)", example.Prerequisites[0])
-			require.Equal(t, `mkdir "$mf_example_workspace/repo" "$mf_example_workspace/exports"`, example.Prerequisites[1])
-			require.Equal(t, `cd "$mf_example_workspace/repo"`, example.Prerequisites[2])
-			all := strings.Join(example.Prerequisites, "\n") + "\n" + example.Command
-			require.NotContains(t, all, "../preview.json")
-			require.NotContains(t, all, "../plan.json")
-			require.Contains(t, all, "../exports/preview.json")
-			require.Contains(t, all, "../exports/plan.json")
+			// This checks the advertised copyable shape, not real shell execution.
+			for _, prerequisite := range example.Prerequisites {
+				require.True(t, strings.HasPrefix(prerequisite, "#"), "setup must live in the complete guarded Command")
+			}
+			steps := strings.Split(example.Command, "\n")
+			require.GreaterOrEqual(t, len(steps), 5)
+			require.Equal(t, "(", steps[0])
+			require.Equal(t, ")", steps[len(steps)-1])
+			require.Equal(t, "mf_example_workspace=$(mktemp -d) &&", strings.TrimSpace(steps[1]))
+			require.Equal(t, `mkdir "$mf_example_workspace/repo" "$mf_example_workspace/exports" &&`, strings.TrimSpace(steps[2]))
+			require.Equal(t, `cd "$mf_example_workspace/repo" &&`, strings.TrimSpace(steps[3]))
+			for _, step := range steps[1 : len(steps)-2] {
+				require.True(t, strings.HasSuffix(strings.TrimSpace(step), " &&"), "no fall-through after setup or prerequisite failure")
+			}
+			require.True(t, strings.HasPrefix(strings.TrimSpace(steps[len(steps)-2]), "mf lifecycle apply "))
+			require.NotContains(t, example.Command, "../preview.json")
+			require.NotContains(t, example.Command, "../plan.json")
+			require.Contains(t, example.Command, "../exports/preview.json")
+			require.Contains(t, example.Command, "../exports/plan.json")
+			require.NotContains(t, example.Command, "exit ")
 		}
 	}
 	require.True(t, found)

@@ -16,7 +16,7 @@ func ExamplesText(examples []HelpExample) string {
 		for _, step := range example.Prerequisites {
 			fmt.Fprintf(&text, "    %s\n", step)
 		}
-		fmt.Fprintf(&text, "  Command:\n    %s\n  Effect: %s\n", example.Command, example.Effect)
+		fmt.Fprintf(&text, "  Command:\n    %s\n  Effect: %s\n", strings.ReplaceAll(example.Command, "\n", "\n    "), example.Effect)
 	}
 	return text.String()
 }
