@@ -1,25 +1,31 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-## [Unreleased]
+## [0.5.3] - 2026-11-18
 
 ### Changed
 - Build and install the CLI with Go 1.26.11 and CGO disabled. Source installation
   and manual generation now use Go by default; release archives keep their
   existing platform names and checksum verification.
-- Prepare product version 0.6.0 with Go compiler metadata under FR-016: text output
-  reports the real Go compiler, JSON retains the `rustc` field as
+- Publish the Go implementation as patch version 0.5.3. Text output reports
+  the real Go compiler; JSON retains the `rustc` field as
   `not applicable` and adds `compiler`/`go_version`, and platform names remain
   compatible.
+- Split commands into per-command Cobra factories under `cmd/mf`, move business
+  orchestration into `pkg/services` and enforce package dependency directions.
+- Use the pinned shared makefile-go build module, and update agent skills for
+  the Go build and current CLI contracts.
 
 ### Fixed
-- Apply the 0.6.0 contract corrections recorded as D001–D013: preserve real
+- Apply the migration contract corrections recorded as D001–D013: preserve real
   optional Mind paths and schema discriminators; retain sibling conversion
   outputs, registered Source evidence, unrelated project authority and opaque
   term metadata; keep previews read-only while committing explicit refreshes;
   prevent unsafe global term writes; disclose empty glossary registration;
   classify and filter term lint findings; and align help and shell suggestions
   with the published command contract.
+- Propagate cancellation through HTTP, file scans, lifecycle work and subprocess
+  groups; keep operational slog output on stderr.
 
 ### Removed
 - Remove the Rust implementation, Cargo toolchain and local CLI/E2E harness.

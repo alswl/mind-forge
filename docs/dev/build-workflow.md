@@ -136,8 +136,8 @@ The manual **Prepare Go candidate archives** workflow uses
 workflow uses the same Go packager and uploads a draft release. Manual archive
 preparation creates review artifacts without publishing a release.
 
-Run `bash scripts/package.sh --tag v0.6.0` to prepare the four macOS/Linux
-x86_64/ARM64 archives in a new `release/v0.6.0` directory. `--out` selects another
+Run `bash scripts/package.sh --tag v0.5.3` to prepare the four macOS/Linux
+x86_64/ARM64 archives in a new `release/v0.5.3` directory. `--out` selects another
 new directory; an existing destination is refused. The tag's core version must
 match `internal/version.BaseVersion`. Existing development version/channel text
 is retained, including its commit identity.
@@ -153,8 +153,9 @@ The build helper binds Git queries to the active worktree so nested worktrees
 record their own revision. The packager checks every binary's embedded settings
 using [`go version -m`](https://pkg.go.dev/cmd/go#hdr-Print_Go_version); cross-build
 inspection is separate from the external native execution/installation gate.
-The release workflow uploads a commit-named preparation artifact and creates no
-GitHub release. Native four-platform, installation and checksum-failure acceptance
+The release workflow uploads a commit-named preparation artifact and creates a
+draft GitHub release. Inspect the assets and verification results before publishing
+the draft. Native four-platform, installation and checksum-failure acceptance
 remain the external verification repository's responsibility.
 
 ## Controlled build measurements
@@ -217,6 +218,11 @@ out that historical revision in an isolated directory; it is separate from all
 daily build, install and acceptance commands.
 
 ## Version tags
+
+The first Go release is tagged `v0.5.3`, following the requested patch version
+after `v0.5.2`; the earlier `0.6.0` migration candidates remain historical
+verification inputs. The executable retains its existing `0.5.3-dev+<commit>`
+identity and `dev` channel while the published tag and base version are `0.5.3`.
 
 `scripts/bump.sh` updates `internal/version/version.go`, regenerates the changelog,
 and creates a commit and tag. It previews by default. `--stage candidate` adds

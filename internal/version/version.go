@@ -7,7 +7,7 @@ import (
 	"runtime/debug"
 )
 
-const BaseVersion = "0.6.0"
+const BaseVersion = "0.5.3"
 
 // Source builds set these with -ldflags. Unstamped builds report unavailable
 // metadata explicitly instead of substituting the time the command was run.

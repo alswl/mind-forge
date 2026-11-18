@@ -46,6 +46,6 @@ the previously installed program; staging files are cleaned up.
 
 Latest-version fallback uses GitHub's [latest release endpoint](https://docs.github.com/en/rest/releases/releases#get-the-latest-release),
 which selects a published stable release. Explicit `MF_VERSION` accepts a version
-tag such as `v0.6.0` or `v0.6.0-rc.1`; its core version must match the executable.
+tag such as `v0.5.3` or `v0.5.3-rc.1`; its core version must match the executable.
 Formal source/prebuilt installation and four-platform execution are accepted in
 the external verification repository, separately from package construction.
