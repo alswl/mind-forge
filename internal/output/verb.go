@@ -6,29 +6,23 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/alswl/mind-forge/pkg/common/outcome"
 )
 
-type Verb string
+type Verb = outcome.Verb
+type VerbResult = outcome.VerbResult
 
 const (
-	Create Verb = "create"
-	Add    Verb = "add"
-	Rename Verb = "rename"
-	Remove Verb = "remove"
-	Update Verb = "update"
-	Move   Verb = "move"
-	Index  Verb = "index"
-	Lint   Verb = "lint"
+	Create = outcome.Create
+	Add    = outcome.Add
+	Rename = outcome.Rename
+	Remove = outcome.Remove
+	Update = outcome.Update
+	Move   = outcome.Move
+	Index  = outcome.Index
+	Lint   = outcome.Lint
 )
-
-type VerbResult struct {
-	Verb           Verb
-	Kind, Identity string
-	OldIdentity    *string
-	Path           *string
-	DryRun         bool
-	Details        map[string]any
-}
 
 func textField(object map[string]any, key, fallback string) string {
 	if value, ok := object[key].(string); ok {

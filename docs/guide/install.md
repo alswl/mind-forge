@@ -3,7 +3,7 @@
 > [!NOTE]
 > Prebuilt binaries for tagged versions are attached to
 > [GitHub Releases](https://github.com/alswl/mind-forge/releases). Building from
-> source requires Go `1.26.11`.
+> source requires Go `1.26.11` and GNU Make.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/alswl/mind-forge/master/scripts/install.sh | sh
@@ -24,7 +24,7 @@ interactive editor configuration.
 
 ## Build from source
 
-Install Go `1.26.11`, then run:
+Install Go `1.26.11` and GNU Make, then run:
 
 ```bash
 scripts/install.sh

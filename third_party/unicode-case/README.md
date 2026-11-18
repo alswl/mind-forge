@@ -1,6 +1,6 @@
 # Frozen Unicode text behavior
 
-`internal/textcase/lowercase_data.go` contains Unicode 17.0.0 mappings observed
+`pkg/common/textcase/lowercase_data.go` contains Unicode 17.0.0 mappings observed
 with Rust 1.98.0 (`88d9e12ae`), the compiler used for the migration reference.
 It keeps saved-plan path collision checks independent of Go's Unicode version.
 The implementation includes the language-independent final-sigma rule from
@@ -18,7 +18,7 @@ Unicode data is covered by `LICENSE-UNICODE`; the Rust-derived algorithm is
 available under `LICENSE-MIT` or `LICENSE-APACHE`. Migration provenance and the
 oracle source are retained with the feature's private migration records.
 
-`internal/textcase/alphanumeric_data.go` additionally freezes the 844
+`pkg/common/textcase/alphanumeric_data.go` additionally freezes the 844
 alphanumeric ranges observed by enumerating all Unicode scalar values with
 that same Rust compiler (`char::is_alphanumeric`). Article/block filename
 normalization reuses these ranges, including alphabetic combining marks and

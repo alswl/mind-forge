@@ -1,6 +1,6 @@
 # Fixed first-reading pinyin data
 
-`internal/text/data/pinyin-first.tsv.gz` contains each Unicode scalar's first
+`pkg/common/text/data/pinyin-first.tsv.gz` contains each Unicode scalar's first
 toneless reading as returned by the frozen Rust `pinyin` 0.10.0 crate. Unknown
 scalars have no row. It preserves the original library's reading order, `ü`,
 rare-character membership and context-free conversion, without adopting another
@@ -16,6 +16,6 @@ was checked at its versioned upstream URL.
 The external owner component oracle is
 `my-tests/apps/mf/compat/text-oracle`. It writes a static table and expected
 Unicode digest. Product unit tests read fixed inputs directly, without invoking
-the oracle, a CLI or Rust. See `internal/text/testdata/provenance.json` for source,
+the oracle, a CLI or Rust. See `pkg/common/text/testdata/provenance.json` for source,
 compiler, executable, dictionary and compressed-data identities. This component
 reference does not supply backing for external business acceptance.

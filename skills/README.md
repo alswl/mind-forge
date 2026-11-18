@@ -37,12 +37,13 @@ Source registration, identities, and file locations.
 
 ## Getting started (5 minutes)
 
-Requires the `mf` binary (Rust 1.91+):
+Requires the `mf` binary. To build from source, install Go `1.26.11` and GNU Make:
 
 ```bash
 git clone https://github.com/alswl/mind-forge.git
 cd mind-forge
-cargo install --path .
+bash scripts/build.sh
+export PATH="$PWD/bin:$PATH"
 ```
 
 Make a repo and walk the core workflow:

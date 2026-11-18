@@ -1,4 +1,4 @@
 interface:
   display_name: "Mind Forge CLI"
   short_description: "Operate first-class Mind Repo knowledge stores"
-  default_prompt: "Use $mf-cli to operate Sources, Prompts, Thinking, and Articles safely."
+  default_prompt: "Use $mf-cli to operate minds, selected outputs, Sources, Prompts, Thinking, and legacy Articles with the current mf command and JSON contracts."

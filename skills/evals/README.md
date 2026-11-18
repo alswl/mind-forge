@@ -30,9 +30,13 @@ temperature explicitly. Do not print credentials or complete process argv/env.
 
 Use a separate ignored workspace, such as `.agents/skills-evals/<run-id>`. Before editing skills,
 freeze complete baseline skill trees, the current CLI binary, historical inputs,
-source/parent hashes and protected files. `prepare.py --workspace <path>` builds
-synthetic fixtures using a pinned CLI. The preparer currently requires a fixed
-binary SHA-256 recorded in its source. A fresh build is not interchangeable.
+source/parent hashes and protected files. Copy the selected freshly built CLI
+into `<workspace>/bin/mf` and record its SHA-256 as `frozen["bin/mf"]` in
+`run-manifest.json` before preparing fixtures. `prepare.py --workspace <path>`
+builds synthetic fixtures with that exact binary and refuses a missing or
+mismatched digest. It does not select PATH binaries, retired Rust target paths,
+or a hard-coded historical candidate. A different build requires a new frozen
+workspace.
 The repository does not include that binary, frozen skill snapshots, or run results.
 It refuses existing case directories. The checked-in suite describes exact
 messages; preserve earlier suite and fixture hashes before any revision.

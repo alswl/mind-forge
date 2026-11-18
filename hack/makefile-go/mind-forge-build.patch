@@ -1,0 +1,54 @@
+--- a/build.mk
++++ b/build.mk
+@@ -1,0 +1,8 @@
++# MindForge compatibility hooks; upstream origin and patch are documented in README.md.
++GO_BUILD_VERBOSE ?= -v
++GO_SOURCE_DIRS ?= .
++GO_LINT_COMMAND ?= golangci-lint run --timeout 5m
++GO_BUILD_LDFLAGS ?= -s -w -X $(ROOT)/pkg/version.Version=$(VERSION) -X $(ROOT)/pkg/version.Commit=$(COMMIT) -X $(ROOT)/pkg/version.Package=$(ROOT) -X $(ROOT)/internal/version.Version=$(VERSION) -X $(ROOT)/internal/version.Commit=$(COMMIT) -X $(ROOT)/internal/version.Package=$(ROOT)
++GO_BUILD_OUTPUT ?= $(OUTPUT_DIR)/$${target}-$(GOOS)-$(GOARCH)
++GO_BUILD_COPY_VARIANTS ?= true
++
+@@ -8 +16 @@
+-	gofmt -w .
++	gofmt -w $(GO_SOURCE_DIRS)
+@@ -13 +21 @@
+-	goimports -w .
++	goimports -w $(GO_SOURCE_DIRS)
+@@ -20 +28 @@
+-	@test $$(gofmt -l . | wc -l) -eq 0
++	@test $$(gofmt -l $(GO_SOURCE_DIRS) | wc -l) -eq 0
+@@ -27,3 +35,2 @@
+-	go mod tidy
+-	gofmt -w .
+-	golangci-lint run --timeout 5m
++	go mod tidy -diff
++	$(GO_LINT_COMMAND)
+@@ -31 +38 @@
+-	# (cd examples && go mod tidy && golangci-lint run --timeout 5m && gofmt -w .)
++	# (cd examples && go mod tidy && golangci-lint run --timeout 5m && gofmt -w $(GO_SOURCE_DIRS))
+@@ -41,14 +48,10 @@
+-	@for target in $(TARGETS); do                                                                               \
+-	  GOOS=$(GOOS) GOARCH=$(GOARCH) go build -v -o $(OUTPUT_DIR)/$${target}-$(GOOS)-$(GOARCH)                   \
+-	    $(if $(GO_BUILD_TAGS),-tags=$(GO_BUILD_TAGS),)                                                          \
+-	    -ldflags "-s -w                                                                                         \
+-	    -X $(ROOT)/pkg/version.Version=$(VERSION)                                                               \
+-	    -X $(ROOT)/pkg/version.Commit=$(COMMIT)                                                                 \
+-	    -X $(ROOT)/pkg/version.Package=$(ROOT)                                                                  \
+-	    -X $(ROOT)/internal/version.Version=$(VERSION)                                                          \
+-	    -X $(ROOT)/internal/version.Commit=$(COMMIT)                                                            \
+-	    -X $(ROOT)/internal/version.Package=$(ROOT)"                                                            \
+-	    $(CMD_DIR)/$${target};                                                                                  \
+-	  cp $(OUTPUT_DIR)/$${target}-$(GOOS)-$(GOARCH) $(OUTPUT_DIR)/$${target};                                   \
+-	  cp $(OUTPUT_DIR)/$${target}-$(GOOS)-$(GOARCH) $(OUTPUT_DIR)/$${target}-$(GOOS)-$(GOARCH)-$(VERSION);      \
+-	  cp $(OUTPUT_DIR)/$${target}-$(GOOS)-$(GOARCH) $(OUTPUT_DIR)/$${target}-$(VERSION);                        \
++	@for target in $(TARGETS); do \
++	  mkdir -p "$$(dirname "$(GO_BUILD_OUTPUT)")" || exit; \
++	  GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(GO_BUILD_VERBOSE) -o "$(GO_BUILD_OUTPUT)" \
++	    $(if $(GO_BUILD_TAGS),-tags=$(GO_BUILD_TAGS),) \
++	    -ldflags "$(GO_BUILD_LDFLAGS)" $(CMD_DIR)/$${target} || exit; \
++	  if [[ "$(GO_BUILD_COPY_VARIANTS)" == true ]]; then \
++	    cp "$(GO_BUILD_OUTPUT)" "$(OUTPUT_DIR)/$${target}" || exit; \
++	    cp "$(GO_BUILD_OUTPUT)" "$(OUTPUT_DIR)/$${target}-$(GOOS)-$(GOARCH)-$(VERSION)" || exit; \
++	    cp "$(GO_BUILD_OUTPUT)" "$(OUTPUT_DIR)/$${target}-$(VERSION)" || exit; \
++	  fi; \

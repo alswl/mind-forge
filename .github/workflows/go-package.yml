@@ -6,9 +6,12 @@ on:
     paths:
       - '.github/workflows/go-package.yml'
       - '.tool-versions'
+      - 'Makefile'
+      - 'hack/makefile-go/**'
       - 'go.mod'
       - 'go.sum'
       - 'cmd/**'
+      - 'pkg/**'
       - 'internal/**'
       - 'scripts/build.sh'
       - 'scripts/package.sh'

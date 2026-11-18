@@ -25,16 +25,30 @@ export PATH="${MF_INSTALL_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}:$PATH"
 mf version
 ```
 
-For a source build, install Go `1.26.11` and run `scripts/install.sh` from a
-checkout. Installation honors `MF_INSTALL_DIR`, then `XDG_BIN_HOME`,
+For a source build, install Go `1.26.11` and GNU Make, then run
+`scripts/install.sh` from a checkout. Installation honors `MF_INSTALL_DIR`, then `XDG_BIN_HOME`,
 then `~/.local/bin`; `MF_INSTALL_TARGET_DIR` selects the reusable binary output
 directory. See [installation](../../docs/guide/install.md).
 
-During development, run changed-package component unit tests and
-`bash scripts/check.sh` for format/vet/all component units/stamped build. CLI,
-HTTP/PTY/process, installation and native-platform acceptance belongs to the
+During development, use `make build` (or `bash scripts/build.sh`) to build the
+explicit `bin/mf` candidate through the pinned shared makefile-go build module.
+Run changed-package component tests, for example
+`go test ./pkg/services/content/...` or `go test ./cmd/mf`, then `make check`
+(or `bash scripts/check.sh`) for formatting, vet, golangci-lint 2.12.2, module
+verification/tidy, all cmd/pkg/internal component tests and the stamped build.
+Install the pinned linter as described in the build workflow; it is a development
+dependency, not a runtime or source-install dependency.
+CLI, HTTP/PTY/process, installation and native-platform acceptance belongs to the
 external `my-tests` pass with an explicit `VERIFY_MF_BIN`; it is independent of
-local `go test`. See [build workflow](../../docs/dev/build-workflow.md).
+local `go test`. Record source revision/dirty state, SHA-256 and actual version
+for that exact binary; do not substitute `mf` found on PATH. See
+[build workflow](../../docs/dev/build-workflow.md) and
+[code structure](../../docs/dev/code-structure.md).
+
+The Go rewrite and package layering retain the public command tree, aliases,
+flag names/defaults, argument arity and JSON/exit contracts. Treat the generated
+manual and each command's help as authoritative; moving code is not a reason to
+invent a command, rename a flag or migrate repository configuration.
 
 Install the three skills by linking them from the clone into a skills
 directory — `~/.claude/skills/` for every project, `.claude/skills/` inside one
@@ -92,7 +106,7 @@ Every command honors these uniform contracts:
 - **Modify family envelope:** Per-verb `{ kind, identity, ... }`; rename adds `old_identity`/`new_identity`; remove adds `removed: bool`; update adds `changes: { field: {from, to} }`; index adds `{ added, removed, kept_count, scanned_count }`.
 - **Lint envelope:** `{ kind, issues, summary: { errors, warnings, info, fixed? }, dry_run }`. Term lint adds `summary.fixed` plus top-level `scanned_files`, `fixed_count`, `modified_files`, `failures`, and `would_apply_count`.
 - **TTY adaptation:** Pipes drop ANSI and headers, preserve row shape; `NO_COLOR` env disables color.
-- **Confirmation protocol:** `remove` and `archive` open `/dev/tty` for a `[y/N]` prompt on stderr. Non-TTY without `--yes` exits 1 with a confirmation hint. `--force` bypasses safety checks but does not replace confirmation.
+- **Confirmation protocol:** `remove` and `archive` open `/dev/tty` for a `[y/N]` prompt on stderr. Without a controlling TTY, an unconfirmed destructive operation exits 2 with a confirmation hint. The shared confirmation helper accepts `--yes` or a supported `--force`; use `--yes` to express authorization, and use `--force` only when its overwrite/bypass effect is also authorized. Check the specific command help rather than assuming every command exposes both flags.
 
 ## Flags
 
@@ -115,9 +129,9 @@ Shared flag families (uniform across all commands they apply to):
 
 | Flag family | Applies to | Description |
 |---|---|---|
-| `-n`, `--dry-run` | every mutating command (`new`, `add`, `rename`, `remove`, `archive`, `update`, `index`, lint `--fix`) | Preview without writing; JSON envelope sets `dry_run: true` |
-| `-f`, `--force` | every `new` / `rename` / `remove` / `archive` | Overwrite a target or bypass safety checks; it does not confirm remove/archive |
-| `-y`, `--yes` | every `remove` and `archive` | Confirm destructive action non-interactively |
+| `-n`, `--dry-run` | mutating commands whose help exposes this flag | Preview without writing; JSON envelope sets `dry_run: true` |
+| `-f`, `--force` | `new` / `rename` / `remove` / `archive` where exposed | Overwrite or bypass the command-specific check; the shared helper also treats it as confirmation |
+| `-y`, `--yes` | destructive and fix commands where exposed | Confirm an authorized destructive action non-interactively |
 | `--no-headers`, `--no-trunc` | every `list` | Suppress table header / disable column truncation |
 | `--fix`, `--rule <RULE>`, `--severity <LEVEL>`, `--max-warnings <N>` | every `lint` | Auto-fix; restrict to one rule kind; filter at-or-above severity (`error`/`warning`/`info`); exit 1 when warnings exceed N |
 
@@ -148,7 +162,7 @@ Update project metadata in `mind.yaml`.
 
 **`mf project rename <OLD_PATH> <NEW_PATH>`** — Rename a project.
 
-**`mf project remove <PATH>`** (alias `rm`) — Remove a project. Interactive TTY confirmation unless `--yes` is set.
+**`mf project remove <PATH>`** (alias `rm`) — Remove a project. Interactive TTY confirmation unless `--yes` or a supported `--force` is set.
 
 **`mf project archive <NAME_OR_PATH>`** — Move project to `_archived/`. Interactive TTY confirmation unless `--yes` or `--force` is set.
 
@@ -224,7 +238,7 @@ feedback state, execute automatically, or enter build/publish automatically.
 Lifecycle previews expose write sets and precondition hashes; apply verifies
 freshness and maintains supported inbound references. Removal refuses inbound
 references. Use existing authorization for the exact operation and documented
-`--yes`; `--force` is not a substitute for safety or confirmation. Never edit
+`--yes`; do not add `--force` unless its additional effect is also authorized. Never edit
 layout configuration to simulate conversion or hand-edit projections/records to
 simulate rename. Unfinished journals require `lifecycle resume` or `rollback`,
 which refuse later conflicting edits. Completed transactions are not undone by
@@ -474,7 +488,7 @@ Rename a term.
 **`mf term lint [PATH]`**
 Lint term consistency using `word`, `substring`, and `pinyin`. `substring + loose` performs embedded literal matching; `substring + standalone` suppresses ASCII identifier/path internals and requires CJK jieba token alignment. Pinyin findings are always `fix: suggested` (trailing `?` marker).
 Short (≤2 Han-character) pure-CJK `word` corrections are **advisory** (spec 074 #30): the matched span must be one exact jieba token to fire, and any genuine standalone occurrence is linted with `replacement_eligible: false` + `safety_reason: "short-cjk-advisory"` — so `term fix` never auto-applies it. Opt in explicitly with `--term <NAME>` / `--term <NAME:ORIGINAL>` to apply such a finding.
-`--fix` — Auto-correct term usage in docs (pair with `--dry-run` to preview). Non-TTY exits 2 unless `-y`/`--force` is passed. A `--fix --dry-run` preview lists each finding with its context, confidence, and selection state (`selected`, `excluded_*`, `below_confidence`, `suggested_disabled`, `ambiguous`, …).
+`--fix` — Auto-correct term usage in docs (pair with `--dry-run` to preview). Non-TTY exits 2 unless `-y`/`--yes` is passed; these commands do not expose `--force`. A `--fix --dry-run` preview lists each finding with its context, confidence, and selection state (`selected`, `excluded_*`, `below_confidence`, `suggested_disabled`, `ambiguous`, …).
 `--term <NAME>` or `--term <NAME:ORIGINAL>` — Repeatable; scope to one or more named terms (case-sensitive exact canonical name match) or, with the `NAME:ORIGINAL` form, one specific correction pair. When omitted, all terms are scanned. Unknown name/pair exits 2 with no edits.
 `--exclude-term <NAME>` — Repeatable; skip corrections for the named term(s).
 `--exclude-original <ORIGINAL>` — Repeatable; drop one exact original text across every term.
@@ -542,19 +556,17 @@ With an article selector, emit a render prompt without writing output files. The
 
 ### `mf config` — Manage configuration
 
-Subcommands: `schema`, `show`, `generate`, `default`, `terminal`, `init` (deprecated).
+Subcommands: `schema`, `show`, `generate`, `default`, `terminal`. Initialize a repository with `mf init`; there is no `mf config init` command.
 
 **`mf config schema`** — Show config JSON schema. `--output-format <json|yaml>` (default: `json`).
 
 **`mf config show`** — Show effective config. `--output-format <json|yaml>` (default: `yaml`). JSON envelope `data` is the canonical config object (no embedded YAML string).
 
-**`mf config generate`** — Generate effective config file. `--output-format <json|yaml>` (default: `yaml`), `-o, --output <PATH>`.
+**`mf config generate`** — Generate effective config file. `--output-format <json|yaml>` (default: `yaml`), `--out <PATH>` (required). Global `-o/--output` still selects `text|json`; it is not the destination path.
 
 **`mf config default`** — Show default config values. `--output-format <json|yaml>` (default: `yaml`). Generated config includes a `plugins.typora-front-matter` block with `enabled: true`.
 
 **`mf config terminal`** — Show terminal capability diagnostics (hyperlink support, color depth, terminfo probing). Environment-driven detection respects `TERM`, `COLORTERM`, `TERM_PROGRAM`, `NO_COLOR`, `MF_FORCE_HYPERLINKS`, and `MF_NO_HYPERLINKS`.
-
-**`mf config init`** — Deprecated compatibility command; use `mf init`. Supports `--output`, `--target <project|repo>`, and `--force`.
 
 ### `mf completion <SHELL>` — Generate shell completion scripts
 
@@ -562,8 +574,12 @@ Supported shells: `bash`, `zsh`, `fish`, `powershell`, `elvish`.
 
 ### `mf version` — Show version information
 
-Text format: `mf {base}-dev+{short_commit} (built {build_date}, rustc {rustc})`.
-JSON envelope `data`: `{ version, base_version, channel, commit, build_date, rustc, target_triple }`.
+Text format: `mf {version} (built {build_date}, {compiler} {go_version})`.
+JSON envelope `data`: `{ version, base_version, channel, commit, build_date,
+rustc, target_triple, compiler, go_version }`. In Go builds, `compiler` is `gc`,
+`go_version` identifies the actual compiler, and legacy `rustc` remains the string
+`"not applicable"`. Targets retain `x86_64|aarch64` and `linux|macos` spelling.
+Do not interpret the retained `rustc` key as a Rust runtime dependency.
 
 ## Common Workflows
 
@@ -685,9 +701,9 @@ mf version --json
 - Index subcommands reconcile `mind-index.yaml` with the filesystem; run them after manual file changes.
 - Prefer `schema` over `schema_version` in docs, examples, and generated YAML.
 - Global terms (created without `--project`) are stored in `minds-terms.yaml` at the repo root. Project-scoped terms are stored in each project's `mind-index.yaml`.
-- `term lint` requires a project context — it scans project docs for term usage.
+- `term lint` scans the selected project or global scope; project scans merge global terms with project terms. Use the existing scope flags and optional path to select the target.
 - Destructive verbs (`remove`, `archive`) prompt on `/dev/tty` in interactive shells. In scripts/CI pass `--yes` to confirm; add `--force` separately only when bypassing overwrite or referential-integrity checks is intended.
-- `term lint --fix` and `term fix` treat `--force` as an alias for `--yes`; do not generalize that exception to entity removal.
+- `term lint --fix` and `term fix` use `-y`/`--yes` for non-interactive application; `--force` is not a supported flag on either command.
 - `term fix` and `term lint --fix` accept `--term <NAME>` or `--term <NAME:ORIGINAL>` (repeatable) to scope corrections to named terms or a specific correction pair, plus `--exclude-term`/`--exclude-original` to narrow, and `--include-suggested`/`--min-confidence <0.0..1.0>` for suggested corrections (`--min-confidence` requires `--include-suggested`). Matching is case-sensitive exact on canonical name. Unknown term names exit 2 with no edits. Run `mf term correction remove <TERM> <ORIGINAL>` to delete a single correction.
 - `mf source new --register-only` registers a file already inside the project's `sources/` directory without copying its bytes. It is idempotent by default; use `--force` to replace the matching registration. It cannot combine with `--link`; paths outside `sources/`, URL inputs, and another identity's registered location exit 2.
 - `term update` manages corrections through `--add-correction`, `--correction-match`, `--correction-fix`, `--correction-pinyin`, and `--delete-correction`. Match kinds are `word`, `substring`, and `pinyin`; substring defaults to `standalone` and supports explicit `loose` matching.
