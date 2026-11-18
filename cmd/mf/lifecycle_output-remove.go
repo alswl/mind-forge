@@ -31,7 +31,7 @@ func executeLifecycleOutputRemove(command *cobra.Command, application *app.Conte
 	if err != nil {
 		return err
 	}
-	operation := content.LifecycleOperation{Kind: "output-remove"}
+	operation := content.LifecycleOperation{Context: command.Context(), Kind: "output-remove"}
 	if selector != nil {
 		operation.Identity = *selector
 	}

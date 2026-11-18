@@ -169,6 +169,20 @@ mind-forge: a local-first knowledge management CLI
 * `--no-color` — Disable colored output
 * `-p`, `--project <NAME_OR_PATH>` — Project name or path (cwd-relative, repo-relative, or absolute)
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # Start in an empty disposable directory; mf must be on PATH.
+  Command:
+    mf init demo
+  Effect: Create a synthetic repository in demo.
+  Prerequisites:
+    mf init .
+    printf "root = '.'\noutput = 'json'\n" > runtime.toml
+  Command:
+    mf --config runtime.toml project list --quiet=false --verbose=0
+  Effect: Read runtime TOML and explicitly reset quiet/verbosity; print project results as JSON.
+```
 
 
 ## `mf init`
@@ -181,6 +195,14 @@ Initialize a directory as a Mind Repo
 
 * `<PATH>` — Target directory path (defaults to current directory)
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # Start in an empty disposable directory.
+  Command:
+    mf init .
+  Effect: Initialize the disposable repository without external services.
+```
 
 
 ## `mf project`
@@ -202,6 +224,15 @@ Manage projects
 * `rename` — Rename a project
 * `remove` — Remove a project
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf project list --root .
+  Effect: Inspect project capabilities through a concrete local operation without remote access.
+```
 
 
 ## `mf project new`
@@ -224,6 +255,14 @@ Create a project
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+  Command:
+    mf project new projects/lab --root .
+  Effect: Create a local legacy project under projects/lab.
+```
 
 
 ## `mf project list`
@@ -239,6 +278,15 @@ List projects
 * `--no-headers` — Suppress the table header row
 * `--no-trunc` — Disable column truncation
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf project list --root .
+  Effect: List registered synthetic projects.
+```
 
 
 ## `mf project archive`
@@ -257,6 +305,15 @@ Archive a project
 * `-y`, `--yes` — Skip interactive confirmation prompt
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf project archive lab --yes --dry-run --root .
+  Effect: Preview archiving the disposable project.
+```
 
 
 ## `mf project lint`
@@ -275,6 +332,15 @@ Lint a project
 * `--include-suggested` — Apply all corrections including suggested
 * `--min-confidence <0.0..1.0>` — Apply suggested corrections at or above this confidence
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf project lint -p lab --root .
+  Effect: Check project configuration and derived inventory.
+```
 
 
 ## `mf project index`
@@ -287,6 +353,15 @@ Index projects
 
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf project index -p lab --dry-run --root .
+  Effect: Preview index reconciliation without rewriting author files.
+```
 
 
 ## `mf project show`
@@ -299,6 +374,15 @@ Show project details
 
 * `<PATH>` — Project name or path (cwd-relative, repo-relative, or absolute)
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf project show projects/lab --root .
+  Effect: Inspect project identity and content counts.
+```
 
 
 ## `mf project update`
@@ -317,6 +401,15 @@ Update project metadata
 * `--clear-description`
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf project update lab --description 'Synthetic workspace' --dry-run --root .
+  Effect: Preview a project description change.
+```
 
 
 ## `mf project import`
@@ -337,6 +430,16 @@ Import a directory as a project
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-y`, `--yes` — Skip interactive confirmation prompt
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mkdir imported
+    printf '# Synthetic imported article\n' > imported/note.md
+  Command:
+    mf project import ./imported --yes --root .
+  Effect: Scaffold and register a plain local directory containing synthetic Markdown.
+```
 
 
 ## `mf project rename`
@@ -355,6 +458,15 @@ Rename a project
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf project rename projects/lab projects/renamed --dry-run --root .
+  Effect: Preview renaming the disposable project.
+```
 
 
 ## `mf project remove`
@@ -375,6 +487,15 @@ Remove a project
 * `-y`, `--yes` — Skip interactive confirmation prompt
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf project remove lab --yes --dry-run --root .
+  Effect: Preview project removal; no author files are deleted.
+```
 
 
 ## `mf article`
@@ -397,6 +518,15 @@ Manage legacy articles
 * `block` — Manage blocks within a directory article
 * `convert` — Convert article shape between directory and single-file
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf article list -p lab --root .
+  Effect: Inspect article capabilities through a concrete local operation without remote access.
+```
 
 
 ## `mf article new`
@@ -428,6 +558,15 @@ Create an article
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf article new 'Synthetic note' --slug note -p lab --root .
+  Effect: Create an editable directory article.
+```
 
 
 ## `mf article list`
@@ -443,6 +582,16 @@ List articles
 * `--no-headers` — Suppress the table header row
 * `--no-trunc` — Disable column truncation
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+  Command:
+    mf article list -p lab --root .
+  Effect: List the synthetic article and its current metadata.
+```
 
 
 ## `mf article lint`
@@ -461,6 +610,16 @@ Lint articles
 * `--include-suggested` — Apply all corrections including suggested
 * `--min-confidence <0.0..1.0>` — Apply suggested corrections at or above this confidence
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+  Command:
+    mf article lint -p lab --root .
+  Effect: Check authored article content for structural problems.
+```
 
 
 ## `mf article index`
@@ -473,6 +632,16 @@ Index articles
 
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+  Command:
+    mf article index -p lab --dry-run --root .
+  Effect: Preview article index changes.
+```
 
 
 ## `mf article rename`
@@ -491,6 +660,16 @@ Rename an article
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+  Command:
+    mf article rename note renamed -p lab --dry-run --root .
+  Effect: Preview article rename and reference maintenance.
+```
 
 
 ## `mf article move`
@@ -508,6 +687,17 @@ Move an article to another project
 * `--to-project <TO_PROJECT>` — Destination project name or path (cwd-relative, repo-relative, or absolute)
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    mf project new projects/destination --root .
+  Command:
+    mf article move docs/note --to-project destination -p lab --dry-run --root .
+  Effect: Preview moving the article to another synthetic project.
+```
 
 
 ## `mf article remove`
@@ -528,6 +718,16 @@ Remove an article
 * `-y`, `--yes` — Skip interactive confirmation prompt
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+  Command:
+    mf article remove docs/note -p lab --yes --dry-run --root .
+  Effect: Preview removal without deleting the article.
+```
 
 
 ## `mf article show`
@@ -540,6 +740,16 @@ Show article details
 
 * `<PATH>` — Article path (e.g. docs/weekly.md), bare slug, or title
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+  Command:
+    mf article show note -p lab --root .
+  Effect: Inspect the synthetic article and its blocks.
+```
 
 
 ## `mf article update`
@@ -558,6 +768,16 @@ Update article metadata
 * `--title <TITLE>` — New article title (metadata only, does not rename files)
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+  Command:
+    mf article update docs/note --title 'Reviewed note' -p lab --dry-run --root .
+  Effect: Preview a title update without rewriting content.
+```
 
 
 ## `mf article block`
@@ -574,6 +794,16 @@ Manage blocks within a directory article
 * `rename` — Rename a block within a directory article
 * `rm` — Remove a block within a directory article
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+  Command:
+    mf article block new note findings -p lab --dry-run --root .
+  Effect: Preview adding a synthetic findings block without writing.
+```
 
 
 ## `mf article block new`
@@ -596,6 +826,18 @@ Create a block within a directory article
 
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    mf article block new note risks -p lab --root .
+    mf article block new note context -p lab --root .
+  Command:
+    mf article block new note findings -p lab --dry-run --root .
+  Effect: Preview inserting a findings block.
+```
 
 
 ## `mf article block move`
@@ -618,6 +860,18 @@ Move a block within a directory article
 
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    mf article block new note risks -p lab --root .
+    mf article block new note context -p lab --root .
+  Command:
+    mf article block move note risks --after context -p lab --dry-run --root .
+  Effect: Preview reordering the risks block after context.
+```
 
 
 ## `mf article block renumber`
@@ -638,6 +892,18 @@ Renumber blocks contiguously
 
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    mf article block new note risks -p lab --root .
+    mf article block new note context -p lab --root .
+  Command:
+    mf article block renumber note --start 1 -p lab --dry-run --root .
+  Effect: Preview normalizing block numbering.
+```
 
 
 ## `mf article block rename`
@@ -657,6 +923,18 @@ Rename a block within a directory article
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    mf article block new note risks -p lab --root .
+    mf article block new note context -p lab --root .
+  Command:
+    mf article block rename note risks hazards -p lab --dry-run --root .
+  Effect: Preview renaming a block slug.
+```
 
 
 ## `mf article block rm`
@@ -678,6 +956,18 @@ Remove a block within a directory article
 * `-y`, `--yes` — Skip interactive confirmation prompt
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    mf article block new note risks -p lab --root .
+    mf article block new note context -p lab --root .
+  Command:
+    mf article block rm note risks -p lab --dry-run --root .
+  Effect: Preview removing a block without deleting author content.
+```
 
 
 ## `mf article convert`
@@ -694,6 +984,16 @@ Convert article shape between directory and single-file
 * `--article <ARTICLE>` — Convert only this article (selector: bare slug, docs/<slug>, docs/<slug>.md, or exact title). Without it, converts every eligible article in the project (existing batch behaviour, unchanged)
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+  Command:
+    mf article convert --article note --to-single-file -p lab --dry-run --root .
+  Effect: Preview converting a directory article into a single file.
+```
 
 
 ## `mf mind`
@@ -709,6 +1009,16 @@ Manage minds, including minds without outputs
 * `show` —
 * `index` — Reconcile the derived output index from authored files
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+  Command:
+    mf mind list -p lab --root .
+  Effect: Inspect mind capabilities through a concrete local operation without remote access.
+```
 
 
 ## `mf mind new`
@@ -727,6 +1037,15 @@ Register a mind without requiring an output
 * `--default-output <DEFAULT_OUTPUT>`
 * `-n`, `--dry-run`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+  Command:
+    mf mind new brief -p lab --root .
+  Effect: Register an editable mind in a category project.
+```
 
 
 ## `mf mind list`
@@ -735,6 +1054,16 @@ Register a mind without requiring an output
 
 **Usage:** `mf mind list`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+  Command:
+    mf mind list -p lab --root .
+  Effect: List registered and discovered minds.
+```
 
 
 ## `mf mind show`
@@ -747,6 +1076,16 @@ Register a mind without requiring an output
 
 * `<IDENTITY>`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+  Command:
+    mf mind show projects/lab::brief --root .
+  Effect: Inspect a fully qualified mind identity.
+```
 
 
 ## `mf mind index`
@@ -760,6 +1099,17 @@ Reconcile the derived output index from authored files
 * `--check` — Compare disk, projections and explicit bindings without writing (exit 1 on differences)
 * `-n`, `--dry-run`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+  Command:
+    mf mind index -p lab --dry-run --root .
+  Effect: Preview derived mind/output projection reconciliation.
+```
 
 
 ## `mf additional`
@@ -775,6 +1125,16 @@ Discover and manage additional files and directories
 * `rename` — Rename one file/directory to a concrete project-relative path (same mind and shape)
 * `remove` — Delete one resource, refusing inbound references
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+  Command:
+    mf additional list -p lab --root .
+  Effect: Inspect additional capabilities through a concrete local operation without remote access.
+```
 
 
 ## `mf additional list`
@@ -787,6 +1147,18 @@ List structural extensions, optionally for one mind
 
 * `<MIND>`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mkdir -p projects/lab/reviews
+    printf '# Synthetic review\n' > projects/lab/reviews/brief.md
+  Command:
+    mf additional list projects/lab::brief --root .
+  Effect: List additional resources owned by the synthetic mind.
+```
 
 
 ## `mf additional show`
@@ -799,6 +1171,18 @@ Inspect one exact identity or project-relative resource path
 
 * `<IDENTITY>`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mkdir -p projects/lab/reviews
+    printf '# Synthetic review\n' > projects/lab/reviews/brief.md
+  Command:
+    mf additional show projects/lab::brief::additional::reviews --root .
+  Effect: Inspect the structurally owned review file.
+```
 
 
 ## `mf additional rename`
@@ -818,6 +1202,18 @@ Rename one file/directory to a concrete project-relative path (same mind and sha
 * `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
 * `-y`, `--yes`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mkdir -p projects/lab/reviews
+    printf '# Synthetic review\n' > projects/lab/reviews/brief.md
+  Command:
+    mf additional rename reviews/brief.md assessments/brief.md -p lab --dry-run --root .
+  Effect: Preview a review-kind path rename and reference maintenance.
+```
 
 
 ## `mf additional remove`
@@ -836,6 +1232,18 @@ Delete one resource, refusing inbound references
 * `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
 * `-y`, `--yes`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mkdir -p projects/lab/reviews
+    printf '# Synthetic review\n' > projects/lab/reviews/brief.md
+  Command:
+    mf additional remove reviews/brief.md -p lab --dry-run --root .
+  Effect: Preview removing the owned review without deletion.
+```
 
 
 ## `mf lifecycle`
@@ -858,6 +1266,15 @@ Apply and recover local layout lifecycle transactions
 * `rollback` — Restore backed-up content, refusing to overwrite subsequent edits
 * `status` — Inspect the current transaction without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf lifecycle status --root .
+  Effect: Inspect lifecycle capabilities through a concrete local operation without remote access.
+```
 
 
 ## `mf lifecycle convert`
@@ -876,6 +1293,17 @@ Convert every output, core role, and owned additional resource
 * `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
 * `-y`, `--yes`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+  Command:
+    mf lifecycle convert --to bundle -p lab --dry-run --root .
+  Effect: Preview convert with reference/ownership checks; author files remain unchanged.
+```
 
 
 ## `mf lifecycle mind-rename`
@@ -895,6 +1323,17 @@ Convert every output, core role, and owned additional resource
 * `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
 * `-y`, `--yes`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+  Command:
+    mf lifecycle mind-rename projects/lab::brief renamed --dry-run --root .
+  Effect: Preview mind-rename with reference/ownership checks; author files remain unchanged.
+```
 
 
 ## `mf lifecycle mind-move`
@@ -914,6 +1353,19 @@ Convert every output, core role, and owned additional resource
 * `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
 * `-y`, `--yes`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+    mf project new projects/destination --layout category --root .
+    mf mind new reader -p destination --root .
+  Command:
+    mf lifecycle mind-move projects/lab::brief --to-project destination --dry-run --root .
+  Effect: Preview mind-move with reference/ownership checks; author files remain unchanged.
+```
 
 
 ## `mf lifecycle mind-remove`
@@ -932,6 +1384,19 @@ Convert every output, core role, and owned additional resource
 * `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
 * `-y`, `--yes`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+    mf project new projects/destination --layout category --root .
+    mf mind new reader -p destination --root .
+  Command:
+    mf lifecycle mind-remove projects/lab::brief --dry-run --root .
+  Effect: Preview mind-remove with reference/ownership checks; author files remain unchanged.
+```
 
 
 ## `mf lifecycle output-rename`
@@ -951,6 +1416,17 @@ Convert every output, core role, and owned additional resource
 * `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
 * `-y`, `--yes`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+  Command:
+    mf lifecycle output-rename projects/lab::brief::summary short --dry-run --root .
+  Effect: Preview output-rename with reference/ownership checks; author files remain unchanged.
+```
 
 
 ## `mf lifecycle output-move`
@@ -971,6 +1447,19 @@ Convert every output, core role, and owned additional resource
 * `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
 * `-y`, `--yes`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+    mf project new projects/destination --layout category --root .
+    mf mind new reader -p destination --root .
+  Command:
+    mf lifecycle output-move projects/lab::brief::summary --to-project destination --to-mind reader --dry-run --root .
+  Effect: Preview output-move with reference/ownership checks; author files remain unchanged.
+```
 
 
 ## `mf lifecycle output-remove`
@@ -989,6 +1478,19 @@ Convert every output, core role, and owned additional resource
 * `--emit-plan` — Include the full saved plan (contains backed-up file contents) in JSON
 * `-y`, `--yes`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+    mf project new projects/destination --layout category --root .
+    mf mind new reader -p destination --root .
+  Command:
+    mf lifecycle output-remove projects/lab::brief::summary --dry-run --root .
+  Effect: Preview output-remove with reference/ownership checks; author files remain unchanged.
+```
 
 
 ## `mf lifecycle apply`
@@ -1006,6 +1508,19 @@ Apply a saved hash-bound plan after revalidating its complete inventory
 * `-n`, `--dry-run`
 * `-y`, `--yes`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+    mf lifecycle convert --to bundle -p lab --dry-run --emit-plan --json --root . > ../preview.json
+    python3 -c 'import json; p=json.load(open("../preview.json"))["data"]["plan"]; json.dump(p,open("../plan.json","w"))'
+  Command:
+    mf lifecycle apply ../plan.json --dry-run --root .
+  Effect: Validate a saved plan outside the watched repository and preview writes without applying it.
+```
 
 
 ## `mf lifecycle resume`
@@ -1018,6 +1533,18 @@ Resume an interrupted transaction or safely abort unpublished partial preparatio
 
 * `--plan <PLAN>`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+    mf lifecycle convert --to bundle -p lab --yes --root .
+  Command:
+    mf lifecycle resume --root .
+  Effect: Report the already completed synthetic transaction without new authored changes.
+```
 
 
 ## `mf lifecycle rollback`
@@ -1030,6 +1557,18 @@ Restore backed-up content, refusing to overwrite subsequent edits
 
 * `--plan <PLAN>`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+    mf lifecycle convert --to bundle -p lab --yes --root .
+  Command:
+    mf lifecycle rollback --root .
+  Effect: Safely refuse reversing a completed transaction (exit 2); completed operations are not undoable by rollback.
+```
 
 
 ## `mf lifecycle status`
@@ -1038,6 +1577,17 @@ Inspect the current transaction without writing
 
 **Usage:** `mf lifecycle status`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+  Command:
+    mf lifecycle status --root .
+  Effect: Report lifecycle state without starting a transaction.
+```
 
 
 ## `mf output`
@@ -1053,6 +1603,16 @@ Manage editable outputs belonging to minds
 * `show` —
 * `index` —
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+  Command:
+    mf output list -p lab --root .
+  Effect: Inspect output capabilities through a concrete local operation without remote access.
+```
 
 
 ## `mf output new`
@@ -1072,6 +1632,16 @@ Create an editable output owned by an existing mind
 * `--file` — Use one Markdown file instead of ordered blocks
 * `-n`, `--dry-run`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+  Command:
+    mf output new brief summary --file -p lab --root .
+  Effect: Create a single-file editable summary output.
+```
 
 
 ## `mf output list`
@@ -1084,6 +1654,17 @@ Create an editable output owned by an existing mind
 
 * `<MIND>`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+  Command:
+    mf output list projects/lab::brief --root .
+  Effect: List outputs belonging to the selected mind.
+```
 
 
 ## `mf output show`
@@ -1096,6 +1677,17 @@ Create an editable output owned by an existing mind
 
 * `<IDENTITY>`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+  Command:
+    mf output show projects/lab::brief::summary --root .
+  Effect: Inspect the selected output and build path.
+```
 
 
 ## `mf output index`
@@ -1109,6 +1701,17 @@ Create an editable output owned by an existing mind
 * `--check` — Compare disk, projections and explicit bindings without writing (exit 1 on differences)
 * `-n`, `--dry-run`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+  Command:
+    mf output index -p lab --dry-run --root .
+  Effect: Preview output index reconciliation.
+```
 
 
 ## `mf prompt`
@@ -1122,6 +1725,19 @@ View prompt projections
 * `list` —
 * `show` —
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    mkdir -p projects/lab/prompts
+    printf '%s\n' '---' 'article: note' '---' '# Synthetic intent' > projects/lab/prompts/note.md
+    mf article index -p lab --root .
+  Command:
+    mf prompt list -p lab --root .
+  Effect: Inspect the indexed synthetic prompt projection without changing author files.
+```
 
 
 ## `mf prompt list`
@@ -1130,6 +1746,19 @@ View prompt projections
 
 **Usage:** `mf prompt list`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    mkdir -p projects/lab/prompts
+    printf '%s\n' '---' 'article: note' '---' '# Synthetic intent' > projects/lab/prompts/note.md
+    mf article index -p lab --root .
+  Command:
+    mf prompt list -p lab --root .
+  Effect: Inspect the indexed synthetic prompt projection without changing author files.
+```
 
 
 ## `mf prompt show`
@@ -1142,6 +1771,19 @@ View prompt projections
 
 * `<PATH>`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    mkdir -p projects/lab/prompts
+    printf '%s\n' '---' 'article: note' '---' '# Synthetic intent' > projects/lab/prompts/note.md
+    mf article index -p lab --root .
+  Command:
+    mf prompt show prompts/note.md -p lab --root .
+  Effect: Inspect the indexed synthetic prompt projection without changing author files.
+```
 
 
 ## `mf thinking`
@@ -1155,6 +1797,19 @@ View thinking projections
 * `list` —
 * `show` —
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    mkdir -p projects/lab/thinking
+    printf '%s\n' '---' 'article: note' '---' '# Synthetic intent' > projects/lab/thinking/note.md
+    mf article index -p lab --root .
+  Command:
+    mf thinking list -p lab --root .
+  Effect: Inspect the indexed synthetic thinking projection without changing author files.
+```
 
 
 ## `mf thinking list`
@@ -1163,6 +1818,19 @@ View thinking projections
 
 **Usage:** `mf thinking list`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    mkdir -p projects/lab/thinking
+    printf '%s\n' '---' 'article: note' '---' '# Synthetic intent' > projects/lab/thinking/note.md
+    mf article index -p lab --root .
+  Command:
+    mf thinking list -p lab --root .
+  Effect: Inspect the indexed synthetic thinking projection without changing author files.
+```
 
 
 ## `mf thinking show`
@@ -1175,6 +1843,19 @@ View thinking projections
 
 * `<PATH>`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    mkdir -p projects/lab/thinking
+    printf '%s\n' '---' 'article: note' '---' '# Synthetic intent' > projects/lab/thinking/note.md
+    mf article index -p lab --root .
+  Command:
+    mf thinking show thinking/note.md -p lab --root .
+  Effect: Inspect the indexed synthetic thinking projection without changing author files.
+```
 
 
 ## `mf source`
@@ -1195,6 +1876,15 @@ Manage content sources
 * `clean` — Clean source index
 * `show` — Show source details
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf source list -p lab --root .
+  Effect: Inspect source capabilities through a concrete local operation without remote access.
+```
 
 
 ## `mf source list`
@@ -1215,6 +1905,17 @@ List sources
 * `--no-headers` — Suppress the table header row
 * `--no-trunc` — Disable column truncation
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '# Synthetic reference\nGateway evidence.\n' > evidence.md
+    mf source new ./evidence.md --name evidence -p lab --root .
+  Command:
+    mf source list -p lab --root .
+  Effect: List local evidence and metadata.
+```
 
 
 ## `mf source new`
@@ -1243,6 +1944,16 @@ Create a source
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '# Synthetic evidence\n' > evidence.md
+  Command:
+    mf source new ./evidence.md --name evidence -p lab --dry-run --root .
+  Effect: Preview importing local evidence without acquisition or writes.
+```
 
 
 ## `mf source update`
@@ -1261,6 +1972,17 @@ Update a source
 * `--url <URL>`
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '# Synthetic reference\nGateway evidence.\n' > evidence.md
+    mf source new ./evidence.md --name evidence -p lab --root .
+  Command:
+    mf source update evidence --rename reference -p lab --dry-run --root .
+  Effect: Preview source rename while retaining evidence.
+```
 
 
 ## `mf source index`
@@ -1273,6 +1995,17 @@ Index sources
 
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '# Synthetic reference\nGateway evidence.\n' > evidence.md
+    mf source new ./evidence.md --name evidence -p lab --root .
+  Command:
+    mf source index -p lab --dry-run --root .
+  Effect: Preview source index reconciliation.
+```
 
 
 ## `mf source remove`
@@ -1294,6 +2027,17 @@ Remove a source
 * `-y`, `--yes` — Skip interactive confirmation prompt
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '# Synthetic reference\nGateway evidence.\n' > evidence.md
+    mf source new ./evidence.md --name evidence -p lab --root .
+  Command:
+    mf source remove sources/file/evidence.md -p lab --yes --dry-run --root .
+  Effect: Preview source removal without deleting evidence.
+```
 
 
 ## `mf source rename`
@@ -1312,6 +2056,17 @@ Rename a source
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '# Synthetic reference\nGateway evidence.\n' > evidence.md
+    mf source new ./evidence.md --name evidence -p lab --root .
+  Command:
+    mf source rename sources/file/evidence.md projects/lab/sources/file/reference.md -p lab --dry-run --root .
+  Effect: Preview a source rename and affected references.
+```
 
 
 ## `mf source move`
@@ -1329,6 +2084,18 @@ Move a source to another project
 * `--to-project <TO_PROJECT>` — Destination project name or path (cwd-relative, repo-relative, or absolute)
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '# Synthetic reference\nGateway evidence.\n' > evidence.md
+    mf source new ./evidence.md --name evidence -p lab --root .
+    mf project new projects/destination --root .
+  Command:
+    mf source move evidence --to-project destination -p lab --dry-run --root .
+  Effect: Preview moving evidence between synthetic projects.
+```
 
 
 ## `mf source clean`
@@ -1341,6 +2108,17 @@ Clean source index
 
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '# Synthetic reference\nGateway evidence.\n' > evidence.md
+    mf source new ./evidence.md --name evidence -p lab --root .
+  Command:
+    mf source clean -p lab --dry-run --root .
+  Effect: Preview stale source projection cleanup without deleting authority.
+```
 
 
 ## `mf source show`
@@ -1353,6 +2131,17 @@ Show source details
 
 * `<PATH>` — Project-relative source path or registered source name
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '# Synthetic reference\nGateway evidence.\n' > evidence.md
+    mf source new ./evidence.md --name evidence -p lab --root .
+  Command:
+    mf source show evidence -p lab --root .
+  Effect: Inspect the selected evidence record.
+```
 
 
 ## `mf asset`
@@ -1373,6 +2162,15 @@ Manage project assets
 * `move` — Move an asset to another project
 * `show` — Show asset details
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf asset list -p lab --root .
+  Effect: Inspect asset capabilities through a concrete local operation without remote access.
+```
 
 
 ## `mf asset list`
@@ -1393,6 +2191,17 @@ List assets
 * `--no-headers` — Suppress the table header row
 * `--no-trunc` — Disable column truncation
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '<svg xmlns="http://www.w3.org/2000/svg"/>\n' > diagram.svg
+    mf asset new ./diagram.svg --name diagram -p lab --root .
+  Command:
+    mf asset list -p lab --root .
+  Effect: List indexed synthetic assets.
+```
 
 
 ## `mf asset new`
@@ -1414,6 +2223,16 @@ Create an asset
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '<svg xmlns="http://www.w3.org/2000/svg"/>\n' > diagram.svg
+  Command:
+    mf asset new ./diagram.svg --name diagram -p lab --dry-run --root .
+  Effect: Preview copying a synthetic SVG asset.
+```
 
 
 ## `mf asset update`
@@ -1433,6 +2252,17 @@ Update assets
 * `--all`
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '<svg xmlns="http://www.w3.org/2000/svg"/>\n' > diagram.svg
+    mf asset new ./diagram.svg --name diagram -p lab --root .
+  Command:
+    mf asset update --set-url https://example.invalid/diagram.svg --channel local -p lab --dry-run --root .
+  Effect: Preview metadata-only URL assignment; no network request is made.
+```
 
 
 ## `mf asset index`
@@ -1446,6 +2276,17 @@ Index assets
 * `-n`, `--dry-run` — Preview changes without writing
 * `--refresh-metadata`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '<svg xmlns="http://www.w3.org/2000/svg"/>\n' > diagram.svg
+    mf asset new ./diagram.svg --name diagram -p lab --root .
+  Command:
+    mf asset index -p lab --dry-run --root .
+  Effect: Preview asset index reconciliation.
+```
 
 
 ## `mf asset clean`
@@ -1458,6 +2299,17 @@ Clean stale asset index entries
 
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '<svg xmlns="http://www.w3.org/2000/svg"/>\n' > diagram.svg
+    mf asset new ./diagram.svg --name diagram -p lab --root .
+  Command:
+    mf asset clean -p lab --dry-run --root .
+  Effect: Preview stale asset projection cleanup.
+```
 
 
 ## `mf asset remove`
@@ -1478,6 +2330,17 @@ Remove an asset
 * `-y`, `--yes` — Skip interactive confirmation prompt
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '<svg xmlns="http://www.w3.org/2000/svg"/>\n' > diagram.svg
+    mf asset new ./diagram.svg --name diagram -p lab --root .
+  Command:
+    mf asset remove diagram -p lab --yes --dry-run --root .
+  Effect: Preview asset removal without deleting the file.
+```
 
 
 ## `mf asset rename`
@@ -1496,6 +2359,17 @@ Rename an asset
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '<svg xmlns="http://www.w3.org/2000/svg"/>\n' > diagram.svg
+    mf asset new ./diagram.svg --name diagram -p lab --root .
+  Command:
+    mf asset rename diagram renamed -p lab --dry-run --root .
+  Effect: Preview renaming the synthetic asset.
+```
 
 
 ## `mf asset move`
@@ -1513,6 +2387,18 @@ Move an asset to another project
 * `--to-project <TO_PROJECT>`
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '<svg xmlns="http://www.w3.org/2000/svg"/>\n' > diagram.svg
+    mf asset new ./diagram.svg --name diagram -p lab --root .
+    mf project new projects/destination --root .
+  Command:
+    mf asset move diagram --to-project destination -p lab --dry-run --root .
+  Effect: Preview moving the asset to another synthetic project.
+```
 
 
 ## `mf asset show`
@@ -1525,6 +2411,17 @@ Show asset details
 
 * `<PATH>` — Asset path (e.g. assets/chart.png) or name
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    printf '<svg xmlns="http://www.w3.org/2000/svg"/>\n' > diagram.svg
+    mf asset new ./diagram.svg --name diagram -p lab --root .
+  Command:
+    mf asset show diagram -p lab --root .
+  Effect: Inspect the selected synthetic asset.
+```
 
 
 ## `mf term`
@@ -1548,6 +2445,15 @@ Manage terminology
 * `correction` — Manage term corrections
 * `move` — Move a term between scopes
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf term list -p lab --root .
+  Effect: Inspect term capabilities through a concrete local operation without remote access.
+```
 
 
 ## `mf term list`
@@ -1568,6 +2474,16 @@ List terms
 * `--no-headers` — Suppress the table header row
 * `--no-trunc` — Disable column truncation
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf term new GATEWAY --definition 'Synthetic routing boundary' -p lab --root .
+  Command:
+    mf term list -p lab --root .
+  Effect: List project glossary terms.
+```
 
 
 ## `mf term new`
@@ -1590,6 +2506,15 @@ Create a term
 * `--misrecognition <MISRECOGNITION>`
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf term new GATEWAY --definition 'Synthetic routing boundary' -p lab --dry-run --root .
+  Effect: Preview creating a synthetic glossary term.
+```
 
 
 ## `mf term lint`
@@ -1620,6 +2545,18 @@ Lint term consistency in project docs
 * `--min-confidence <0.0..1.0>` — Apply suggested corrections at or above this confidence
 * `-y`, `--yes` — Skip interactive confirmation prompt
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    mf term new GATEWAY --definition 'Synthetic routing boundary' -p lab --root .
+    mf term correction add GATEWAY gatway gateway -p lab --root .
+  Command:
+    mf term lint docs/note -p lab --root .
+  Effect: Inspect corrections in a synthetic article.
+```
 
 
 ## `mf term update`
@@ -1650,6 +2587,16 @@ Update term metadata
 * `--delete-correction <DELETE_CORRECTION>` — Delete a correction by ORIGINAL
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf term new GATEWAY --definition 'Synthetic routing boundary' -p lab --root .
+  Command:
+    mf term update GATEWAY --definition 'Reviewed routing boundary' -p lab --dry-run --root .
+  Effect: Preview updating the glossary definition.
+```
 
 
 ## `mf term show`
@@ -1662,6 +2609,16 @@ Show term details
 
 * `<TERM>`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf term new GATEWAY --definition 'Synthetic routing boundary' -p lab --root .
+  Command:
+    mf term show GATEWAY -p lab --root .
+  Effect: Show the synthetic term and its definition.
+```
 
 
 ## `mf term remove`
@@ -1682,6 +2639,16 @@ Remove a term
 * `-y`, `--yes` — Skip interactive confirmation prompt
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf term new GATEWAY --definition 'Synthetic routing boundary' -p lab --root .
+  Command:
+    mf term remove GATEWAY -p lab --yes --dry-run --root .
+  Effect: Preview glossary removal without rewriting YAML.
+```
 
 
 ## `mf term rename`
@@ -1701,6 +2668,16 @@ Rename a term
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf term new GATEWAY --definition 'Synthetic routing boundary' -p lab --root .
+  Command:
+    mf term rename GATEWAY EDGE -p lab --dry-run --root .
+  Effect: Preview changing the glossary term name.
+```
 
 
 ## `mf term fix`
@@ -1731,6 +2708,18 @@ Apply term corrections to documents (alias of `term lint --fix`)
 * `--min-confidence <0.0..1.0>` — Apply suggested corrections at or above this confidence
 * `-y`, `--yes` — Skip interactive confirmation prompt
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    mf term new GATEWAY --definition 'Synthetic routing boundary' -p lab --root .
+    mf term correction add GATEWAY gatway gateway -p lab --root .
+  Command:
+    mf term fix docs/note -p lab --dry-run --root .
+  Effect: Preview correction application without changing author bytes.
+```
 
 
 ## `mf term correction`
@@ -1747,6 +2736,17 @@ Manage term corrections
 * `update` — Update correction attributes
 * `remove` — Remove a correction from a term
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf term new GATEWAY --definition 'Synthetic routing boundary' -p lab --root .
+    mf term correction add GATEWAY gatway gateway -p lab --root .
+  Command:
+    mf term correction list GATEWAY -p lab --root .
+  Effect: Inspect term correction capabilities through a concrete local operation without remote access.
+```
 
 
 ## `mf term correction add`
@@ -1769,6 +2769,16 @@ Add a correction to a term
 * `--boundary <BOUNDARY>`
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf term new GATEWAY --definition 'Synthetic routing boundary' -p lab --root .
+  Command:
+    mf term correction add GATEWAY gatway gateway -p lab --dry-run --root .
+  Effect: Preview adding a word correction.
+```
 
 
 ## `mf term correction list`
@@ -1786,6 +2796,17 @@ List corrections for a term
 * `--no-headers` — Suppress the table header row
 * `--no-trunc` — Disable column truncation
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf term new GATEWAY --definition 'Synthetic routing boundary' -p lab --root .
+    mf term correction add GATEWAY gatway gateway -p lab --root .
+  Command:
+    mf term correction list GATEWAY -p lab --root .
+  Effect: List corrections on the synthetic term.
+```
 
 
 ## `mf term correction show`
@@ -1799,6 +2820,17 @@ Show a single correction
 * `<TERM>`
 * `<ORIGINAL>`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf term new GATEWAY --definition 'Synthetic routing boundary' -p lab --root .
+    mf term correction add GATEWAY gatway gateway -p lab --root .
+  Command:
+    mf term correction show GATEWAY gatway -p lab --root .
+  Effect: Inspect a specific correction rule.
+```
 
 
 ## `mf term correction update`
@@ -1821,6 +2853,17 @@ Update correction attributes
 * `--boundary <BOUNDARY>`
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf term new GATEWAY --definition 'Synthetic routing boundary' -p lab --root .
+    mf term correction add GATEWAY gatway gateway -p lab --root .
+  Command:
+    mf term correction update GATEWAY gatway --correct gateway -p lab --dry-run --root .
+  Effect: Preview updating an existing correction.
+```
 
 
 ## `mf term correction remove`
@@ -1838,6 +2881,17 @@ Remove a correction from a term
 
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf term new GATEWAY --definition 'Synthetic routing boundary' -p lab --root .
+    mf term correction add GATEWAY gatway gateway -p lab --root .
+  Command:
+    mf term correction remove GATEWAY gatway -p lab --dry-run --root .
+  Effect: Preview removing a correction without rewriting YAML.
+```
 
 
 ## `mf term move`
@@ -1860,6 +2914,16 @@ Move a term between scopes
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf term new GATEWAY --definition 'Synthetic routing boundary' -p lab --root .
+  Command:
+    mf term move GATEWAY --to-global -p lab --dry-run --root .
+  Effect: Preview moving the term to repository-global scope.
+```
 
 
 ## `mf build`
@@ -1884,6 +2948,16 @@ Build a selected mind output or legacy article
 * `--out <OUTPUT>`
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+  Command:
+    mf build note -p lab --dry-run --root .
+  Effect: Inspect merge order and output path without running a pipeline.
+```
 
 
 ## `mf publish`
@@ -1898,6 +2972,17 @@ Publish selected outputs or legacy articles to configured targets
 * `update` — Update publish record metadata
 * `target` — List and manage publish targets
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mkdir -p .mind-forge/publisher
+    printf '%s\n' 'name: local' 'type: local' 'path: published' > .mind-forge/publisher/local.yaml
+  Command:
+    mf publish target list -p lab --root .
+  Effect: Inspect repository-discovered local publisher definitions; no publishing is performed.
+```
 
 
 ## `mf publish run`
@@ -1918,6 +3003,18 @@ Publish a selected output or legacy article to a target
 * `-n`, `--dry-run` — Preview changes without writing
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    printf "schema: '1'\npublish:\n  default_target: local\n  targets:\n    - name: local\n      type: local\n      path: ../../published\n" > projects/lab/mind.yaml
+    mf build note -p lab --root .
+  Command:
+    mf publish run note --target local -p lab --dry-run --root .
+  Effect: Preview publication to a local synthetic directory; no remote publishing.
+```
 
 
 ## `mf publish update`
@@ -1941,6 +3038,18 @@ Update publish record metadata
 * `--set <KEY=VALUE>`
 * `-n`, `--dry-run` — Preview changes without writing
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    printf "schema: '1'\npublish:\n  default_target: local\n  targets:\n    - name: local\n      type: local\n      path: ../../published\n" > projects/lab/mind.yaml
+    mf build note -p lab --root .
+  Command:
+    mf publish update note --target local --set status=published --target-url https://example.invalid/note -p lab --dry-run --root .
+  Effect: Preview an initial local publish-record metadata entry with a synthetic URL; no network request or publication occurs.
+```
 
 
 ## `mf publish target`
@@ -1954,6 +3063,17 @@ List and manage publish targets
 * `list` — List publishers and diagnostics
 * `show` — Show publish target details
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mkdir -p .mind-forge/publisher
+    printf '%s\n' 'name: local' 'type: local' 'path: published' > .mind-forge/publisher/local.yaml
+  Command:
+    mf publish target list -p lab --root .
+  Effect: Inspect repository-discovered local publisher definitions; no publishing is performed.
+```
 
 
 ## `mf publish target list`
@@ -1967,6 +3087,17 @@ List publishers and diagnostics
 * `--no-headers` — Suppress the table header row
 * `--no-trunc` — Disable column truncation
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mkdir -p .mind-forge/publisher
+    printf '%s\n' 'name: local' 'type: local' 'path: published' > .mind-forge/publisher/local.yaml
+  Command:
+    mf publish target list -p lab --root .
+  Effect: Inspect repository-discovered local publisher definitions; no publishing is performed.
+```
 
 
 ## `mf publish target show`
@@ -1979,6 +3110,17 @@ Show publish target details
 
 * `<NAME>`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mkdir -p .mind-forge/publisher
+    printf '%s\n' 'name: local' 'type: local' 'path: published' > .mind-forge/publisher/local.yaml
+  Command:
+    mf publish target show local -p lab --root .
+  Effect: Inspect repository-discovered local publisher definitions; no publishing is performed.
+```
 
 
 ## `mf render`
@@ -2003,6 +3145,17 @@ Generate render prompts (emits prompts only, no output files)
   Possible values: `document`, `fragment`
 
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mf article new 'Synthetic note' --slug note -p lab --root .
+    mf build note -p lab --root .
+  Command:
+    mf render note --template report -p lab --root .
+  Effect: Print a render prompt from the built synthetic output.
+```
 
 
 ## `mf render template`
@@ -2016,6 +3169,15 @@ Manage render templates
 * `list` — List available render templates
 * `show` — Show template details
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf render template list --root .
+  Effect: Inspect render template capabilities through a concrete local operation without remote access.
+```
 
 
 ## `mf render template list`
@@ -2029,6 +3191,15 @@ List available render templates
 * `--no-headers` — Suppress the table header row
 * `--no-trunc` — Disable column truncation
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf render template list --root .
+  Effect: List built-in render templates without executing external tools.
+```
 
 
 ## `mf render template show`
@@ -2041,6 +3212,15 @@ Show template details
 
 * `<NAME>`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf render template show report --root .
+  Effect: Show the built-in report template.
+```
 
 
 ## `mf config`
@@ -2057,6 +3237,15 @@ Manage configuration
 * `default` — Show default config values
 * `terminal` — Show terminal capability diagnostics
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf config show --json --root .
+  Effect: Inspect config capabilities through a concrete local operation without remote access.
+```
 
 
 ## `mf config schema`
@@ -2072,6 +3261,15 @@ Show config schema
   Default value: `json`
 
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf config schema --root .
+  Effect: Print the author configuration schema, not runtime TOML settings.
+```
 
 
 ## `mf config show`
@@ -2087,6 +3285,15 @@ Show effective config
   Default value: `yaml`
 
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf config show --json --root .
+  Effect: Print the existing author-business configuration view.
+```
 
 
 ## `mf config generate`
@@ -2103,6 +3310,15 @@ Generate effective config file
 
 * `--out <OUTPUT>`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf config generate --out exported.yaml --root .
+  Effect: Serialize business configuration to an explicit synthetic output file.
+```
 
 
 ## `mf config default`
@@ -2118,6 +3334,15 @@ Show default config values
   Default value: `yaml`
 
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf config default --root .
+  Effect: Print default author-business YAML without writing it.
+```
 
 
 ## `mf config terminal`
@@ -2126,6 +3351,15 @@ Show terminal capability diagnostics
 
 **Usage:** `mf config terminal`
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+  Command:
+    mf config terminal --root .
+  Effect: Inspect terminal capability diagnostics.
+```
 
 
 ## `mf completion`
@@ -2141,6 +3375,14 @@ Generate shell completion scripts
   Possible values: `bash`, `zsh`, `fish`, `powershell`, `elvish`
 
 
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # No repository is required; inspect stdout before adding it to shell startup.
+  Command:
+    mf completion bash
+  Effect: Print Bash completion script without changing shell startup files.
+```
 
 
 ## `mf version`
@@ -2148,3 +3390,12 @@ Generate shell completion scripts
 Show version information
 
 **Usage:** `mf version`
+
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # No repository or runtime configuration is required.
+  Command:
+    mf version --json
+  Effect: Print structured executable version metadata.
+```

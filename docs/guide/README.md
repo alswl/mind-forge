@@ -3,6 +3,7 @@
 Install MindForge, create editable content, and produce a deliverable.
 
 - [Install MindForge](install.md).
+- [Configure runtime settings and adopt 0.6.0](configuration.md).
 - [Understand the writing model](concepts.md).
 - [Create minds and outputs](minds-and-outputs.md).
 - [Rename, move, convert, delete, and recover content](manage-content.md).

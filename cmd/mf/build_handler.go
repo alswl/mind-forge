@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func buildCommand(c *cobra.Command, a *app.Context, args []string, stdout, stderr io.Writer) error {
-	options := build.Options{Context: c.Context(), Format: stringFlag(c, "format"), DryRun: boolFlag(c, "dry-run")}
+func buildCommand(c *cobra.Command, a *app.Context, args []string, stdout, stderr io.Writer, processIO build.ProcessIO) error {
+	options := buildOptions(c, a, processIO, stderr)
 	p, err := build.PrepareRequest(a.RepoRoot, a.CWD, args[0], optionalFlag(c, "project"), optionalFlag(c, "out"), options)
 	if err != nil {
 		return err
@@ -52,4 +52,8 @@ func buildCommand(c *cobra.Command, a *app.Context, args []string, stdout, stder
 	}
 	data := map[string]any{"article": selector, "location": p.Location, "format": p.Plan.Format, "output": p.Plan.OutputPath, "size_bytes": size}
 	return renderTerm(a, stdout, stderr, data, fmt.Sprintf("Article built: %s\n  Output: %s\n  Size: %.1f KB", selector, p.Plan.OutputPath, float64(size)/1024), warnings)
+}
+
+func buildOptions(command *cobra.Command, application *app.Context, streams build.ProcessIO, stderr io.Writer) build.Options {
+	return build.Options{ProcessIO: streams.Diagnostics(stderr, application.Quiet), Context: command.Context(), Format: stringFlag(command, "format"), DryRun: boolFlag(command, "dry-run")}
 }

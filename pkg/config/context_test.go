@@ -33,13 +33,19 @@ func TestContextRootRequirementAndRepoFreeProject(t *testing.T) {
 	}
 }
 
-func TestPlatformConfigPathIgnoresRelativeXDGOverride(t *testing.T) {
+func TestPlatformConfigPathRejectsRelevantRelativeXDGOverride(t *testing.T) {
 	for _, item := range []struct{ platform, xdg, want string }{
 		{"linux", "/settings", "/settings/mf/config.toml"},
-		{"linux", "relative", "/home/example/.config/mf/config.toml"},
+		{"linux", "relative", ""},
 		{"darwin", "/settings", "/home/example/Library/Application Support/mf/config.toml"},
 	} {
 		got, err := DefaultConfigPath(item.platform, "/home/example", item.xdg)
+		if item.want == "" {
+			if err == nil {
+				t.Fatal("relative XDG accepted")
+			}
+			continue
+		}
 		if err != nil || got != item.want {
 			t.Fatalf("platform config path: %s (%v), want %s", got, err, item.want)
 		}

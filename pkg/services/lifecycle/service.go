@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/alswl/mind-forge/pkg/common/task"
 	manager "github.com/alswl/mind-forge/pkg/managers/lifecycle"
 )
 
@@ -48,6 +49,7 @@ func (service Service) Status(root string) (map[string]any, error) {
 }
 
 func (service Service) Recover(ctx context.Context, root string, rollback bool, plan *Plan) (map[string]any, error) {
+	task.Notify(ctx, task.Stage{Operation: "lifecycle", Name: "recovering transaction"})
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -80,6 +82,7 @@ func (service Service) Recover(ctx context.Context, root string, rollback bool, 
 // Execute binds preview validation and transaction execution to one outcome.
 // The caller obtains confirmation before requesting a non-preview execution.
 func (service Service) Execute(ctx context.Context, root string, plan Plan, dry, emit, validate bool) (map[string]any, error) {
+	task.Notify(ctx, task.Stage{Operation: "lifecycle", Name: "validating plan"})
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

@@ -169,14 +169,9 @@ func RunPipelineContext(ctx context.Context, project, assets string, rules []mod
 		return stages, warnings, err
 	}
 	if runner == nil {
-		runner = func(command, _, _ string) error {
-			cmd := task.Command(ctx, "sh", "-c", command)
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			return cmd.Run()
-		}
+		runner = NewPipelineRunner(ctx, ProcessIO{})
 	}
+
 	collisions := map[string]string{}
 	for _, index := range order {
 		r := rules[index]
@@ -239,6 +234,7 @@ func RunPipelineContext(ctx context.Context, project, assets string, rules []mod
 					return stages, warnings, err
 				}
 			}
+			task.Notify(ctx, task.Stage{Operation: "build", Name: "running asset transform"})
 			logging.FromContext(ctx).DebugContext(ctx, "running pipeline stage", "rule", r.Name)
 			if err := runner(expandPipelineCommand(r.Command, input, outputPath, r.Dark), input, outputPath); err != nil {
 				if exists {

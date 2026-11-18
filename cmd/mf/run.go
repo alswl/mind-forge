@@ -12,12 +12,21 @@ import (
 
 	"github.com/alswl/mind-forge/internal/output"
 	"github.com/alswl/mind-forge/pkg/common/logging"
+	"github.com/alswl/mind-forge/pkg/common/task"
 	app "github.com/alswl/mind-forge/pkg/config"
+	"github.com/alswl/mind-forge/pkg/services/build"
 	"github.com/alswl/mind-forge/pkg/services/session"
 	"github.com/spf13/cobra"
 )
 
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	return runWithProcessIO(ctx, args, stdout, stderr, build.ProcessIO{Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr})
+}
+
+func runWithProcessIO(ctx context.Context, args []string, stdout, stderr io.Writer, processIO build.ProcessIO) int {
+	cwd, cwdError := os.Getwd()
+	environment := snapshotEnvironment()
+	diagnosticFormat := "text"
 	dispatched := false
 	root, err := NewCommand(func(command *cobra.Command, item CommandSpec, positional []string) error {
 		dispatched = true
@@ -29,27 +38,37 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			_, err = io.WriteString(stdout, Manual(catalogue))
 			return err
 		}
-		options := app.ContextOptions{
-			ResolveOptions: app.ResolveOptions{Root: stringFlag(command, "root"), Config: stringFlag(command, "config")},
-			Project:        stringFlag(command, "project"), Format: stringFlag(command, "output"),
-			JSON: boolFlag(command, "json"), NoColor: boolFlag(command, "no-color"), Quiet: boolFlag(command, "quiet"),
+		if len(item.Path) > 0 && (item.Path[0] == "version" || item.Path[0] == "completion") {
+			format := stringFlag(command, "output")
+			if boolFlag(command, "json") {
+				format = "json"
+			}
+			application := &app.Context{Format: format, CWD: cwd, Quiet: boolFlag(command, "quiet"), Color: !boolFlag(command, "no-color")}
+			registration := commandRegistrations[strings.Join(item.Path, " ")]
+			return registration.run(commandExecution{Command: command, Application: application, Args: positional, Stdout: stdout, Stderr: stderr, ProcessIO: processIO})
 		}
-		verbose, _ := command.Flags().GetCount("verbose")
-		options.Verbose = uint(verbose)
-		command.SetContext(logging.WithLogger(command.Context(), stderr, verbose > 0))
-		application, err := app.NewContext(options)
+		if cwdError != nil {
+			return cwdError
+		}
+		originalProjectPresent := flagPresent(command, "project")
+		settings, err := app.ResolveRuntime(runtimeInput(command, cwd, environment))
+		diagnosticFormat = settings.Output
+		if boolFlag(command, "json") {
+			diagnosticFormat = "json"
+		}
 		if err != nil {
 			return err
 		}
-		if len(positional) > 0 && hasPathSelector(item.Path) {
-			if project, relative, adopted := app.SelectProjectFromPath(application.RepoRoot, application.CWD, positional[0], optionalFlag(command, "project") != nil); adopted {
-				positional = append([]string(nil), positional...)
-				positional[0] = relative
-				if err := command.Flags().Set("project", project); err != nil {
-					return err
-				}
-			}
+		command.SetContext(withRuntime(command.Context(), settings))
+		command.SetContext(logging.WithLogger(command.Context(), stderr, settings.Verbose > 0))
+		application, err := app.NewContext(app.ContextOptions{ResolveOptions: app.ResolveOptions{CWD: cwd}, Runtime: &settings, JSON: boolFlag(command, "json")})
+		if err != nil {
+			return err
 		}
+		command.SetContext(task.WithObserver(command.Context(), invocationObserver(stdout, stderr, application, environment)))
+		selection := runtimeSelection(application, item, positional, settings, originalProjectPresent)
+		command.SetContext(withSelection(command.Context(), selection))
+		positional = selection.Args
 		if item.RepoRequired {
 			if _, err := application.RequireRepo(); err != nil {
 				return err
@@ -72,7 +91,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			}
 		}
 		registration := commandRegistrations[strings.Join(item.Path, " ")]
-		return registration.run(commandExecution{command, application, positional, stdout, stderr})
+		return registration.run(commandExecution{Command: command, Application: application, Args: positional, Stdout: stdout, Stderr: stderr, Selection: selection, ProcessIO: processIO})
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, "internal error:", err)
@@ -109,9 +128,13 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		if selected == nil {
 			selected = root
 		}
+		if cwdError == nil {
+			settings, _ := app.ResolveRuntime(runtimeInput(selected, cwd, environment))
+			selected.SetContext(withRuntime(ctx, settings))
+		}
 		return renderParseFailure(selected, catalogue, parseError, args, stderr)
 	}
-	format := "text"
+	format := diagnosticFormat
 	if wantsJSON(args) {
 		format = "json"
 	}
@@ -147,11 +170,35 @@ func (writer *checkedWriter) Write(raw []byte) (int, error) {
 }
 
 func stringFlag(command *cobra.Command, name string) string {
+	if name == "project" {
+		if selection, ok := selectionFromCommand(command); ok {
+			return selection.Project
+		}
+	}
+	if settings, ok := runtimeFromCommand(command); ok {
+		switch name {
+		case "root":
+			return settings.Root
+		case "config":
+			return settings.Config
+		case "output":
+			return settings.Output
+		}
+	}
 	value, _ := command.Flags().GetString(name)
 	return value
 }
 
 func boolFlag(command *cobra.Command, name string) bool {
+	if settings, ok := runtimeFromCommand(command); ok {
+		switch name {
+		case "quiet":
+			return settings.Quiet
+		case "no-color":
+			return settings.NoColor
+		}
+	}
+
 	value, _ := command.Flags().GetBool(name)
 	return value
 }
@@ -170,5 +217,5 @@ func wantsJSON(args []string) bool {
 func Execute() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return Run(ctx, os.Args[1:], os.Stdout, os.Stderr)
+	return runWithProcessIO(ctx, os.Args[1:], os.Stdout, os.Stderr, build.ProcessIO{Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr})
 }

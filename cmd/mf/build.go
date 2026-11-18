@@ -6,7 +6,7 @@ import (
 
 func init() {
 	registerCommand("build", "", newBuildCommand, func(e commandExecution) error {
-		return buildCommand(e.Command, e.Application, e.Args, e.Stdout, e.Stderr)
+		return buildCommand(e.Command, e.Application, e.Args, e.Stdout, e.Stderr, e.ProcessIO)
 	})
 }
 

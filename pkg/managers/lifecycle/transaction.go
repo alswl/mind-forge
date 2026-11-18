@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/alswl/mind-forge/pkg/common/task"
 	"io"
 	"os"
 	"path/filepath"
@@ -227,6 +228,7 @@ func (engine Engine) ValidatePlan(root string, plan Plan) error {
 }
 
 func (engine Engine) Apply(root string, plan Plan) (Journal, error) {
+	task.Notify(engine.Context, task.Stage{Operation: "lifecycle", Name: "preparing transaction"})
 	engine = engine.defaults()
 	if err := plan.VerifyRoot(root); err != nil {
 		return Journal{}, err
@@ -277,6 +279,7 @@ func (engine Engine) Apply(root string, plan Plan) (Journal, error) {
 		if err := engine.checkpoint("prepare:directory"); err != nil {
 			return Journal{}, err
 		}
+		task.Notify(engine.Context, task.Stage{Operation: "lifecycle", Name: "saving transaction backup"})
 		if err := engine.saveJournal(private, journal); err != nil {
 			return Journal{}, err
 		}
@@ -315,6 +318,11 @@ func (engine Engine) partial(root string, plan Plan) error {
 }
 
 func (engine Engine) finish(root string, journal Journal, rollback bool) (Journal, error) {
+	stage := "applying changes"
+	if rollback {
+		stage = "rolling back changes"
+	}
+	task.Notify(engine.Context, task.Stage{Operation: "lifecycle", Name: stage})
 	plan := journal.Plan
 	target := plan.After
 	if rollback {

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestResolveRootConfigAndCWDPrecedence(t *testing.T) {
+func TestResolveRootUsesRootAndCWDNotRuntimeConfig(t *testing.T) {
 	base := t.TempDir()
 	for _, name := range []string{"cwd", "override", "configured"} {
 		path := filepath.Join(base, name)
@@ -27,9 +27,9 @@ func TestResolveRootConfigAndCWDPrecedence(t *testing.T) {
 		want    string
 	}{
 		{ResolveOptions{CWD: cwd, Root: filepath.Join(base, "override"), Config: config}, filepath.Join(base, "override")},
-		{ResolveOptions{CWD: cwd, Config: config}, filepath.Join(base, "configured")},
+		{ResolveOptions{CWD: cwd, Config: config}, cwd},
 		{ResolveOptions{CWD: cwd}, cwd},
-		{ResolveOptions{CWD: cwd, Config: filepath.Join(base, "missing")}, ""},
+		{ResolveOptions{CWD: cwd, Config: filepath.Join(base, "missing")}, cwd},
 	} {
 		got, err := ResolveRoot(item.options)
 		if err != nil {

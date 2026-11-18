@@ -63,6 +63,21 @@ func ReadIndex(path string, strict bool) (*IndexDocument, error) {
 }
 
 func DecodeIndex(raw []byte, path string, strict bool) (*IndexDocument, error) {
+	var validate func([]model.Term) error
+	if strict {
+		validate = func(terms []model.Term) error {
+			if err := model.ValidateCorrections(terms); err != nil {
+				return output.Usage(err.Error(), "")
+			}
+			return nil
+		}
+	}
+	return decodeIndex(raw, path, validate)
+}
+
+// Keep caller validation before the accepted document snapshot, preserving
+// the strict decoder's existing error order.
+func decodeIndex(raw []byte, path string, validate func([]model.Term) error) (*IndexDocument, error) {
 	document, err := ParseYAML(raw)
 	if err != nil {
 		return nil, output.ParseError(path, err.Error())
@@ -79,11 +94,12 @@ func DecodeIndex(raw []byte, path string, strict bool) (*IndexDocument, error) {
 	if err := ValidateSchema(index.Value.SchemaVersion, path); err != nil {
 		return nil, err
 	}
-	if strict && index.Value.Terms != nil {
-		if err := model.ValidateCorrections(*index.Value.Terms); err != nil {
-			return nil, output.Usage(err.Error(), "")
+	if validate != nil && index.Value.Terms != nil {
+		if err := validate(*index.Value.Terms); err != nil {
+			return nil, err
 		}
 	}
+
 	return index, index.capture()
 }
 

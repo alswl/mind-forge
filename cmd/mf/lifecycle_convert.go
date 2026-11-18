@@ -31,7 +31,7 @@ func executeLifecycleConvert(command *cobra.Command, application *app.Context, a
 	if err != nil {
 		return err
 	}
-	operation := content.LifecycleOperation{Kind: "convert"}
+	operation := content.LifecycleOperation{Context: command.Context(), Kind: "convert"}
 	if selector != nil {
 		operation.Identity = *selector
 	}

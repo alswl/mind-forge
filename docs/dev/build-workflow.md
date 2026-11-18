@@ -1,5 +1,46 @@
 # Build workflow
 
+## Current Go workflow
+
+Use Go 1.26.11, golangci-lint 2.12.2 and the pinned shared makefile-go module.
+Run changed-package component tests while editing, then `make check` (equivalently
+`bash scripts/check.sh`): formatting, vet, correctness lint, module verify/tidy,
+all cmd/pkg/internal component tests and the stamped `bin/mf` build.
+
+[Code structure](code-structure.md), [adopted guide](go-cli-guidelines.md) and
+[configuration/migration](../guide/configuration.md) describe current behavior.
+AGENTS and the active plan define requirements; the retired constitution is not
+a gate. Runtime config is TOML, author configuration remains business YAML.
+Child diagnostics use stderr; eligible stage feedback follows the dual-TTY policy.
+
+Keep full CLI/HTTP/PTY/process and platform checks in the external verification
+repository. A local gate establishes component/build health, not external acceptance.
+Record the exact clean commit, dirty status, actual binary SHA/version/build-info,
+harness inputs, selected IDs, natural exits and raw evidence for each candidate.
+A new version/source/manual input invalidates inherited candidate acceptance until
+explicitly rebound. Partial selections and NOT_RUN are not whole-catalogue PASS.
+
+Build from a clean committed worktree with `bash scripts/build.sh`; inspect
+`bin/mf version --json` and `go version -m bin/mf`, including vcs.modified=false.
+`scripts/generate-manual.sh` uses `MF_BIN=/absolute/path/to/bin/mf` when supplied.
+Bind generator, public metadata and manual hashes; do not edit the generated manual.
+Optional Git and configured pipeline tools remain conditional runtime dependencies.
+
+The existing GitHub CI `go-quality` job runs `scripts/check.sh` and uploads its
+source/binary identity. Review and independent QA must bind the same reviewed head.
+A PR/CI pass does not merge, tag or publish; those actions have separate authority.
+
+## Historical migration records
+
+The following material predates the current guide work. Candidate IDs, open gates,
+constitution wording and timings below describe historical states only; they do
+not override the current rules above or establish current performance/acceptance.
+
+<details>
+<summary>Retained historical workflow and measurements</summary>
+
+# Build workflow
+
 ## Current development and verification rules
 
 The adopted [Go CLI requirements](go-cli-guidelines.md) map the pinned
@@ -229,3 +270,5 @@ and creates a commit and tag. It previews by default. `--stage candidate` adds
 `-rc` to the tag; `--stage alpha` and `--stage beta` select those suffixes.
 `base_version` always contains the core `MAJOR.MINOR.PATCH`, including for
 prerelease tags, so the same archive builder accepts the resulting tag.
+
+</details>

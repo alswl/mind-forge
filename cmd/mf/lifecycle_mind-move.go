@@ -31,7 +31,7 @@ func executeLifecycleMindMove(command *cobra.Command, application *app.Context, 
 	if err != nil {
 		return err
 	}
-	operation := content.LifecycleOperation{Kind: "mind-move"}
+	operation := content.LifecycleOperation{Context: command.Context(), Kind: "mind-move"}
 	if selector != nil {
 		operation.Identity = *selector
 	}

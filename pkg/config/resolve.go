@@ -57,19 +57,6 @@ func ResolveRoot(options ResolveOptions) (string, error) {
 		}
 		return root, nil
 	}
-	if options.Config != "" {
-		config := relativeToCWD(options.Config)
-		info, err := os.Stat(config)
-		if err != nil {
-			return "", nil
-		}
-		if !info.IsDir() {
-			config = filepath.Dir(config)
-		}
-		if exists(filepath.Join(config, "minds.yaml")) {
-			return canonical(config), nil
-		}
-		return "", nil
-	}
+
 	return DetectRoot(options.CWD, 50), nil
 }

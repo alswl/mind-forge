@@ -9,6 +9,7 @@ import (
 	"time"
 
 	output "github.com/alswl/mind-forge/pkg/common/outcome"
+	"github.com/alswl/mind-forge/pkg/common/task"
 )
 
 type AcquisitionOptions struct {
@@ -47,6 +48,7 @@ func acquireHTTP(ctx context.Context, location string, options AcquisitionOption
 		return nil, httpError("HTTP acquisition failed", err)
 	}
 	request.Header.Set("User-Agent", "")
+	task.Notify(ctx, task.Stage{Operation: "source", Name: "requesting HTTP source"})
 	response, err := client.Do(request)
 	if err != nil {
 		return nil, httpError("HTTP acquisition failed", err)
@@ -62,6 +64,7 @@ func acquireHTTP(ctx context.Context, location string, options AcquisitionOption
 	if limit >= uint64(^uint64(0)>>1) {
 		limit = uint64(^uint64(0)>>1) - 1
 	}
+	task.Notify(ctx, task.Stage{Operation: "source", Name: "reading HTTP response"})
 	raw, err := io.ReadAll(io.LimitReader(response.Body, int64(limit+1)))
 	if err != nil {
 		return nil, httpError("failed to read HTTP response", err)

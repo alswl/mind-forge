@@ -1,6 +1,38 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.6.0] - Unreleased
+
+### Breaking changes
+- BREAKING CHANGE: `--config` / `MF_CONFIG` select and validate runtime TOML.
+  Select the repository with `--root`, `MF_ROOT`, or cwd instead; author YAML
+  remains business data and `config show` retains its business view.
+- BREAKING CHANGE: relevant nonempty relative XDG directory overrides now error
+  during standard-directory lookup. Unset them or use absolute paths; explicit
+  runtime config selection bypasses default config-directory lookup.
+- BREAKING CHANGE: pipeline child stdout and stderr now use invocation stderr,
+  leaving stdout for results. Redirect stderr for build logs; quiet discards
+  ordinary child stdout while retaining child stderr diagnostics.
+
+See [configuration and adoption](docs/guide/configuration.md) for migration steps.
+
+### Added
+- Per-invocation Viper runtime settings with CLI > environment > TOML > defaults,
+  strict types, explicit false/zero presence and standard user config directories.
+- Shared useful help/manual examples and synchronous plain stage feedback for
+  real dual-TTY, text, nonquiet sessions; JSON/pipes suppress progress.
+
+### Changed
+- Move application queries, preview validation and document persistence to their
+  service/DAL boundaries; isolate project selection and process IO per invocation.
+- Strengthen production dependency checks for internal packages and exact package
+  boundaries. Keep component tests colocated and independent CLI checks external.
+
+### Preserved
+- Pipeline best-effort recovery and dependent-stage skipping; author data and
+  config show semantics; config export umask, existing mode, symlink and explicit
+  output behavior. No atomic-export guarantee or fail-fast behavior is added.
+
 ## [0.5.3] - 2026-11-18
 
 ### Changed

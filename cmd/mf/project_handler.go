@@ -94,40 +94,23 @@ func listProjects(command *cobra.Command, application *app.Context, stdout, stde
 }
 
 func showProject(application *app.Context, selector string, stdout io.Writer) error {
-	project, err := app.ResolveProject(application.RepoRoot, &selector, application.CWD, false)
+	inspection, err := content.InspectProject(application.RepoRoot, application.CWD, selector)
 	if err != nil {
 		return err
 	}
-	config, err := content.ConfigFor(project)
-	if err != nil {
-		return err
-	}
-	if config.ContentLayout != nil {
-		minds, err := content.Discover(application.RepoRoot, project)
-		if err != nil {
-			return err
-		}
-		identity, err := content.ProjectIdentityPath(application.RepoRoot, project)
-		if err != nil {
-			return err
-		}
-		count := 0
-		for _, mind := range minds {
-			count += len(mind.Outputs)
-		}
-		data := map[string]any{"kind": "project", "identity": identity, "project_identity": identity, "content_layout": *config.ContentLayout, "mind_count": len(minds), "output_count": count, "minds": minds}
+	if inspection.Mind != nil {
+		details := inspection.Mind
+		identity, minds, count := details.Identity, details.Minds, details.OutputCount
+		data := map[string]any{"kind": "project", "identity": identity, "project_identity": identity, "content_layout": details.Layout, "mind_count": len(minds), "output_count": count, "minds": minds}
 		if application.Quiet {
 			return nil
 		}
 		if application.Format == "json" {
 			return output.RenderSuccess(stdout, "json", data)
 		}
-		return output.RenderRaw(stdout, "text", fmt.Sprintf("Project:  %s\nLayout:  %s\nMinds:  %d\nOutputs:  %d", identity, *config.ContentLayout, len(minds), count))
+		return output.RenderRaw(stdout, "text", fmt.Sprintf("Project:  %s\nLayout:  %s\nMinds:  %d\nOutputs:  %d", identity, details.Layout, len(minds), count))
 	}
-	details, err := content.ProjectDetails(project, selector)
-	if err != nil {
-		return err
-	}
+	details := inspection.Legacy
 	if application.Quiet {
 		return nil
 	}

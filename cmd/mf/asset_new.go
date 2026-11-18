@@ -2,7 +2,6 @@ package main
 
 import (
 	"io"
-	"path/filepath"
 
 	"github.com/alswl/mind-forge/internal/output"
 	app "github.com/alswl/mind-forge/pkg/config"
@@ -36,15 +35,10 @@ func executeAssetNew(command *cobra.Command, application *app.Context, args []st
 
 		result.Verb = output.Add
 		if dryRun {
-			name := filepath.Base(args[0])
-			if name == "." || name == "/" {
-				name = "unknown"
-			}
-			if value := optionalFlag(command, "name"); value != nil {
-				name = *value
-			}
+			preview := asset.PreviewNew(args[0], optionalFlag(command, "name"))
+			name := preview.Name
 			result.Identity, result.Path = name, &name
-			result.Details["source"] = args[0]
+			result.Details["source"] = preview.Source
 			break
 		}
 		tags, _ := command.Flags().GetStringArray("tag")

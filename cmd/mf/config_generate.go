@@ -2,11 +2,10 @@ package main
 
 import (
 	"io"
-	"os"
 
 	"github.com/alswl/mind-forge/internal/output"
-	"github.com/alswl/mind-forge/pkg/common/model"
 	app "github.com/alswl/mind-forge/pkg/config"
+	"github.com/alswl/mind-forge/pkg/services/configuration"
 	"github.com/spf13/cobra"
 )
 
@@ -24,24 +23,8 @@ func newConfigGenerateCommand(item CommandSpec, handler Handler) (*cobra.Command
 func executeConfigGenerate(command *cobra.Command, application *app.Context, stdout io.Writer) error {
 	format := stringFlag(command, "output-format")
 
-	var config model.MindConfig
-	{
-
-		var err error
-		config, err = app.EffectiveConfig(application.CWD, application.RepoRoot)
-		if err != nil {
-			return err
-		}
-	}
-
-	content, err := app.SerializeConfig(config, format)
-	if err != nil {
-		return err
-	}
-
 	path := stringFlag(command, "out")
-
-	if err := os.WriteFile(path, []byte(content), 0o666); err != nil {
+	if err := (configuration.Exporter{}).Export(application.CWD, application.RepoRoot, format, path); err != nil {
 		return err
 	}
 	if application.Quiet {

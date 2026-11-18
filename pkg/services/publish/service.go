@@ -120,6 +120,7 @@ func publishFile(path, body string, force bool) error {
 func Run(root, project, selector string, opts RunOptions) (model.PublishRunOutcome, *model.Output, []string, error) {
 	var result model.PublishRunOutcome
 	ctx := task.Context(opts.Context)
+	task.Notify(ctx, task.Stage{Operation: "publish", Name: "preparing publication"})
 	if err := ctx.Err(); err != nil {
 		return result, nil, nil, err
 	}
@@ -202,6 +203,7 @@ func Run(root, project, selector string, opts RunOptions) (model.PublishRunOutco
 		if size == 0 {
 			notes = append(notes, "build artifact is empty")
 		}
+		task.Notify(ctx, task.Stage{Operation: "publish", Name: "preparing local output"})
 		if err := ctx.Err(); err != nil {
 			return result, selected, notes, err
 		}
@@ -224,6 +226,7 @@ func Run(root, project, selector string, opts RunOptions) (model.PublishRunOutco
 	if err := ctx.Err(); err != nil {
 		return result, selected, nil, err
 	}
+	task.Notify(ctx, task.Stage{Operation: "publish", Name: "preparing publish prompt"})
 	raw = PrepareContent(raw, config, article, opts.StripFrontMatter, opts.KeepFrontMatter)
 	transformed, transforms, err := Transforms(raw, filepath.Dir(artifact), target, project)
 	if err != nil {

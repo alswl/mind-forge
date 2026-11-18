@@ -1,12 +1,14 @@
 package content
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/alswl/mind-forge/pkg/common/model"
+	"github.com/alswl/mind-forge/pkg/common/task"
 	"github.com/alswl/mind-forge/pkg/common/textcase"
 	app "github.com/alswl/mind-forge/pkg/config"
 	"github.com/alswl/mind-forge/pkg/managers/lifecycle"
@@ -14,6 +16,7 @@ import (
 )
 
 type LifecycleOperation struct {
+	Context                                     context.Context
 	Kind, Identity, Name, Project, Mind, Layout string
 }
 
@@ -98,6 +101,7 @@ func hiddenPlaceholder(files lifecycle.Snapshot, name string) bool {
 }
 
 func PlanLifecycle(root, project string, operation LifecycleOperation) (lifecycle.Plan, error) {
+	task.Notify(operation.Context, task.Stage{Operation: "lifecycle", Name: "inventorying content"})
 	if err := (lifecycle.Engine{}).CheckRecovery(root); err != nil {
 		return lifecycle.Plan{}, err
 	}

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -12,7 +11,6 @@ import (
 	"github.com/alswl/mind-forge/pkg/common/model"
 	output "github.com/alswl/mind-forge/pkg/common/outcome"
 	"github.com/alswl/mind-forge/pkg/dal/store"
-	"go.yaml.in/yaml/v3"
 )
 
 type Scope struct{ Root, Kind string }
@@ -25,97 +23,27 @@ func (s Scope) Path() string {
 }
 
 type termDocument struct {
-	terms    []model.Term
-	index    *store.IndexDocument
-	global   *store.Document
-	original []byte
-	existed  bool
+	terms  []model.Term
+	stored *store.TermDocument
+}
+
+func validateTermCorrections(terms []model.Term) error {
+	if err := model.ValidateCorrections(terms); err != nil {
+		return output.Usage(err.Error(), "")
+	}
+	return nil
 }
 
 func (s Scope) document(strict bool) (*termDocument, error) {
-	d := &termDocument{terms: []model.Term{}}
-	raw, err := os.ReadFile(s.Path())
-	if errors.Is(err, os.ErrNotExist) {
-		raw = []byte("schema_version: '1'\n")
-		if s.Kind != "global" {
-			raw = []byte("schema: '1'\n")
-		}
-	} else if err != nil {
-		return nil, err
-	} else {
-		d.original = raw
-		d.existed = true
-	}
-	if s.Kind != "global" {
-		index, err := store.DecodeIndex(raw, s.Path(), strict)
-		if err != nil {
-			return nil, err
-		}
-		d.index = index
-		if index.Value.Terms != nil {
-			d.terms = *index.Value.Terms
-		}
-		return d, nil
-	}
-	doc, err := store.ParseYAML(raw)
-	if err != nil {
-		return nil, output.ParseError(s.Path(), err.Error())
-	}
-	if len(doc.Root.Content) != 1 || doc.Root.Content[0].Kind != yaml.MappingNode {
-		return nil, output.ParseError(s.Path(), "expected a YAML mapping for global terms")
-	}
-	root := doc.Root.Content[0]
-	schema := ""
-	schemaCount := 0
-	seen := map[string]bool{}
-	for i := 0; i < len(root.Content); i += 2 {
-		key, value := root.Content[i].Value, root.Content[i+1]
-		if seen[key] {
-			return nil, output.ParseError(s.Path(), "duplicate field `"+key+"`")
-		}
-		seen[key] = true
-		for value.Kind == yaml.AliasNode {
-			value = value.Alias
-		}
-		switch key {
-		case "schema", "schema_version":
-			schemaCount++
-			if value.Tag != "!!str" {
-				return nil, output.ParseError(s.Path(), "schema_version must be a string")
-			}
-			schema = value.Value
-		case "terms":
-			if value.Kind != yaml.SequenceNode {
-				return nil, output.ParseError(s.Path(), "terms must be a sequence")
-			}
-			for position, record := range value.Content {
-				for record.Kind == yaml.AliasNode {
-					record = record.Alias
-				}
-				if record.Tag == "!!null" {
-					return nil, output.ParseError(s.Path(), fmt.Sprintf("invalid terms[%d]: null record", position))
-				}
-				var tm model.Term
-				if err := record.Decode(&tm); err != nil {
-					return nil, output.ParseError(s.Path(), err.Error())
-				}
-				d.terms = append(d.terms, tm)
-			}
-		}
-	}
-	if schemaCount != 1 {
-		return nil, output.ParseError(s.Path(), "expected exactly one schema_version or schema field")
-	}
-	if err := store.ValidateSchema(schema, s.Path()); err != nil {
-		return nil, err
-	}
+	var validate func([]model.Term) error
 	if strict {
-		if err := model.ValidateCorrections(d.terms); err != nil {
-			return nil, output.Usage(err.Error(), "")
-		}
+		validate = validateTermCorrections
 	}
-	d.global = doc
-	return d, nil
+	stored, err := store.ReadTermDocument(s.Path(), s.Kind == "global", validate)
+	if err != nil {
+		return nil, err
+	}
+	return &termDocument{terms: stored.Terms, stored: stored}, nil
 }
 
 func (s Scope) Load(strict bool) ([]model.Term, error) {
@@ -138,25 +66,14 @@ func (s Scope) publish(d *termDocument, dry bool) error {
 	if err != nil || dry {
 		return err
 	}
-	return (store.AtomicWriter{}).Write(s.Path(), raw, 0644)
+	return store.WriteTermDocument(s.Path(), raw)
 }
 
 func (s Scope) render(d *termDocument, sortTerms bool) ([]byte, error) {
 	if sortTerms {
 		slices.SortStableFunc(d.terms, func(a, b model.Term) int { return strings.Compare(a.Term, b.Term) })
 	}
-	if d.index != nil {
-		updated := d.index.Value
-		updated.Terms = &d.terms
-		return d.index.Render(updated)
-	}
-	rendered, err := yaml.Marshal(struct {
-		Terms []model.Term `yaml:"terms"`
-	}{d.terms})
-	if err != nil {
-		return nil, err
-	}
-	return d.global.ReplaceProtectedSection("terms", rendered)
+	return d.stored.RenderTerms(d.terms)
 }
 
 var errMissingTerm = errors.New("canonical term missing")
