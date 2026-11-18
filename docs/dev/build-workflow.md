@@ -50,9 +50,10 @@ distribution cases unselected; the second left 522 catalogue cases unselected.
 The archive fixture is not official release evidence. Harness, case-input and
 raw artifact hashes are recorded in `specs/085-go-rewrite/migration/candidate-c258-clean-functional.json`
 and `my-tests/specs/094-mf-go-content/verification/history/acceptance-c258-clean-functional.md`.
-Official release/archive, shell completion, native cross-platform, repeated
-C258 cost and final complete acceptance remain open; release, shell and
-cross-platform work are deferred by user priority.
+Official release/archive, shell completion, native cross-platform and final
+complete acceptance remain open; release, shell and cross-platform work are
+deferred by user priority. The repeated C258 fixed-selection cost slice is now
+complete, while the full T072 cost gate remains open.
 
 The local development/test cost gate was rerun after the user authorized
 removing regenerable benchmark caches. On current clean HEAD
@@ -65,8 +66,14 @@ outputs 1,070,759,936 B Rust / 228,569,088 B Go (21.35%); cold build median
 runtime source is unchanged from the externally tested `91dc935`; the only
 intervening path is this build-workflow documentation. Raw series and sampling
 caveats are in `specs/085-go-rewrite/migration/candidate-c258-clean-development-test-cost.json`.
-T072 remains open for repeated fixed-profile C258 external runs and release
-workload; these local measurements do not close overall SC acceptance.
+The same clean C258 candidate also completed five cost-sampled runs of the
+fixed 508-case non-distribution external selection: every run passed 508/508
+with 0 failures or skips, and selected execution median was 339.568 s. Eighteen
+distribution cases remained unselected, so the harness result is partial.
+Per-run identities and history hashes are in
+`specs/085-go-rewrite/migration/candidate-c258-external-functional-cost-508.json`.
+T072 remains open for release workload and final SC acceptance; these local and
+fixed-selection measurements do not close the full cost gate.
 
 ## External CLI acceptance
 
