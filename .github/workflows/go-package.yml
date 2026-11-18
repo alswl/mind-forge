@@ -1,0 +1,51 @@
+name: Prepare Go candidate archives
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/go-package.yml'
+      - '.tool-versions'
+      - 'go.mod'
+      - 'go.sum'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'scripts/build.sh'
+      - 'scripts/package.sh'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Archive version tag, for example v0.6.0'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.11'
+          cache-dependency-path: go.sum
+      - name: Build and validate all four archives
+        env:
+          PACKAGE_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ -z "$PACKAGE_TAG" ]]; then
+            base_version=$(awk '$1 == "const" && $2 == "BaseVersion" {gsub(/"/, "", $4); print $4}' internal/version/version.go)
+            PACKAGE_TAG="v$base_version"
+          fi
+          bash scripts/package.sh --tag "$PACKAGE_TAG"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: mf-package-${{ github.event.pull_request.head.sha || github.sha }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 7

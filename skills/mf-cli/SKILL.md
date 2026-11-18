@@ -1,6 +1,6 @@
 ---
 name: mf-cli
-description: Use the mf Rust CLI to manage mind 0.3.0-compatible local knowledge repositories, including minds, zero-to-many editable outputs, category/bundle layouts, Sources, Prompts and Thinking, assets, glossary terms, builds, publishing, render templates, configuration, JSON contracts, and exact command flags. Use for CLI operations, command lookup, automation safety, or structured output reference; use mf-plan or mf-write for mind/output workflows.
+description: Use the mf CLI to manage mind 0.3.0-compatible local knowledge repositories, including minds, zero-to-many editable outputs, category/bundle layouts, Sources, Prompts and Thinking, assets, glossary terms, builds, publishing, render templates, configuration, JSON contracts, and exact command flags. Use for CLI operations, command lookup, automation safety, or structured output reference; use mf-plan or mf-write for mind/output workflows.
 ---
 
 # mf-cli — Knowledge Repo CLI
@@ -9,9 +9,10 @@ description: Use the mf Rust CLI to manage mind 0.3.0-compatible local knowledge
 
 `docs/manual/cli.md` is generated from the built CLI help surface. Do not edit it
 by hand: after changing command definitions, run
-`scripts/generate-manual.sh` from the repository root and review the generated
-diff. Keep workflow guidance in this skill, the README, or focused documents
-under `docs/`.
+`MF_BIN="$PWD/bin/mf" bash scripts/generate-manual.sh` after building the Go
+candidate, and review the generated diff. The explicit artifact prevents using
+a stale installed binary. Keep workflow guidance in this skill, the README,
+or focused documents under `docs/`.
 
 ## Installation
 
@@ -19,21 +20,29 @@ If `mf` is missing (`command not found: mf`), give the user these steps — do
 not install on their behalf:
 
 ```bash
-git clone https://github.com/alswl/mind-forge.git
-cd mind-forge
-scripts/install.sh      # installs `mf` into ~/.cargo/bin (Rust 1.91+)
+curl -fsSL https://raw.githubusercontent.com/alswl/mind-forge/master/scripts/install.sh | sh
+export PATH="${MF_INSTALL_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}:$PATH"
 mf version
 ```
 
-Use `scripts/install.sh`, not `cargo install --path .`: the script points
-`--target-dir` at a persistent directory, so later installs rebuild only `mf`
-instead of all ~490 dependency crates.
+For a source build, install Go `1.26.11` and run `scripts/install.sh` from a
+checkout. Installation honors `MF_INSTALL_DIR`, then `XDG_BIN_HOME`,
+then `~/.local/bin`; `MF_INSTALL_TARGET_DIR` selects the reusable binary output
+directory. See [installation](../../docs/guide/install.md).
+
+During development, run changed-package component unit tests and
+`bash scripts/check.sh` for format/vet/all component units/stamped build. CLI,
+HTTP/PTY/process, installation and native-platform acceptance belongs to the
+external `my-tests` pass with an explicit `VERIFY_MF_BIN`; it is independent of
+local `go test`. See [build workflow](../../docs/dev/build-workflow.md).
 
 Install the three skills by linking them from the clone into a skills
 directory — `~/.claude/skills/` for every project, `.claude/skills/` inside one
 repo. Symlinks keep them current on `git pull`:
 
 ```bash
+git clone https://github.com/alswl/mind-forge.git
+cd mind-forge
 mkdir -p ~/.claude/skills
 for s in mf-cli mf-plan mf-write; do
   ln -sfn "$PWD/skills/$s" ~/.claude/skills/$s

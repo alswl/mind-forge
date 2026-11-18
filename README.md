@@ -60,7 +60,9 @@ export PATH="${MF_INSTALL_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}:$PATH"
 
 Prebuilt releases support macOS and Linux on x86_64 and ARM64; the installer
 verifies SHA-256 checksums. See [installation](docs/guide/install.md) for version
-selection and building from source with Rust 1.91+.
+selection and source builds. Source builds use Go `1.26.11`; from a checkout, run `scripts/install.sh`.
+See [development checks and external acceptance](docs/dev/build-workflow.md)
+for the component-unit and CLI verification boundaries.
 
 ## Quick start
 

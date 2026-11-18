@@ -162,6 +162,7 @@ mind-forge: a local-first knowledge management CLI
 
   Default value: `text`
 
+
   Possible values: `text`, `json`
 
 * `--json` — Shorthand for --output json
@@ -414,13 +415,16 @@ Create an article
 * `-t`, `--template <TEMPLATE>` — Template: built-in schema name (blank/arch/prd/blog) or path under project root. Default: blank
 
   Default value: `blank`
+
 * `--file` [alias: `single-file`] — Write a single file instead of a directory
 
   Default value: `false`
+
 * `--tag <TAG>`
 * `--draft`
 
   Default value: `true`
+
 * `-f`, `--force` — Proceed despite safety checks: overwrite an existing target, or remove an entity referenced by others
 * `-n`, `--dry-run` — Preview changes without writing
 
@@ -589,6 +593,7 @@ Create a block within a directory article
 * `--start <START>` — Numbering origin applied after the insertion
 
   Default value: `1`
+
 * `-n`, `--dry-run` — Preview changes without writing
 
 
@@ -610,6 +615,7 @@ Move a block within a directory article
 * `--start <START>` — Numbering origin applied after the move
 
   Default value: `1`
+
 * `-n`, `--dry-run` — Preview changes without writing
 
 
@@ -629,6 +635,7 @@ Renumber blocks contiguously
 * `--start <START>`
 
   Default value: `1`
+
 * `-n`, `--dry-run` — Preview changes without writing
 
 
@@ -724,11 +731,15 @@ Register a mind without requiring an output
 
 ## `mf mind list`
 
+
+
 **Usage:** `mf mind list`
 
 
 
 ## `mf mind show`
+
+
 
 **Usage:** `mf mind show <IDENTITY>`
 
@@ -869,6 +880,8 @@ Convert every output, core role, and owned additional resource
 
 ## `mf lifecycle mind-rename`
 
+
+
 **Usage:** `mf lifecycle mind-rename [OPTIONS] <IDENTITY> <NAME>`
 
 ###### **Arguments:**
@@ -885,6 +898,8 @@ Convert every output, core role, and owned additional resource
 
 
 ## `mf lifecycle mind-move`
+
+
 
 **Usage:** `mf lifecycle mind-move [OPTIONS] --to-project <TO_PROJECT> <IDENTITY>`
 
@@ -903,6 +918,8 @@ Convert every output, core role, and owned additional resource
 
 ## `mf lifecycle mind-remove`
 
+
+
 **Usage:** `mf lifecycle mind-remove [OPTIONS] <IDENTITY>`
 
 ###### **Arguments:**
@@ -918,6 +935,8 @@ Convert every output, core role, and owned additional resource
 
 
 ## `mf lifecycle output-rename`
+
+
 
 **Usage:** `mf lifecycle output-rename [OPTIONS] <IDENTITY> <NAME>`
 
@@ -936,6 +955,8 @@ Convert every output, core role, and owned additional resource
 
 ## `mf lifecycle output-move`
 
+
+
 **Usage:** `mf lifecycle output-move [OPTIONS] --to-mind <TO_MIND> --to-project <TO_PROJECT> <IDENTITY>`
 
 ###### **Arguments:**
@@ -953,6 +974,8 @@ Convert every output, core role, and owned additional resource
 
 
 ## `mf lifecycle output-remove`
+
+
 
 **Usage:** `mf lifecycle output-remove [OPTIONS] <IDENTITY>`
 
@@ -1053,6 +1076,8 @@ Create an editable output owned by an existing mind
 
 ## `mf output list`
 
+
+
 **Usage:** `mf output list [MIND]`
 
 ###### **Arguments:**
@@ -1063,6 +1088,8 @@ Create an editable output owned by an existing mind
 
 ## `mf output show`
 
+
+
 **Usage:** `mf output show <IDENTITY>`
 
 ###### **Arguments:**
@@ -1072,6 +1099,8 @@ Create an editable output owned by an existing mind
 
 
 ## `mf output index`
+
+
 
 **Usage:** `mf output index [OPTIONS]`
 
@@ -1097,11 +1126,15 @@ View prompt projections
 
 ## `mf prompt list`
 
+
+
 **Usage:** `mf prompt list`
 
 
 
 ## `mf prompt show`
+
+
 
 **Usage:** `mf prompt show <PATH>`
 
@@ -1126,11 +1159,15 @@ View thinking projections
 
 ## `mf thinking list`
 
+
+
 **Usage:** `mf thinking list`
 
 
 
 ## `mf thinking show`
+
+
 
 **Usage:** `mf thinking show <PATH>`
 
@@ -1833,13 +1870,14 @@ Build a selected mind output or legacy article
 
 ###### **Arguments:**
 
-* `<ARTICLE>` — Mind/output identity, unique output name, or legacy article path
+* `<ARTICLE>` — Mind/output identity, output name, legacy article path or bare slug
 
 ###### **Options:**
 
 * `--format <FORMAT>` — Artifact format (independent of the global --output envelope format)
 
   Default value: `markdown`
+
 
   Possible values: `markdown`, `html`
 
@@ -1870,7 +1908,7 @@ Publish a selected output or legacy article to a target
 
 ###### **Arguments:**
 
-* `<ARTICLE>` — Mind/output identity, unique output name, or legacy article path
+* `<ARTICLE>` — Mind/output identity, output name, legacy article path or bare slug
 
 ###### **Options:**
 
@@ -1890,7 +1928,7 @@ Update publish record metadata
 
 ###### **Arguments:**
 
-* `<ARTICLE>` — Mind/output identity, unique output name, or legacy article path
+* `<ARTICLE>` — Mind/output identity, output name, legacy article path or bare slug
 
 ###### **Options:**
 
@@ -1949,24 +1987,20 @@ Generate render prompts (emits prompts only, no output files)
 
 **Usage:** `mf render [OPTIONS] [ARTICLE] [COMMAND]`
 
-###### **Subcommands:**
-
-* `template` — Manage render templates
-
 ###### **Arguments:**
 
 * `<ARTICLE>` — Article slug, project path (docs/my-article), or path to the article
 
+###### **Subcommands:**
+
+* `template` — Manage render templates
+
 ###### **Options:**
 
 * `--template <TEMPLATE>` — Render template name
-* `--html-form <HTML_FORM>` — HTML output form (document or fragment)
+* `--html-form <HTML_FORM>` — HTML output form (document or fragment) Possible values: - document: Full HTML document with `<html>`, `<head>`, and `<body>` - fragment: Embeddable HTML fragment without outer document structure
 
-  Possible values:
-  - `document`:
-    Full HTML document with `<html>`, `<head>`, and `<body>`
-  - `fragment`:
-    Embeddable HTML fragment without outer document structure
+  Possible values: `document`, `fragment`
 
 
 
@@ -2039,6 +2073,7 @@ Show config schema
 
 
 
+
 ## `mf config show`
 
 Show effective config
@@ -2053,6 +2088,7 @@ Show effective config
 
 
 
+
 ## `mf config generate`
 
 Generate effective config file
@@ -2064,6 +2100,7 @@ Generate effective config file
 * `--output-format <OUTPUT_FORMAT>`
 
   Default value: `yaml`
+
 * `--out <OUTPUT>`
 
 
@@ -2079,6 +2116,7 @@ Show default config values
 * `--output-format <OUTPUT_FORMAT>`
 
   Default value: `yaml`
+
 
 
 
@@ -2110,12 +2148,3 @@ Generate shell completion scripts
 Show version information
 
 **Usage:** `mf version`
-
-
-
-<hr/>
-
-<small><i>
-    This document was generated automatically by
-    <a href="https://crates.io/crates/clap-markdown"><code>clap-markdown</code></a>.
-</i></small>

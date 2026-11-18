@@ -16,6 +16,44 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  go-quality:
+    needs: scope
+    if: needs.scope.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.11'
+          cache-dependency-path: go.sum
+      - run: bash scripts/check.sh
+      - name: Record validated candidate source identity
+        id: candidate
+        run: |
+          test "$(go env GOHOSTOS)/$(go env GOHOSTARCH)" = linux/amd64
+          test -z "$(git status --porcelain)"
+          revision=$(git rev-parse HEAD)
+          bin/mf version --json > bin/version.json
+          go version -m bin/mf > bin/build-info.txt
+          awk -F '\t' -v revision="$revision" '$2 == "build" && $3 == ("vcs.revision=" revision) {found=1} END {exit !found}' bin/build-info.txt
+          printf 'revision=%s\ndirty=false\ngo_version=%s\n' "$revision" "$(go env GOVERSION)" > bin/source.txt
+          (cd bin && sha256sum mf > checksums.txt)
+          printf 'sha256=%s\n' "$(awk '{print $1}' bin/checksums.txt)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: mf-go-${{ github.sha }}-linux-amd64
+          path: |
+            bin/mf
+            bin/version.json
+            bin/build-info.txt
+            bin/source.txt
+            bin/checksums.txt
+          if-no-files-found: error
+          retention-days: 7
+    outputs:
+      artifact: mf-go-${{ github.sha }}-linux-amd64
+      sha256: ${{ steps.candidate.outputs.sha256 }}
+
   scope:
     runs-on: ubuntu-latest
     permissions:
@@ -43,86 +81,3 @@ jobs:
               core.warning(`PR lookup failed; running full CI: ${error.message}`);
               return true;
             }
-
-  quality:
-    needs: scope
-    if: needs.scope.outputs.run == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt, clippy
-          cache: false
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci-quality
-          cache-on-failure: true
-      - run: cargo test --locked
-      - run: cargo clippy --locked -- -D warnings
-      - run: cargo fmt --check
-
-  build:
-    needs: scope
-    if: needs.scope.outputs.run == 'true'
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target:
-          - x86_64-unknown-linux-gnu
-          - aarch64-unknown-linux-gnu
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: ${{ matrix.target }}
-          cache: false
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci-build-${{ matrix.target }}
-          cache-on-failure: true
-      - name: Install Zig
-        run: |
-          curl --retry 3 -fsSL https://ziglang.org/download/0.14.0/zig-linux-x86_64-0.14.0.tar.xz -o /tmp/zig.tar.xz
-          echo '473ec26806133cf4d1918caf1a410f8403a13d979726a9045b421b685031a982  /tmp/zig.tar.xz' | sha256sum -c -
-          tar xJf /tmp/zig.tar.xz -C /tmp
-          echo "/tmp/zig-linux-x86_64-0.14.0" >> "$GITHUB_PATH"
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
-        with:
-          tool: cargo-zigbuild@0.24.1
-          checksum: true
-          fallback: none
-      - run: cargo zigbuild --release --locked --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@v6
-        with:
-          name: mf-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/mf
-          retention-days: 7
-          if-no-files-found: error
-
-  build-macos:
-    needs: scope
-    if: needs.scope.outputs.run == 'true'
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        target:
-          - aarch64-apple-darwin
-          - x86_64-apple-darwin
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: ${{ matrix.target }}
-          cache: false
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci-build-macos-${{ matrix.target }}
-          cache-on-failure: true
-      - run: cargo build --release --locked --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@v6
-        with:
-          name: mf-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/mf
-          retention-days: 7
-          if-no-files-found: error

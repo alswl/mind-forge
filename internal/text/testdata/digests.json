@@ -1,0 +1,8 @@
+{
+  "dictionary_tokens_sha256": "0cf02544c327165726d91319a84fcac4694e0a803cff52a88e16631714819d1e",
+  "dictionary_words": 349045,
+  "jieba": "0.7.4",
+  "known_pinyin_runes": 41497,
+  "pinyin": "0.10.0",
+  "unicode_pinyin_sha256": "26ee7e7bcbd612b9f2200a9a8dd808bd1a304c325ff054a866feff8180b8d75b"
+}

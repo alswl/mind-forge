@@ -1,0 +1,325 @@
+[
+  {
+    "index": null,
+    "input": "null",
+    "metadata": {
+      "Ok": {
+        "data": null
+      }
+    },
+    "target": {
+      "Ok": {
+        "config": null
+      }
+    }
+  },
+  {
+    "index": 0,
+    "input": ".nan",
+    "metadata": {
+      "Ok": {
+        "data": null
+      }
+    },
+    "target": {
+      "Ok": {
+        "config": null
+      }
+    }
+  },
+  {
+    "index": 0,
+    "input": ".inf",
+    "metadata": {
+      "Ok": {
+        "data": null
+      }
+    },
+    "target": {
+      "Ok": {
+        "config": null
+      }
+    }
+  },
+  {
+    "index": 0,
+    "input": "-.inf",
+    "metadata": {
+      "Ok": {
+        "data": null
+      }
+    },
+    "target": {
+      "Ok": {
+        "config": null
+      }
+    }
+  },
+  {
+    "index": "2026-01-01",
+    "input": "2026-01-01",
+    "metadata": {
+      "Ok": {
+        "data": "2026-01-01"
+      }
+    },
+    "target": {
+      "Ok": {
+        "config": "2026-01-01"
+      }
+    }
+  },
+  {
+    "index": 1.8446744073709552e+19,
+    "input": "18446744073709551615",
+    "metadata": {
+      "Ok": {
+        "data": 18446744073709551615
+      }
+    },
+    "target": {
+      "Ok": {
+        "config": 18446744073709551615
+      }
+    }
+  },
+  {
+    "index": null,
+    "input": "!memo 7",
+    "metadata": {
+      "Err": "data: untagged and internally tagged enums do not support enum input at line 1 column 7"
+    },
+    "target": {
+      "Err": "config: invalid type: enum, expected any valid JSON value at line 1 column 9"
+    }
+  },
+  {
+    "index": null,
+    "input": "!memo [a, 2]",
+    "metadata": {
+      "Err": "data: untagged and internally tagged enums do not support enum input at line 1 column 7"
+    },
+    "target": {
+      "Err": "config: invalid type: enum, expected any valid JSON value at line 1 column 9"
+    }
+  },
+  {
+    "index": null,
+    "input": "!memo {k: v}",
+    "metadata": {
+      "Err": "data: untagged and internally tagged enums do not support enum input at line 1 column 7"
+    },
+    "target": {
+      "Err": "config: invalid type: enum, expected any valid JSON value at line 1 column 9"
+    }
+  },
+  {
+    "index": {
+      "": 1
+    },
+    "input": "{7: .inf, true: 1}",
+    "metadata": {
+      "Ok": {
+        "data": {
+          "7": null,
+          "true": 1
+        }
+      }
+    },
+    "target": {
+      "Ok": {
+        "config": {
+          "7": null,
+          "true": 1
+        }
+      }
+    }
+  },
+  {
+    "index": {
+      "": "a"
+    },
+    "input": "{0x10: a}",
+    "metadata": {
+      "Ok": {
+        "data": {
+          "16": "a"
+        }
+      }
+    },
+    "target": {
+      "Ok": {
+        "config": {
+          "0x10": "a"
+        }
+      }
+    }
+  },
+  {
+    "index": {
+      "": "a"
+    },
+    "input": "{1.0: a}",
+    "metadata": {
+      "Ok": {
+        "data": {
+          "1.0": "a"
+        }
+      }
+    },
+    "target": {
+      "Ok": {
+        "config": {
+          "1.0": "a"
+        }
+      }
+    }
+  },
+  {
+    "index": {
+      "": "a"
+    },
+    "input": "{1e-6: a}",
+    "metadata": {
+      "Ok": {
+        "data": {
+          "1e-6": "a"
+        }
+      }
+    },
+    "target": {
+      "Ok": {
+        "config": {
+          "1e-6": "a"
+        }
+      }
+    }
+  },
+  {
+    "index": {
+      "": "a"
+    },
+    "input": "{1e20: a}",
+    "metadata": {
+      "Ok": {
+        "data": {
+          "1e+20": "a"
+        }
+      }
+    },
+    "target": {
+      "Ok": {
+        "config": {
+          "1e20": "a"
+        }
+      }
+    }
+  },
+  {
+    "index": {
+      "": "c"
+    },
+    "input": "{[a, b]: c}",
+    "metadata": {
+      "Err": "key must be a string"
+    },
+    "target": {
+      "Err": "config: invalid type: sequence, expected a string key at line 1 column 10"
+    }
+  },
+  {
+    "index": {
+      "": "x"
+    },
+    "input": "{null: x}",
+    "metadata": {
+      "Err": "key must be a string"
+    },
+    "target": {
+      "Ok": {
+        "config": {
+          "null": "x"
+        }
+      }
+    }
+  },
+  {
+    "index": {
+      "": "x"
+    },
+    "input": "{.nan: x}",
+    "metadata": {
+      "Err": "float key must be finite (got NaN or +/-inf)"
+    },
+    "target": {
+      "Ok": {
+        "config": {
+          ".nan": "x"
+        }
+      }
+    }
+  },
+  {
+    "index": "SGk=",
+    "input": "!!binary SGk=",
+    "metadata": {
+      "Ok": {
+        "data": "SGk="
+      }
+    },
+    "target": {
+      "Ok": {
+        "config": "SGk="
+      }
+    }
+  },
+  {
+    "index": {
+      "a": null
+    },
+    "input": "!!set {a: null}",
+    "metadata": {
+      "Ok": {
+        "data": {
+          "a": null
+        }
+      }
+    },
+    "target": {
+      "Ok": {
+        "config": {
+          "a": null
+        }
+      }
+    }
+  },
+  {
+    "index": {
+      "<<": {
+        "a": "b"
+      },
+      "k": "v"
+    },
+    "input": "{<<: {a: b}, k: v}",
+    "metadata": {
+      "Ok": {
+        "data": {
+          "<<": {
+            "a": "b"
+          },
+          "k": "v"
+        }
+      }
+    },
+    "target": {
+      "Ok": {
+        "config": {
+          "<<": {
+            "a": "b"
+          },
+          "k": "v"
+        }
+      }
+    }
+  }
+]

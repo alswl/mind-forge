@@ -1,0 +1,9 @@
+{
+  "entry": "{\"kind\":\"file\",\"bytes\":[0,10,128,255],\"mode\":420}",
+  "journal": "{\"plan\":{\"version\":1,\"root\":\"/fixture\",\"operation\":\"rename\",\"watches\":[\".\"],\"before\":{},\"after\":{},\"digest\":\"d9867efbf608bba8182544d5c87e9df139002eeeedbfea87513dcb08fd1521b0\"},\"phase\":\"prepared\"}",
+  "plan": "{\"version\":1,\"root\":\"/fixture\",\"operation\":\"rename\",\"watches\":[\".\"],\"before\":{},\"after\":{},\"digest\":\"d9867efbf608bba8182544d5c87e9df139002eeeedbfea87513dcb08fd1521b0\"}",
+  "plan_digest": "d9867efbf608bba8182544d5c87e9df139002eeeedbfea87513dcb08fd1521b0",
+  "plan_tuple": "[1,\"/fixture\",\"rename\",[\".\"],{},{}]",
+  "snapshot": "{\"a\\\"\\n\":{\"kind\":\"file\",\"bytes\":[],\"mode\":384},\"中 <>&\":{\"kind\":\"directory\",\"mode\":448}}",
+  "source_commit": "3864e883bdb338139c9f09b5b0f622db5a61f332"
+}
