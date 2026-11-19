@@ -5,10 +5,13 @@ import (
 	"io"
 
 	app "github.com/alswl/mind-forge/pkg/config"
+	"github.com/alswl/mind-forge/pkg/services/build"
 	"github.com/spf13/cobra"
 )
 
 type commandExecution struct {
+	ProcessIO      build.ProcessIO
+	Selection      ResolvedSelection
 	Command        *cobra.Command
 	Application    *app.Context
 	Args           []string

@@ -11,7 +11,7 @@ retain their own APIs, embedded assets and colocated component tests.
 | `pkg/managers/lifecycle` | Entity inventory, conversion plans, journal state and recoverable transaction algorithms | managers, dal, common |
 | `pkg/dal/store` | Filesystem boundaries, locks, atomic writes, YAML/index persistence | dal, common |
 | `pkg/common` | Models, outcome contracts, Markdown/text algorithms, task and logging utilities | common |
-| `pkg/config` | Existing configuration parsing, project/root discovery and effective layout | config, dal, common |
+| `pkg/config` | Runtime TOML/input snapshot resolution, project/root discovery and effective layout | config, dal, common |
 | `internal/output` | Private terminal rendering, capabilities, confirmation and diagnostics | common contracts and platform libraries |
 | `internal/version` | Executable metadata and linker injection points | standard library |
 
@@ -73,8 +73,9 @@ version injection and CGO-disabled build. Read
 [shared-module provenance and adaptations](../../hack/makefile-go/README.md)
 before updating it. No sibling checkout is required.
 
-Configuration remains the existing implementation under `pkg/config`: no Viper,
-new override keys, directory migration or precedence change is introduced.
-The private output implementation and existing message/exit/JSON contracts are
-retained. See [build workflow](build-workflow.md) for local checks and external
+Runtime configuration lives in `pkg/config/runtime.go`: each invocation uses a fresh Viper instance and a frozen cwd/environment/CLI snapshot. `ResolvedSelection` separates original project presence from the effective value; downstream consumers read that selection without mutating flags. Runtime TOML and author YAML have separate purposes; [configuration](../guide/configuration.md) documents precedence and adoption.
+
+Application queries own article aggregation/sort, project inspection, output flattening, source filtering and preview validation. DAL owns term document/raw-byte handling and shared index render/write/readback outcomes, including committed-with-error; strict-load policy stays in services. Configuration export calls a service serializer and DAL writer with the existing umask/mode/symlink/explicit-output semantics.
+
+Build process IO and runner are invocation-scoped. Prepare selects the complete IO group once: unspecified zero IO inherits process streams; an explicit group retains nil streams as discard. ProcessIO.Explicit marks an intentionally all-nil group, and an explicit Execute runner takes precedence. Child diagnostics use invocation stderr; quiet discards child stdout only. `common/task` supplies an optional synchronous observer; services report stages without importing a renderer. `internal/output` renders plain stage text and cmd injects the dual-TTY/text/nonquiet/TERM policy. No timer, animation, worker queue or latency promise is added. See [build workflow](build-workflow.md) for local checks and external
 candidate identity requirements.

@@ -364,6 +364,10 @@ func jaro(left, right string) float64 {
 }
 
 func renderParseFailure(command *cobra.Command, spec *Spec, failure *parseFailure, args []string, stderr io.Writer) int {
+	jsonError := wantsJSON(args)
+	if settings, ok := runtimeFromCommand(command); ok && settings.Output == "json" {
+		jsonError = true
+	}
 	path := strings.Fields(command.CommandPath())[1:]
 	item, ok := spec.Lookup(path)
 	if !ok {
@@ -375,7 +379,7 @@ func renderParseFailure(command *cobra.Command, spec *Spec, failure *parseFailur
 	text := ParseErrorText(spec, item, failure, args)
 	if (failure.kind == "invalid_value" || failure.kind == "value_required") && failure.flag.Name == "output" && slices.Contains(args, "build") {
 		format := "text"
-		if wantsJSON(args) {
+		if jsonError {
 			format = "json"
 		}
 		err := output.Usage(strings.TrimSpace(strings.TrimPrefix(text, "error:")), "to set the build output path, use --out instead")
@@ -384,7 +388,7 @@ func renderParseFailure(command *cobra.Command, spec *Spec, failure *parseFailur
 		}
 		return 2
 	}
-	if wantsJSON(args) {
+	if jsonError {
 		err := output.Usage(strings.TrimSpace(text), "")
 		if output.RenderError(stderr, "json", err) != nil {
 			return 1

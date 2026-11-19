@@ -1,6 +1,7 @@
 package content
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"path/filepath"
@@ -22,7 +23,7 @@ type contentInventory struct {
 	before, after lifecycle.Snapshot
 }
 
-func readContentInventory(root string) (*contentInventory, error) {
+func readContentInventory(ctx context.Context, root string) (*contentInventory, error) {
 	canonical, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return nil, err
@@ -31,7 +32,7 @@ func readContentInventory(root string) (*contentInventory, error) {
 	if err != nil {
 		return nil, err
 	}
-	before, err := lifecycle.SnapshotFiles(canonical, []string{"."})
+	before, err := lifecycle.SnapshotFilesContext(ctx, canonical, []string{"."})
 	if err != nil {
 		return nil, err
 	}

@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	output "github.com/alswl/mind-forge/pkg/common/outcome"
 )
 
 type ContextOptions struct {
+	Runtime *RuntimeSettings
 	ResolveOptions
 	Project string
 	Format  string
@@ -30,19 +30,25 @@ type Context struct {
 }
 
 func NewContext(options ContextOptions) (*Context, error) {
+	if s := options.Runtime; s != nil {
+		options.Root = s.Root
+		options.Config = s.Config
+		options.Project = s.Project
+		options.Format = s.Output
+		options.Quiet = s.Quiet
+		options.NoColor = s.NoColor
+		options.Verbose = s.Verbose
+	}
 	if options.Quiet && options.Verbose != 0 {
 		return nil, output.Usage("'--verbose' cannot be used with '--quiet'", "")
 	}
 	configPath := options.Config
 	if configPath == "" {
-		homeDirectory, err := os.UserHomeDir()
+		directory, err := os.UserConfigDir()
 		if err != nil {
-			return nil, err
+			return nil, output.Usage("runtime config directory: "+err.Error(), "")
 		}
-		configPath, err = DefaultConfigPath(runtime.GOOS, homeDirectory, os.Getenv("XDG_CONFIG_HOME"))
-		if err != nil {
-			return nil, err
-		}
+		configPath = filepath.Join(directory, "mf", "config.toml")
 	}
 	if options.CWD == "" {
 		cwd, err := os.Getwd()
@@ -51,7 +57,9 @@ func NewContext(options ContextOptions) (*Context, error) {
 		}
 		options.CWD = cwd
 	}
-	root, err := ResolveRoot(options.ResolveOptions)
+	resolve := options.ResolveOptions
+	resolve.Config = ""
+	root, err := ResolveRoot(resolve)
 	if err != nil {
 		return nil, err
 	}
@@ -75,6 +83,9 @@ func DefaultConfigPath(platform, homeDirectory, xdgConfigHome string) (string, e
 		directory = filepath.Join(homeDirectory, "Library", "Application Support")
 	case "linux":
 		directory = filepath.Join(homeDirectory, ".config")
+		if xdgConfigHome != "" && !filepath.IsAbs(xdgConfigHome) {
+			return "", fmt.Errorf("XDG_CONFIG_HOME must be absolute")
+		}
 		if filepath.IsAbs(xdgConfigHome) {
 			directory = xdgConfigHome
 		}

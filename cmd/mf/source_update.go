@@ -5,7 +5,6 @@ import (
 
 	"github.com/alswl/mind-forge/internal/output"
 	app "github.com/alswl/mind-forge/pkg/config"
-	"github.com/alswl/mind-forge/pkg/services/content"
 	"github.com/alswl/mind-forge/pkg/services/source"
 	"github.com/spf13/cobra"
 )
@@ -32,43 +31,31 @@ func executeSourceUpdate(command *cobra.Command, application *app.Context, args 
 	service := source.Service{}
 	dryRun := boolFlag(command, "dry-run")
 	result := output.VerbResult{Kind: "source", DryRun: dryRun, Details: map[string]any{}}
-	{
+	name, err := source.ResolveUpdateRequest(project, args[0])
+	if err != nil {
+		return err
+	}
 
-		if err := content.ValidateEntityPath(project, args[0]); err != nil {
-			return err
-		}
-
-		items, err := source.List(project, nil, nil)
+	rename, url := optionalFlag(command, "rename"), optionalFlag(command, "url")
+	changes := map[string]any{}
+	if rename != nil {
+		changes["rename"] = map[string]any{"from": args[0], "to": *rename}
+	}
+	if url != nil {
+		changes["url"] = map[string]any{"to": *url}
+	}
+	result.Verb, result.Identity = output.Update, name
+	result.Details["changes"] = changes
+	if rename != nil {
+		result.OldIdentity = &name
+		result.Identity = *rename
+	}
+	if !dryRun {
+		item, err := service.Update(project, name, rename, url)
 		if err != nil {
 			return err
 		}
-		name, err := source.ResolveSelector(items, args[0])
-		if err != nil {
-			return err
-		}
-
-		rename, url := optionalFlag(command, "rename"), optionalFlag(command, "url")
-		changes := map[string]any{}
-		if rename != nil {
-			changes["rename"] = map[string]any{"from": args[0], "to": *rename}
-		}
-		if url != nil {
-			changes["url"] = map[string]any{"to": *url}
-		}
-		result.Verb, result.Identity = output.Update, name
-		result.Details["changes"] = changes
-		if rename != nil {
-			result.OldIdentity = &name
-			result.Identity = *rename
-		}
-		if !dryRun {
-			item, err := service.Update(project, name, rename, url)
-			if err != nil {
-				return err
-			}
-			result.Details["source"] = item
-		}
-
+		result.Details["source"] = item
 	}
 
 	return renderProjectVerb(stdout, &view, result)

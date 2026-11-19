@@ -31,7 +31,7 @@ func executeLifecycleMindRename(command *cobra.Command, application *app.Context
 	if err != nil {
 		return err
 	}
-	operation := content.LifecycleOperation{Kind: "mind-rename"}
+	operation := content.LifecycleOperation{Context: command.Context(), Kind: "mind-rename"}
 	if selector != nil {
 		operation.Identity = *selector
 	}

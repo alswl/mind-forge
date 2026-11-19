@@ -4,7 +4,6 @@ import (
 	"io"
 
 	"github.com/alswl/mind-forge/internal/output"
-	"github.com/alswl/mind-forge/pkg/common/model"
 	app "github.com/alswl/mind-forge/pkg/config"
 	"github.com/alswl/mind-forge/pkg/services/content"
 	"github.com/spf13/cobra"
@@ -27,30 +26,11 @@ func executeOutputList(command *cobra.Command, application *app.Context, args []
 	if len(args) > 0 {
 		selector = &args[0]
 	}
-	project, err := content.ProjectFor(application.RepoRoot, application.CWD, optionalFlag(command, "project"), selector)
+	outputs, err := content.ListOutputsRequest(application.RepoRoot, application.CWD, optionalFlag(command, "project"), selector)
 	if err != nil {
 		return err
 	}
-	root := application.RepoRoot
-	var data map[string]any
-
-	var minds []model.Mind
-	if len(args) > 0 {
-		var mind model.Mind
-		mind, err = content.ResolveMind(root, project, args[0])
-		minds = []model.Mind{mind}
-	} else {
-		minds, err = content.Discover(root, project)
-	}
-	outputs := model.JSONArray[model.Output]{}
-	for _, mind := range minds {
-		outputs = append(outputs, mind.Outputs...)
-	}
-	data = map[string]any{"outputs": outputs}
-
-	if err != nil {
-		return err
-	}
+	data := map[string]any{"outputs": outputs}
 	if application.Quiet {
 		return nil
 	}

@@ -31,7 +31,7 @@ func executeLifecycleMindRemove(command *cobra.Command, application *app.Context
 	if err != nil {
 		return err
 	}
-	operation := content.LifecycleOperation{Kind: "mind-remove"}
+	operation := content.LifecycleOperation{Context: command.Context(), Kind: "mind-remove"}
 	if selector != nil {
 		operation.Identity = *selector
 	}

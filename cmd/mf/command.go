@@ -64,7 +64,7 @@ func configureCommand(command *cobra.Command, item CommandSpec, handler Handler)
 		if os.Getenv("COLUMNS") == "80" || text == "" {
 			text = item.Help
 		}
-		_, _ = io.WriteString(command.OutOrStdout(), text)
+		_, _ = io.WriteString(command.OutOrStdout(), strings.TrimRight(text, "\n")+"\n\n"+ExamplesText(item.Examples))
 	})
 	for _, flag := range item.Flags {
 		if err := registerFlag(command.Flags(), flag); err != nil {
@@ -91,12 +91,31 @@ func (value *checkedValue) Set(text string) error {
 		return &parseFailure{kind: "duplicate", flag: value.spec}
 	}
 	if value.spec.Kind == "bool" || value.spec.Kind == "count" {
-		if text != "__present__" {
+		runtimeReset := value.spec.Name == "quiet" || value.spec.Name == "no-color" || value.spec.Name == "verbose"
+		if text != "__present__" && !runtimeReset {
 			return &parseFailure{kind: "unexpected_value", value: text, flag: value.spec}
 		}
-		text = "true"
-		if value.spec.Kind == "count" {
-			text = "+1"
+		if text == "__present__" {
+			text = "true"
+			if value.spec.Kind == "count" {
+				text = "+1"
+			}
+		} else if value.spec.Kind == "bool" {
+			switch strings.ToLower(text) {
+			case "true", "1":
+				text = "true"
+			case "false", "0":
+				text = "false"
+			default:
+				return &parseFailure{kind: "unexpected_value", value: text, flag: value.spec}
+			}
+		} else {
+			if text == "" || strings.Trim(text, "0123456789") != "" {
+				return &parseFailure{kind: "unexpected_value", value: text, flag: value.spec}
+			}
+			if _, err := strconv.ParseUint(text, 10, strconv.IntSize-1); err != nil {
+				return &parseFailure{kind: "unexpected_value", value: text, flag: value.spec}
+			}
 		}
 	}
 	if len(value.spec.Choices) != 0 && !slices.Contains(value.spec.Choices, text) {
@@ -194,6 +213,11 @@ func zeroDefault(value string) string {
 }
 
 func flagPresent(command *cobra.Command, name string) bool {
+	if name == "project" {
+		if selection, ok := selectionFromCommand(command); ok {
+			return selection.EffectiveProjectPresent
+		}
+	}
 	flag := command.Flags().Lookup(name)
 	if flag == nil {
 		flag = command.InheritedFlags().Lookup(name)
@@ -217,7 +241,7 @@ func validateCommand(command *cobra.Command, args []string) error {
 	if !ok {
 		return &parseFailure{kind: "unknown_command", value: command.Name()}
 	}
-	if flagPresent(command, "quiet") && flagPresent(command, "verbose") {
+	if boolFlag(command, "quiet") && func() bool { n, _ := command.Flags().GetCount("verbose"); return n > 0 }() {
 		return output.Usage("'--verbose' cannot be used with '--quiet'", "")
 	}
 	var missing []string
@@ -230,6 +254,9 @@ func validateCommand(command *cobra.Command, args []string) error {
 			continue
 		}
 		for _, other := range flag.Conflicts {
+			if flag.Name == "quiet" && other == "verbose" || flag.Name == "verbose" && other == "quiet" {
+				continue
+			}
 			if flagPresent(command, other) {
 				otherSpec, _ := spec.Flag(path, "--"+other)
 				return &parseFailure{kind: "conflict", flag: flag, other: flagLabel(otherSpec)}

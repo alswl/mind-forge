@@ -36,6 +36,7 @@ func runGit(ctx context.Context, root string, args ...string) ([]byte, []byte, e
 }
 
 func (ops ProjectOperations) git(ctx context.Context, root string, args ...string) ([]byte, []byte, error) {
+	task.Notify(ctx, task.Stage{Operation: "project", Name: "running local Git"})
 	if ops.Git != nil {
 		return ops.Git(ctx, root, args...)
 	}

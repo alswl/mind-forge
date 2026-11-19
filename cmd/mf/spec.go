@@ -43,7 +43,14 @@ type ArgumentSpec struct {
 	Choices  []string `json:"choices,omitempty"`
 }
 
+type HelpExample struct {
+	Prerequisites []string `json:"prerequisites"`
+	Command       string   `json:"command"`
+	Effect        string   `json:"effect"`
+}
+
 type CommandSpec struct {
+	Examples           []HelpExample  `json:"examples"`
 	Path               []string       `json:"path"`
 	Aliases            []string       `json:"aliases"`
 	About              string         `json:"about"`

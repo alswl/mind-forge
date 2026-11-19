@@ -31,40 +31,32 @@ func executeSourceNew(command *cobra.Command, application *app.Context, args []s
 	service := source.Service{}
 	dryRun := boolFlag(command, "dry-run")
 	result := output.VerbResult{Kind: "source", DryRun: dryRun, Details: map[string]any{}}
-	{
-
-		kind, err := sourceInputKind(command, args[0])
-		if err != nil {
-			return err
-		}
-		options := source.AddOptions{Name: optionalFlag(command, "name"), Kind: kind, SourceKind: optionalFlag(command, "source-kind"), Link: boolFlag(command, "link"), Force: boolFlag(command, "force"), RegisterOnly: boolFlag(command, "register-only"), DryRun: dryRun}
-		if dryRun && !options.RegisterOnly {
-			name, err := source.DeriveNameFromPath(args[0])
-			if err != nil {
-				name = "unknown"
-			}
-			if options.Name != nil {
-				name = *options.Name
-			}
-			result.Verb, result.Identity, result.Path = output.Add, name, &name
-			result.Details = map[string]any{"input": args[0]}
-			return renderProjectVerb(stdout, &view, result)
-		}
-		outcome, err := service.Add(command.Context(), application.RepoRoot, project, application.CWD, args[0], options)
-		if err != nil {
-			return err
-		}
-		item := outcome.Source
-		result.Verb, result.Identity, result.Path = output.Add, item.Name, item.Path
-		result.Details = map[string]any{"name": item.Name, "type": item.Kind, "url": item.URL, "path": item.Path, "added_at": item.AddedAt, "updated_at": item.UpdatedAt, "mode": outcome.Mode, "replaced": outcome.Replaced}
-		if outcome.ReplacedLocation != nil {
-			result.Details["replaced_location"] = *outcome.ReplacedLocation
-		}
-		if !application.Quiet && application.Format != "json" && outcome.ReplacedLocation != nil {
-			profile := commandProfile(stdout, application)
-			text := output.RenderVerb(result, output.DisplayOptions{RepoRoot: project, Hyperlinks: profile.Hyperlinks}) + "\n  replaced registration at " + *outcome.ReplacedLocation
-			return output.RenderRaw(stdout, "text", text)
-		}
+	kind, err := source.InputKind(args[0], optionalFlag(command, "file-kind"), optionalFlag(command, "source-kind"))
+	if err != nil {
+		return err
+	}
+	options := source.AddOptions{Name: optionalFlag(command, "name"), Kind: kind, SourceKind: optionalFlag(command, "source-kind"), Link: boolFlag(command, "link"), Force: boolFlag(command, "force"), RegisterOnly: boolFlag(command, "register-only"), DryRun: dryRun}
+	if dryRun && !options.RegisterOnly {
+		preview := source.PreviewNew(args[0], options.Name)
+		name := preview.Name
+		result.Verb, result.Identity, result.Path = output.Add, name, &name
+		result.Details = map[string]any{"input": preview.Input}
+		return renderProjectVerb(stdout, &view, result)
+	}
+	outcome, err := service.Add(command.Context(), application.RepoRoot, project, application.CWD, args[0], options)
+	if err != nil {
+		return err
+	}
+	item := outcome.Source
+	result.Verb, result.Identity, result.Path = output.Add, item.Name, item.Path
+	result.Details = map[string]any{"name": item.Name, "type": item.Kind, "url": item.URL, "path": item.Path, "added_at": item.AddedAt, "updated_at": item.UpdatedAt, "mode": outcome.Mode, "replaced": outcome.Replaced}
+	if outcome.ReplacedLocation != nil {
+		result.Details["replaced_location"] = *outcome.ReplacedLocation
+	}
+	if !application.Quiet && application.Format != "json" && outcome.ReplacedLocation != nil {
+		profile := commandProfile(stdout, application)
+		text := output.RenderVerb(result, output.DisplayOptions{RepoRoot: project, Hyperlinks: profile.Hyperlinks}) + "\n  replaced registration at " + *outcome.ReplacedLocation
+		return output.RenderRaw(stdout, "text", text)
 	}
 
 	return renderProjectVerb(stdout, &view, result)

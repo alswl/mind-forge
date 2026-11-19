@@ -17,11 +17,12 @@ import (
 )
 
 type Options struct {
-	Context context.Context
-	Source  *string
-	Out     *string
-	Format  string
-	DryRun  bool
+	ProcessIO ProcessIO
+	Context   context.Context
+	Source    *string
+	Out       *string
+	Format    string
+	DryRun    bool
 }
 
 type InputFile struct {
@@ -52,6 +53,7 @@ type Plan struct {
 }
 
 type Prepared struct {
+	processIO ProcessIO
 	Context   context.Context
 	Selector  string
 	Plan      Plan
@@ -73,6 +75,7 @@ func joined(root, path string) string {
 }
 
 func Prepare(repo, project, selector string, opts Options) (*Prepared, error) {
+	task.Notify(opts.Context, task.Stage{Operation: "build", Name: "preparing inputs"})
 	if err := task.Context(opts.Context).Err(); err != nil {
 		return nil, err
 	}
@@ -104,7 +107,7 @@ func Prepare(repo, project, selector string, opts Options) (*Prepared, error) {
 	if format == "html" {
 		ext = "html"
 	}
-	p := &Prepared{Context: opts.Context, project: project, config: config.Build, assets: joined(project, layout.Assets)}
+	p := &Prepared{processIO: opts.ProcessIO.preparedStreams(), Context: opts.Context, project: project, config: config.Build, assets: joined(project, layout.Assets)}
 	p.Plan = Plan{Article: selector, Project: filepath.Base(project), Format: format, DryRun: opts.DryRun, StripFirstH1: config.Build.StripFirstH1, InputFiles: []InputFile{}, Pipeline: []PipelineStage{}}
 	if format == "html" {
 		p.template, err = loadHTMLTemplate(project, config.Build.HTMLTemplate)
@@ -250,6 +253,7 @@ func Prepare(repo, project, selector string, opts Options) (*Prepared, error) {
 }
 
 func (p *Prepared) Render() (string, []string, error) {
+	task.Notify(p.Context, task.Stage{Operation: "build", Name: "assembling content"})
 	blocks := make([]Block, 0, len(p.files))
 	for i, path := range p.files {
 		if err := task.Context(p.Context).Err(); err != nil {

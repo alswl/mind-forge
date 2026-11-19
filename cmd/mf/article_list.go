@@ -3,8 +3,6 @@ package main
 import (
 	"io"
 	"path/filepath"
-	"sort"
-	"strings"
 
 	"github.com/alswl/mind-forge/internal/output"
 	app "github.com/alswl/mind-forge/pkg/config"
@@ -24,43 +22,11 @@ func newArticleListCommand(item CommandSpec, handler Handler) (*cobra.Command, e
 }
 
 func executeArticleList(command *cobra.Command, application *app.Context, args []string, stdout, stderr io.Writer) error {
-	project, err := app.ResolveProject(application.RepoRoot, optionalFlag(command, "project"), application.CWD, false)
-	all := !flagPresent(command, "project") && err != nil && strings.HasPrefix(err.Error(), "could not detect current project;")
-	if err != nil && !all {
+	result, err := content.ListArticlesRequest(application.RepoRoot, application.CWD, optionalFlag(command, "project"), func(warnings []string) error { return articleWarnings(stderr, warnings) })
+	if err != nil {
 		return err
 	}
-
-	items := []content.ArticleListItem{}
-	if all {
-		roots, err := content.ArticleProjectRoots(application.RepoRoot)
-		if err != nil {
-			return err
-		}
-		for _, root := range roots {
-			found, warnings, loadErr := content.ListArticleItems(root)
-			if err := articleWarnings(stderr, warnings); err != nil {
-				return err
-			}
-			if loadErr == nil {
-				items = append(items, found...)
-			}
-		}
-		sort.SliceStable(items, func(i, j int) bool {
-			if items[i].Mtime == items[j].Mtime {
-				return items[i].Article.Path < items[j].Article.Path
-			}
-			return items[i].Mtime > items[j].Mtime
-		})
-	} else {
-		var warnings []string
-		items, warnings, err = content.ListArticleItems(project)
-		if err != nil {
-			return err
-		}
-		if err := articleWarnings(stderr, warnings); err != nil {
-			return err
-		}
-	}
+	project, all, items := result.Project, result.All, result.Items
 	if application.Quiet {
 		return nil
 	}

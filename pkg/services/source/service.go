@@ -1,7 +1,6 @@
 package source
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -56,21 +55,7 @@ func sourceEntries(index model.Index) []model.Source {
 }
 
 func (service Service) save(project string, document *store.IndexDocument, updated model.Index) (bool, error) {
-	raw, err := document.Render(updated)
-	if err != nil {
-		return false, err
-	}
-	name := filepath.Join(project, "mind-index.yaml")
-	if service.WriteIndex != nil {
-		err = service.WriteIndex(name, raw)
-	} else {
-		err = (store.AtomicWriter{}).Write(name, raw, 0644)
-	}
-	if err == nil {
-		return true, nil
-	}
-	actual, readError := os.ReadFile(name)
-	return readError == nil && bytes.Equal(actual, raw), err
+	return store.CommitIndex(filepath.Join(project, "mind-index.yaml"), func() ([]byte, error) { return document.Render(updated) }, service.WriteIndex)
 }
 
 func List(project string, filter, kind *string) ([]model.Source, error) {

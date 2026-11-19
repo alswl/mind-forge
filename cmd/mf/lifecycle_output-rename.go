@@ -31,7 +31,7 @@ func executeLifecycleOutputRename(command *cobra.Command, application *app.Conte
 	if err != nil {
 		return err
 	}
-	operation := content.LifecycleOperation{Kind: "output-rename"}
+	operation := content.LifecycleOperation{Context: command.Context(), Kind: "output-rename"}
 	if selector != nil {
 		operation.Identity = *selector
 	}

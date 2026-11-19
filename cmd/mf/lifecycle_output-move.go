@@ -31,7 +31,7 @@ func executeLifecycleOutputMove(command *cobra.Command, application *app.Context
 	if err != nil {
 		return err
 	}
-	operation := content.LifecycleOperation{Kind: "output-move"}
+	operation := content.LifecycleOperation{Context: command.Context(), Kind: "output-move"}
 	if selector != nil {
 		operation.Identity = *selector
 	}

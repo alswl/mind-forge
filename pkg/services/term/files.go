@@ -32,6 +32,7 @@ func LintFiles(base, target string, terms []model.Term, options LintOptions) (mo
 		r.WouldFixCount = &zero
 	}
 	ctx := task.Context(options.Context)
+	task.Notify(ctx, task.Stage{Operation: "term", Name: "discovering scan files"})
 	if err := ctx.Err(); err != nil {
 		return r, err
 	}
@@ -70,6 +71,7 @@ func LintFiles(base, target string, terms []model.Term, options LintOptions) (mo
 			return r, walkErr
 		}
 	}
+	task.Notify(ctx, task.Stage{Operation: "term", Name: "scanning corrections"})
 	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
 			return r, err

@@ -124,6 +124,9 @@ func Manual(spec *Spec) string {
 			}
 			text.WriteByte('\n')
 		}
+		if examples := ExamplesText(item.Examples); examples != "" {
+			text.WriteString("```text\n" + examples + "```\n")
+		}
 		text.WriteString("\n\n")
 	}
 	return strings.TrimRight(text.String(), "\n") + "\n"

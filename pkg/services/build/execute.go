@@ -25,6 +25,7 @@ func (p *Prepared) Execute(repo string, runner PipelineRunner) (int64, []string,
 	if err != nil {
 		return 0, warnings, err
 	}
+	task.Notify(p.Context, task.Stage{Operation: "build", Name: "writing output"})
 	if err := task.Context(p.Context).Err(); err != nil {
 		return 0, warnings, err
 	}
@@ -33,6 +34,9 @@ func (p *Prepared) Execute(repo string, runner PipelineRunner) (int64, []string,
 	}
 	if err := (store.AtomicWriter{}).Write(p.Plan.OutputPath, []byte(body), 0644); err != nil {
 		return 0, warnings, err
+	}
+	if runner == nil {
+		runner = NewPipelineRunner(task.Context(p.Context), p.processIO)
 	}
 	_, notes, err := RunPipelineContext(task.Context(p.Context), p.project, p.assets, p.config.Pipeline, false, runner)
 	warnings = append(warnings, notes...)

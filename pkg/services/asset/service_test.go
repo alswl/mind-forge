@@ -2,6 +2,7 @@ package asset
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -326,5 +327,30 @@ func TestRemoveOnlyMentionsBlockAndForceLeavesExternalLinkTarget(t *testing.T) {
 	raw, _ := os.ReadFile(input)
 	if string(raw) != "external evidence" {
 		t.Fatal("deleted external linked evidence")
+	}
+}
+
+func TestAssetPublicationRetainsContentWhenIndexCommittedWithError(t *testing.T) {
+	project := assetProject(t)
+	input := putAsset(t, t.TempDir(), "chart.png", "synthetic author bytes")
+	sentinel := errors.New("synthetic post-commit writer fault")
+	service := fixedService()
+	service.WriteIndex = func(name string, raw []byte) error {
+		if err := (store.AtomicWriter{}).Write(name, raw, 0644); err != nil {
+			return err
+		}
+		return sentinel
+	}
+	if _, err := service.Add(project, project, input, AddOptions{}); !errors.Is(err, sentinel) {
+		t.Fatalf("writer cause lost: %v", err)
+	}
+	document, err := readIndex(project)
+	if err != nil || document.Value.Assets == nil || len(*document.Value.Assets) != 1 {
+		t.Fatalf("committed index lost: %+v %v", document, err)
+	}
+	entry := (*document.Value.Assets)[0]
+	raw, err := os.ReadFile(filepath.Join(project, entry.Path))
+	if err != nil || string(raw) != "synthetic author bytes" {
+		t.Fatalf("committed evidence rolled back: %q %v", raw, err)
 	}
 }

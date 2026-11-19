@@ -38,7 +38,7 @@ func (s Scope) Rename(old, name string, keepAlias, force bool) error {
 	if err != nil {
 		return err
 	}
-	return (store.AtomicWriter{}).Write(s.Path(), raw, 0644)
+	return store.WriteTermDocument(s.Path(), raw)
 }
 
 func (s Scope) Remove(name string, force, dry bool) error {
@@ -56,9 +56,9 @@ func (s Scope) Remove(name string, force, dry bool) error {
 		}
 		return err
 	}
-	if d.index != nil && !force && d.index.Value.Articles != nil && len(*d.index.Value.Articles) > 0 {
+	if d.stored.Index != nil && !force && d.stored.Index.Value.Articles != nil && len(*d.stored.Index.Value.Articles) > 0 {
 		names := []string{}
-		for _, a := range *d.index.Value.Articles {
+		for _, a := range *d.stored.Index.Value.Articles {
 			names = append(names, a.Title)
 		}
 		return output.Usage(fmt.Sprintf("term '%s' is referenced by: %s. Use --force to remove anyway.", name, strings.Join(names, ", ")), "check which articles reference this term before removal")
@@ -72,7 +72,7 @@ func (s Scope) Remove(name string, force, dry bool) error {
 	if err != nil || dry {
 		return err
 	}
-	return (store.AtomicWriter{}).Write(s.Path(), raw, 0644)
+	return store.WriteTermDocument(s.Path(), raw)
 }
 
 type MovePlan struct {
@@ -123,7 +123,7 @@ func PlanMove(repo string, from, to Scope, name string, force bool) (MovePlan, e
 	}
 	for i, document := range []*termDocument{src, dst} {
 		entry, exists := before[watches[i]]
-		if exists != document.existed || exists && !bytes.Equal(entry.Bytes, document.original) {
+		if exists != document.stored.Existed || exists && !bytes.Equal(entry.Bytes, document.stored.Original) {
 			return result, &output.Error{Kind: "stale_plan", Lifecycle: true, Message: "term scope changed while planning"}
 		}
 	}
