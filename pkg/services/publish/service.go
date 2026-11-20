@@ -23,10 +23,10 @@ type RunOptions struct {
 	DryRun, Force, StripFrontMatter, KeepFrontMatter bool
 }
 type UpdateOptions struct {
-	Target      string
-	Status, URL *string
-	DryRun      bool
-	Now         time.Time
+	Target                string
+	Status, URL, FromPath *string
+	DryRun                bool
+	Now                   time.Time
 }
 
 func articleFor(root, project, selector string, config *model.MindConfig) (model.Article, *model.Output, error) {
@@ -267,8 +267,11 @@ func Update(root, project, selector string, opts UpdateOptions) (model.PublishUp
 	if selector == "" || strings.Contains(selector, "\\") {
 		return result, nil, output.Usage("invalid article name: '"+selector+"'", "provide an article slug or indexed article path")
 	}
-	if opts.Status == nil && opts.URL == nil {
+	if opts.FromPath == nil && opts.Status == nil && opts.URL == nil {
 		return result, nil, output.Usage("--status and --target-url cannot both be omitted", "provide at least one of --status or --target-url")
+	}
+	if opts.FromPath != nil && (opts.Status != nil || opts.URL != nil) {
+		return result, nil, output.Usage("--from-path cannot be combined with status or URL changes", "rebind the publish record first, then update its metadata separately")
 	}
 	config, err := content.ConfigFor(project)
 	if err != nil {
@@ -297,21 +300,34 @@ func Update(root, project, selector string, opts UpdateOptions) (model.PublishUp
 		records = append(records, (*index.Value.PublishRecords)...)
 	}
 	pos := -1
-	var existing *model.PublishRecord
-	for n := range records {
-		if records[n].Path == article.Path && records[n].TargetName == opts.Target {
-			pos = n
-			existing = &records[n]
-			break
+	if opts.FromPath != nil {
+		if selected != nil {
+			return result, selected, output.Usage("--from-path is only available for legacy article shape conversions", "")
 		}
-	}
-	now := opts.Now
-	if now.IsZero() {
-		now = time.Now()
-	}
-	result.Record, result.Action, err = Upsert(existing, article.Path, opts.Target, opts.Status, opts.URL, now)
-	if err != nil {
-		return result, selected, err
+		pos, err = findOrphanedRecord(index.Value, records, *opts.FromPath, article.Path, opts.Target)
+		if err != nil {
+			return result, selected, err
+		}
+		result.Record = records[pos]
+		result.Record.Path = article.Path
+		result.Action = "rebound"
+	} else {
+		var existing *model.PublishRecord
+		for n := range records {
+			if records[n].Path == article.Path && records[n].TargetName == opts.Target {
+				pos = n
+				existing = &records[n]
+				break
+			}
+		}
+		now := opts.Now
+		if now.IsZero() {
+			now = time.Now()
+		}
+		result.Record, result.Action, err = Upsert(existing, article.Path, opts.Target, opts.Status, opts.URL, now)
+		if err != nil {
+			return result, selected, err
+		}
 	}
 	if !opts.DryRun {
 		if pos < 0 {
@@ -326,4 +342,44 @@ func Update(root, project, selector string, opts UpdateOptions) (model.PublishUp
 		}
 	}
 	return result, selected, nil
+}
+
+func findOrphanedRecord(index model.Index, records []model.PublishRecord, from, to, target string) (int, error) {
+	oldPath, newPath := strings.TrimRight(from, "/"), strings.TrimRight(to, "/")
+	if oldPath == "" || (oldPath != newPath+".md" && newPath != oldPath+".md") {
+		return -1, output.Usage("--from-path must name the previous shape of the selected article", "use the exact old path from the publish record")
+	}
+	if index.Articles != nil {
+		for _, article := range *index.Articles {
+			if strings.TrimRight(article.Path, "/") == oldPath {
+				return -1, problem("content_conflict", "old publish path is still an indexed article: "+from, "check both article paths before rebinding the record")
+			}
+		}
+	}
+	pos := -1
+	var sourceExists, destinationExists bool
+	for i, record := range records {
+		if record.TargetName != target {
+			continue
+		}
+		switch strings.TrimRight(record.Path, "/") {
+		case newPath:
+			destinationExists = true
+		case oldPath:
+			if sourceExists {
+				return -1, problem("content_conflict", "multiple publish records match the old path and target", "compare the existing records before rebinding")
+			}
+			sourceExists = true
+			if record.Path == from {
+				pos = i
+			}
+		}
+	}
+	if pos < 0 {
+		return -1, problem("not_found", "no publish record for "+from+" and target "+target, "check the old path and publish target")
+	}
+	if destinationExists {
+		return -1, problem("content_conflict", "the destination article already has a publish record for target "+target, "compare the existing records before rebinding")
+	}
+	return pos, nil
 }

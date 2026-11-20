@@ -6503,6 +6503,19 @@
           "requires": []
         },
         {
+          "name": "from-path",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "PATH",
+          "help": " Rebind a record from the previous legacy article path",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        },
+        {
           "name": "set",
           "short": "",
           "kind": "string",
@@ -6537,8 +6550,8 @@
           "kind": "string"
         }
       ],
-      "help": "Update publish record metadata\n\nUsage: mf publish update [OPTIONS] --target <TARGET> <ARTICLE>\n\nArguments:\n  <ARTICLE>  Mind/output identity, output name, legacy article path or bare slug\n\nOptions:\n      --root <PATH>\n          Mind Repo root directory\n      --target <TARGET>\n          \n      --config <PATH>\n          Config file path\n      --status <STATUS>\n          [possible values: draft, published, archived]\n      --target-url <TARGET_URL>\n          \n  -v, --verbose...\n          Verbose output\n  -q, --quiet\n          Silence non-error output\n      --set <KEY=VALUE>\n          \n  -n, --dry-run\n          Preview changes without writing\n  -o, --output <FORMAT>\n          Output format [default: text] [possible values: text, json]\n      --json\n          Shorthand for --output json\n      --no-color\n          Disable colored output\n  -p, --project <NAME_OR_PATH>\n          Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help\n          Print help\n  -V, --version\n          Print version\n",
-      "help_default": "Update publish record metadata\n\nUsage: mf publish update [OPTIONS] --target <TARGET> <ARTICLE>\n\nArguments:\n  <ARTICLE>  Mind/output identity, output name, legacy article path or bare slug\n\nOptions:\n      --root <PATH>              Mind Repo root directory\n      --target <TARGET>          \n      --config <PATH>            Config file path\n      --status <STATUS>          [possible values: draft, published, archived]\n      --target-url <TARGET_URL>  \n  -v, --verbose...               Verbose output\n  -q, --quiet                    Silence non-error output\n      --set <KEY=VALUE>          \n  -n, --dry-run                  Preview changes without writing\n  -o, --output <FORMAT>          Output format [default: text] [possible values: text, json]\n      --json                     Shorthand for --output json\n      --no-color                 Disable colored output\n  -p, --project <NAME_OR_PATH>   Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help                     Print help\n  -V, --version                  Print version\n",
+      "help": "Update publish record metadata\n\nUsage: mf publish update [OPTIONS] --target <TARGET> <ARTICLE>\n\nArguments:\n  <ARTICLE>  Mind/output identity, output name, legacy article path or bare slug\n\nOptions:\n      --root <PATH>\n          Mind Repo root directory\n      --target <TARGET>\n          \n      --config <PATH>\n          Config file path\n      --status <STATUS>\n          [possible values: draft, published, archived]\n      --target-url <TARGET_URL>\n          \n      --from-path <PATH>\n          Rebind a record from the previous legacy article path\n  -v, --verbose...\n          Verbose output\n  -q, --quiet\n          Silence non-error output\n      --set <KEY=VALUE>\n          \n  -n, --dry-run\n          Preview changes without writing\n  -o, --output <FORMAT>\n          Output format [default: text] [possible values: text, json]\n      --json\n          Shorthand for --output json\n      --no-color\n          Disable colored output\n  -p, --project <NAME_OR_PATH>\n          Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help\n          Print help\n  -V, --version\n          Print version\n",
+      "help_default": "Update publish record metadata\n\nUsage: mf publish update [OPTIONS] --target <TARGET> <ARTICLE>\n\nArguments:\n  <ARTICLE>  Mind/output identity, output name, legacy article path or bare slug\n\nOptions:\n      --root <PATH>              Mind Repo root directory\n      --target <TARGET>          \n      --config <PATH>            Config file path\n      --status <STATUS>          [possible values: draft, published, archived]\n      --target-url <TARGET_URL>  \n      --from-path <PATH>         Rebind a record from the previous legacy article path\n  -v, --verbose...               Verbose output\n  -q, --quiet                    Silence non-error output\n      --set <KEY=VALUE>          \n  -n, --dry-run                  Preview changes without writing\n  -o, --output <FORMAT>          Output format [default: text] [possible values: text, json]\n      --json                     Shorthand for --output json\n      --no-color                 Disable colored output\n  -p, --project <NAME_OR_PATH>   Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help                     Print help\n  -V, --version                  Print version\n",
       "examples": [
         {
           "prerequisites": [

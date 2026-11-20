@@ -3042,6 +3042,7 @@ Update publish record metadata
   Possible values: `draft`, `published`, `archived`
 
 * `--target-url <TARGET_URL>`
+* `--from-path <PATH>` — Rebind a record from the previous legacy article path
 * `--set <KEY=VALUE>`
 * `-n`, `--dry-run` — Preview changes without writing
 

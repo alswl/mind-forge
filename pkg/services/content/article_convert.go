@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -196,6 +197,28 @@ func PlanArticleConversion(root, project string, inspection ConversionInspection
 			}
 		}
 		updated.Articles = &articles
+	}
+	if updated.PublishRecords != nil {
+		sourcePath := strings.TrimRight(inspection.SourcePath, "/")
+		targetPath := strings.TrimRight(inspection.TargetPath, "/")
+		records := slices.Clone(*updated.PublishRecords)
+		targets := make(map[string]bool)
+		for _, record := range records {
+			if strings.TrimRight(record.Path, "/") == targetPath {
+				targets[record.TargetName] = true
+			}
+		}
+		for i := range records {
+			if strings.TrimRight(records[i].Path, "/") != sourcePath {
+				continue
+			}
+			if targets[records[i].TargetName] {
+				return ContentMutation{}, &output.Error{Kind: "content_conflict", Message: fmt.Sprintf("conflicting publish records for %q and target %q", inspection.TargetPath, records[i].TargetName)}
+			}
+			targets[records[i].TargetName] = true
+			records[i].Path = inspection.TargetPath
+		}
+		updated.PublishRecords = &records
 	}
 	promptPath, err := inventory.projectPath(project, "prompts/"+ArticleOutputStem(inspection.SourcePath)+".md")
 	if err != nil {
