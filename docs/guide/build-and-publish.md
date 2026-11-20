@@ -82,3 +82,21 @@ Local publication preserves the Mind/Output path to avoid same-name collisions.
 A destination inside the project must remain under `build/`.
 Publication requires an existing Markdown build and does not build automatically.
 See the [layout reference](../manual/content-layout.md) for selection and path constraints.
+
+## Publication records after legacy article conversion
+
+Converting a legacy article between single-file and directory form moves its
+publish records to the converted path, keeping each target, status, URL, and
+publication timestamp.
+
+If an earlier conversion left a record at the old path, preview the repair
+using the original key and target:
+
+```bash
+mf publish update docs/first-note --target local --from-path docs/first-note.md -p notes --dry-run
+```
+
+Run the same command without `--dry-run` to move the record in the project
+index. This only updates publication metadata. If the old path still belongs
+to an indexed article or the destination already has a record for that target,
+the command reports a conflict and preserves the existing records.

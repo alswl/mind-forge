@@ -1,10 +1,12 @@
 package content
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/alswl/mind-forge/pkg/common/outcome"
 	"github.com/alswl/mind-forge/pkg/dal/store"
 )
 
@@ -74,7 +76,14 @@ func TestArticleToDirectoryKeepsBytesInOpeningBlock(t *testing.T) {
 	root := canonicalPath(t.TempDir())
 	project := mutationProject(t, root, "alpha")
 	putContent(t, project, "docs/post.md", "# Post\r\nbody\r\n")
-	putContent(t, project, "mind-index.yaml", "schema: '1'\narticles:\n  post: {title: Post, article_path: docs/post.md}\n")
+	putContent(t, project, "mind-index.yaml", `schema: '1'
+articles:
+  post: {title: Post, article_path: docs/post.md}
+publish_records:
+  - {path: docs/post.md, target_name: web, status: published, target_url: "https://example.invalid/post", published_at: "2026-01-01T00:00:00Z"}
+  - {path: docs/post.md, target_name: desk, status: draft}
+  - {path: docs/another.md, target_name: web, status: draft}
+`)
 	items, err := InspectArticleConversions(root, project, []string{"docs/post.md"}, "to_directory", false)
 	if err != nil {
 		t.Fatal(err)
@@ -85,6 +94,41 @@ func TestArticleToDirectoryKeepsBytesInOpeningBlock(t *testing.T) {
 	}
 	if body := string(mutation.Plan.After["alpha/docs/post/01-opening.md"].Bytes); body != "# Post\r\nbody\r\n" {
 		t.Fatalf("bytes %q", body)
+	}
+	index, err := store.DecodeIndex(mutation.Plan.After["alpha/mind-index.yaml"].Bytes, "planned", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	records := *index.Value.PublishRecords
+	if len(records) != 3 || records[0].Path != "docs/post" || records[1].Path != "docs/post" || records[2].Path != "docs/another.md" {
+		t.Fatalf("publish record paths after conversion: %q", mutation.Plan.After["alpha/mind-index.yaml"].Bytes)
+	}
+	if record := records[0]; record.TargetName != "web" || record.Status != "published" ||
+		record.TargetURL == nil || *record.TargetURL != "https://example.invalid/post" ||
+		record.PublishedAt == nil || *record.PublishedAt != "2026-01-01T00:00:00Z" {
+		t.Fatalf("lost publication metadata: %+v", record)
+	}
+}
+
+func TestArticleConversionRefusesConflictingPublishRecords(t *testing.T) {
+	root := canonicalPath(t.TempDir())
+	project := mutationProject(t, root, "alpha")
+	putContent(t, project, "docs/post.md", "# Post\n")
+	putContent(t, project, "mind-index.yaml", `schema: '1'
+articles:
+  post: {title: Post, article_path: docs/post.md}
+publish_records:
+  - {path: docs/post.md, target_name: web, status: published}
+  - {path: docs/post/, target_name: web, status: draft}
+`)
+	items, err := InspectArticleConversions(root, project, []string{"docs/post.md"}, "to_directory", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = PlanArticleConversion(root, project, items[0], time.Time{})
+	var conflict *outcome.Error
+	if !errors.As(err, &conflict) || conflict.Kind != "content_conflict" {
+		t.Fatalf("expected a publication conflict, got %v", err)
 	}
 }
 

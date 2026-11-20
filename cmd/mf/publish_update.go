@@ -61,7 +61,7 @@ func executePublishUpdate(c *cobra.Command, a *app.Context, args []string, stdou
 				url = &copy
 			}
 		}
-		result, location, err := publish.Update(a.RepoRoot, project, selector, publish.UpdateOptions{Target: stringFlag(c, "target"), Status: status, URL: url, DryRun: boolFlag(c, "dry-run")})
+		result, location, err := publish.Update(a.RepoRoot, project, selector, publish.UpdateOptions{Target: stringFlag(c, "target"), Status: status, URL: url, FromPath: optionalFlag(c, "from-path"), DryRun: boolFlag(c, "dry-run")})
 		if err != nil {
 			return err
 		}
@@ -80,6 +80,9 @@ func executePublishUpdate(c *cobra.Command, a *app.Context, args []string, stdou
 			dateText = *result.Record.PublishedAt
 		}
 		text := fmt.Sprintf("article      %s\ntarget       %s\naction       %s\nstatus       %s\ntarget_url   %s\npublished_at %s\ndry_run      %t", result.Article, result.TargetName, result.Action, result.Record.Status, urlText, dateText, result.DryRun)
+		if result.Action == "rebound" {
+			text += "\npath         " + result.Record.Path
+		}
 		return renderTerm(a, stdout, stderr, data, text, warnings)
 	}
 }
