@@ -43,10 +43,10 @@ jobs:
           cache-dependency-path: go.sum
       - name: Build and validate all four archives
         env:
-          PACKAGE_TAG: ${{ inputs.tag }}
+          REQUESTED_PACKAGE_TAG: ${{ inputs.tag }}
         run: |
-          if [[ -n "$PACKAGE_TAG" ]]; then
-            make package PACKAGE_TAG="$PACKAGE_TAG"
+          if [[ -n "$REQUESTED_PACKAGE_TAG" ]]; then
+            make package PACKAGE_TAG="$REQUESTED_PACKAGE_TAG"
           else
             make package
           fi
