@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
   source checkout.
 - Use `hack/install.sh` for source and prebuilt installs. The installer keeps
   verifying archive checksums and the candidate version before replacement.
+- Use `VERSION` as the single release version source. The shared build
+  injects it into the Go binary, so a bump no longer edits Go source.
 
 ## [0.6.0] - Unreleased
 
