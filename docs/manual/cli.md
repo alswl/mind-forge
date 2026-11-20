@@ -1960,6 +1960,14 @@ Examples (use a disposable directory for setup):
   Command:
     mf source new ./evidence.md --name evidence -p lab --dry-run --root .
   Effect: Preview importing local evidence without acquisition or writes.
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --root .
+    mkdir -p projects/lab/sources/meeting
+    echo '# Synthetic meeting notes' > projects/lab/sources/meeting/notes.md
+  Command:
+    mf source new sources/meeting/notes.md --register-only --source-kind meeting -p lab --dry-run --root .
+  Effect: Preview registering existing meeting notes in the local Source index without copying the file or creating a semantic index.
 ```
 
 

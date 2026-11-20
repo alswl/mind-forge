@@ -122,7 +122,13 @@ func RenderVerb(result VerbResult, options DisplayOptions) string {
 		if result.DryRun {
 			prefix = "[dry-run] would index"
 		}
-		return fmt.Sprintf("%s %s: +%d =%d -%d", prefix, result.Kind, arrayLength(result.Details["added"]), countField(result.Details, "kept_count"), arrayLength(result.Details["removed"]))
+		added := arrayLength(result.Details["added"])
+		kept := countField(result.Details, "kept_count")
+		removed := arrayLength(result.Details["removed"])
+		if result.Kind == "source" {
+			return fmt.Sprintf("%s source: added %d, kept %d, missing %d (retained)", prefix, added, kept, removed)
+		}
+		return fmt.Sprintf("%s %s: +%d =%d -%d", prefix, result.Kind, added, kept, removed)
 	case Lint:
 		return renderLint(result, options)
 	}

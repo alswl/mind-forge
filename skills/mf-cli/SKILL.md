@@ -603,7 +603,7 @@ mf project import /path/to/existing --force
 # Sources
 mf source new https://example.com/article --name ref-a --file-kind web --project my-project
 mf source new paper.pdf --file-kind pdf --project my-project
-mf source new sources/file/existing.md --register-only --project my-project  # index in place, no copy
+mf source new sources/meeting/notes.md --register-only --source-kind meeting --project my-project  # register in place
 mf source list --project my-project
 mf source show ref-a --project my-project
 mf source rename ref-a ref-canonical --project my-project
@@ -704,7 +704,7 @@ mf version --json
 - Destructive verbs (`remove`, `archive`) prompt on `/dev/tty` in interactive shells. In scripts/CI pass `--yes` to confirm; add `--force` separately only when bypassing overwrite or referential-integrity checks is intended.
 - `term lint --fix` and `term fix` use `-y`/`--yes` for non-interactive application; `--force` is not a supported flag on either command.
 - `term fix` and `term lint --fix` accept `--term <NAME>` or `--term <NAME:ORIGINAL>` (repeatable) to scope corrections to named terms or a specific correction pair, plus `--exclude-term`/`--exclude-original` to narrow, and `--include-suggested`/`--min-confidence <0.0..1.0>` for suggested corrections (`--min-confidence` requires `--include-suggested`). Matching is case-sensitive exact on canonical name. Unknown term names exit 2 with no edits. Run `mf term correction remove <TERM> <ORIGINAL>` to delete a single correction.
-- `mf source new --register-only` registers a file already inside the project's `sources/` directory without copying its bytes. It is idempotent by default; use `--force` to replace the matching registration. It cannot combine with `--link`; paths outside `sources/`, URL inputs, and another identity's registered location exit 2.
+- `mf source new --register-only` registers a file already inside the project's `sources/` directory without copying its bytes. It writes Source metadata to `mind-index.yaml`. Remove the old `--no-index` flag from archive scripts because the built-in semantic index was removed. It is idempotent by default; use `--force` to replace the matching registration. It cannot combine with `--link`; paths outside `sources/`, URL inputs, and another identity's registered location exit 2.
 - `term update` manages corrections through `--add-correction`, `--correction-match`, `--correction-fix`, `--correction-pinyin`, and `--delete-correction`. Match kinds are `word`, `substring`, and `pinyin`; substring defaults to `standalone` and supports explicit `loose` matching.
 - `term show`, `term update`, and `term remove` operate on the selected correction without requiring sibling substring entries to be migrated first.
 - `article convert` evaluates eligible articles project-wide; it does not take an article selector.

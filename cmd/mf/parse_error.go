@@ -154,6 +154,11 @@ func ParseErrorText(spec *Spec, item CommandSpec, failure *parseFailure, args []
 	case "unexpected_flag", "unexpected_argument":
 		fmt.Fprintf(&body, "error: unexpected argument '%s' found\n", failure.value)
 		if failure.kind == "unexpected_flag" {
+			if failure.value == "--no-index" && slices.Equal(item.Path, []string{"source", "new"}) {
+				body.WriteString("\n  tip: remove --no-index. Source registration uses local metadata and creates no semantic index.\n")
+				usage = contextualUsage(spec, item, args, nil, nil)
+				break
+			}
 			var names []string
 			for _, flag := range append(append([]FlagSpec{}, item.Flags...), spec.GlobalFlags...) {
 				if !flag.Hidden {
