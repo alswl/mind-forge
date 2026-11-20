@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.6.1] - 2026-11-20
+
+### Changed
+- Use shared makefile-go modules for build, lint, version preparation and
+  release packaging. Initialize the pinned submodule before building from a
+  source checkout.
+- Use `hack/install.sh` for source and prebuilt installs. The installer keeps
+  verifying archive checksums and the candidate version before replacement.
+
 ## [0.6.0] - Unreleased
 
 ### Breaking changes
