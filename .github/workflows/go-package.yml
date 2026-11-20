@@ -8,8 +8,6 @@ on:
       - '.tool-versions'
       - 'Makefile'
       - 'VERSION'
-      - 'hack/bump-post-actions.sh'
-      - 'hack/check-version.sh'
       - 'hack/.upstream-makefile-go'
       - '.gitmodules'
       - 'go.mod'

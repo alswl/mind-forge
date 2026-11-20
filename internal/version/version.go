@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
+	"strings"
 )
 
-const BaseVersion = "0.6.1"
-
-// Source builds set these with -ldflags. Unstamped builds report unavailable
-// metadata explicitly instead of substituting the time the command was run.
+// make build sets these with -ldflags. A plain Go build has no release stamp.
 var (
+	Version   = "v0.0.0"
 	Commit    = "unknown"
 	BuildDate = "unknown"
 )
@@ -44,8 +43,12 @@ func New(commit, buildDate, compiler, goVersion, arch, operatingSystem string) M
 	if operatingSystem == "darwin" {
 		operatingSystem = "macos"
 	}
+	base := strings.TrimPrefix(Version, "v")
+	if suffix := strings.IndexAny(base, "-+"); suffix >= 0 {
+		base = base[:suffix]
+	}
 	return Metadata{
-		Version: BaseVersion + "-dev+" + commit, BaseVersion: BaseVersion, Channel: "dev",
+		Version: base + "-dev+" + commit, BaseVersion: base, Channel: "dev",
 		Commit: commit, BuildDate: buildDate, Rustc: "not applicable",
 		Compiler: compiler, GoVersion: goVersion, TargetTriple: arch + "-" + operatingSystem,
 	}

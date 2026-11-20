@@ -9,9 +9,10 @@ MindForge configures the shared build to produce a single stamped binary at
 build target with an explicit output path. The pinned linter and read-only
 module checks remain part of the [project quality gate](../../docs/dev/build-workflow.md).
 
-The shared version module runs in prepare mode. `hack/bump-post-actions.sh`
-updates the Go base version in the upstream staging directory. Tagging happens
-after merge, as described in the [release workflow](../../docs/dev/build-workflow.md).
+The shared version module runs in prepare mode and updates `VERSION` and
+`CHANGELOG.md`. The shared build injects the version from `VERSION` into the
+Go binary. Tagging is a separate step in the
+[release workflow](../../docs/dev/build-workflow.md).
 
 `make package` applies the project target matrix and `hack/release-checks.sh`
 validation hooks. Use `make generate-installer` after changing

@@ -18,10 +18,12 @@ package_before() {
     local staging=$1 tag=$2 tag_core
     export GOTOOLCHAIN=local CGO_ENABLED=0
     [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]] || package_die 'Provide a version tag, for example PACKAGE_TAG=v0.6.0'
-    base_version=$(awk '$1 == "const" && $2 == "BaseVersion" {gsub(/"/, "", $4); print $4}' internal/version/version.go)
+    release_version=$(cat VERSION)
+    base_version=${release_version#v}
+    base_version=${base_version%%[-+]*}
     tag_core=${tag#v}
     tag_core=${tag_core%%[-+]*}
-    [[ -n "$base_version" && "$tag_core" == "$base_version" ]] || package_die "Tag $tag does not match base_version $base_version"
+    [[ -n "$base_version" && "$tag_core" == "$base_version" ]] || package_die "Tag $tag does not match VERSION base $base_version"
     expected_go="go$(awk '$1 == "golang" { print $2 }' .tool-versions)"
     [[ "$(go env GOVERSION)" == "$expected_go" ]] || package_die "Expected $expected_go; select the version in .tool-versions"
     revision=$(git rev-parse HEAD)
@@ -60,7 +62,7 @@ package_verify() {
     for setting in "GOOS=$target_os" "GOARCH=$target_arch" 'CGO_ENABLED=0' '-compiler=gc' "vcs.revision=$revision" "vcs.modified=$dirty"; do
         printf '%s\n' "$build_info" | awk -F '\t' -v wanted="$setting" '$2 == "build" && $3 == wanted {found=1} END {exit !found}' || package_die "Missing $setting for $suffix"
     done
-    for setting in "github.com/alswl/mind-forge/internal/version.Commit=$short_revision" "github.com/alswl/mind-forge/internal/version.BuildDate=$build_date"; do
+    for setting in "github.com/alswl/mind-forge/internal/version.Version=$release_version" "github.com/alswl/mind-forge/internal/version.Commit=$short_revision" "github.com/alswl/mind-forge/internal/version.BuildDate=$build_date"; do
         [[ "$build_info" == *"$setting"* ]] || package_die "Missing version stamp $setting for $suffix"
     done
     {

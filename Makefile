@@ -26,13 +26,13 @@ GO_BUILD_OUTPUT = $(MF_BUILD_OUT)
 GO_BUILD_COPY_VARIANTS := false
 COMMIT := $(shell git rev-parse --short HEAD)
 BUILD_DATE := $(shell date -u +%Y-%m-%d)
-GO_BUILD_LDFLAGS := -X $(ROOT)/internal/version.Commit=$(COMMIT) -X $(ROOT)/internal/version.BuildDate=$(BUILD_DATE)
+RELEASE_VERSION := $(shell awk 'NR == 1 && /^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$$/ { v=$$0 } END { if (NR == 1) print v }' VERSION)
+GO_BUILD_LDFLAGS := -X $(ROOT)/internal/version.Version=$(RELEASE_VERSION) -X $(ROOT)/internal/version.Commit=$(COMMIT) -X $(ROOT)/internal/version.BuildDate=$(BUILD_DATE)
 export GIT_DIR := $(shell git rev-parse --absolute-git-dir)
 export GIT_WORK_TREE := $(shell git rev-parse --show-toplevel)
 
 override BUMP_MODE := prepare
 BUMP_SCRIPT := $(MAKEFILE_GO)/bump.sh
-BUMP_PREPARE_FILES := internal/version/version.go
 DEFAULT_BUMP_STAGE := final
 DEFAULT_BUMP_SCOPE := patch
 include $(MAKEFILE_GO)/makefile-go/build.mk
@@ -47,7 +47,7 @@ bump bump-patch bump-minor bump-major bump-beta bump-alpha: check-toolchain
 
 build: check-toolchain
 check-toolchain:
-	@bash hack/check-version.sh
+	@test -n "$(RELEASE_VERSION)" || { printf 'Invalid version in VERSION.\n' >&2; exit 1; }
 	@expected_go="go$$(awk '$$1 == "golang" { print $$2 }' .tool-versions)"; \
 	  [[ "$$(go env GOVERSION)" == "$$expected_go" ]] || { printf 'Expected %s; select the version in .tool-versions.\n' "$$expected_go" >&2; exit 1; }
 

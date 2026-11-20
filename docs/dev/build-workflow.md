@@ -32,7 +32,9 @@ The existing GitHub CI `go-quality` job runs `make check` and uploads its
 source/binary identity. Review and independent QA must bind the same reviewed head.
 A PR/CI pass does not merge, tag or publish; those actions have separate authority.
 
-`VERSION` is the version source. Run `make bump-patch` to preview the next
+`VERSION` is the version source. `make build` injects it into the binary.
+A plain `go build` without build flags reports the unstamped base version `0.0.0`.
+Run `make bump-patch` to preview the next
 release using the same `semtag` calculation as makefile-go. Run
 `make bump-patch DRY_RUN=false` to prepare the version files and regenerate
 CHANGELOG.md with `git-cliff`. Commit the resulting files for PR review.
