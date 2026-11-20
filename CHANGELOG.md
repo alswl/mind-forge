@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.2] - 2026-11-20
+
+### Fixed
+- Tagged release binaries report the release version without the development
+  suffix. Prerelease tags keep their suffix, and JSON retains the source commit.
+
 ## [0.6.1] - 2026-11-20
 
 ### Changed
