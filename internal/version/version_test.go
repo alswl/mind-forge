@@ -58,3 +58,24 @@ func TestCurrentReportsActualCompiler(t *testing.T) {
 		t.Fatalf("retired compiler must not be presented as active: %#v", info)
 	}
 }
+
+func TestTaggedReleaseVersion(t *testing.T) {
+	originalVersion, originalRelease := Version, ReleaseBuild
+	t.Cleanup(func() { Version, ReleaseBuild = originalVersion, originalRelease })
+	ReleaseBuild = "true"
+
+	for _, test := range []struct{ tag, version, channel string }{
+		{"v1.2.3", "1.2.3", "release"},
+		{"v1.2.3+build.4", "1.2.3+build.4", "release"},
+		{"v1.2.3-rc.1+build.4", "1.2.3-rc.1+build.4", "prerelease"},
+	} {
+		Version = test.tag
+		got := New("abc1234", "2026-11-16", "gc", "go1.26.11", "arm64", "darwin")
+		if got.Version != test.version || got.Channel != test.channel || got.BaseVersion != "1.2.3" || got.Commit != "abc1234" {
+			t.Errorf("%s: unexpected metadata: %#v", test.tag, got)
+		}
+		if !strings.HasPrefix(got.Text(), "mf "+test.version+" (") {
+			t.Errorf("%s: unexpected version text: %q", test.tag, got.Text())
+		}
+	}
+}

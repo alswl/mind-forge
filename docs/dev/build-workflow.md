@@ -40,6 +40,11 @@ release using the same `semtag` calculation as makefile-go. Run
 CHANGELOG.md with `git-cliff`. Commit the resulting files for PR review.
 After the PR merges, tag the merged commit with the value in `VERSION`
 and push that tag to trigger creation of the draft GitHub release.
+For tagged packaging, Release passes `RELEASE_TAG` to `make package`.
+The tag must match `VERSION` and the clean checkout. Those binaries report
+the exact tag version without its leading `v`, including any prerelease
+suffix. Ordinary builds and PR archives report `<base>-dev+<commit>`.
+The JSON `commit` field is available in both modes.
 Validate the draft artifacts before publishing.
 
 ## Historical migration records

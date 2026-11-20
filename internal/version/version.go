@@ -10,9 +10,10 @@ import (
 
 // make build sets these with -ldflags. A plain Go build has no release stamp.
 var (
-	Version   = "v0.0.0"
-	Commit    = "unknown"
-	BuildDate = "unknown"
+	Version      = "v0.0.0"
+	ReleaseBuild = "false"
+	Commit       = "unknown"
+	BuildDate    = "unknown"
 )
 
 type Metadata struct {
@@ -43,12 +44,21 @@ func New(commit, buildDate, compiler, goVersion, arch, operatingSystem string) M
 	if operatingSystem == "darwin" {
 		operatingSystem = "macos"
 	}
-	base := strings.TrimPrefix(Version, "v")
+	tagVersion := strings.TrimPrefix(Version, "v")
+	base := tagVersion
 	if suffix := strings.IndexAny(base, "-+"); suffix >= 0 {
 		base = base[:suffix]
 	}
+	display, channel := base+"-dev+"+commit, "dev"
+	if ReleaseBuild == "true" {
+		display, channel = tagVersion, "release"
+		beforeMetadata, _, _ := strings.Cut(tagVersion, "+")
+		if strings.Contains(beforeMetadata, "-") {
+			channel = "prerelease"
+		}
+	}
 	return Metadata{
-		Version: base + "-dev+" + commit, BaseVersion: base, Channel: "dev",
+		Version: display, BaseVersion: base, Channel: channel,
 		Commit: commit, BuildDate: buildDate, Rustc: "not applicable",
 		Compiler: compiler, GoVersion: goVersion, TargetTriple: arch + "-" + operatingSystem,
 	}

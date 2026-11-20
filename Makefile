@@ -27,7 +27,7 @@ GO_BUILD_COPY_VARIANTS := false
 COMMIT := $(shell git rev-parse --short HEAD)
 BUILD_DATE := $(shell date -u +%Y-%m-%d)
 RELEASE_VERSION := $(shell awk 'NR == 1 && /^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$$/ { v=$$0 } END { if (NR == 1) print v }' VERSION)
-GO_BUILD_LDFLAGS := -X $(ROOT)/internal/version.Version=$(RELEASE_VERSION) -X $(ROOT)/internal/version.Commit=$(COMMIT) -X $(ROOT)/internal/version.BuildDate=$(BUILD_DATE)
+GO_BUILD_LDFLAGS := -X $(ROOT)/internal/version.Version=$(RELEASE_VERSION) -X $(ROOT)/internal/version.ReleaseBuild=$(if $(filter true,$(MF_RELEASE_BUILD)),true,false) -X $(ROOT)/internal/version.Commit=$(COMMIT) -X $(ROOT)/internal/version.BuildDate=$(BUILD_DATE)
 export GIT_DIR := $(shell git rev-parse --absolute-git-dir)
 export GIT_WORK_TREE := $(shell git rev-parse --show-toplevel)
 

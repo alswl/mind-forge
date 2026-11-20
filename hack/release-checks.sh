@@ -15,7 +15,7 @@ source_manifest() {
     done < <(git ls-files -z --cached --others --exclude-standard)
 }
 package_before() {
-    local staging=$1 tag=$2 tag_core
+    local staging=$1 tag=$2 tag_core expected_version expected_channel tag_revision
     export GOTOOLCHAIN=local CGO_ENABLED=0
     [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]] || package_die 'Provide a version tag, for example PACKAGE_TAG=v0.6.0'
     release_version=$(cat VERSION)
@@ -40,6 +40,24 @@ package_before() {
     dirty=false
     [[ -z "$(git status --porcelain)" ]] || dirty=true
 
+    export MF_RELEASE_BUILD=false
+    expected_version="$base_version-dev+$short_revision"
+    expected_channel=dev
+    if [[ -n "${RELEASE_TAG:-}" ]]; then
+        [[ "$RELEASE_TAG" == "$tag" && "$tag" == "$release_version" ]] ||
+            package_die 'Release tag must match PACKAGE_TAG and VERSION'
+        tag_revision=$(git rev-parse --verify --quiet "refs/tags/$tag^{commit}") ||
+            package_die "Release tag $tag is missing from this checkout"
+        [[ "$tag_revision" == "$revision" && "$dirty" == false ]] ||
+            package_die 'Release packaging requires a clean checkout at the tagged commit'
+        export MF_RELEASE_BUILD=true
+        expected_version=${tag#v}
+        expected_channel=release
+        if [[ "${expected_version%%+*}" == *-* ]]; then
+            expected_channel=prerelease
+        fi
+    fi
+
     host_os=$(go env GOHOSTOS)
     host_arch=$(go env GOHOSTARCH)
     package_build "$host_os" "$host_arch" "$staging/work/probe"
@@ -47,7 +65,8 @@ package_before() {
     metadata=$(cat "$staging/build-info/version.json")
     metadata_field() { printf '%s\n' "$metadata" | sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"; }
     [[ "$(metadata_field base_version)" == "$base_version" ]] || package_die 'Compiled base_version differs from source/tag'
-    [[ "$(metadata_field version)" == "$base_version-dev+$short_revision" ]] || package_die 'Compiled version differs from the retained development identity'
+    [[ "$(metadata_field version)" == "$expected_version" && "$(metadata_field channel)" == "$expected_channel" ]] ||
+        package_die "Compiled version/channel differs from $expected_version ($expected_channel)"
     [[ "$(metadata_field commit)" == "$short_revision" ]] || package_die 'Compiled commit differs from source'
     [[ "$(metadata_field go_version)" == "$expected_go" ]] || package_die 'Compiled Go toolchain differs from pinned version'
     [[ "$(metadata_field compiler)" == gc && "$(metadata_field rustc)" == 'not applicable' ]] || package_die 'Compiled compiler metadata differs from the Go contract'
@@ -62,7 +81,7 @@ package_verify() {
     for setting in "GOOS=$target_os" "GOARCH=$target_arch" 'CGO_ENABLED=0' '-compiler=gc' "vcs.revision=$revision" "vcs.modified=$dirty"; do
         printf '%s\n' "$build_info" | awk -F '\t' -v wanted="$setting" '$2 == "build" && $3 == wanted {found=1} END {exit !found}' || package_die "Missing $setting for $suffix"
     done
-    for setting in "github.com/alswl/mind-forge/internal/version.Version=$release_version" "github.com/alswl/mind-forge/internal/version.Commit=$short_revision" "github.com/alswl/mind-forge/internal/version.BuildDate=$build_date"; do
+    for setting in "github.com/alswl/mind-forge/internal/version.Version=$release_version" "github.com/alswl/mind-forge/internal/version.ReleaseBuild=$MF_RELEASE_BUILD" "github.com/alswl/mind-forge/internal/version.Commit=$short_revision" "github.com/alswl/mind-forge/internal/version.BuildDate=$build_date"; do
         [[ "$build_info" == *"$setting"* ]] || package_die "Missing version stamp $setting for $suffix"
     done
     {
