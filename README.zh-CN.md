@@ -50,11 +50,11 @@ flowchart LR
 ## 安装
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alswl/mind-forge/master/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/alswl/mind-forge/master/hack/install.sh | sh
 export PATH="${MF_INSTALL_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}:$PATH"
 ```
 
-预编译版本支持 macOS、Linux 的 x86_64 和 ARM64 平台，安装脚本会校验 SHA-256。指定版本与源码构建方法见[安装指南](docs/guide/install.md)。源码构建固定使用 Go `1.26.11`，在 checkout 中运行 `scripts/install.sh`。组件单元测试与外部 CLI 验收的分工见[开发流程](docs/dev/build-workflow.md)。
+预编译版本支持 macOS、Linux 的 x86_64 和 ARM64 平台，安装脚本会校验 SHA-256。指定版本与源码构建方法见[安装指南](docs/guide/install.md)。源码构建固定使用 Go `1.26.11`，在 checkout 中运行 `hack/install.sh`。组件单元测试与外部 CLI 验收的分工见[开发流程](docs/dev/build-workflow.md)。
 
 ## 快速上手
 

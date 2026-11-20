@@ -11,7 +11,7 @@ if [ -z "${MF_BIN:-}" ]; then
     printf 'Only the Go implementation is available.\n' >&2
     exit 2
   fi
-  bash "$repo_root/scripts/build.sh"
+  make --no-print-directory -C "$repo_root" build
   mf_bin="$repo_root/bin/mf"
 else
   mf_bin="$MF_BIN"

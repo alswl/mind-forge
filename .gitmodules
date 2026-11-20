@@ -1,0 +1,3 @@
+[submodule "hack/.upstream-makefile-go"]
+	path = hack/.upstream-makefile-go
+	url = https://github.com/alswl/makefile-go.git

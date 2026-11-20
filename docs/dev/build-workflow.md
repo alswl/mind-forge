@@ -3,8 +3,10 @@
 ## Current Go workflow
 
 Use Go 1.26.11, golangci-lint 2.12.2 and the pinned shared makefile-go module.
-Run changed-package component tests while editing, then `make check` (equivalently
-`bash scripts/check.sh`): formatting, vet, correctness lint, module verify/tidy,
+Initialize the pinned dependency after cloning with
+`git submodule update --init --recursive` (or clone with `--recurse-submodules`).
+This is also required before building from source; GitHub source archives do not
+include submodule contents. Run changed-package component tests while editing, then `make check` for formatting, vet, correctness lint, module verify/tidy,
 all cmd/pkg/internal component tests and the stamped `bin/mf` build.
 
 [Code structure](code-structure.md), [adopted guide](go-cli-guidelines.md) and
@@ -20,15 +22,23 @@ harness inputs, selected IDs, natural exits and raw evidence for each candidate.
 A new version/source/manual input invalidates inherited candidate acceptance until
 explicitly rebound. Partial selections and NOT_RUN are not whole-catalogue PASS.
 
-Build from a clean committed worktree with `bash scripts/build.sh`; inspect
+Build from a clean committed worktree with `make build`; inspect
 `bin/mf version --json` and `go version -m bin/mf`, including vcs.modified=false.
-`scripts/generate-manual.sh` uses `MF_BIN=/absolute/path/to/bin/mf` when supplied.
+`make generate-manual` uses `MF_BIN=/absolute/path/to/bin/mf` when supplied.
 Bind generator, public metadata and manual hashes; do not edit the generated manual.
 Optional Git and configured pipeline tools remain conditional runtime dependencies.
 
-The existing GitHub CI `go-quality` job runs `scripts/check.sh` and uploads its
+The existing GitHub CI `go-quality` job runs `make check` and uploads its
 source/binary identity. Review and independent QA must bind the same reviewed head.
 A PR/CI pass does not merge, tag or publish; those actions have separate authority.
+
+`VERSION` is the version source. Run `make bump-patch` to preview the next
+release using the same `semtag` calculation as makefile-go. Run
+`make bump-patch DRY_RUN=false` to prepare the version files and regenerate
+CHANGELOG.md with `git-cliff`. Commit the resulting files for PR review.
+After the PR merges, tag the merged commit with the value in `VERSION`
+and push that tag to trigger creation of the draft GitHub release.
+Validate the draft artifacts before publishing.
 
 ## Historical migration records
 

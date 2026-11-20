@@ -1,8 +1,8 @@
 #!/bin/sh
 # Install mf from this working tree, or install a prebuilt GitHub release.
 #
-#   scripts/install.sh                 # build/install this checkout with Go
-#   curl -fsSL https://raw.githubusercontent.com/alswl/mind-forge/master/scripts/install.sh | sh
+#   hack/install.sh                 # build/install this checkout with Go
+#   curl -fsSL https://raw.githubusercontent.com/alswl/mind-forge/master/hack/install.sh | sh
 #
 # Optional environment variables for release installs:
 #   MF_VERSION      released tag to install (for example v0.4.2; default: latest stable)
@@ -53,7 +53,7 @@ install_source() {
 	target_dir="${MF_INSTALL_TARGET_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/mind-forge/go-install-target}"
 	case "$target_dir" in /*) ;; *) target_dir="$(pwd)/$target_dir" ;; esac
 	log "Building mf from $repo_root"
-	bash "$repo_root/scripts/build.sh" --out "$target_dir/mf"
+	make --no-print-directory -C "$repo_root" build MF_BUILD_OUT="$target_dir/mf"
 	base_version=$(awk '$1 == "const" && $2 == "BaseVersion" {gsub(/"/, "", $4); print $4}' "$repo_root/internal/version/version.go")
 	[ -n "$base_version" ] || die "Cannot determine source base_version"
 	install_verified "$target_dir/mf" "$base_version"

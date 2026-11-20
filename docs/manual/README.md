@@ -9,4 +9,4 @@ Use these pages to check exact command, path, field, and compatibility contracts
 - [CLI output and safety](output.md).
 
 For task sequences, use the [user guides](../guide/README.md).
-Regenerate command help with `scripts/generate-manual.sh` from the repository root.
+Regenerate command help with `make generate-manual` from the repository root.

@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 export GOTOOLCHAIN=local CGO_ENABLED=0
 
 die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
-usage() { printf 'Usage: scripts/package.sh --tag v<VERSION> [--out NEW_DIRECTORY]\n'; }
+usage() { printf 'Usage: hack/package.sh --tag v<VERSION> [--out NEW_DIRECTORY]\n'; }
 sha256() {
     if command -v sha256sum >/dev/null 2>&1; then
         sha256sum < "$1" | awk '{print $1}'
@@ -56,6 +56,12 @@ source_manifest() {
         printf '%s  %s\n' "$source_sha256" "$source_path"
     done < <(git ls-files -z --cached --others --exclude-standard)
 }
+submodule_path=hack/.upstream-makefile-go
+submodule_revision=$(git -C "$submodule_path" rev-parse HEAD)
+expected_submodule=$(git ls-files -s -- "$submodule_path" | awk '$1 == "160000" {print $2}')
+[[ -n "$expected_submodule" && "$submodule_revision" == "$expected_submodule" ]] || die 'makefile-go submodule does not match the pinned revision'
+[[ -z "$(git -C "$submodule_path" status --porcelain)" ]] || die 'makefile-go submodule has uncommitted changes'
+printf '%s\n' "$submodule_revision" > "$staging/build-info/makefile-go-revision.txt"
 source_manifest > "$staging/build-info/source-files.sha256"
 source_sha=$(sha256 "$staging/build-info/source-files.sha256")
 dirty=false
@@ -63,7 +69,7 @@ dirty=false
 
 host_os=$(go env GOHOSTOS)
 host_arch=$(go env GOHOSTARCH)
-GOOS="$host_os" GOARCH="$host_arch" bash scripts/build.sh --out "$staging/work/probe"
+GOOS="$host_os" GOARCH="$host_arch" make --no-print-directory build MF_BUILD_OUT="$staging/work/probe"
 "$staging/work/probe" version --json > "$staging/build-info/version.json"
 metadata=$(cat "$staging/build-info/version.json")
 metadata_field() { printf '%s\n' "$metadata" | sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"; }
@@ -87,7 +93,7 @@ for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-apple-da
     binary="$staging/work/$member"
     archive="mf-$tag-$target.tar.gz"
     printf 'Building %s (%s/%s)\n' "$target" "$target_os" "$target_arch"
-    GOOS="$target_os" GOARCH="$target_arch" bash scripts/build.sh --out "$binary"
+    GOOS="$target_os" GOARCH="$target_arch" make --no-print-directory build MF_BUILD_OUT="$binary"
     chmod 0755 "$binary"
     build_info=$(go version -m "$binary")
     [[ "${build_info%%$'\n'*}" == "$binary: $expected_go" ]] || die "Wrong compiler for $target"
@@ -111,10 +117,12 @@ base_version=$base_version
 revision=$revision
 dirty=$dirty
 source_manifest_sha256=$source_sha
+makefile_go_revision=$submodule_revision
 go_version=$expected_go
 build_date=$build_date
 CGO_ENABLED=0
 MANIFEST
+[[ "$(git -C "$submodule_path" rev-parse HEAD)" == "$submodule_revision" && -z "$(git -C "$submodule_path" status --porcelain)" ]] || die 'makefile-go submodule changed while packaging'
 source_manifest > "$staging/build-info/source-files-after.sha256"
 [[ "$(sha256 "$staging/build-info/source-files-after.sha256")" == "$source_sha" ]] || die 'Source inputs changed while packaging; retry from a stable tree'
 rm "$staging/build-info/source-files-after.sha256"

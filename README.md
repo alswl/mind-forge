@@ -54,13 +54,13 @@ builds are derived artifacts. Private content stays in the authored files for di
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alswl/mind-forge/master/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/alswl/mind-forge/master/hack/install.sh | sh
 export PATH="${MF_INSTALL_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}:$PATH"
 ```
 
 Prebuilt releases support macOS and Linux on x86_64 and ARM64; the installer
 verifies SHA-256 checksums. See [installation](docs/guide/install.md) for version
-selection and source builds. Source builds use Go `1.26.11`; from a checkout, run `scripts/install.sh`.
+selection and source builds. Source builds use Go `1.26.11`; from a checkout, run `hack/install.sh`.
 See [development checks and external acceptance](docs/dev/build-workflow.md)
 for the component-unit and CLI verification boundaries.
 
