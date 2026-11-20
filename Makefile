@@ -4,9 +4,13 @@ SHELL := /bin/bash
 export GOTOOLCHAIN := local
 export CGO_ENABLED := 0
 
-include hack/makefile-go/general.mk
+MAKEFILE_GO := hack/.upstream-makefile-go/hack
+ifeq ($(wildcard $(MAKEFILE_GO)/makefile-go/general.mk),)
+$(error Missing makefile-go submodule; run git submodule update --init --recursive)
+endif
+include $(MAKEFILE_GO)/makefile-go/general.mk
 
-.PHONY: check check-toolchain vet test test-raw verify-modules install generate-manual
+.PHONY: check check-toolchain check-linter vet test test-raw verify-modules install generate-manual
 ROOT := github.com/alswl/mind-forge
 TARGETS := mf
 CMD_DIR := ./cmd
@@ -15,7 +19,8 @@ GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 GO_BUILD_VERBOSE :=
 GO_SOURCE_DIRS := cmd pkg internal
-GO_LINT_COMMAND := bash scripts/lint.sh
+GO_LINT_READ_ONLY := true
+GO_LINT_COMMAND := golangci-lint run ./...
 MF_BUILD_OUT ?= $(OUTPUT_DIR)/mf
 GO_BUILD_OUTPUT = $(MF_BUILD_OUT)
 GO_BUILD_COPY_VARIANTS := false
@@ -25,15 +30,40 @@ GO_BUILD_LDFLAGS := -X $(ROOT)/internal/version.Commit=$(COMMIT) -X $(ROOT)/inte
 export GIT_DIR := $(shell git rev-parse --absolute-git-dir)
 export GIT_WORK_TREE := $(shell git rev-parse --show-toplevel)
 
-include hack/makefile-go/build.mk
+override BUMP_MODE := prepare
+BUMP_SCRIPT := $(MAKEFILE_GO)/bump.sh
+BUMP_PREPARE_FILES := internal/version/version.go
+DEFAULT_BUMP_STAGE := final
+DEFAULT_BUMP_SCOPE := patch
+include $(MAKEFILE_GO)/makefile-go/build.mk
+include $(MAKEFILE_GO)/makefile-go/version.mk
+
+PACKAGE_TARGETS := linux:amd64:x86_64-unknown-linux-gnu linux:arm64:aarch64-unknown-linux-gnu \
+                   darwin:amd64:x86_64-apple-darwin darwin:arm64:aarch64-apple-darwin
+PACKAGE_HOOKS := hack/release-checks.sh
+include $(MAKEFILE_GO)/makefile-go/distribution.mk
+
+bump bump-patch bump-minor bump-major bump-beta bump-alpha: check-toolchain
 
 build: check-toolchain
 check-toolchain:
+	@bash hack/check-version.sh
 	@expected_go="go$$(awk '$$1 == "golang" { print $$2 }' .tool-versions)"; \
 	  [[ "$$(go env GOVERSION)" == "$$expected_go" ]] || { printf 'Expected %s; select the version in .tool-versions.\n' "$$expected_go" >&2; exit 1; }
 
-check: ## Run the complete local quality gate.
-	bash scripts/check.sh
+lint: check-linter
+check-linter:
+	@expected=2.12.2; \
+	  command -v golangci-lint >/dev/null || { printf 'Install golangci-lint v%s to run lint.\n' "$$expected" >&2; exit 1; }; \
+	  actual=$$(golangci-lint version --short) && \
+	  [[ "$$actual" == "$$expected" ]] || { printf 'Expected golangci-lint %s; found %s.\n' "$$expected" "$$actual" >&2; exit 1; }
+
+check: check-toolchain check-installer ## Run the complete local quality gate.
+	$(MAKE) --no-print-directory lint
+	$(MAKE) --no-print-directory vet
+	go mod verify
+	$(MAKE) --no-print-directory test
+	$(MAKE) --no-print-directory build
 
 vet: ## Run Go static analysis.
 	go vet ./...
@@ -48,7 +78,7 @@ verify-modules: ## Verify module checksums and tidy state without changing files
 	go mod tidy -diff
 
 install: ## Install from source using the existing installer.
-	bash scripts/install.sh
+	bash hack/install.sh
 
 generate-manual: ## Regenerate the CLI reference manual.
-	bash scripts/generate-manual.sh
+	bash hack/generate-manual.sh

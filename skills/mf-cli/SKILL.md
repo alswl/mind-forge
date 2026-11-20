@@ -9,7 +9,7 @@ description: Use the mf CLI to manage mind 0.3.0-compatible local knowledge repo
 
 `docs/manual/cli.md` is generated from the built CLI help surface. Do not edit it
 by hand: after changing command definitions, run
-`MF_BIN="$PWD/bin/mf" bash scripts/generate-manual.sh` after building the Go
+`MF_BIN="$PWD/bin/mf" make generate-manual` after building the Go
 candidate, and review the generated diff. The explicit artifact prevents using
 a stale installed binary. Keep workflow guidance in this skill, the README,
 or focused documents under `docs/`.
@@ -20,21 +20,20 @@ If `mf` is missing (`command not found: mf`), give the user these steps — do
 not install on their behalf:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alswl/mind-forge/master/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/alswl/mind-forge/master/hack/install.sh | sh
 export PATH="${MF_INSTALL_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}:$PATH"
 mf version
 ```
 
 For a source build, install Go `1.26.11` and GNU Make, then run
-`scripts/install.sh` from a checkout. Installation honors `MF_INSTALL_DIR`, then `XDG_BIN_HOME`,
+`hack/install.sh` from a checkout. Installation honors `MF_INSTALL_DIR`, then `XDG_BIN_HOME`,
 then `~/.local/bin`; `MF_INSTALL_TARGET_DIR` selects the reusable binary output
 directory. See [installation](../../docs/guide/install.md).
 
-During development, use `make build` (or `bash scripts/build.sh`) to build the
+During development, use `make build` to build the
 explicit `bin/mf` candidate through the pinned shared makefile-go build module.
 Run changed-package component tests, for example
-`go test ./pkg/services/content/...` or `go test ./cmd/mf`, then `make check`
-(or `bash scripts/check.sh`) for formatting, vet, golangci-lint 2.12.2, module
+`go test ./pkg/services/content/...` or `go test ./cmd/mf`, then `make check` for formatting, vet, golangci-lint 2.12.2, module
 verification/tidy, all cmd/pkg/internal component tests and the stamped build.
 Install the pinned linter as described in the build workflow; it is a development
 dependency, not a runtime or source-install dependency.

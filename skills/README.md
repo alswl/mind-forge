@@ -42,7 +42,7 @@ Requires the `mf` binary. To build from source, install Go `1.26.11` and GNU Mak
 ```bash
 git clone https://github.com/alswl/mind-forge.git
 cd mind-forge
-bash scripts/build.sh
+make build
 export PATH="$PWD/bin:$PATH"
 ```
 

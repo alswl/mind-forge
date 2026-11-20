@@ -67,8 +67,8 @@ PTY/process, installer and native-platform checks belong to `my-tests`.
 ## Building
 
 The root Makefile includes the pinned shared `makefile-go/build.mk`, which owns
-the compilation recipe, plus its help module. `scripts/build.sh` calls that
-shared target; direct builds, installers and packaging therefore use the same
+the compilation recipe, plus its help module. Direct builds, installers and
+packaging call `make build` and share the same
 version injection and CGO-disabled build. Read
 [shared-module provenance and adaptations](../../hack/makefile-go/README.md)
 before updating it. No sibling checkout is required.

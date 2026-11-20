@@ -6,7 +6,7 @@
 > source requires Go `1.26.11` and GNU Make.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alswl/mind-forge/master/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/alswl/mind-forge/master/hack/install.sh | sh
 export PATH="${MF_INSTALL_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}:$PATH"
 ```
 
@@ -27,10 +27,10 @@ interactive editor configuration.
 Install Go `1.26.11` and GNU Make, then run:
 
 ```bash
-scripts/install.sh
+hack/install.sh
 ```
 
-Source builds disable CGO. `bash scripts/build.sh` writes `bin/mf`; use this
+Source builds disable CGO. `make build` writes `bin/mf`; use this
 explicit artifact path for verification. The installer accepts no additional
 arguments. `MF_IMPLEMENTATION=go` is accepted for existing callers; other values
 are refused. `MF_INSTALL_TARGET_DIR` chooses the reusable build output directory;

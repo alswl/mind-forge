@@ -26,12 +26,12 @@ run the full formatter, vet, unit-test and build gate:
 
 ```bash
 go version
-bash scripts/check.sh
-bash scripts/generate-manual.sh
+make check
+make generate-manual
 git diff --exit-code -- docs/manual/cli.md
 ```
 
-`scripts/check.sh` builds the stamped `bin/mf`. Manual generation uses that
+`make check` builds the stamped `bin/mf`. Manual generation uses that
 binary and must leave the checked-in manual unchanged. CLI, recovery, install
 and platform acceptance still run through the separately pinned external
 verification harness.
