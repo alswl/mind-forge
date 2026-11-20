@@ -17,7 +17,7 @@ on:
       - 'cmd/**'
       - 'pkg/**'
       - 'internal/**'
-      - 'hack/package.sh'
+      - 'hack/release-checks.sh'
   workflow_dispatch:
     inputs:
       tag:
@@ -45,10 +45,11 @@ jobs:
         env:
           PACKAGE_TAG: ${{ inputs.tag }}
         run: |
-          if [[ -z "$PACKAGE_TAG" ]]; then
-            PACKAGE_TAG=$(cat VERSION)
+          if [[ -n "$PACKAGE_TAG" ]]; then
+            make package PACKAGE_TAG="$PACKAGE_TAG"
+          else
+            make package
           fi
-          bash hack/package.sh --tag "$PACKAGE_TAG"
       - uses: actions/upload-artifact@v6
         with:
           name: mf-package-${{ github.event.pull_request.head.sha || github.sha }}

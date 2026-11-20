@@ -38,6 +38,11 @@ DEFAULT_BUMP_SCOPE := patch
 include $(MAKEFILE_GO)/makefile-go/build.mk
 include $(MAKEFILE_GO)/makefile-go/version.mk
 
+PACKAGE_TARGETS := linux:amd64:x86_64-unknown-linux-gnu linux:arm64:aarch64-unknown-linux-gnu \
+                   darwin:amd64:x86_64-apple-darwin darwin:arm64:aarch64-apple-darwin
+PACKAGE_HOOKS := hack/release-checks.sh
+include $(MAKEFILE_GO)/makefile-go/distribution.mk
+
 bump bump-patch bump-minor bump-major bump-beta bump-alpha: check-toolchain
 
 build: check-toolchain
@@ -53,7 +58,7 @@ check-linter:
 	  actual=$$(golangci-lint version --short) && \
 	  [[ "$$actual" == "$$expected" ]] || { printf 'Expected golangci-lint %s; found %s.\n' "$$expected" "$$actual" >&2; exit 1; }
 
-check: check-toolchain ## Run the complete local quality gate.
+check: check-toolchain check-installer ## Run the complete local quality gate.
 	$(MAKE) --no-print-directory lint
 	$(MAKE) --no-print-directory vet
 	go mod verify

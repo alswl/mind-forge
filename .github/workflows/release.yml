@@ -40,7 +40,7 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           test "$RELEASE_TAG" = "$(cat VERSION)"
-          bash hack/package.sh --tag "$RELEASE_TAG"
+          make package PACKAGE_TAG="$RELEASE_TAG"
       - uses: actions/upload-artifact@v6
         with:
           name: mf-release-${{ github.sha }}

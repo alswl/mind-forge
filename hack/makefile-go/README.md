@@ -1,6 +1,6 @@
 # makefile-go integration
 
-The root Makefile loads the build, version, and help modules from the
+The root Makefile loads the build, version, distribution, and help modules from the
 `hack/.upstream-makefile-go` submodule. After cloning, run
 `git submodule update --init --recursive`.
 
@@ -12,3 +12,8 @@ module checks remain part of the [project quality gate](../../docs/dev/build-wor
 The shared version module runs in prepare mode. `hack/bump-post-actions.sh`
 updates the Go base version in the upstream staging directory. Tagging happens
 after merge, as described in the [release workflow](../../docs/dev/build-workflow.md).
+
+`make package` applies the project target matrix and `hack/release-checks.sh`
+validation hooks. Use `make generate-installer` after changing
+`hack/install-project.sh`. `make check` verifies the committed installer
+matches the upstream template.
