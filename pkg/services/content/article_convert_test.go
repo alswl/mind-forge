@@ -54,7 +54,7 @@ func TestArticleConversionPlansRetainedSiblingAndBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := string(mutation.Plan.After["alpha/docs/post.md"].Bytes)
-	if !strings.Contains(body, "![a](../assets/a.png)") || !strings.Contains(body, "## Body\n") || strings.Contains(body, "typora-copy-images-to") {
+	if !strings.Contains(body, "![a](../assets/a.png)") || !strings.Contains(body, "## Body\n") || !strings.HasPrefix(body, "---\ntypora-copy-images-to: ../assets\n---\n") {
 		t.Fatalf("merge %q", body)
 	}
 	if _, exists := mutation.Plan.After["alpha/docs/post"]; exists {
@@ -75,6 +75,7 @@ func TestArticleConversionPlansRetainedSiblingAndBinding(t *testing.T) {
 func TestArticleToDirectoryKeepsBytesInOpeningBlock(t *testing.T) {
 	root := canonicalPath(t.TempDir())
 	project := mutationProject(t, root, "alpha")
+	putContent(t, project, "mind.yaml", "schema: '1'\nplugins:\n  typora-front-matter: {enabled: false}\n")
 	putContent(t, project, "docs/post.md", "# Post\r\nbody\r\n")
 	putContent(t, project, "mind-index.yaml", `schema: '1'
 articles:

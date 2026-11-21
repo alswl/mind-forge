@@ -224,7 +224,7 @@ func NewBlock(project, article, slug string, options BlockEditOptions) (BlockEdi
 	}
 	body := "# " + strings.TrimSpace(slug) + "\n\n"
 	if config, err := app.LoadProjectConfig(project, project); err == nil && config != nil {
-		enabled := config.Plugins == nil || config.Plugins.Typora == nil || config.Plugins.Typora.Enabled == nil || *config.Plugins.Typora.Enabled
+		enabled := typoraEnabled(config)
 		if enabled {
 			layout, err := app.ResolveAndValidateLayout(project, config)
 			if err != nil {
