@@ -9,6 +9,11 @@ This is also required before building from source; GitHub source archives do not
 include submodule contents. Run changed-package component tests while editing, then `make check` for formatting, vet, correctness lint, module verify/tidy,
 all cmd/pkg/internal component tests and the stamped `bin/mf` build.
 
+If lint or vet reports packages under an ignored directory such as `tmp/`,
+rerun `make check` in a fresh worktree at the candidate commit and initialize
+its submodules. Go's `./...` package pattern can include ignored files even
+when `git status` reports a clean worktree.
+
 [Code structure](code-structure.md), [adopted guide](go-cli-guidelines.md) and
 [configuration/migration](../guide/configuration.md) describe current behavior.
 AGENTS and the active plan define requirements; the retired constitution is not
