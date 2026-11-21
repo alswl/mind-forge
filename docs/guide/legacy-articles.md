@@ -95,3 +95,13 @@ mf article block renumber design-review --project notes
 New articles are directories of numbered blocks (`01-opening.md`, ...). Pass
 `--file` to create a single-file article instead; `mf article convert
 --to-single-file|--to-directory` switches between the two forms.
+
+With `plugins.typora-front-matter.enabled` enabled (the default), conversion
+sets `typora-copy-images-to` in the destination source file relative to the
+configured assets directory. Run `mf article lint --rule missing_typora_front_matter
+--project notes` to find source files and blocks that need this setting. Build
+strips the Typora setting from the generated Markdown and leaves the author files intact.
+
+`mf project lint --fix --rule missing_directory --project notes` adds
+`.gitkeep` to newly created legacy article, source, and asset directories.
+Commit the placeholders to carry the repair to other checkouts.

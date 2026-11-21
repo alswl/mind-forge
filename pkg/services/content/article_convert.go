@@ -13,6 +13,7 @@ import (
 	"github.com/alswl/mind-forge/pkg/common/markdown"
 	"github.com/alswl/mind-forge/pkg/common/model"
 	output "github.com/alswl/mind-forge/pkg/common/outcome"
+	app "github.com/alswl/mind-forge/pkg/config"
 	"github.com/alswl/mind-forge/pkg/managers/lifecycle"
 )
 
@@ -163,14 +164,27 @@ func PlanArticleConversion(root, project string, inspection ConversionInspection
 		return ContentMutation{}, err
 	}
 	body := first.Bytes
+	config, err := ConfigFor(project)
+	if err != nil {
+		return ContentMutation{}, err
+	}
+	layout, _ := app.ResolveEffectiveLayout(config)
+	relative, err := filepath.Rel(layout.Articles, inspection.TargetContentPath)
+	if err != nil {
+		return ContentMutation{}, err
+	}
+	applyTypora := relative != "." && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && typoraEnabled(config)
 	if len(inspection.SectionFiles) > 1 {
 		var merged strings.Builder
-		for _, section := range inspection.SectionFiles {
+		for i, section := range inspection.SectionFiles {
 			entry, err := read(section)
 			if err != nil {
 				return ContentMutation{}, err
 			}
-			text := markdown.StripTyporaFrontMatter(string(entry.Bytes))
+			text := string(entry.Bytes)
+			if i > 0 || !applyTypora {
+				text = markdown.StripTyporaFrontMatter(text)
+			}
 			merged.WriteString(text)
 			if !strings.HasSuffix(merged.String(), "\n") {
 				merged.WriteByte('\n')
@@ -178,7 +192,19 @@ func PlanArticleConversion(root, project string, inspection ConversionInspection
 		}
 		sourceDir := strings.TrimRight(inspection.SourcePath, "/")
 		baseDir := filepath.Dir(sourceDir)
-		body = []byte(markdown.RewriteReferences(merged.String(), func(target string) (string, bool) { return markdown.RebaseRelativeTarget(target, sourceDir, baseDir) }))
+		text := merged.String()
+		_, markdownBody, _, _ := markdown.InitialFrontMatter(text)
+		frontMatter := text[:len(text)-len(markdownBody)]
+		body = []byte(frontMatter + markdown.RewriteReferences(markdownBody, func(target string) (string, bool) {
+			return markdown.RebaseRelativeTarget(target, sourceDir, baseDir)
+		}))
+	}
+	if applyTypora {
+		assets, err := typoraAssetsPath(project, layout.Assets, filepath.Dir(filepath.Join(project, inspection.TargetContentPath)))
+		if err != nil {
+			return ContentMutation{}, err
+		}
+		body = []byte(writeTyporaFrontMatter(string(body), assets, true))
 	}
 	eraseContentTree(inventory.after, source)
 	inventory.after[target] = lifecycle.Entry{Kind: "file", Mode: first.Mode, Bytes: body}

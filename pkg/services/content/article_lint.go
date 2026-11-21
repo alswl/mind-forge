@@ -31,8 +31,29 @@ func LintArticles(project string, fix bool) ([]model.LintIssue, error) {
 		return nil, err
 	}
 	issues := []model.LintIssue{}
+	checkTypora := typoraEnabled(config)
+	lintTypora := func(relative, path string, body []byte) error {
+		if !checkTypora || hasTyporaFrontMatter(string(body)) {
+			return nil
+		}
+		assets, err := typoraAssetsPath(project, layout.Assets, filepath.Dir(path))
+		if err != nil {
+			return err
+		}
+		issues = append(issues, model.LintIssue{
+			Severity: "warning", Kind: "missing_typora_front_matter", Path: relative,
+			Message: "add " + typoraFrontMatterKey + " " + assets + " to the file's opening YAML front matter",
+		})
+		return nil
+	}
 	for _, entry := range entries {
 		name := entry.Name()
+		if entry.IsDir() && checkTypora && !strings.HasPrefix(name, ".") {
+			if err := lintArticleBlockTypora(project, filepath.Join(layout.Articles, name), lintTypora); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if !utf8.ValidString(name) || filepath.Ext(name) != ".md" {
 			continue
 		}
@@ -48,6 +69,9 @@ func LintArticles(project string, fix bool) ([]model.LintIssue, error) {
 		}
 		if !utf8.Valid(body) {
 			return nil, fmt.Errorf("stream did not contain valid UTF-8: %s", path)
+		}
+		if err := lintTypora(relative, path, body); err != nil {
+			return nil, err
 		}
 		add := func(severity, kind, message string, fixable bool) {
 			issues = append(issues, model.LintIssue{Severity: severity, Kind: kind, Message: message, Path: relative, Fixable: fixable})
@@ -87,4 +111,33 @@ func LintArticles(project string, fix bool) ([]model.LintIssue, error) {
 		}
 	}
 	return issues, nil
+}
+
+func lintArticleBlockTypora(project, relative string, lint func(string, string, []byte) error) error {
+	directory, err := CheckedPath(project, relative)
+	if err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() || filepath.Ext(entry.Name()) != ".md" || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		block := filepath.Join(relative, entry.Name())
+		path, err := CheckedPath(project, block)
+		if err != nil {
+			return err
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := lint(filepath.ToSlash(block), path, body); err != nil {
+			return err
+		}
+	}
+	return nil
 }

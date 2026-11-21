@@ -74,7 +74,8 @@ func LintProject(project string, rules []string, fix bool) ([]model.ProjectLintI
 				if pathExists(path) {
 					continue
 				}
-				fixed := fix && os.MkdirAll(path, 0755) == nil
+				fixed := fix && os.MkdirAll(filepath.Dir(path), 0o755) == nil &&
+					store.CreateDirectory(path, map[string][]byte{".gitkeep": nil}) == nil
 				add("error", rule, "missing directory '"+directory+"'", directory+"/", true, fixed, true)
 			}
 		case "missing_manifest":

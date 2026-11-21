@@ -101,7 +101,7 @@ func CreateArticle(project, title string, options ArticleCreateOptions) (Article
 		}
 		body, kind = string(raw), "blank"
 	}
-	result.TyporaFrontMatterInjected = config.Plugins == nil || config.Plugins.Typora == nil || config.Plugins.Typora.Enabled == nil || *config.Plugins.Typora.Enabled
+	result.TyporaFrontMatterInjected = typoraEnabled(config)
 	relative := layout.Articles + "/" + result.Filename
 	path, err := CheckedPath(project, relative)
 	if err != nil {
