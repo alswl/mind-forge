@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.3] - 2026-11-23
+
+### Bug Fixes
+- Preserve records across article conversion (#16)
+- Clarify registration and missing index entries (#17)
+- Preserve Typora metadata and directory repairs (#18)
+
+### Documentation
+- Explain clean worktree build checks
+
 ## [0.6.2] - 2026-11-20
 
 ### Fixed
