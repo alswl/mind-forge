@@ -3411,7 +3411,7 @@ Show version information
 
 ###### **Options:**
 
-* `--check` — Check GitHub for the latest stable release
+* `--check` — Check the GitHub Latest Release API for updates
 
 ```text
 Examples (use a disposable directory for setup):
@@ -3424,5 +3424,5 @@ Examples (use a disposable directory for setup):
     # Internet access to GitHub is required.
   Command:
     mf version --check
-  Effect: Compare the running version with the latest stable release.
+  Effect: Compare the running version with the latest stable release from GitHub.
 ```

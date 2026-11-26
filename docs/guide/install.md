@@ -25,9 +25,14 @@ interactive editor configuration.
 ## Check for updates
 
 Run `mf version --check` to compare the running executable with the latest
-stable GitHub release. The check requires internet access and reports whether
-an update is available, the executable is up to date, or it is ahead of the
-latest stable release. Run `mf version --check --json` for structured output.
+stable release from the [GitHub Latest Release API](https://api.github.com/repos/alswl/mind-forge/releases/latest).
+The check requires internet access and accepts only a valid stable SemVer tag
+from a release with both `draft` and `prerelease` set to `false`.
+
+A stable release supersedes an installed prerelease or dev build with the same
+numeric version. An installed build with a higher numeric version stays ahead,
+even if it is a prerelease. Build metadata does not affect the comparison.
+Run `mf version --check --json` for structured output.
 The check leaves the installation untouched. Use the install command above
 when you want to upgrade. Plain `mf version` and `mf --version` work offline.
 

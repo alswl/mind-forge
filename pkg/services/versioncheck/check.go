@@ -1,4 +1,4 @@
-package version
+package versioncheck
 
 import (
 	"cmp"
@@ -19,27 +19,35 @@ const (
 	checkTimeout     = 5 * time.Second
 )
 
-type CheckResult struct {
+type Status string
+
+const (
+	UpdateAvailable Status = "update_available"
+	UpToDate        Status = "up_to_date"
+	Ahead           Status = "ahead"
+)
+
+type Result struct {
 	CurrentVersion string `json:"current_version"`
 	LatestVersion  string `json:"latest_version"`
-	Status         string `json:"status"`
+	Status         Status `json:"status"`
 	UpgradeURL     string `json:"upgrade_url,omitempty"`
 }
 
-func Check(ctx context.Context, current string) (CheckResult, error) {
+func Check(ctx context.Context, current string) (Result, error) {
 	return check(ctx, current, nil)
 }
 
-func check(ctx context.Context, current string, transport http.RoundTripper) (CheckResult, error) {
+func check(ctx context.Context, current string, transport http.RoundTripper) (Result, error) {
 	local, ok := parseSemver(current)
 	if !ok {
-		return CheckResult{}, fmt.Errorf("invalid local version %q", current)
+		return Result{}, fmt.Errorf("invalid local version %q", current)
 	}
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, latestReleaseURL, nil)
 	if err != nil {
-		return CheckResult{}, err
+		return Result{}, err
 	}
 	request.Header.Set("Accept", "application/vnd.github+json")
 	client := http.Client{
@@ -50,18 +58,18 @@ func check(ctx context.Context, current string, transport http.RoundTripper) (Ch
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return CheckResult{}, fmt.Errorf("requesting the latest release from GitHub: %w", err)
+		return Result{}, fmt.Errorf("requesting the latest release from GitHub: %w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return CheckResult{}, fmt.Errorf("GitHub latest release request returned HTTP %d", response.StatusCode)
+		return Result{}, fmt.Errorf("GitHub latest release request returned HTTP %d", response.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxReleaseBody+1))
 	if err != nil {
-		return CheckResult{}, fmt.Errorf("reading the GitHub release response: %w", err)
+		return Result{}, fmt.Errorf("reading the GitHub release response: %w", err)
 	}
 	if len(body) > maxReleaseBody {
-		return CheckResult{}, fmt.Errorf("GitHub release response exceeds %d bytes", maxReleaseBody)
+		return Result{}, fmt.Errorf("GitHub release response exceeds %d bytes", maxReleaseBody)
 	}
 	var release struct {
 		Tag        string `json:"tag_name"`
@@ -69,22 +77,22 @@ func check(ctx context.Context, current string, transport http.RoundTripper) (Ch
 		Prerelease *bool  `json:"prerelease"`
 	}
 	if err := json.Unmarshal(body, &release); err != nil {
-		return CheckResult{}, fmt.Errorf("invalid GitHub release JSON: %w", err)
+		return Result{}, fmt.Errorf("invalid GitHub release JSON: %w", err)
 	}
 	latest, tagged := strings.CutPrefix(release.Tag, "v")
 	stable, valid := parseSemver(latest)
 	if !tagged || !valid || stable.prerelease || release.Draft == nil || *release.Draft ||
 		release.Prerelease == nil || *release.Prerelease {
-		return CheckResult{}, fmt.Errorf("GitHub response does not identify a published stable SemVer release")
+		return Result{}, fmt.Errorf("GitHub response does not identify a published stable SemVer release")
 	}
 
-	result := CheckResult{CurrentVersion: current, LatestVersion: latest, Status: "up_to_date"}
+	result := Result{CurrentVersion: current, LatestVersion: latest, Status: UpToDate}
 	switch local.compareStable(stable) {
 	case -1:
-		result.Status = "update_available"
+		result.Status = UpdateAvailable
 		result.UpgradeURL = InstallURL
 	case 1:
-		result.Status = "ahead"
+		result.Status = Ahead
 	}
 	return result, nil
 }

@@ -1,12 +1,14 @@
-package version
+package versioncheck
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -28,18 +30,19 @@ const stableRelease = `{"tag_name":"v0.6.3+build.01","draft":false,"prerelease":
 
 func TestCheckComparesVersions(t *testing.T) {
 	for _, tc := range []struct {
-		current, status string
+		current string
+		status  Status
 	}{
-		{"0.0.1", "update_available"},
-		{"0.6.3-dev+abc123", "update_available"},
-		{"0.6.3-rc.1", "update_available"},
-		{"0.6.3-01rc", "update_available"},
-		{"0.6.3", "up_to_date"},
-		{"0.6.3+build.00", "up_to_date"},
-		{"0.6.10", "ahead"},
-		{"0.10.0", "ahead"},
-		{"0.7.0-dev+abc123", "ahead"},
-		{"999999999999999999999.0.0", "ahead"},
+		{"0.0.1", UpdateAvailable},
+		{"0.6.3-dev+abc123", UpdateAvailable},
+		{"0.6.3-rc.1", UpdateAvailable},
+		{"0.6.3-01rc", UpdateAvailable},
+		{"0.6.3", UpToDate},
+		{"0.6.3+build.00", UpToDate},
+		{"0.6.10", Ahead},
+		{"0.10.0", Ahead},
+		{"0.7.0-dev+abc123", Ahead},
+		{"999999999999999999999.0.0", Ahead},
 	} {
 		t.Run(tc.current, func(t *testing.T) {
 			result, err := check(t.Context(), tc.current, releaseResponse(http.StatusOK, stableRelease))
@@ -47,11 +50,30 @@ func TestCheckComparesVersions(t *testing.T) {
 			require.Equal(t, tc.current, result.CurrentVersion)
 			require.Equal(t, "0.6.3+build.01", result.LatestVersion)
 			require.Equal(t, tc.status, result.Status)
-			if tc.status == "update_available" {
+			if tc.status == UpdateAvailable {
 				require.Equal(t, "https://github.com/alswl/mind-forge/blob/master/docs/guide/install.md", result.UpgradeURL)
 			} else {
 				require.Empty(t, result.UpgradeURL)
 			}
+		})
+	}
+}
+
+func TestCheckStableTagAndJSONContract(t *testing.T) {
+	const stable = `{"tag_name":"v0.6.3","draft":false,"prerelease":false}`
+	for _, tc := range []struct {
+		current, expected string
+	}{
+		{"0.0.1", `{"current_version":"0.0.1","latest_version":"0.6.3","status":"update_available","upgrade_url":"https://github.com/alswl/mind-forge/blob/master/docs/guide/install.md"}`},
+		{"0.6.3", `{"current_version":"0.6.3","latest_version":"0.6.3","status":"up_to_date"}`},
+		{"999.0.0", `{"current_version":"999.0.0","latest_version":"0.6.3","status":"ahead"}`},
+	} {
+		t.Run(tc.current, func(t *testing.T) {
+			result, err := check(t.Context(), tc.current, releaseResponse(http.StatusOK, stable))
+			require.NoError(t, err)
+			data, err := json.Marshal(result)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(data))
 		})
 	}
 }
@@ -69,7 +91,7 @@ func TestCheckRejectsMalformedLocalVersions(t *testing.T) {
 	}
 }
 
-func TestCheckRequestsOfficialEndpoint(t *testing.T) {
+func TestCheckRequestsOfficialGETAndSetsFiveSecondDeadline(t *testing.T) {
 	transport := releaseTransport(func(request *http.Request) (*http.Response, error) {
 		require.Equal(t, http.MethodGet, request.Method)
 		require.Equal(t, "https://api.github.com/repos/alswl/mind-forge/releases/latest", request.URL.String())
@@ -133,6 +155,19 @@ func TestCheckNetworkError(t *testing.T) {
 	_, err := check(t.Context(), "0.6.3", transport)
 	require.ErrorContains(t, err, "requesting the latest release from GitHub")
 	require.ErrorIs(t, err, networkError)
+}
+
+func TestCheckTimesOutAfterFiveSeconds(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		transport := releaseTransport(func(request *http.Request) (*http.Response, error) {
+			<-request.Context().Done()
+			return nil, request.Context().Err()
+		})
+		start := time.Now()
+		_, err := check(t.Context(), "0.6.3", transport)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, 5*time.Second, time.Since(start))
+	})
 }
 
 func TestCheckFollowsParentCancellationAndDeadline(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 
 	"github.com/alswl/mind-forge/internal/output"
 	"github.com/alswl/mind-forge/internal/version"
+	"github.com/alswl/mind-forge/pkg/services/versioncheck"
 	"github.com/spf13/cobra"
 )
 
@@ -30,9 +31,9 @@ func newVersionCommand(item CommandSpec, handler Handler) (*cobra.Command, error
 }
 
 func runVersionCheck(e commandExecution) error {
-	result, err := version.Check(e.Command.Context(), version.Current().Version)
+	result, err := versioncheck.Check(e.Command.Context(), version.Current().Version)
 	if err != nil {
-		hint := "Try again or consult the installation guide at " + version.InstallURL
+		hint := "Try again or consult the installation guide at " + versioncheck.InstallURL
 		return &output.Error{Kind: "version_check_failed", Message: "version check failed: " + err.Error(), Hint: &hint, Cause: err}
 	}
 	if e.Application.Quiet {
@@ -43,11 +44,11 @@ func runVersionCheck(e commandExecution) error {
 	}
 	var status string
 	switch result.Status {
-	case "update_available":
+	case versioncheck.UpdateAvailable:
 		status = "Update available. Install instructions: " + result.UpgradeURL
-	case "up_to_date":
+	case versioncheck.UpToDate:
 		status = "Up to date."
-	case "ahead":
+	case versioncheck.Ahead:
 		status = "Current version is ahead of the latest stable release."
 	}
 	message := fmt.Sprintf("Current version: %s\nLatest stable version: %s\n%s\n", result.CurrentVersion, result.LatestVersion, status)
