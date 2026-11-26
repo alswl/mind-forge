@@ -717,10 +717,24 @@
       "required_subcommand": false,
       "repo_required": false,
       "access": "read",
-      "flags": [],
+      "flags": [
+        {
+          "name": "check",
+          "short": "",
+          "kind": "bool",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "",
+          "help": "Check GitHub for the latest stable release",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        }
+      ],
       "arguments": [],
-      "help": "Show version information\n\nUsage: mf version [OPTIONS]\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
-      "help_default": "Show version information\n\nUsage: mf version [OPTIONS]\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values: text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help": "Show version information\n\nUsage: mf version [OPTIONS]\n\nOptions:\n      --check                   Check GitHub for the latest stable release\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Show version information\n\nUsage: mf version [OPTIONS]\n\nOptions:\n      --check                   Check GitHub for the latest stable release\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values: text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
       "examples": [
         {
           "prerequisites": [
@@ -728,6 +742,13 @@
           ],
           "command": "mf version --json",
           "effect": "Print structured executable version metadata."
+        },
+        {
+          "prerequisites": [
+            "# Internet access to GitHub is required."
+          ],
+          "command": "mf version --check",
+          "effect": "Compare the running version with the latest stable release."
         }
       ]
     },

@@ -22,6 +22,15 @@ Shell completion supports `bash`, `zsh`, `fish`, `powershell`, and `elvish` via
 PowerShell program as a `.ps1` script. Elvish completion belongs in its
 interactive editor configuration.
 
+## Check for updates
+
+Run `mf version --check` to compare the running executable with the latest
+stable GitHub release. The check requires internet access and reports whether
+an update is available, the executable is up to date, or it is ahead of the
+latest stable release. Run `mf version --check --json` for structured output.
+The check leaves the installation untouched. Use the install command above
+when you want to upgrade. Plain `mf version` and `mf --version` work offline.
+
 ## Build from source
 
 Install Go `1.26.11` and GNU Make, then run:

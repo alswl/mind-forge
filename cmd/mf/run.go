@@ -43,6 +43,9 @@ func runWithProcessIO(ctx context.Context, args []string, stdout, stderr io.Writ
 			if boolFlag(command, "json") {
 				format = "json"
 			}
+			if item.Path[0] == "version" && boolFlag(command, "check") {
+				diagnosticFormat = format
+			}
 			application := &app.Context{Format: format, CWD: cwd, Quiet: boolFlag(command, "quiet"), Color: !boolFlag(command, "no-color")}
 			registration := commandRegistrations[strings.Join(item.Path, " ")]
 			return registration.run(commandExecution{Command: command, Application: application, Args: positional, Stdout: stdout, Stderr: stderr, ProcessIO: processIO})
