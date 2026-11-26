@@ -39,6 +39,13 @@ so no build or publish target receives it.
 | `> [!mf-private]` / `> [!mind-forge-private]` callout | The callout is removed (markers inside fenced code are kept as examples) |
 | Block front matter `mind-forge-visibility: private` | The whole block is skipped |
 
+Each top-level private callout header starts a separate block. Marker syntax
+inside a quoted code fence within a private callout stays part of that callout.
+A quote after a bare blank line without a new private header is removed as part
+of the preceding private callout. The build warns once per affected callout,
+giving the source file, the line range from the header through the last removed
+quote, and the callout title if present.
+
 > [!IMPORTANT]
 > The build fails rather than emit a titleless artifact if the first/title block
 > is private, or if `mind-forge-visibility` is anything other than `public` or

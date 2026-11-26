@@ -29,9 +29,15 @@ func AssembleBlocks(blocks []Block, stripTitle bool, banner string) (string, []s
 			continue
 		}
 		body := markdown.StripMindForgeFrontMatter(markdown.StripTyporaFrontMatter(block.Content))
-		body, notes := StripPrivateCallouts(body)
+		// Metadata stripping only changes the prefix before the authored body.
+		lineOffset := strings.Count(block.Content, "\n") - strings.Count(body, "\n")
+		body, notes := stripPrivateCallouts(body)
 		for _, note := range notes {
-			warnings = append(warnings, fmt.Sprintf("%s:%d: mf-private callout merged across a bare blank line — content after the blank line was stripped along with it", block.Path, note.StartLine))
+			label := "mf-private callout"
+			if note.title != "" {
+				label += fmt.Sprintf(" %q", note.title)
+			}
+			warnings = append(warnings, fmt.Sprintf("%s:%d-%d: %s: quoted continuation after a bare blank line was removed as private", block.Path, note.startLine+lineOffset, note.endLine+lineOffset, label))
 		}
 		content.WriteString(body)
 		if !strings.HasSuffix(content.String(), "\n") {
