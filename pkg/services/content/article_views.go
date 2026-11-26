@@ -131,6 +131,10 @@ func ArticleFileMtime(project, path string) uint64 {
 }
 
 func ListArticleItems(project string) ([]ArticleListItem, []string, error) {
+	return listArticleItems(project, nil)
+}
+
+func listArticleItems(project string, status *string) ([]ArticleListItem, []string, error) {
 	config, err := ConfigFor(project)
 	if err != nil {
 		return nil, nil, err
@@ -152,6 +156,9 @@ func ListArticleItems(project string) ([]ArticleListItem, []string, error) {
 	_ = json.Unmarshal(raw, &compat)
 	result := []ArticleListItem{}
 	for _, article := range *index.Articles {
+		if status != nil && article.Status != *status {
+			continue
+		}
 		raw, err := json.Marshal(article)
 		if err != nil {
 			return nil, nil, err

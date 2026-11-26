@@ -22,7 +22,7 @@ func newArticleListCommand(item CommandSpec, handler Handler) (*cobra.Command, e
 }
 
 func executeArticleList(command *cobra.Command, application *app.Context, args []string, stdout, stderr io.Writer) error {
-	result, err := content.ListArticlesRequest(application.RepoRoot, application.CWD, optionalFlag(command, "project"), func(warnings []string) error { return articleWarnings(stderr, warnings) })
+	result, err := content.ListArticlesByStatus(application.RepoRoot, application.CWD, optionalFlag(command, "project"), optionalFlag(command, "status"), func(warnings []string) error { return articleWarnings(stderr, warnings) })
 	if err != nil {
 		return err
 	}

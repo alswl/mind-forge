@@ -174,6 +174,17 @@ type Article struct {
 	TemplateOrigin *TemplateOrigin `json:"template_origin,omitempty" yaml:"template_origin,omitempty"`
 }
 
+const (
+	ArticleStatusDraft     = "draft"
+	ArticleStatusPublished = "published"
+	ArticleStatusCompleted = "completed"
+	ArticleStatusAbandoned = "abandoned"
+)
+
+func ValidateArticleStatus(status string) error {
+	return enumValue(status, ArticleStatusDraft, ArticleStatusPublished, ArticleStatusCompleted, ArticleStatusAbandoned)
+}
+
 func (article *Article) UnmarshalYAML(node *yaml.Node) error {
 	fields, err := mapping(node)
 	if err != nil {
@@ -186,14 +197,14 @@ func (article *Article) UnmarshalYAML(node *yaml.Node) error {
 		return err
 	}
 	type wire Article
-	result := wire{Type: "blank", Status: "draft"}
+	result := wire{Type: "blank", Status: ArticleStatusDraft}
 	if err := decodeYAMLRecord(node, &result); err != nil {
 		return err
 	}
 	if err := enumValue(result.Type, "arch", "prd", "blog", "blank"); err != nil {
 		return err
 	}
-	if err := enumValue(result.Status, "draft", "published"); err != nil {
+	if err := ValidateArticleStatus(result.Status); err != nil {
 		return err
 	}
 	*article = Article(result)

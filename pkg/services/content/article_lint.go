@@ -1,6 +1,7 @@
 package content
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,9 +12,21 @@ import (
 	"github.com/alswl/mind-forge/pkg/common/model"
 	"github.com/alswl/mind-forge/pkg/common/textcase"
 	app "github.com/alswl/mind-forge/pkg/config"
+	"github.com/alswl/mind-forge/pkg/dal/store"
 )
 
 func LintArticles(project string, fix bool) ([]model.LintIssue, error) {
+	return LintArticlesByStatus(project, fix, nil)
+}
+
+func LintArticlesByStatus(project string, fix bool, status *string) ([]model.LintIssue, error) {
+	return LintArticlesRequest(context.Background(), project, project, fix, status)
+}
+
+func LintArticlesRequest(ctx context.Context, root, project string, fix bool, status *string) ([]model.LintIssue, error) {
+	if err := validateArticleStatus(status); err != nil {
+		return nil, err
+	}
 	config, err := ConfigFor(project)
 	if err != nil {
 		return nil, err
@@ -29,6 +42,18 @@ func LintArticles(project string, fix bool) ([]model.LintIssue, error) {
 	}
 	if err != nil {
 		return nil, err
+	}
+	statuses := map[string]string{}
+	if status != nil || fix {
+		index, err := store.ReadIndex(filepath.Join(project, "mind-index.yaml"), false)
+		if err != nil {
+			return nil, err
+		}
+		if index.Value.Articles != nil {
+			for _, article := range *index.Value.Articles {
+				statuses[filepath.Clean(article.Path)] = article.Status
+			}
+		}
 	}
 	issues := []model.LintIssue{}
 	checkTypora := typoraEnabled(config)
@@ -47,9 +72,22 @@ func LintArticles(project string, fix bool) ([]model.LintIssue, error) {
 		return nil
 	}
 	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		name := entry.Name()
+		relative := filepath.Join(layout.Articles, name)
+		current, registered := statuses[relative]
+		if status != nil {
+			if !registered {
+				current = model.ArticleStatusDraft
+			}
+			if current != *status {
+				continue
+			}
+		}
 		if entry.IsDir() && checkTypora && !strings.HasPrefix(name, ".") {
-			if err := lintArticleBlockTypora(project, filepath.Join(layout.Articles, name), lintTypora); err != nil {
+			if err := lintArticleBlockTypora(project, relative, lintTypora); err != nil {
 				return nil, err
 			}
 			continue
@@ -58,7 +96,7 @@ func LintArticles(project string, fix bool) ([]model.LintIssue, error) {
 			continue
 		}
 		stem := strings.TrimSuffix(name, ".md")
-		relative := layout.Articles + "/" + name
+		relative = filepath.ToSlash(relative)
 		path, err := CheckedPath(project, relative)
 		if err != nil {
 			return nil, err
@@ -103,7 +141,16 @@ func LintArticles(project string, fix bool) ([]model.LintIssue, error) {
 			if fix {
 				target := filepath.Join(docs, expected+".md")
 				if _, err := os.Stat(target); os.IsNotExist(err) {
-					if err := os.Rename(path, target); err != nil {
+					if registered {
+						newPath := filepath.ToSlash(filepath.Join(layout.Articles, expected+".md"))
+						mutation, err := planLintArticleRename(ctx, root, project, relative, newPath)
+						if err != nil {
+							return nil, err
+						}
+						if err := ApplyMutation(ctx, root, mutation); err != nil {
+							return nil, err
+						}
+					} else if err := os.Rename(path, target); err != nil {
 						return nil, err
 					}
 				}

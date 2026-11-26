@@ -21,7 +21,7 @@ func articleTimestamp(now time.Time) string {
 	return now.UTC().Format("2006-01-02T15:04:05Z")
 }
 func freshArticle(project, path, title, timestamp string) model.Article {
-	return model.Article{Title: title, Project: filepath.Base(project), Type: "blog", Path: path, Status: "draft", CreatedAt: timestamp, UpdatedAt: timestamp}
+	return model.Article{Title: title, Project: filepath.Base(project), Type: "blog", Path: path, Status: model.ArticleStatusDraft, CreatedAt: timestamp, UpdatedAt: timestamp}
 }
 func isDirectory(path string) bool { info, err := os.Stat(path); return err == nil && info.IsDir() }
 func isRegularFile(path string) bool {
