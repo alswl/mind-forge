@@ -12,9 +12,13 @@ type PrivateWarning struct {
 	StartLine int
 }
 
-func blockquote(line string) bool {
+func quoteContent(line string) (string, bool) {
 	trimmed := strings.TrimLeftFunc(line, unicode.IsSpace)
-	return len(line)-len(trimmed) <= 3 && strings.HasPrefix(trimmed, ">")
+	content, quoted := strings.CutPrefix(trimmed, ">")
+	if !quoted || len(line)-len(trimmed) > 3 {
+		return "", false
+	}
+	return strings.TrimPrefix(content, " "), true
 }
 
 type privateContinuation struct {
@@ -23,14 +27,8 @@ type privateContinuation struct {
 	title     string
 }
 
-func privateHeader(line string) (string, bool) {
-	if !blockquote(line) {
-		return "", false
-	}
-	trimmed := strings.TrimLeftFunc(line, unicode.IsSpace)
-	rest := strings.TrimPrefix(trimmed, ">")
-	rest = strings.TrimPrefix(rest, " ")
-	rest, ok := strings.CutPrefix(rest, "[!")
+func privateHeader(quoted string) (string, bool) {
+	rest, ok := strings.CutPrefix(quoted, "[!")
 	if !ok {
 		return "", false
 	}
@@ -66,7 +64,8 @@ func stripPrivateCallouts(content string) (string, []privateContinuation) {
 	for i := 0; i < len(lines); {
 		line := body(lines[i])
 		inside := fence.ProcessLine(line)
-		title, isPrivate := privateHeader(line)
+		quoted, _ := quoteContent(line)
+		title, isPrivate := privateHeader(quoted)
 		if inside || !isPrivate {
 			result.WriteString(lines[i])
 			i++
@@ -74,17 +73,24 @@ func stripPrivateCallouts(content string) (string, []privateContinuation) {
 		}
 		start := i + 1
 		merged := false
+		var quotedFence markdown.FenceTracker
 		i++
 		for {
 			look := i
 			for look < len(lines) && blank(lines[look]) {
 				look++
 			}
-			if look == len(lines) || !blockquote(body(lines[look])) {
+			if look == len(lines) {
 				break
 			}
-			if _, nextPrivate := privateHeader(body(lines[look])); nextPrivate {
+			quoted, ok := quoteContent(body(lines[look]))
+			if !ok {
 				break
+			}
+			if !quotedFence.ProcessLine(quoted) {
+				if _, nextPrivate := privateHeader(quoted); nextPrivate {
+					break
+				}
 			}
 			merged = merged || look > i
 			i = look + 1

@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestPrivateCalloutFiltering(t *testing.T) {
@@ -67,9 +69,8 @@ func TestAssembleBlocksPrivacyAndMetadata(t *testing.T) {
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}
-	if len(warnings) != 1 || !strings.HasPrefix(warnings[0], "body.md:3-6:") {
-		t.Fatalf("warning provenance: %q", warnings)
-	}
+	require.Len(t, warnings, 1)
+	require.True(t, strings.HasPrefix(warnings[0], "body.md:3-6:"), "warning provenance: %q", warnings)
 	if blocks[0].Content == got || !strings.Contains(blocks[1].Content, "Secret block") {
 		t.Fatal("input mutated")
 	}
@@ -102,9 +103,9 @@ func TestAssemblePrivateCalloutBoundaries(t *testing.T) {
 	const path = "docs/example.md"
 	body := "Before.\n\n> [!mf-private] First\n> Sample one\n\n> [!mind-forge-private]\n> Sample two\n\nAfter.\n"
 	got, warnings, err := AssembleBlocks([]Block{{Path: path, Content: body}}, false, "")
-	if err != nil || got != "Before.\n\nAfter.\n" || len(warnings) != 0 {
-		t.Fatalf("adjacent callouts: body %q, warnings %q, error %v", got, warnings, err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "Before.\n\nAfter.\n", got)
+	require.Empty(t, warnings)
 }
 
 func TestAssemblePrivateWarningSourceCoordinates(t *testing.T) {
@@ -119,17 +120,34 @@ func TestAssemblePrivateWarningSourceCoordinates(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, warnings, err := AssembleBlocks([]Block{{Path: path, Content: tc.front + body}}, false, "")
-			if err != nil || got != tc.kept+"Before.\n\nAfter.\n" {
-				t.Fatalf("body %q, error %v", got, err)
-			}
+			require.NoError(t, err)
+			require.Equal(t, tc.kept+"Before.\n\nAfter.\n", got)
 			const explanation = ": quoted continuation after a bare blank line was removed as private"
 			want := []string{
 				path + ":" + tc.firstRange + ": mf-private callout \"Sample title\"" + explanation,
 				path + ":" + tc.secondRange + ": mf-private callout" + explanation,
 			}
-			if !reflect.DeepEqual(warnings, want) {
-				t.Fatalf("warnings %q, want %q", warnings, want)
-			}
+			require.Equal(t, want, warnings)
+		})
+	}
+}
+
+func TestAssemblePrivateCalloutQuotedFence(t *testing.T) {
+	const path = "docs/example.md"
+	const start = "---\ntypora-copy-images-to: assets\n---\n\nBefore.\n\n> [!mf-private] Outer title\n> ~~~\n"
+	const marker = "> [!mf-private] Synthetic fenced example\n"
+	for _, tc := range []struct {
+		name, quoted, location string
+	}{
+		{"closed", marker + "> ~~~\n\n> Continuation\n\n> [!mf-private] Next callout\n> Its body\n", "7-12"},
+		{"unclosed", "\n" + marker + "> Continuation\n", "7-11"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, warnings, err := AssembleBlocks([]Block{{Path: path, Content: start + tc.quoted + "\nAfter.\n"}}, false, "")
+			require.NoError(t, err)
+			require.Equal(t, "Before.\n\nAfter.\n", got)
+			require.Equal(t, []string{path + ":" + tc.location + ": mf-private callout \"Outer title\": quoted continuation after a bare blank line was removed as private"}, warnings)
+			t.Logf("body=%q warnings=%q", got, warnings)
 		})
 	}
 }
