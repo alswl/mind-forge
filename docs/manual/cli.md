@@ -3407,7 +3407,11 @@ Examples (use a disposable directory for setup):
 
 Show version information
 
-**Usage:** `mf version`
+**Usage:** `mf version [OPTIONS]`
+
+###### **Options:**
+
+* `--check` — Check the GitHub Latest Release API for updates
 
 ```text
 Examples (use a disposable directory for setup):
@@ -3416,4 +3420,9 @@ Examples (use a disposable directory for setup):
   Command:
     mf version --json
   Effect: Print structured executable version metadata.
+  Prerequisites:
+    # Internet access to GitHub is required.
+  Command:
+    mf version --check
+  Effect: Compare the running version with the latest stable release from GitHub.
 ```
