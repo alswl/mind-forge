@@ -53,7 +53,12 @@ same filter to the lint scan and any fixes. Discovered articles without an
 index entry default to `draft`.
 
 An abandoned article cannot be built. Set it to another status to resume
-building it.
+building it. This check covers the selected source and all Markdown inputs
+of a directory build.
+
+An explicit source path or a configured directory can still build when the
+legacy index cannot be read. An actual build reports any auto-index failure
+as a warning. A selector that requires the index returns the index error.
 
 ## Legacy project layout
 

@@ -10,9 +10,11 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/alswl/mind-forge/pkg/common/markdown"
 	"github.com/alswl/mind-forge/pkg/common/model"
 	output "github.com/alswl/mind-forge/pkg/common/outcome"
 	app "github.com/alswl/mind-forge/pkg/config"
+	"github.com/alswl/mind-forge/pkg/dal/store"
 )
 
 func exactArticle(index model.Index, selector, hint string) (model.Article, int, error) {
@@ -54,10 +56,49 @@ func PlanArticleRename(root, project, selector, newSlug string, force bool, now 
 	}
 	slug := ArticleFilename(newSlug)
 	relative := layout.Articles + "/" + slug
-	entry, sourceExists := inventory.before[source]
+	entry := inventory.before[source]
 	if entry.Kind != "directory" {
 		relative += ".md"
 	}
+	return planArticleRename(inventory, document, indexPath, project, position, source, relative, force, false, now)
+}
+
+func planLintArticleRename(ctx context.Context, root, project, oldPath, newPath string) (ContentMutation, error) {
+	inventory, err := readContentInventory(ctx, root)
+	if err != nil {
+		return ContentMutation{}, err
+	}
+	document, indexPath, err := inventory.index(project)
+	if err != nil {
+		return ContentMutation{}, err
+	}
+	position := -1
+	if document.Value.Articles != nil {
+		for i, article := range *document.Value.Articles {
+			path := filepath.ToSlash(filepath.Clean(article.Path))
+			if path == oldPath {
+				position = i
+			}
+			if strings.TrimSuffix(path, ".md") == strings.TrimSuffix(newPath, ".md") {
+				return ContentMutation{}, fileExists(filepath.Join(project, newPath))
+			}
+		}
+	}
+	if position < 0 {
+		return ContentMutation{}, output.Usage("article registration changed during lint: "+oldPath, "rerun article lint")
+	}
+	source, err := inventory.projectPath(project, oldPath)
+	if err != nil {
+		return ContentMutation{}, err
+	}
+	return planArticleRename(inventory, document, indexPath, project, position, source, newPath, false, true, time.Time{})
+}
+
+func planArticleRename(inventory *contentInventory, document *store.IndexDocument, indexPath, project string, position int, source, relative string, force, keepBindings bool, now time.Time) (ContentMutation, error) {
+	updated := document.Value
+	article := (*updated.Articles)[position]
+	_, sourceExists := inventory.before[source]
+	slug := strings.TrimSuffix(filepath.Base(relative), ".md")
 	target, err := inventory.projectPath(project, relative)
 	if err != nil {
 		return ContentMutation{}, err
@@ -85,6 +126,9 @@ func PlanArticleRename(root, project, selector, newSlug string, force bool, now 
 				continue
 			}
 			if _, exists := inventory.after[newPath]; exists && !force {
+				if keepBindings {
+					return ContentMutation{}, fileExists(filepath.Join(project, newRelative))
+				}
 				continue
 			}
 			if err := inventory.relocate(oldPath, newPath, force); err != nil {
@@ -97,6 +141,23 @@ func PlanArticleRename(root, project, selector, newSlug string, force bool, now 
 					prompt.Bytes = []byte(updatePromptArticleBinding(string(prompt.Bytes), article.Path, relative))
 					inventory.after[newPath] = prompt
 				}
+			}
+		}
+	}
+	if keepBindings {
+		prompts, err := inventory.projectPath(project, "prompts")
+		if err != nil {
+			return ContentMutation{}, err
+		}
+		for path, entry := range inventory.after {
+			if entry.Kind != "file" || filepath.ToSlash(filepath.Dir(path)) != prompts ||
+				strings.HasPrefix(filepath.Base(path), ".") || filepath.Ext(path) != ".md" || !utf8.Valid(entry.Bytes) {
+				continue
+			}
+			rebound := updatePromptArticleBinding(string(entry.Bytes), article.Path, relative)
+			if rebound != string(entry.Bytes) {
+				entry.Bytes = []byte(rebound)
+				inventory.after[path] = entry
 			}
 		}
 	}
@@ -114,29 +175,21 @@ func PlanArticleRename(root, project, selector, newSlug string, force bool, now 
 }
 
 func updatePromptArticleBinding(content, oldPath, newPath string) string {
-	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
-	trailing := strings.HasSuffix(content, "\n")
-	if trailing {
-		lines = lines[:len(lines)-1]
+	_, body, _, ok := markdown.InitialFrontMatter(content)
+	if !ok {
+		return content
 	}
-	inFront := false
+	front := content[:len(content)-len(body)]
+	lines := strings.SplitAfter(front, "\n")
 	for i, line := range lines {
-		if strings.TrimSpace(line) == "---" {
-			if inFront {
-				break
-			}
-			inFront = true
+		rest, ok := strings.CutPrefix(line, "article:")
+		if !ok || strings.Trim(strings.TrimSpace(rest), "\"'") != oldPath {
 			continue
 		}
-		if rest, ok := strings.CutPrefix(line, "article:"); inFront && ok && strings.TrimSpace(rest) == oldPath {
-			lines[i] = "article: " + newPath
-		}
+		eol := line[len(strings.TrimRight(line, "\r\n")):]
+		lines[i] = "article: " + newPath + eol
 	}
-	result := strings.Join(lines, "\n")
-	if trailing {
-		result += "\n"
-	}
-	return result
+	return strings.Join(lines, "") + body
 }
 
 func refreshPlannedRoles(inventory *contentInventory, project string, index *model.Index, moved map[string]string) {

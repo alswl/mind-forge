@@ -73,3 +73,24 @@ func TestManualArgumentDescriptionStaysOnItsArgument(t *testing.T) {
 		t.Fatalf("wrapped description=%q", got)
 	}
 }
+
+func TestArticleStatusAppearsInHelpAndManual(t *testing.T) {
+	spec, err := LoadSpec()
+	if err != nil {
+		t.Fatal(err)
+	}
+	manual := Manual(spec)
+	for _, action := range []string{"list", "lint", "update"} {
+		item, ok := spec.Lookup([]string{"article", action})
+		if !ok {
+			t.Fatalf("missing article %s", action)
+		}
+		_, section, _ := strings.Cut(manual, "## `mf article "+action+"`")
+		section, _, _ = strings.Cut(section, "\n## ")
+		for _, text := range []string{item.Help, item.HelpDefault, section} {
+			if !strings.Contains(text, "--status <STATUS>") || !strings.Contains(text, "draft, published, completed, abandoned") {
+				t.Errorf("article %s help or manual is missing the status contract", action)
+			}
+		}
+	}
+}

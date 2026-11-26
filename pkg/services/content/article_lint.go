@@ -1,6 +1,7 @@
 package content
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,6 +20,10 @@ func LintArticles(project string, fix bool) ([]model.LintIssue, error) {
 }
 
 func LintArticlesByStatus(project string, fix bool, status *string) ([]model.LintIssue, error) {
+	return LintArticlesRequest(context.Background(), project, project, fix, status)
+}
+
+func LintArticlesRequest(ctx context.Context, root, project string, fix bool, status *string) ([]model.LintIssue, error) {
 	if err := validateArticleStatus(status); err != nil {
 		return nil, err
 	}
@@ -39,7 +44,7 @@ func LintArticlesByStatus(project string, fix bool, status *string) ([]model.Lin
 		return nil, err
 	}
 	statuses := map[string]string{}
-	if status != nil {
+	if status != nil || fix {
 		index, err := store.ReadIndex(filepath.Join(project, "mind-index.yaml"), false)
 		if err != nil {
 			return nil, err
@@ -67,10 +72,13 @@ func LintArticlesByStatus(project string, fix bool, status *string) ([]model.Lin
 		return nil
 	}
 	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		name := entry.Name()
 		relative := filepath.Join(layout.Articles, name)
+		current, registered := statuses[relative]
 		if status != nil {
-			current, registered := statuses[relative]
 			if !registered {
 				current = model.ArticleStatusDraft
 			}
@@ -133,7 +141,16 @@ func LintArticlesByStatus(project string, fix bool, status *string) ([]model.Lin
 			if fix {
 				target := filepath.Join(docs, expected+".md")
 				if _, err := os.Stat(target); os.IsNotExist(err) {
-					if err := os.Rename(path, target); err != nil {
+					if registered {
+						newPath := filepath.ToSlash(filepath.Join(layout.Articles, expected+".md"))
+						mutation, err := planLintArticleRename(ctx, root, project, relative, newPath)
+						if err != nil {
+							return nil, err
+						}
+						if err := ApplyMutation(ctx, root, mutation); err != nil {
+							return nil, err
+						}
+					} else if err := os.Rename(path, target); err != nil {
 						return nil, err
 					}
 				}

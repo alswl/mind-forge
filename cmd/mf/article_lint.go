@@ -29,7 +29,7 @@ func executeArticleLint(command *cobra.Command, application *app.Context, stdout
 	view := *application
 	view.RepoRoot = project
 
-	issues, err := content.LintArticlesByStatus(project, boolFlag(command, "fix") && !dryRun, optionalFlag(command, "status"))
+	issues, err := content.LintArticlesRequest(command.Context(), application.RepoRoot, project, boolFlag(command, "fix") && !dryRun, optionalFlag(command, "status"))
 	if err != nil {
 		return err
 	}

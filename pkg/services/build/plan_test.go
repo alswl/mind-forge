@@ -144,7 +144,7 @@ func TestLegacyBuildRefusesOutputOverlappingAuthorSource(t *testing.T) {
 func TestLegacyBuildRejectsAbandonedArticleBySourceIdentity(t *testing.T) {
 	root := buildTestRoot(t)
 	putBuildFile(t, root, "mind.yaml", "schema: '1'\nbuild:\n  articles:\n    post: {article_dir: authored}\n")
-	index := "schema: '1'\narticles:\n- title: Post\n  article_path: authored/post.md\n  status: "
+	index := "schema: '1'\narticles:\n- title: Bundle\n  article_path: alias-bundle\n- title: Post\n  article_path: authored/post.md\n  status: "
 	putBuildFile(t, root, "mind-index.yaml", index+"abandoned\n")
 	path := putBuildFile(t, root, "authored/post.md", "# Synthetic post\n")
 	alias := filepath.Join(root, "alias.md")
@@ -152,13 +152,18 @@ func TestLegacyBuildRejectsAbandonedArticleBySourceIdentity(t *testing.T) {
 	hardLink := filepath.Join(root, "hard-link.md")
 	require.NoError(t, os.Link(path, hardLink))
 	other := putBuildFile(t, root, "other/post.md", "# Unregistered post\n")
+	authored := filepath.Dir(path)
+	aliasBundle := filepath.Join(root, "alias-bundle")
+	require.NoError(t, os.Mkdir(aliasBundle, 0o755))
+	require.NoError(t, os.Symlink(path, filepath.Join(aliasBundle, "opening.md")))
 	for _, dryRun := range []bool{true, false} {
 		for _, entry := range []struct {
 			selector string
 			source   *string
 		}{
 			{"authored/post", nil}, {"post", nil}, {"explicit", &path},
-			{"explicit", &alias}, {"explicit", &hardLink},
+			{"explicit", &alias}, {"explicit", &hardLink}, {"explicit", &authored},
+			{"explicit", &aliasBundle}, {"alias-bundle", nil},
 		} {
 			_, err := Prepare(root, root, entry.selector, Options{Source: entry.source, DryRun: dryRun})
 			require.ErrorContains(t, err, "cannot build abandoned article")
@@ -175,4 +180,33 @@ func TestLegacyBuildRejectsAbandonedArticleBySourceIdentity(t *testing.T) {
 		_, err := Prepare(root, root, "post", Options{})
 		require.NoError(t, err, status)
 	}
+}
+
+func TestLegacyBuildPreservesNonIndexedSelectionWithBrokenIndex(t *testing.T) {
+	root := buildTestRoot(t)
+	putBuildFile(t, root, "mind.yaml", "schema: '1'\nbuild:\n  articles:\n    post: {article_dir: authored}\n")
+	path := putBuildFile(t, root, "authored/post.md", "# Synthetic post\n")
+	broken := "articles: ["
+	index := putBuildFile(t, root, "mind-index.yaml", broken)
+	for _, entry := range []struct {
+		selector string
+		source   *string
+	}{{"post", nil}, {"explicit", &path}} {
+		preview, err := Prepare(root, root, entry.selector, Options{Source: entry.source, DryRun: true})
+		require.NoError(t, err)
+		require.Len(t, preview.Plan.InputFiles, 1)
+		require.NoFileExists(t, preview.Plan.OutputPath)
+		prepared, err := Prepare(root, root, entry.selector, Options{Source: entry.source})
+		require.NoError(t, err)
+		_, warnings, err := prepared.Execute(root, nil)
+		require.NoError(t, err)
+		require.FileExists(t, preview.Plan.OutputPath)
+		require.Len(t, warnings, 1)
+		require.Contains(t, warnings[0], "auto-index failed: yaml parse error")
+	}
+	_, err := Prepare(root, root, "indexed", Options{DryRun: true})
+	require.ErrorContains(t, err, "yaml parse error")
+	raw, err := os.ReadFile(index)
+	require.NoError(t, err)
+	require.Equal(t, broken, string(raw))
 }

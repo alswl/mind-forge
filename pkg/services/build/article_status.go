@@ -1,6 +1,7 @@
 package build
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -9,26 +10,34 @@ import (
 )
 
 func abandonedArticle(path string) error {
-	return output.Usage(fmt.Sprintf("cannot build abandoned article %q", path), "use `mf article update --status` to restore the article before building")
+	return output.Usage(fmt.Sprintf("cannot build abandoned article %q", path), "restore it with `mf article update <ARTICLE_PATH> --status draft --project <PROJECT>`")
 }
 
-func checkLegacyBuildStatus(project, source, configuredFile string, articles []model.Article) error {
-	sourceInfo, _ := os.Stat(source)
-	var configuredInfo os.FileInfo
-	if configuredFile != "" && configuredFile != source {
-		configuredInfo, _ = os.Stat(configuredFile)
-	}
+type abandonedFile struct {
+	path string
+	info os.FileInfo
+}
+
+func abandonedArticleFiles(ctx context.Context, project string, articles []model.Article) ([]abandonedFile, error) {
+	var files []abandonedFile
 	for _, article := range articles {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if article.Status != model.ArticleStatusAbandoned {
 			continue
 		}
-		registered, err := os.Stat(joined(project, article.Path))
-		if err != nil {
-			continue
+		if info, err := os.Stat(joined(project, article.Path)); err == nil {
+			files = append(files, abandonedFile{path: article.Path, info: info})
 		}
-		if sourceInfo != nil && os.SameFile(sourceInfo, registered) ||
-			configuredInfo != nil && os.SameFile(configuredInfo, registered) {
-			return abandonedArticle(article.Path)
+	}
+	return files, nil
+}
+
+func checkAbandonedArticle(info os.FileInfo, files []abandonedFile) error {
+	for _, file := range files {
+		if os.SameFile(info, file.info) {
+			return abandonedArticle(file.path)
 		}
 	}
 	return nil

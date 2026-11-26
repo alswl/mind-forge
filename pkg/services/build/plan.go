@@ -118,6 +118,7 @@ func Prepare(repo, project, selector string, opts Options) (*Prepared, error) {
 	if opts.Source != nil {
 		p.Plan.ArticlePath = *opts.Source
 	}
+	var legacyArticles []model.Article
 	if config.ContentLayout != nil {
 		selected := selector
 		if opts.Source != nil {
@@ -153,14 +154,14 @@ func Prepare(repo, project, selector string, opts Options) (*Prepared, error) {
 		fromConfig := opts.Source == nil && hasConfig && configured.ArticleDir != nil
 		fromIndex := opts.Source == nil && !fromConfig
 		index, err := store.ReadIndex(filepath.Join(project, "mind-index.yaml"), fromIndex)
-		if err != nil {
+		if err != nil && fromIndex {
 			return nil, err
 		}
-		var articles []model.Article
-		if index.Value.Articles != nil {
-			articles = *index.Value.Articles
+		// Explicit and configured sources can build with an unreadable index.
+		// Execution still reports any failure to auto-index the build.
+		if index != nil && index.Value.Articles != nil {
+			legacyArticles = *index.Value.Articles
 		}
-		var configuredFile string
 		switch {
 		case fromConfig:
 			p.Plan.ArticlePath = joined(project, *configured.ArticleDir)
@@ -168,9 +169,8 @@ func Prepare(repo, project, selector string, opts Options) (*Prepared, error) {
 			if err != nil || !info.IsDir() {
 				return nil, output.Usage(fmt.Sprintf("configured article_dir '%s' for article '%s' does not exist or is not a directory", *configured.ArticleDir, selector), "check the path or create the directory")
 			}
-			configuredFile = indexedLegacySource(p.Plan.ArticlePath, selector)
 		case fromIndex:
-			article, err := content.ResolveIndexedEntries(articles, selector)
+			article, err := content.ResolveIndexedEntries(legacyArticles, selector)
 			if err != nil {
 				return nil, err
 			}
@@ -178,9 +178,6 @@ func Prepare(repo, project, selector string, opts Options) (*Prepared, error) {
 				return nil, abandonedArticle(article.Path)
 			}
 			p.Plan.ArticlePath = joined(project, article.Path)
-		}
-		if err := checkLegacyBuildStatus(project, p.Plan.ArticlePath, configuredFile, articles); err != nil {
-			return nil, err
 		}
 		p.Plan.OutputPath = joined(joined(project, layout.BuildOutput), content.ArticleOutputStem(selector)+"."+ext)
 	}
@@ -205,8 +202,19 @@ func Prepare(repo, project, selector string, opts Options) (*Prepared, error) {
 	if err != nil {
 		return nil, output.Usage("article path not found: "+p.Plan.ArticlePath, "the file or directory may have been moved or deleted")
 	}
+	ctx := task.Context(opts.Context)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	info, err := os.Stat(source)
 	if err != nil {
+		return nil, err
+	}
+	abandoned, err := abandonedArticleFiles(ctx, project, legacyArticles)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkAbandonedArticle(info, abandoned); err != nil {
 		return nil, err
 	}
 	rel, err := filepath.Rel(source, p.Plan.OutputPath)
@@ -224,6 +232,9 @@ func Prepare(repo, project, selector string, opts Options) (*Prepared, error) {
 			return nil, err
 		}
 		for _, entry := range entries {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			if filepath.Ext(entry.Name()) == ".md" {
 				p.files = append(p.files, filepath.Join(source, entry.Name()))
 			}
@@ -235,19 +246,25 @@ func Prepare(repo, project, selector string, opts Options) (*Prepared, error) {
 		return nil, output.Usage("no markdown files found in "+p.Plan.ArticlePath, "")
 	}
 	for _, file := range p.files {
-		if err := task.Context(opts.Context).Err(); err != nil {
+		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		info, err := os.Stat(file)
-		if err != nil {
-			return nil, err
+		fileInfo := info
+		if info.IsDir() {
+			fileInfo, err = os.Stat(file)
+			if err != nil {
+				return nil, err
+			}
+			if err := checkAbandonedArticle(fileInfo, abandoned); err != nil {
+				return nil, err
+			}
 		}
 		rel, err := filepath.Rel(project, file)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			rel = file
 		}
-		p.Plan.InputFiles = append(p.Plan.InputFiles, InputFile{Path: filepath.ToSlash(rel), Size: info.Size()})
-		p.Plan.SizeBytes += info.Size()
+		p.Plan.InputFiles = append(p.Plan.InputFiles, InputFile{Path: filepath.ToSlash(rel), Size: fileInfo.Size()})
+		p.Plan.SizeBytes += fileInfo.Size()
 	}
 	p.Plan.MergeOrder = append([]string{}, config.Build.MergeOrder...)
 	if len(p.Plan.MergeOrder) == 0 {
