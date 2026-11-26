@@ -17,41 +17,57 @@ func blockquote(line string) bool {
 	return len(line)-len(trimmed) <= 3 && strings.HasPrefix(trimmed, ">")
 }
 
-func privateHeader(line string) bool {
+type privateContinuation struct {
+	startLine int
+	endLine   int
+	title     string
+}
+
+func privateHeader(line string) (string, bool) {
 	if !blockquote(line) {
-		return false
+		return "", false
 	}
 	trimmed := strings.TrimLeftFunc(line, unicode.IsSpace)
 	rest := strings.TrimPrefix(trimmed, ">")
 	rest = strings.TrimPrefix(rest, " ")
 	rest, ok := strings.CutPrefix(rest, "[!")
 	if !ok {
-		return false
+		return "", false
 	}
-	kind, _, ok := strings.Cut(rest, "]")
+	kind, title, ok := strings.Cut(rest, "]")
 	if !ok {
-		return false
+		return "", false
 	}
 	kind = strings.ToLower(kind)
-	return strings.HasPrefix(kind, "mf-") || strings.HasPrefix(kind, "mind-forge-")
+	return strings.TrimSpace(title), strings.HasPrefix(kind, "mf-") || strings.HasPrefix(kind, "mind-forge-")
 }
 
 // StripPrivateCallouts keeps fenced examples literal. Blank lines followed by
-// another quote remain private and produce one warning at the original header.
+// a quoted continuation remain private and produce one warning at its header.
 func StripPrivateCallouts(content string) (string, []PrivateWarning) {
+	body, continuations := stripPrivateCallouts(content)
+	warnings := make([]PrivateWarning, 0, len(continuations))
+	for _, note := range continuations {
+		warnings = append(warnings, PrivateWarning{StartLine: note.startLine})
+	}
+	return body, warnings
+}
+
+func stripPrivateCallouts(content string) (string, []privateContinuation) {
 	lines := strings.SplitAfter(content, "\n")
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
 	var result bytes.Buffer
-	warnings := []PrivateWarning{}
+	var warnings []privateContinuation
 	var fence markdown.FenceTracker
 	body := func(line string) string { return strings.TrimRight(line, "\r\n") }
 	blank := func(line string) bool { return strings.TrimSpace(body(line)) == "" }
 	for i := 0; i < len(lines); {
 		line := body(lines[i])
 		inside := fence.ProcessLine(line)
-		if inside || !privateHeader(line) {
+		title, isPrivate := privateHeader(line)
+		if inside || !isPrivate {
 			result.WriteString(lines[i])
 			i++
 			continue
@@ -60,23 +76,21 @@ func StripPrivateCallouts(content string) (string, []PrivateWarning) {
 		merged := false
 		i++
 		for {
-			if i < len(lines) && blockquote(body(lines[i])) {
-				i++
-				continue
-			}
 			look := i
 			for look < len(lines) && blank(lines[look]) {
 				look++
 			}
-			if look > i && look < len(lines) && blockquote(body(lines[look])) {
-				merged = true
-				i = look
-				continue
+			if look == len(lines) || !blockquote(body(lines[look])) {
+				break
 			}
-			break
+			if _, nextPrivate := privateHeader(body(lines[look])); nextPrivate {
+				break
+			}
+			merged = merged || look > i
+			i = look + 1
 		}
 		if merged {
-			warnings = append(warnings, PrivateWarning{StartLine: start})
+			warnings = append(warnings, privateContinuation{startLine: start, endLine: i, title: title})
 		}
 		for bytes.HasSuffix(result.Bytes(), []byte("\n\n\n")) {
 			result.Truncate(result.Len() - 1)

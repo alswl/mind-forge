@@ -67,7 +67,7 @@ func TestAssembleBlocksPrivacyAndMetadata(t *testing.T) {
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}
-	if len(warnings) != 1 || !strings.HasPrefix(warnings[0], "body.md:3:") {
+	if len(warnings) != 1 || !strings.HasPrefix(warnings[0], "body.md:3-6:") {
 		t.Fatalf("warning provenance: %q", warnings)
 	}
 	if blocks[0].Content == got || !strings.Contains(blocks[1].Content, "Secret block") {
@@ -95,5 +95,41 @@ func TestAssembleTitleAndBanner(t *testing.T) {
 	want := "---\ntitle: Public\n---\n\nNotice.\n\n\n\nBody.\n# Later\n"
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestAssemblePrivateCalloutBoundaries(t *testing.T) {
+	const path = "docs/example.md"
+	body := "Before.\n\n> [!mf-private] First\n> Sample one\n\n> [!mind-forge-private]\n> Sample two\n\nAfter.\n"
+	got, warnings, err := AssembleBlocks([]Block{{Path: path, Content: body}}, false, "")
+	if err != nil || got != "Before.\n\nAfter.\n" || len(warnings) != 0 {
+		t.Fatalf("adjacent callouts: body %q, warnings %q, error %v", got, warnings, err)
+	}
+}
+
+func TestAssemblePrivateWarningSourceCoordinates(t *testing.T) {
+	const path = "docs/example.md"
+	body := "\nBefore.\n\n> [!mf-private] Sample title\n> Sample one\n\n> > [!mf-private] Nested title\n\n> Sample two\n\n> [!mf-private]\n> Sample three\n\n> Sample four\n\nAfter.\n"
+	for _, tc := range []struct {
+		name, front, kept, firstRange, secondRange string
+	}{
+		{"Typora", "---\ntypora-copy-images-to: assets\n---\n", "", "7-12", "14-17"},
+		{"Mind Forge", "---\nmind-forge-visibility: public\n---\n", "", "7-12", "14-17"},
+		{"Both with retained YAML", "---\ntitle: Example\ntypora-copy-images-to: assets\nmind-forge-visibility: public\n---\n", "---\ntitle: Example\n---\n\n", "9-14", "16-19"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, warnings, err := AssembleBlocks([]Block{{Path: path, Content: tc.front + body}}, false, "")
+			if err != nil || got != tc.kept+"Before.\n\nAfter.\n" {
+				t.Fatalf("body %q, error %v", got, err)
+			}
+			const explanation = ": quoted continuation after a bare blank line was removed as private"
+			want := []string{
+				path + ":" + tc.firstRange + ": mf-private callout \"Sample title\"" + explanation,
+				path + ":" + tc.secondRange + ": mf-private callout" + explanation,
+			}
+			if !reflect.DeepEqual(warnings, want) {
+				t.Fatalf("warnings %q, want %q", warnings, want)
+			}
+		})
 	}
 }
