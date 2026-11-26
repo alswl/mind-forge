@@ -26,11 +26,11 @@ type ArticleUpdateReport struct {
 
 func UpdateArticle(project, selector string, options ArticleUpdateOptions) (ArticleUpdateReport, error) {
 	report := ArticleUpdateReport{DryRun: options.DryRun, Changes: map[string]any{}}
-	if options.Status != nil && *options.Status != "draft" && *options.Status != "published" {
-		return report, output.Usage(fmt.Sprintf("invalid status '%s'", *options.Status), "use --status draft or --status published")
+	if err := validateArticleStatus(options.Status); err != nil {
+		return report, err
 	}
 	if options.Title == nil && options.Status == nil {
-		return report, output.Usage("nothing to update: use --status and/or --title", "pass --status draft|published or --title \"New Title\"")
+		return report, output.Usage("nothing to update: use --status and/or --title", "pass --status <STATUS> or --title \"New Title\"")
 	}
 	indexPath := filepath.Join(project, "mind-index.yaml")
 	document, err := store.ReadIndex(indexPath, false)

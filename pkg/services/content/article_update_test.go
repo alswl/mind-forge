@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/alswl/mind-forge/pkg/dal/store"
+	"github.com/stretchr/testify/require"
 )
 
 func TestArticleUpdatePreviewAndAssociatedPrompt(t *testing.T) {
@@ -40,4 +43,51 @@ func TestArticleUpdatePreviewAndAssociatedPrompt(t *testing.T) {
 	if _, err := UpdateArticle(root, "New", ArticleUpdateOptions{Title: &empty}); err == nil {
 		t.Fatal("empty title accepted")
 	}
+}
+
+func TestLegacyArticleStatusRoundTripsThroughIndexRefresh(t *testing.T) {
+	root := canonicalPath(t.TempDir())
+	const source = "# Synthetic note\n"
+	const index = "schema: '1'\narticles:\n  docs/example:\n    title: Synthetic note\n    article_path: docs/example.md\n    type: arch\n    created_at: original\n"
+	putContent(t, root, "mind.yaml", "schema: '1'\n")
+	putContent(t, root, "mind-index.yaml", index)
+	putContent(t, root, "docs/example.md", source)
+	putContent(t, root, "docs/unregistered.md", "# Unregistered\n")
+	indexPath := filepath.Join(root, "mind-index.yaml")
+	completed, invalid := "completed", "archived"
+	_, err := UpdateArticle(root, "docs/example.md", ArticleUpdateOptions{Status: &completed, DryRun: true})
+	require.NoError(t, err)
+	_, err = UpdateArticle(root, "docs/example.md", ArticleUpdateOptions{Status: &invalid})
+	require.ErrorContains(t, err, "invalid status")
+	raw, err := os.ReadFile(indexPath)
+	require.NoError(t, err)
+	require.Equal(t, index, string(raw))
+
+	config, err := ConfigFor(root)
+	require.NoError(t, err)
+	for _, status := range []string{"completed", "abandoned", "published", "draft"} {
+		update, err := UpdateArticle(root, "docs/example.md", ArticleUpdateOptions{Status: &status})
+		require.NoError(t, err)
+		document, err := store.ReadIndex(indexPath, false)
+		require.NoError(t, err)
+		discovered, _, err := DiscoverArticles(root, config, time.Time{})
+		require.NoError(t, err)
+		require.NoError(t, document.Write(indexPath, discovered, false))
+		shown, _, err := ShowArticle(root, "docs/example.md")
+		require.NoError(t, err)
+		require.Equal(t, update.Article, shown.Article)
+		require.Equal(t, "original", shown.Article.CreatedAt)
+		require.Equal(t, "arch", shown.Article.Type)
+		result, err := ListArticlesByStatus(root, root, nil, &status, nil)
+		require.NoError(t, err)
+		if status == "draft" {
+			require.Len(t, result.Items, 2)
+		} else {
+			require.Len(t, result.Items, 1)
+			require.Equal(t, shown.Article, result.Items[0].Article)
+		}
+	}
+	raw, err = os.ReadFile(filepath.Join(root, "docs/example.md"))
+	require.NoError(t, err)
+	require.Equal(t, source, string(raw))
 }

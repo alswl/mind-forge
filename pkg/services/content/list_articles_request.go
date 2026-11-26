@@ -16,7 +16,16 @@ type ArticleListResult struct {
 // ListArticlesRequest emits diagnostics before loading the next project so a
 // failed diagnostic writer retains the command's original short-circuit order.
 func ListArticlesRequest(root, cwd string, selected *string, diagnostic func([]string) error) (ArticleListResult, error) {
-	return listArticlesRequest(root, cwd, selected, diagnostic, ArticleProjectRoots, ListArticleItems)
+	return ListArticlesByStatus(root, cwd, selected, nil, diagnostic)
+}
+
+func ListArticlesByStatus(root, cwd string, selected, status *string, diagnostic func([]string) error) (ArticleListResult, error) {
+	if err := validateArticleStatus(status); err != nil {
+		return ArticleListResult{}, err
+	}
+	return listArticlesRequest(root, cwd, selected, diagnostic, ArticleProjectRoots, func(project string) ([]ArticleListItem, []string, error) {
+		return listArticleItems(project, status)
+	})
 }
 
 func listArticlesRequest(root, cwd string, selected *string, diagnostic func([]string) error, projectRoots func(string) ([]string, error), loadItems func(string) ([]ArticleListItem, []string, error)) (ArticleListResult, error) {

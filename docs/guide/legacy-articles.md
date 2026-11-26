@@ -31,6 +31,30 @@ mf build first-note --project notes
 
 There is a longer offline walkthrough in [offline walkthrough](../../quickstart.md).
 
+## Article status
+
+Set the status of an indexed article with the command below. Add `--dry-run`
+to preview the change.
+
+```bash
+mf article update docs/first-note --status completed --project notes
+```
+
+| Status | Meaning |
+| --- | --- |
+| `draft` | Work in progress |
+| `published` | Published |
+| `completed` | Finished and awaiting publication or kept unpublished |
+| `abandoned` | Discontinued |
+
+Use `mf article list --status draft` to list work in progress, or pass another
+status to select that exact value. `mf article lint --status draft` applies the
+same filter to the lint scan and any fixes. Discovered articles without an
+index entry default to `draft`.
+
+An abandoned article cannot be built. Set it to another status to resume
+building it.
+
 ## Legacy project layout
 
 A Mind Repo holds projects. Each project has four first-class knowledge stores

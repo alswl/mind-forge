@@ -149,20 +149,38 @@ func Prepare(repo, project, selector string, opts Options) (*Prepared, error) {
 			return nil, err
 		}
 	} else {
-		if opts.Source == nil {
-			if article, ok := config.Build.Articles[selector]; ok && article.ArticleDir != nil {
-				p.Plan.ArticlePath = joined(project, *article.ArticleDir)
-				info, err := os.Stat(p.Plan.ArticlePath)
-				if err != nil || !info.IsDir() {
-					return nil, output.Usage(fmt.Sprintf("configured article_dir '%s' for article '%s' does not exist or is not a directory", *article.ArticleDir, selector), "check the path or create the directory")
-				}
-			} else {
-				article, err := content.ResolveIndexedArticle(project, selector)
-				if err != nil {
-					return nil, err
-				}
-				p.Plan.ArticlePath = joined(project, article.Path)
+		configured, hasConfig := config.Build.Articles[selector]
+		fromConfig := opts.Source == nil && hasConfig && configured.ArticleDir != nil
+		fromIndex := opts.Source == nil && !fromConfig
+		index, err := store.ReadIndex(filepath.Join(project, "mind-index.yaml"), fromIndex)
+		if err != nil {
+			return nil, err
+		}
+		var articles []model.Article
+		if index.Value.Articles != nil {
+			articles = *index.Value.Articles
+		}
+		var configuredFile string
+		switch {
+		case fromConfig:
+			p.Plan.ArticlePath = joined(project, *configured.ArticleDir)
+			info, err := os.Stat(p.Plan.ArticlePath)
+			if err != nil || !info.IsDir() {
+				return nil, output.Usage(fmt.Sprintf("configured article_dir '%s' for article '%s' does not exist or is not a directory", *configured.ArticleDir, selector), "check the path or create the directory")
 			}
+			configuredFile = indexedLegacySource(p.Plan.ArticlePath, selector)
+		case fromIndex:
+			article, err := content.ResolveIndexedEntries(articles, selector)
+			if err != nil {
+				return nil, err
+			}
+			if article.Status == model.ArticleStatusAbandoned {
+				return nil, abandonedArticle(article.Path)
+			}
+			p.Plan.ArticlePath = joined(project, article.Path)
+		}
+		if err := checkLegacyBuildStatus(project, p.Plan.ArticlePath, configuredFile, articles); err != nil {
+			return nil, err
 		}
 		p.Plan.OutputPath = joined(joined(project, layout.BuildOutput), content.ArticleOutputStem(selector)+"."+ext)
 	}

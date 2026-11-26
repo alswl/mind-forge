@@ -11,9 +11,17 @@ import (
 	"github.com/alswl/mind-forge/pkg/common/model"
 	"github.com/alswl/mind-forge/pkg/common/textcase"
 	app "github.com/alswl/mind-forge/pkg/config"
+	"github.com/alswl/mind-forge/pkg/dal/store"
 )
 
 func LintArticles(project string, fix bool) ([]model.LintIssue, error) {
+	return LintArticlesByStatus(project, fix, nil)
+}
+
+func LintArticlesByStatus(project string, fix bool, status *string) ([]model.LintIssue, error) {
+	if err := validateArticleStatus(status); err != nil {
+		return nil, err
+	}
 	config, err := ConfigFor(project)
 	if err != nil {
 		return nil, err
@@ -29,6 +37,18 @@ func LintArticles(project string, fix bool) ([]model.LintIssue, error) {
 	}
 	if err != nil {
 		return nil, err
+	}
+	statuses := map[string]string{}
+	if status != nil {
+		index, err := store.ReadIndex(filepath.Join(project, "mind-index.yaml"), false)
+		if err != nil {
+			return nil, err
+		}
+		if index.Value.Articles != nil {
+			for _, article := range *index.Value.Articles {
+				statuses[filepath.Clean(article.Path)] = article.Status
+			}
+		}
 	}
 	issues := []model.LintIssue{}
 	checkTypora := typoraEnabled(config)
@@ -48,8 +68,18 @@ func LintArticles(project string, fix bool) ([]model.LintIssue, error) {
 	}
 	for _, entry := range entries {
 		name := entry.Name()
+		relative := filepath.Join(layout.Articles, name)
+		if status != nil {
+			current, registered := statuses[relative]
+			if !registered {
+				current = model.ArticleStatusDraft
+			}
+			if current != *status {
+				continue
+			}
+		}
 		if entry.IsDir() && checkTypora && !strings.HasPrefix(name, ".") {
-			if err := lintArticleBlockTypora(project, filepath.Join(layout.Articles, name), lintTypora); err != nil {
+			if err := lintArticleBlockTypora(project, relative, lintTypora); err != nil {
 				return nil, err
 			}
 			continue
@@ -58,7 +88,7 @@ func LintArticles(project string, fix bool) ([]model.LintIssue, error) {
 			continue
 		}
 		stem := strings.TrimSuffix(name, ".md")
-		relative := layout.Articles + "/" + name
+		relative = filepath.ToSlash(relative)
 		path, err := CheckedPath(project, relative)
 		if err != nil {
 			return nil, err

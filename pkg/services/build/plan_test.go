@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/alswl/mind-forge/pkg/common/outcome"
+	"github.com/stretchr/testify/require"
 )
 
 func buildTestRoot(t *testing.T) string {
@@ -135,5 +138,41 @@ func TestLegacyBuildRefusesOutputOverlappingAuthorSource(t *testing.T) {
 	out := filepath.Join(directory, "rendered.md")
 	if _, err := Prepare(root, root, "post", Options{Source: &directory, Out: &out}); err == nil {
 		t.Fatal("accepted artifact inside author directory")
+	}
+}
+
+func TestLegacyBuildRejectsAbandonedArticleBySourceIdentity(t *testing.T) {
+	root := buildTestRoot(t)
+	putBuildFile(t, root, "mind.yaml", "schema: '1'\nbuild:\n  articles:\n    post: {article_dir: authored}\n")
+	index := "schema: '1'\narticles:\n- title: Post\n  article_path: authored/post.md\n  status: "
+	putBuildFile(t, root, "mind-index.yaml", index+"abandoned\n")
+	path := putBuildFile(t, root, "authored/post.md", "# Synthetic post\n")
+	alias := filepath.Join(root, "alias.md")
+	require.NoError(t, os.Symlink(path, alias))
+	hardLink := filepath.Join(root, "hard-link.md")
+	require.NoError(t, os.Link(path, hardLink))
+	other := putBuildFile(t, root, "other/post.md", "# Unregistered post\n")
+	for _, dryRun := range []bool{true, false} {
+		for _, entry := range []struct {
+			selector string
+			source   *string
+		}{
+			{"authored/post", nil}, {"post", nil}, {"explicit", &path},
+			{"explicit", &alias}, {"explicit", &hardLink},
+		} {
+			_, err := Prepare(root, root, entry.selector, Options{Source: entry.source, DryRun: dryRun})
+			require.ErrorContains(t, err, "cannot build abandoned article")
+			var diagnostic *outcome.Error
+			require.ErrorAs(t, err, &diagnostic)
+			require.Equal(t, "usage", diagnostic.Kind)
+		}
+	}
+	require.NoDirExists(t, filepath.Join(root, "outputs"))
+	_, err := Prepare(root, root, "explicit", Options{Source: &other})
+	require.NoError(t, err)
+	for _, status := range []string{"completed", "published", "draft"} {
+		putBuildFile(t, root, "mind-index.yaml", index+status+"\n")
+		_, err := Prepare(root, root, "post", Options{})
+		require.NoError(t, err, status)
 	}
 }

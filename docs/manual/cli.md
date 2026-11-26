@@ -579,6 +579,7 @@ List articles
 
 ###### **Options:**
 
+* `--status <STATUS>` — Filter by article status (draft, published, completed, abandoned)
 * `--no-headers` — Suppress the table header row
 * `--no-trunc` — Disable column truncation
 
@@ -602,6 +603,7 @@ Lint articles
 
 ###### **Options:**
 
+* `--status <STATUS>` — Filter by article status (draft, published, completed, abandoned)
 * `--fix` — Auto-fix issues that have a fixer
 * `--rule <RULE>` — Restrict to a specific lint rule kind
 * `--severity <LEVEL>` — Only emit issues at or above this severity (error|warning|info)
@@ -764,7 +766,7 @@ Update article metadata
 
 ###### **Options:**
 
-* `--status <STATUS>` — Article publication status
+* `--status <STATUS>` — Set article status (draft, published, completed, abandoned)
 * `--title <TITLE>` — New article title (metadata only, does not rename files)
 * `-n`, `--dry-run` — Preview changes without writing
 

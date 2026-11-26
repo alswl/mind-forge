@@ -1600,6 +1600,19 @@
       "access": "read",
       "flags": [
         {
+          "name": "status",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "STATUS",
+          "help": "Filter by article status (draft, published, completed, abandoned)",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        },
+        {
           "name": "no-headers",
           "short": "",
           "kind": "bool",
@@ -1628,7 +1641,7 @@
       ],
       "arguments": [],
       "help": "List articles\n\nUsage: mf article list [OPTIONS]\n\nOptions:\n      --no-headers              Suppress the table header row\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n      --no-trunc                Disable column truncation\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
-      "help_default": "List articles\n\nUsage: mf article list [OPTIONS]\n\nOptions:\n      --no-headers              Suppress the table header row\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n      --no-trunc                Disable column truncation\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values: text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "List articles\n\nUsage: mf article list [OPTIONS]\n\nOptions:\n      --status <STATUS>         Filter by article status [possible values: draft, published, completed, abandoned]\n      --no-headers              Suppress the table header row\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n      --no-trunc                Disable column truncation\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values: text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
       "examples": [
         {
           "prerequisites": [
@@ -1653,6 +1666,19 @@
       "repo_required": true,
       "access": "read",
       "flags": [
+        {
+          "name": "status",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "STATUS",
+          "help": "Filter by article status (draft, published, completed, abandoned)",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        },
         {
           "name": "fix",
           "short": "",
@@ -1749,7 +1775,7 @@
       ],
       "arguments": [],
       "help": "Lint articles\n\nUsage: mf article lint [OPTIONS]\n\nOptions:\n      --fix\n          Auto-fix issues that have a fixer\n      --root <PATH>\n          Mind Repo root directory\n      --config <PATH>\n          Config file path\n      --rule <RULE>\n          Restrict to a specific lint rule kind\n      --severity <LEVEL>\n          Only emit issues at or above this severity (error|warning|info)\n  -v, --verbose...\n          Verbose output\n      --max-warnings <N>\n          Exit 1 when warnings exceed this count\n  -q, --quiet\n          Silence non-error output\n  -n, --dry-run\n          Preview fixes without writing (only with --fix)\n  -o, --output <FORMAT>\n          Output format [default: text] [possible values: text, json]\n      --include-suggested\n          Apply all corrections including suggested\n      --json\n          Shorthand for --output json\n      --min-confidence <0.0..1.0>\n          Apply suggested corrections at or above this confidence\n      --no-color\n          Disable colored output\n  -p, --project <NAME_OR_PATH>\n          Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help\n          Print help\n  -V, --version\n          Print version\n",
-      "help_default": "Lint articles\n\nUsage: mf article lint [OPTIONS]\n\nOptions:\n      --fix                        Auto-fix issues that have a fixer\n      --root <PATH>                Mind Repo root directory\n      --config <PATH>              Config file path\n      --rule <RULE>                Restrict to a specific lint rule kind\n      --severity <LEVEL>           Only emit issues at or above this severity (error|warning|info)\n  -v, --verbose...                 Verbose output\n      --max-warnings <N>           Exit 1 when warnings exceed this count\n  -q, --quiet                      Silence non-error output\n  -n, --dry-run                    Preview fixes without writing (only with --fix)\n  -o, --output <FORMAT>            Output format [default: text] [possible values: text, json]\n      --include-suggested          Apply all corrections including suggested\n      --json                       Shorthand for --output json\n      --min-confidence <0.0..1.0>  Apply suggested corrections at or above this confidence\n      --no-color                   Disable colored output\n  -p, --project <NAME_OR_PATH>     Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help                       Print help\n  -V, --version                    Print version\n",
+      "help_default": "Lint articles\n\nUsage: mf article lint [OPTIONS]\n\nOptions:\n      --status <STATUS>         Filter by article status [possible values: draft, published, completed, abandoned]\n      --fix                        Auto-fix issues that have a fixer\n      --root <PATH>                Mind Repo root directory\n      --config <PATH>              Config file path\n      --rule <RULE>                Restrict to a specific lint rule kind\n      --severity <LEVEL>           Only emit issues at or above this severity (error|warning|info)\n  -v, --verbose...                 Verbose output\n      --max-warnings <N>           Exit 1 when warnings exceed this count\n  -q, --quiet                      Silence non-error output\n  -n, --dry-run                    Preview fixes without writing (only with --fix)\n  -o, --output <FORMAT>            Output format [default: text] [possible values: text, json]\n      --include-suggested          Apply all corrections including suggested\n      --json                       Shorthand for --output json\n      --min-confidence <0.0..1.0>  Apply suggested corrections at or above this confidence\n      --no-color                   Disable colored output\n  -p, --project <NAME_OR_PATH>     Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help                       Print help\n  -V, --version                    Print version\n",
       "examples": [
         {
           "prerequisites": [
@@ -2062,7 +2088,7 @@
           "required": false,
           "hidden": false,
           "value_name": "STATUS",
-          "help": "Article publication status",
+          "help": "Set article status (draft, published, completed, abandoned)",
           "aliases": [],
           "conflicts": [],
           "requires": []
@@ -2103,7 +2129,7 @@
         }
       ],
       "help": "Update article metadata\n\nUsage: mf article update [OPTIONS] <PATH>\n\nArguments:\n  <PATH>  Article path (e.g. docs/weekly.md), bare slug, or title\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --status <STATUS>         Article publication status\n      --config <PATH>           Config file path\n      --title <TITLE>           New article title (metadata only, does not\n                                rename files)\n  -n, --dry-run                 Preview changes without writing\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
-      "help_default": "Update article metadata\n\nUsage: mf article update [OPTIONS] <PATH>\n\nArguments:\n  <PATH>  Article path (e.g. docs/weekly.md), bare slug, or title\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --status <STATUS>         Article publication status\n      --config <PATH>           Config file path\n      --title <TITLE>           New article title (metadata only, does not rename files)\n  -n, --dry-run                 Preview changes without writing\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values: text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Update article metadata\n\nUsage: mf article update [OPTIONS] <PATH>\n\nArguments:\n  <PATH>  Article path (e.g. docs/weekly.md), bare slug, or title\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --status <STATUS>         Set article status [possible values: draft, published, completed, abandoned]\n      --config <PATH>           Config file path\n      --title <TITLE>           New article title (metadata only, does not rename files)\n  -n, --dry-run                 Preview changes without writing\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values: text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
       "examples": [
         {
           "prerequisites": [

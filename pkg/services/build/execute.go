@@ -59,13 +59,7 @@ func (p *Prepared) autoIndex(now time.Time) error {
 	if err != nil {
 		return err
 	}
-	source := p.Plan.ArticlePath
-	if info, err := os.Stat(source); err == nil && info.IsDir() {
-		candidate := filepath.Join(source, p.Plan.Article+".md")
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			source = candidate
-		}
-	}
+	source := indexedLegacySource(p.Plan.ArticlePath, p.Plan.Article)
 	rel, err := filepath.Rel(p.project, source)
 	if err != nil {
 		return err
@@ -85,4 +79,16 @@ func (p *Prepared) autoIndex(now time.Time) error {
 	updated := index.Value
 	updated.Articles = &articles
 	return index.Write(path, updated, false)
+}
+
+// indexedLegacySource follows the legacy projection for configured directories
+// containing a Markdown file named for the selector.
+func indexedLegacySource(source, selector string) string {
+	if info, err := os.Stat(source); err == nil && info.IsDir() {
+		candidate := filepath.Join(source, selector+".md")
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+	return source
 }
