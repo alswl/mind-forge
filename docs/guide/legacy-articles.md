@@ -9,7 +9,7 @@ For explicit category/bundle projects, use [minds and outputs](minds-and-outputs
 mkdir my-repo && cd my-repo
 mf init
 mf project new notes
-mf article new "First Note" --project notes        # creates docs/first-note/
+mf article new "First Note" --file --project notes # creates docs/first-note.md
 
 # Capture evidence
 printf '# Reference\n\nA local reference about gateways.\n' > reference.md
@@ -20,13 +20,13 @@ mf build first-note --project notes
 ```
 
 > [!TIP]
-> `mf build` takes an article slug (`first-note`) or path (`docs/first-note`),
+> `mf build` takes an article slug (`first-note`) or path (`docs/first-note.md`),
 > and `mf publish run` takes the slug. Neither accepts the title. Run
 > `mf article list` to see what is available.
 >
 > Commands that take an article, prompt, thinking, asset or source also accept
 > a path to an existing file or directory, such as
-> `mf build projects/notes/docs/first-note`, and pick the project from that
+> `mf build projects/notes/docs/first-note.md`, and pick the project from that
 > path. `--project` still wins when given.
 
 There is a longer offline walkthrough in [offline walkthrough](../../quickstart.md).
@@ -37,7 +37,7 @@ Set the status of an indexed article with the command below. Add `--dry-run`
 to preview the change.
 
 ```bash
-mf article update docs/first-note --status completed --project notes
+mf article update docs/first-note.md --status completed --project notes
 ```
 
 | Status | Meaning |
@@ -104,7 +104,16 @@ my-repo/
 `minds.yaml` describes the repository; `mind.yaml` describes a project;
 `mind-index.yaml` is the project compatibility/index projection.
 
-## Write in blocks
+## Choose the article shape
+
+Use one Markdown file for a short, cohesive article such as a weekly to-do list.
+Use blocks when sections need to be maintained or rearranged independently.
+
+```bash
+mf article new "Weekly To-do" --file --project notes
+```
+
+For a document with independently maintained sections, create a block directory.
 
 ```bash
 mf article new "Design Review" --template arch --project notes
@@ -121,9 +130,16 @@ mf article block renumber design-review --project notes
 | `blog` | Blog post |
 | `<path>` | Any template file under the project root |
 
-New articles are directories of numbered blocks (`01-opening.md`, ...). Pass
-`--file` to create a single-file article instead; `mf article convert
---to-single-file|--to-directory` switches between the two forms.
+When called without `--file`, `mf article new` creates a directory of numbered
+blocks (`01-opening.md`, ...). Preserve an existing article's shape for prose
+edits. To change one article's shape, preview with its selector.
+
+```bash
+mf article convert --article weekly-to-do --to-directory --project notes --dry-run
+```
+
+Remove `--dry-run` to apply the previewed conversion to that article. Use
+`--to-single-file` for the reverse direction when the article is eligible.
 
 With `plugins.typora-front-matter.enabled` enabled (the default), conversion
 sets `typora-copy-images-to` in the destination source file relative to the
