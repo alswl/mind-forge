@@ -7,7 +7,7 @@ description: Research, plan, or replan a legacy article or a mind and its select
 
 # Research and plan a mind-forge article
 
-Own problem framing, evidence gathering, comparison, judgment, and the article outline. Planning ends with a reviewable structure and explicit user choices; it does not silently turn research into finished prose. `$mf-write` expands the approved structure in a later pass.
+Own problem framing, evidence gathering, comparison, judgment, and the article outline. Leave a reviewable structure and enough context for the next writing step. `$mf-write` expands the part the author is ready to draft.
 
 ## Resolve the project mode and writing target
 
@@ -109,9 +109,16 @@ Never silently delete feedback. Feedback is development state, not a universal b
 
 For a persistent private aside — a process-discussion note or exploratory passage that must stay in the source but never ship — use mind-forge private content rather than `mf-feedback`: wrap it in a `> [!mf-private]` callout, or set `mind-forge-visibility: private` on a whole block file. `mf build`/`mf publish` exclude it while it stays intact in the source, and it remains directly readable in the authored files. A generic private aside has no workflow state; only private regions titled `Suggestions` or `Feedback` use the checkbox lifecycle defined above. See `$mf-write` / `$mf-cli` for the exact rules (block-level only; the title block cannot be private).
 
+## Move from a rough idea to a draft
+
+- Start with the smallest coherent outline the author can react to. Use what the author already supplied. Ask or propose only the next choice that changes what to plan or draft now. Keep later questions pending until they matter.
+- On each planning turn, develop the selected chapter or theme. Record its intended point, available material, and the author's choices beside the heading in the existing private planning area or bound Thinking. Keep author sentences supplied for later prose verbatim in that working material. Use a sentence as a public heading only when it serves as a heading and the author requested that treatment.
+- End a material turn by identifying what changed and the next concrete action. Save the selected section, decisions and deferred work, and the next action in existing Thinking or in a local private note beside the section. Make the note short enough for a fresh session to resume from it. Update it as decisions change. Use existing Suggestions and Feedback for their established roles.
+- When the author authorizes prose and the selected section has enough direction for a useful first draft, hand that section to `$mf-write` with its saved context and scope. Unsettled topics elsewhere can stay in the outline. Keep the initial draft small enough to revise as feedback and evidence arrive.
+
 ## Hand off by concern
 
-Use `$mf-write` after the outline and user choices are ready for prose craft, substantial rewriting, assembly, build, and publication. Further research may refine the outline and private choices, but it does not cause `$mf-plan` to draft the article body.
+Use `$mf-write` for prose craft, substantive prose revision, assembly, build, and explicitly authorized publication. Continue research or structural changes here.
 
 Report changes to the current conclusion, evidence, judgment, open loops, and feedback state. Use JSON envelopes and exit codes; consult `$mf-cli` for exact command behavior.
 
