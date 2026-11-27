@@ -386,6 +386,21 @@ func (template Template) MarshalYAML() (any, error) {
 	return flattenYAML(wire(template), template.Extra)
 }
 
+type ArticleLintConfig struct {
+	Final ArticleFinalLintConfig `json:"final" yaml:"final"`
+}
+
+type ArticleFinalLintConfig struct {
+	Rules           []ArticleFinalLintRule `json:"rules,omitempty" yaml:"rules,omitempty"`
+	DisableDefaults bool                   `json:"disable_defaults,omitempty" yaml:"disable_defaults,omitempty"`
+}
+
+type ArticleFinalLintRule struct {
+	Literal    *string `json:"literal,omitempty" yaml:"literal,omitempty"`
+	Pattern    *string `json:"pattern,omitempty" yaml:"pattern,omitempty"`
+	Suggestion string  `json:"suggestion" yaml:"suggestion"`
+}
+
 type MindConfig struct {
 	ReservedRoots JSONArray[string]            `json:"reserved_roots,omitempty" yaml:"reserved_roots,omitempty"`
 	ContentLayout *string                      `json:"content_layout,omitempty" yaml:"content_layout,omitempty"`
@@ -396,6 +411,7 @@ type MindConfig struct {
 	Publish       PublishConfig                `json:"publish" yaml:"publish"`
 	Source        SourceConfig                 `json:"source" yaml:"source"`
 	Term          TermConfig                   `json:"term" yaml:"term"`
+	ArticleLint   *ArticleLintConfig           `json:"article_lint,omitempty" yaml:"article_lint,omitempty"`
 	Paths         PathsConfig                  `json:"-" yaml:"-"`
 	Layout        *LayoutConfig                `json:"layout" yaml:"layout"`
 	Name          *string                      `json:"name,omitempty" yaml:"name,omitempty"`

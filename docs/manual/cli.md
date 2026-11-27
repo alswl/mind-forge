@@ -603,6 +603,13 @@ Lint articles
 
 ###### **Options:**
 
+* `--mode <MODE>` — Lint mode (standard or final)
+
+  Default value: `standard`
+
+
+  Possible values: `standard`, `final`
+
 * `--status <STATUS>` — Filter by article status (draft, published, completed, abandoned)
 * `--fix` — Auto-fix issues that have a fixer
 * `--rule <RULE>` — Restrict to a specific lint rule kind

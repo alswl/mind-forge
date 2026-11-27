@@ -3,7 +3,6 @@ package build
 import (
 	"bytes"
 	"strings"
-	"unicode"
 
 	"github.com/alswl/mind-forge/pkg/common/markdown"
 )
@@ -12,32 +11,10 @@ type PrivateWarning struct {
 	StartLine int
 }
 
-func quoteContent(line string) (string, bool) {
-	trimmed := strings.TrimLeftFunc(line, unicode.IsSpace)
-	content, quoted := strings.CutPrefix(trimmed, ">")
-	if !quoted || len(line)-len(trimmed) > 3 {
-		return "", false
-	}
-	return strings.TrimPrefix(content, " "), true
-}
-
 type privateContinuation struct {
 	startLine int
 	endLine   int
 	title     string
-}
-
-func privateHeader(quoted string) (string, bool) {
-	rest, ok := strings.CutPrefix(quoted, "[!")
-	if !ok {
-		return "", false
-	}
-	kind, title, ok := strings.Cut(rest, "]")
-	if !ok {
-		return "", false
-	}
-	kind = strings.ToLower(kind)
-	return strings.TrimSpace(title), strings.HasPrefix(kind, "mf-") || strings.HasPrefix(kind, "mind-forge-")
 }
 
 // StripPrivateCallouts keeps fenced examples literal. Blank lines followed by
@@ -53,60 +30,32 @@ func StripPrivateCallouts(content string) (string, []PrivateWarning) {
 
 func stripPrivateCallouts(content string) (string, []privateContinuation) {
 	lines := strings.SplitAfter(content, "\n")
-	if len(lines) > 0 && lines[len(lines)-1] == "" {
+	if lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
 	var result bytes.Buffer
 	var warnings []privateContinuation
-	var fence markdown.FenceTracker
-	body := func(line string) string { return strings.TrimRight(line, "\r\n") }
-	blank := func(line string) bool { return strings.TrimSpace(body(line)) == "" }
-	for i := 0; i < len(lines); {
-		line := body(lines[i])
-		inside := fence.ProcessLine(line)
-		quoted, _ := quoteContent(line)
-		title, isPrivate := privateHeader(quoted)
-		if inside || !isPrivate {
-			result.WriteString(lines[i])
-			i++
-			continue
+	first := 0
+	for _, callout := range markdown.PrivateCallouts(lines) {
+		for _, line := range lines[first : callout.StartLine-1] {
+			result.WriteString(line)
 		}
-		start := i + 1
-		merged := false
-		var quotedFence markdown.FenceTracker
-		i++
-		for {
-			look := i
-			for look < len(lines) && blank(lines[look]) {
-				look++
-			}
-			if look == len(lines) {
-				break
-			}
-			quoted, ok := quoteContent(body(lines[look]))
-			if !ok {
-				break
-			}
-			if !quotedFence.ProcessLine(quoted) {
-				if _, nextPrivate := privateHeader(quoted); nextPrivate {
-					break
-				}
-			}
-			merged = merged || look > i
-			i = look + 1
-		}
-		if merged {
-			warnings = append(warnings, privateContinuation{startLine: start, endLine: i, title: title})
+		if callout.Continued {
+			warnings = append(warnings, privateContinuation{startLine: callout.StartLine, endLine: callout.EndLine, title: callout.Title})
 		}
 		for bytes.HasSuffix(result.Bytes(), []byte("\n\n\n")) {
 			result.Truncate(result.Len() - 1)
 		}
-		for i < len(lines) && blank(lines[i]) {
-			i++
+		first = callout.EndLine
+		for first < len(lines) && strings.TrimSpace(lines[first]) == "" {
+			first++
 		}
-		if result.Len() > 0 && !bytes.HasSuffix(result.Bytes(), []byte("\n\n")) && i < len(lines) {
+		if result.Len() > 0 && !bytes.HasSuffix(result.Bytes(), []byte("\n\n")) && first < len(lines) {
 			result.WriteByte('\n')
 		}
+	}
+	for _, line := range lines[first:] {
+		result.WriteString(line)
 	}
 	return result.String(), warnings
 }

@@ -34,6 +34,7 @@ type LintIssue struct {
 	Kind     string `json:"kind"`
 	Message  string `json:"message"`
 	Path     string `json:"path"`
+	Line     int    `json:"line,omitempty"`
 	Fixable  bool   `json:"fixable"`
 }
 

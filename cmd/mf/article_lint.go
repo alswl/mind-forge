@@ -4,6 +4,7 @@ import (
 	"io"
 
 	"github.com/alswl/mind-forge/internal/output"
+	"github.com/alswl/mind-forge/pkg/common/model"
 	app "github.com/alswl/mind-forge/pkg/config"
 	"github.com/alswl/mind-forge/pkg/services/content"
 	"github.com/spf13/cobra"
@@ -21,6 +22,10 @@ func newArticleLintCommand(item CommandSpec, handler Handler) (*cobra.Command, e
 }
 
 func executeArticleLint(command *cobra.Command, application *app.Context, stdout, stderr io.Writer) error {
+	final := stringFlag(command, "mode") == "final"
+	if final && boolFlag(command, "fix") {
+		return output.Usage("--mode final cannot be combined with --fix", "review the findings and edit the source manually")
+	}
 	project, err := app.ResolveProject(application.RepoRoot, optionalFlag(command, "project"), application.CWD, false)
 	if err != nil {
 		return err
@@ -29,7 +34,13 @@ func executeArticleLint(command *cobra.Command, application *app.Context, stdout
 	view := *application
 	view.RepoRoot = project
 
-	issues, err := content.LintArticlesRequest(command.Context(), application.RepoRoot, project, boolFlag(command, "fix") && !dryRun, optionalFlag(command, "status"))
+	var issues []model.LintIssue
+	status := optionalFlag(command, "status")
+	if final {
+		issues, err = content.LintFinalArticles(command.Context(), project, status)
+	} else {
+		issues, err = content.LintArticlesRequest(command.Context(), application.RepoRoot, project, boolFlag(command, "fix") && !dryRun, status)
+	}
 	if err != nil {
 		return err
 	}
