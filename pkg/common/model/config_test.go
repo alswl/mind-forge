@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -52,9 +53,27 @@ func TestConfigPreservesPluginAndTemplateMetadata(t *testing.T) {
 	}
 }
 
+func TestConfigRoundTripsHeldBackTermPairs(t *testing.T) {
+	input := []byte("term: {held_back_ignore: [{original: 机器, correct: 装置}]}")
+	want := []HeldBackTermPair{{Original: "机器", Correct: "装置"}}
+	var config MindConfig
+	require.NoError(t, yaml.Unmarshal(input, &config))
+	require.True(t, config.Term.Enabled)
+	require.Equal(t, want, config.Term.HeldBackIgnore)
+
+	encoded, err := yaml.Marshal(config)
+	require.NoError(t, err)
+	var again MindConfig
+	require.NoError(t, yaml.Unmarshal(encoded, &again))
+	require.Equal(t, want, again.Term.HeldBackIgnore)
+}
+
 func TestConfigRejectsRequiredNullAndInvalidEnums(t *testing.T) {
 	for _, input := range []string{
 		"schema_version: null", "build: null", "source: {types: null}", "term: {enabled: null}",
+		"term: {held_back_ignore: null}", "term: {held_back_ignore: [null]}",
+		"term: {held_back_ignore: [{original: foo}]}",
+		"term: {held_back_ignore: [{original: '', correct: bar}]}",
 		"build: {merge_order: null}", "content_layout: guessed", "layout: {docs: a, articles: b}",
 		"publish: {targets: [{name: p, type: guessed}]}", "publish: {targets: [{name: p}]}",
 		"templates: {x: {pattern: anything}}", "project: {description: missing-name}",

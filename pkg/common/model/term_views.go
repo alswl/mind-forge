@@ -111,4 +111,6 @@ type TermLintReport struct {
 	IneligibleCount      uint64                     `json:"ineligible_count"`
 	HeldBackCount        uint64                     `json:"held_back_count"`
 	QuoteProtectedCount  uint64                     `json:"quote_protected_count,omitempty"`
+
+	SuppressedHeldBackCount uint64 `json:"suppressed_held_back_count,omitempty"`
 }

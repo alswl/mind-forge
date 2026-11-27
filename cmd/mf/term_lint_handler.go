@@ -194,7 +194,7 @@ func formatTermLint(r model.TermLintReport, fix, dry bool, targetType, pathHint 
 	if fix && len(r.Findings) == 0 && len(r.Failures) == 0 {
 		return "No term issues found."
 	}
-	if !fix && len(r.Findings) == 0 {
+	if !fix && len(r.Findings) == 0 && r.SuppressedHeldBackCount == 0 {
 		if r.ScannedFiles == 0 && len(r.SkippedFiles) == 0 && len(r.Failures) == 0 {
 			if targetType == "directory" {
 				return "No eligible files found."
@@ -292,6 +292,9 @@ func formatTermLint(r model.TermLintReport, fix, dry bool, targetType, pathHint 
 		}
 	} else {
 		lines = append(lines, fmt.Sprintf("%d findings in %d files", len(r.Findings), len(paths)))
+		if r.SuppressedHeldBackCount > 0 {
+			lines = append(lines, fmt.Sprintf("Held-back findings: %d (%d suppressed by project configuration)", r.HeldBackCount, r.SuppressedHeldBackCount))
+		}
 	}
 	if r.QuoteProtectedCount > 0 {
 		s := "s"
