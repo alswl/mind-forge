@@ -224,7 +224,11 @@ type TermConfig struct {
 func (term *TermConfig) UnmarshalYAML(node *yaml.Node) error {
 	type wire TermConfig
 	result := wire{Enabled: true}
-	if _, err := decodeRecord(node, &result, nil, "enabled", "case_sensitive", "held_back_ignore"); err != nil {
+	fields, err := decodeRecord(node, &result, nil, "enabled", "case_sensitive", "held_back_ignore")
+	if err != nil {
+		return err
+	}
+	if err := rejectNullItems(fields["held_back_ignore"]); err != nil {
 		return err
 	}
 	*term = TermConfig(result)

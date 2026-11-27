@@ -71,7 +71,8 @@ func TestConfigRoundTripsHeldBackTermPairs(t *testing.T) {
 func TestConfigRejectsRequiredNullAndInvalidEnums(t *testing.T) {
 	for _, input := range []string{
 		"schema_version: null", "build: null", "source: {types: null}", "term: {enabled: null}",
-		"term: {held_back_ignore: null}", "term: {held_back_ignore: [{original: foo}]}",
+		"term: {held_back_ignore: null}", "term: {held_back_ignore: [null]}",
+		"term: {held_back_ignore: [{original: foo}]}",
 		"term: {held_back_ignore: [{original: '', correct: bar}]}",
 		"build: {merge_order: null}", "content_layout: guessed", "layout: {docs: a, articles: b}",
 		"publish: {targets: [{name: p, type: guessed}]}", "publish: {targets: [{name: p}]}",
