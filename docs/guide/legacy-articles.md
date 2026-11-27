@@ -169,7 +169,8 @@ as build. Every `final_leak` finding is a warning. Use `--max-warnings 0` to
 exit 1 on a finding. Final mode is read-only and rejects `--fix`.
 
 Add project-specific phrases or Go regular expressions in the project's
-`mind.yaml`. Each rule takes one matcher and a suggestion.
+`mind.yaml`. Each rule takes one matcher and a suggestion. The scan applies
+rules one source line at a time.
 
 ```yaml
 article_lint:
@@ -183,5 +184,4 @@ article_lint:
 
 The built-in rules look for week identifiers such as `W37`, Align IDs,
 common Git branch prefixes, and selected Chinese production and provenance
-phrases. To use only project rules, set `disable_defaults: true` under
-`article_lint.final`. Plain `mf article lint` still runs the structural checks.
+phrases. Plain `mf article lint` still runs the structural checks.

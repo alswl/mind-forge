@@ -151,3 +151,15 @@ func TestAssemblePrivateCalloutQuotedFence(t *testing.T) {
 		})
 	}
 }
+
+func TestAssemblePrivateCalloutsAfterYAMLScalarWithFenceMarker(t *testing.T) {
+	source := "---\ndescription: |\n  ```\n---\n# Public title\n\n> [!mf-private] Notes\n> W37\n\n> W38\n\nFinal paragraph.\n"
+	got, warnings, err := AssembleBlocks([]Block{{Path: "docs/post.md", Content: source}}, false, "")
+	require.NoError(t, err)
+	require.Contains(t, got, "description: |\n  ```")
+	require.Contains(t, got, "Final paragraph.")
+	require.NotContains(t, got, "W37")
+	require.NotContains(t, got, "W38")
+	require.Len(t, warnings, 1)
+	require.Contains(t, warnings[0], "docs/post.md:7-10")
+}

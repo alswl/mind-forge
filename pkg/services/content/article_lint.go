@@ -24,14 +24,6 @@ func LintArticlesByStatus(project string, fix bool, status *string) ([]model.Lin
 }
 
 func LintArticlesRequest(ctx context.Context, root, project string, fix bool, status *string) ([]model.LintIssue, error) {
-	return lintArticles(ctx, root, project, fix, status, false)
-}
-
-func LintFinalArticles(ctx context.Context, project string, status *string) ([]model.LintIssue, error) {
-	return lintArticles(ctx, project, project, false, status, true)
-}
-
-func lintArticles(ctx context.Context, root, project string, fix bool, status *string, final bool) ([]model.LintIssue, error) {
 	if err := validateArticleStatus(status); err != nil {
 		return nil, err
 	}
@@ -42,13 +34,6 @@ func lintArticles(ctx context.Context, root, project string, fix bool, status *s
 	layout, err := app.ResolveAndValidateLayout(project, config)
 	if err != nil {
 		return nil, err
-	}
-	var finalRules []finalLintRule
-	if final {
-		finalRules, err = compileFinalLintRules(config.ArticleLint)
-		if err != nil {
-			return nil, err
-		}
 	}
 	docs := filepath.Join(project, layout.Articles)
 	entries, err := os.ReadDir(docs)
@@ -86,19 +71,6 @@ func lintArticles(ctx context.Context, root, project string, fix bool, status *s
 		})
 		return nil
 	}
-	lintBlock := lintTypora
-	if final {
-		lintBlock = func(relative, path string, body []byte) error {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if !utf8.Valid(body) {
-				return fmt.Errorf("stream did not contain valid UTF-8: %s", path)
-			}
-			issues = appendFinalLintIssues(issues, relative, string(body), finalRules)
-			return nil
-		}
-	}
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -114,14 +86,13 @@ func lintArticles(ctx context.Context, root, project string, fix bool, status *s
 				continue
 			}
 		}
-		if entry.IsDir() && (final || checkTypora) && !strings.HasPrefix(name, ".") {
-			if err := lintArticleBlocks(project, relative, lintBlock); err != nil {
+		if entry.IsDir() && checkTypora && !strings.HasPrefix(name, ".") {
+			if err := lintArticleBlockTypora(project, relative, lintTypora); err != nil {
 				return nil, err
 			}
 			continue
 		}
-		if !utf8.ValidString(name) || filepath.Ext(name) != ".md" ||
-			final && (strings.HasPrefix(name, ".") || !entry.Type().IsRegular()) {
+		if !utf8.ValidString(name) || filepath.Ext(name) != ".md" {
 			continue
 		}
 		stem := strings.TrimSuffix(name, ".md")
@@ -133,12 +104,6 @@ func lintArticles(ctx context.Context, root, project string, fix bool, status *s
 		body, err := os.ReadFile(path)
 		if err != nil {
 			return nil, err
-		}
-		if final {
-			if err := lintBlock(relative, path, body); err != nil {
-				return nil, err
-			}
-			continue
 		}
 		if !utf8.Valid(body) {
 			return nil, fmt.Errorf("stream did not contain valid UTF-8: %s", path)
@@ -195,7 +160,7 @@ func lintArticles(ctx context.Context, root, project string, fix bool, status *s
 	return issues, nil
 }
 
-func lintArticleBlocks(project, relative string, lint func(string, string, []byte) error) error {
+func lintArticleBlockTypora(project, relative string, lint func(string, string, []byte) error) error {
 	directory, err := CheckedPath(project, relative)
 	if err != nil {
 		return err

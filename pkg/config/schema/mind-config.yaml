@@ -8,6 +8,37 @@ definitions:
         - string
         - 'null'
     type: object
+  ArticleFinalLintRule:
+    description: Exactly one literal or Go regular expression and a revision suggestion.
+    oneOf:
+    - required:
+      - literal
+      - suggestion
+    - required:
+      - pattern
+      - suggestion
+    properties:
+      literal:
+        minLength: 1
+        type: string
+      pattern:
+        minLength: 1
+        type: string
+      suggestion:
+        minLength: 1
+        type: string
+    type: object
+  ArticleLintConfig:
+    description: Project rules for the read-only final article lint mode.
+    properties:
+      final:
+        properties:
+          rules:
+            items:
+              $ref: '#/definitions/ArticleFinalLintRule'
+            type: array
+        type: object
+    type: object
   BannerConfig:
     description: Optional banner injected into generated article output.
     properties:
@@ -300,6 +331,8 @@ definitions:
     type: object
 description: Top-level configuration for a mind-forge project (mind.yaml schema).
 properties:
+  article_lint:
+    $ref: '#/definitions/ArticleLintConfig'
   articles: true
   build:
     allOf:

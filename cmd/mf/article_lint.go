@@ -18,14 +18,23 @@ func init() {
 
 func newArticleLintCommand(item CommandSpec, handler Handler) (*cobra.Command, error) {
 	command := &cobra.Command{Use: "lint"}
-	return configureCommand(command, item, handler)
+	configured, err := configureCommand(command, item, handler)
+	if err != nil {
+		return nil, err
+	}
+	configured.Args = func(command *cobra.Command, args []string) error {
+		if err := validateCommand(command, args); err != nil {
+			return err
+		}
+		if stringFlag(command, "mode") == "final" && boolFlag(command, "fix") {
+			return output.Usage("--mode final cannot be combined with --fix", "review the findings and edit the source manually")
+		}
+		return nil
+	}
+	return configured, nil
 }
 
 func executeArticleLint(command *cobra.Command, application *app.Context, stdout, stderr io.Writer) error {
-	final := stringFlag(command, "mode") == "final"
-	if final && boolFlag(command, "fix") {
-		return output.Usage("--mode final cannot be combined with --fix", "review the findings and edit the source manually")
-	}
 	project, err := app.ResolveProject(application.RepoRoot, optionalFlag(command, "project"), application.CWD, false)
 	if err != nil {
 		return err
@@ -36,7 +45,7 @@ func executeArticleLint(command *cobra.Command, application *app.Context, stdout
 
 	var issues []model.LintIssue
 	status := optionalFlag(command, "status")
-	if final {
+	if stringFlag(command, "mode") == "final" {
 		issues, err = content.LintFinalArticles(command.Context(), project, status)
 	} else {
 		issues, err = content.LintArticlesRequest(command.Context(), application.RepoRoot, project, boolFlag(command, "fix") && !dryRun, status)

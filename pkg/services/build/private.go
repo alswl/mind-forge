@@ -29,11 +29,15 @@ func StripPrivateCallouts(content string) (string, []PrivateWarning) {
 }
 
 func stripPrivateCallouts(content string) (string, []privateContinuation) {
-	lines := strings.SplitAfter(content, "\n")
+	_, body, _, _ := markdown.InitialFrontMatter(content)
+	prefix := content[:len(content)-len(body)]
+	offset := strings.Count(prefix, "\n")
+	lines := strings.SplitAfter(body, "\n")
 	if lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
 	var result bytes.Buffer
+	result.WriteString(prefix)
 	var warnings []privateContinuation
 	first := 0
 	for _, callout := range markdown.PrivateCallouts(lines) {
@@ -41,7 +45,7 @@ func stripPrivateCallouts(content string) (string, []privateContinuation) {
 			result.WriteString(line)
 		}
 		if callout.Continued {
-			warnings = append(warnings, privateContinuation{startLine: callout.StartLine, endLine: callout.EndLine, title: callout.Title})
+			warnings = append(warnings, privateContinuation{startLine: offset + callout.StartLine, endLine: offset + callout.EndLine, title: callout.Title})
 		}
 		for bytes.HasSuffix(result.Bytes(), []byte("\n\n\n")) {
 			result.Truncate(result.Len() - 1)
