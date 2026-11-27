@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -54,25 +55,17 @@ func TestConfigPreservesPluginAndTemplateMetadata(t *testing.T) {
 
 func TestConfigRoundTripsHeldBackTermPairs(t *testing.T) {
 	input := []byte("term: {held_back_ignore: [{original: 机器, correct: 装置}]}")
-	want := HeldBackTermPair{Original: "机器", Correct: "装置"}
+	want := []HeldBackTermPair{{Original: "机器", Correct: "装置"}}
 	var config MindConfig
-	if err := yaml.Unmarshal(input, &config); err != nil {
-		t.Fatal(err)
-	}
-	if !config.Term.Enabled || len(config.Term.HeldBackIgnore) != 1 || config.Term.HeldBackIgnore[0] != want {
-		t.Fatalf("term config: %#v", config.Term)
-	}
+	require.NoError(t, yaml.Unmarshal(input, &config))
+	require.True(t, config.Term.Enabled)
+	require.Equal(t, want, config.Term.HeldBackIgnore)
+
 	encoded, err := yaml.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var again MindConfig
-	if err := yaml.Unmarshal(encoded, &again); err != nil {
-		t.Fatal(err)
-	}
-	if len(again.Term.HeldBackIgnore) != 1 || again.Term.HeldBackIgnore[0] != want {
-		t.Fatalf("round-tripped term config: %#v", again.Term)
-	}
+	require.NoError(t, yaml.Unmarshal(encoded, &again))
+	require.Equal(t, want, again.Term.HeldBackIgnore)
 }
 
 func TestConfigRejectsRequiredNullAndInvalidEnums(t *testing.T) {
