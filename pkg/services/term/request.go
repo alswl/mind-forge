@@ -97,12 +97,12 @@ func LintRequest(ctx context.Context, root, cwd string, scope Scope, args []stri
 	}
 	report, err := LintFiles(base, target, terms, LintOptions{Context: ctx, Selection: selection, Fix: fix, DryRun: dry})
 	if err == nil && !fix && config != nil {
-		suppressHeldBackFindings(&report, config.Term.HeldBackIgnore)
+		suppressHeldBackFindings(&report, scope.Root, config.Term.HeldBackIgnore)
 	}
 	return report, err
 }
 
-func suppressHeldBackFindings(report *model.TermLintReport, ignored []model.HeldBackTermPair) {
+func suppressHeldBackFindings(report *model.TermLintReport, projectRoot string, ignored []model.HeldBackTermPair) {
 	if len(ignored) == 0 || report.HeldBackCount == 0 {
 		return
 	}
@@ -110,16 +110,24 @@ func suppressHeldBackFindings(report *model.TermLintReport, ignored []model.Held
 	for _, pair := range ignored {
 		pairs[pair] = struct{}{}
 	}
+	projectRoot = physicalLintPath(projectRoot)
+	ownedDirs := make(map[string]bool)
 	report.Findings = slices.DeleteFunc(report.Findings, func(finding model.TermFinding) bool {
-		if !finding.HeldBack {
+		pair := model.HeldBackTermPair{Original: finding.Original, Correct: finding.Correct}
+		if _, ignored := pairs[pair]; !finding.HeldBack || !ignored {
 			return false
 		}
-		pair := model.HeldBackTermPair{Original: finding.Original, Correct: finding.Correct}
-		_, suppressed := pairs[pair]
-		if suppressed {
+		directory := filepath.Dir(filepath.Join(projectRoot, filepath.FromSlash(finding.Path)))
+		owned, checked := ownedDirs[directory]
+		if !checked {
+			owner, err := app.ResolveProject(projectRoot, nil, directory, false)
+			owned = err == nil && owner == projectRoot
+			ownedDirs[directory] = owned
+		}
+		if owned {
 			report.SuppressedHeldBackCount++
 		}
-		return suppressed
+		return owned
 	})
 }
 

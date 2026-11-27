@@ -73,7 +73,8 @@ term:
 ```
 
 Run `mf term lint -p <PROJECT>` to use the project's list. The list also
-applies when the project-scoped command targets a file or directory.
+applies when the project-scoped command targets a file or directory. Findings
+in nested projects keep their own project scope, even in a parent directory scan.
 A match removes only a finding that was already held back. Hidden findings
 do not count against `--max-warnings`. Text reports the total and suppressed
 counts, and JSON includes all held-back findings in `held_back_count` and
