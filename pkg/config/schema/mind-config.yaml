@@ -274,6 +274,19 @@ definitions:
       enabled:
         default: true
         type: boolean
+      held_back_ignore:
+        description: Exact original and replacement pairs hidden from project term lint when held back.
+        items:
+          type: object
+          properties:
+            original:
+              type: string
+              minLength: 1
+            correct:
+              type: string
+              minLength: 1
+          required: [original, correct]
+        type: array
     type: object
   TyporaFrontMatterPluginConfig:
     description: Configuration for the typora-front-matter plugin.

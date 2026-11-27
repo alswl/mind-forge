@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/alswl/mind-forge/pkg/common/model"
 	output "github.com/alswl/mind-forge/pkg/common/outcome"
@@ -42,6 +43,13 @@ func LintRequest(ctx context.Context, root, cwd string, scope Scope, args []stri
 	}
 	if scope.Kind == "global" && len(terms) == 0 {
 		return empty, nil
+	}
+	var config *model.MindConfig
+	if scope.Kind == "project" && (!fix || len(args) == 0) {
+		config, err = content.ConfigFor(scope.Root)
+		if err != nil {
+			return empty, err
+		}
 	}
 	base, target := scope.Root, scope.Root
 	if len(args) > 0 {
@@ -81,17 +89,38 @@ func LintRequest(ctx context.Context, root, cwd string, scope Scope, args []stri
 			}
 		}
 	} else if scope.Kind == "project" {
-		config, err := content.ConfigFor(scope.Root)
-		if err != nil {
-			return empty, err
-		}
 		layout, _ := app.ResolveEffectiveLayout(config)
 		target = filepath.Join(scope.Root, layout.Articles)
 		if _, err := os.Stat(target); os.IsNotExist(err) {
 			return empty, nil
 		}
 	}
-	return LintFiles(base, target, terms, LintOptions{Context: ctx, Selection: selection, Fix: fix, DryRun: dry})
+	report, err := LintFiles(base, target, terms, LintOptions{Context: ctx, Selection: selection, Fix: fix, DryRun: dry})
+	if err == nil && !fix && config != nil {
+		suppressHeldBackFindings(&report, config.Term.HeldBackIgnore)
+	}
+	return report, err
+}
+
+func suppressHeldBackFindings(report *model.TermLintReport, ignored []model.HeldBackTermPair) {
+	if len(ignored) == 0 || report.HeldBackCount == 0 {
+		return
+	}
+	pairs := make(map[model.HeldBackTermPair]struct{}, len(ignored))
+	for _, pair := range ignored {
+		pairs[pair] = struct{}{}
+	}
+	report.Findings = slices.DeleteFunc(report.Findings, func(finding model.TermFinding) bool {
+		if !finding.HeldBack {
+			return false
+		}
+		pair := model.HeldBackTermPair{Original: finding.Original, Correct: finding.Correct}
+		_, suppressed := pairs[pair]
+		if suppressed {
+			report.SuppressedHeldBackCount++
+		}
+		return suppressed
+	})
 }
 
 func termProjectBoundaryError(project, target string, err error) error {

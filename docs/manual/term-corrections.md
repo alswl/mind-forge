@@ -59,9 +59,28 @@ auto-applies them. Opt in explicitly with `--term <NAME>` or
 
 ### Held-back corrections
 
-An advisory finding is never silently discarded. `mf term lint` marks it
-`, held back` in text output and sets `held_back: true` alongside its
-existing `safety_reason` in JSON. `mf term fix` reports a held-back count
+By default, `mf term lint` marks advisory findings `, held back` in text
+output and sets `held_back: true` alongside `safety_reason` in JSON.
+
+To hide a recurring advisory in one project, add its exact original and
+suggested replacement to that project's `mind.yaml`:
+
+```yaml
+term:
+  held_back_ignore:
+    - original: 机器
+      correct: 装置
+```
+
+Run `mf term lint -p <PROJECT>` to use the project's list. The list also
+applies when the project-scoped command targets a file or directory.
+A match removes only a finding that was already held back. Hidden findings
+do not count against `--max-warnings`. Text reports the total and suppressed
+counts, and JSON includes all held-back findings in `held_back_count` and
+the hidden subset in `suppressed_held_back_count` when it is nonzero.
+
+`mf term fix` and `mf term lint --fix` retain their existing selection
+behavior. `mf term fix` reports a held-back count
 next to the applied count and names the scoped remedy:
 
 ```text

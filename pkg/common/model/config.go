@@ -197,15 +197,34 @@ func (source *SourceConfig) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+type HeldBackTermPair struct {
+	Original string `json:"original" yaml:"original"`
+	Correct  string `json:"correct" yaml:"correct"`
+}
+
+func (pair *HeldBackTermPair) UnmarshalYAML(node *yaml.Node) error {
+	type wire HeldBackTermPair
+	var result wire
+	if _, err := decodeRecord(node, &result, []string{"original", "correct"}, "original", "correct"); err != nil {
+		return err
+	}
+	if result.Original == "" || result.Correct == "" {
+		return fmt.Errorf("held_back_ignore requires nonempty original and correct")
+	}
+	*pair = HeldBackTermPair(result)
+	return nil
+}
+
 type TermConfig struct {
-	Enabled       bool `json:"enabled" yaml:"enabled"`
-	CaseSensitive bool `json:"case_sensitive" yaml:"case_sensitive"`
+	Enabled        bool               `json:"enabled" yaml:"enabled"`
+	CaseSensitive  bool               `json:"case_sensitive" yaml:"case_sensitive"`
+	HeldBackIgnore []HeldBackTermPair `json:"held_back_ignore,omitempty" yaml:"held_back_ignore,omitempty"`
 }
 
 func (term *TermConfig) UnmarshalYAML(node *yaml.Node) error {
 	type wire TermConfig
 	result := wire{Enabled: true}
-	if _, err := decodeRecord(node, &result, nil, "enabled", "case_sensitive"); err != nil {
+	if _, err := decodeRecord(node, &result, nil, "enabled", "case_sensitive", "held_back_ignore"); err != nil {
 		return err
 	}
 	*term = TermConfig(result)

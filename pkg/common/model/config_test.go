@@ -52,9 +52,34 @@ func TestConfigPreservesPluginAndTemplateMetadata(t *testing.T) {
 	}
 }
 
+func TestConfigRoundTripsHeldBackTermPairs(t *testing.T) {
+	input := []byte("term: {held_back_ignore: [{original: 机器, correct: 装置}]}")
+	want := HeldBackTermPair{Original: "机器", Correct: "装置"}
+	var config MindConfig
+	if err := yaml.Unmarshal(input, &config); err != nil {
+		t.Fatal(err)
+	}
+	if !config.Term.Enabled || len(config.Term.HeldBackIgnore) != 1 || config.Term.HeldBackIgnore[0] != want {
+		t.Fatalf("term config: %#v", config.Term)
+	}
+	encoded, err := yaml.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var again MindConfig
+	if err := yaml.Unmarshal(encoded, &again); err != nil {
+		t.Fatal(err)
+	}
+	if len(again.Term.HeldBackIgnore) != 1 || again.Term.HeldBackIgnore[0] != want {
+		t.Fatalf("round-tripped term config: %#v", again.Term)
+	}
+}
+
 func TestConfigRejectsRequiredNullAndInvalidEnums(t *testing.T) {
 	for _, input := range []string{
 		"schema_version: null", "build: null", "source: {types: null}", "term: {enabled: null}",
+		"term: {held_back_ignore: null}", "term: {held_back_ignore: [{original: foo}]}",
+		"term: {held_back_ignore: [{original: '', correct: bar}]}",
 		"build: {merge_order: null}", "content_layout: guessed", "layout: {docs: a, articles: b}",
 		"publish: {targets: [{name: p, type: guessed}]}", "publish: {targets: [{name: p}]}",
 		"templates: {x: {pattern: anything}}", "project: {description: missing-name}",
