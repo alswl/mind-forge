@@ -1,6 +1,7 @@
 package content
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -76,6 +77,10 @@ func declaredArticlePaths(project string, config *model.MindConfig, articlesDir 
 }
 
 func ScanArticleDocs(project string, config *model.MindConfig) ([]model.ScannedArticle, error) {
+	return scanArticleDocs(context.Background(), project, config)
+}
+
+func scanArticleDocs(ctx context.Context, project string, config *model.MindConfig) ([]model.ScannedArticle, error) {
 	layout, err := app.ResolveAndValidateLayout(project, config)
 	if err != nil {
 		return nil, err
@@ -88,6 +93,9 @@ func ScanArticleDocs(project string, config *model.MindConfig) ([]model.ScannedA
 			return nil, err
 		}
 		for _, entry := range entries {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			name := entry.Name()
 			if !utf8.ValidString(name) {
 				continue
@@ -120,6 +128,9 @@ func ScanArticleDocs(project string, config *model.MindConfig) ([]model.ScannedA
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		item := config.Build.Articles[id]
 		if item.ArticleDir == nil {
 			continue
@@ -161,6 +172,10 @@ func scannedArticlePath(article model.ScannedArticle, docs string) string {
 }
 
 func ScanTemplateArticles(project string, config *model.MindConfig) ([]model.Article, error) {
+	return scanTemplateArticles(context.Background(), project, config)
+}
+
+func scanTemplateArticles(ctx context.Context, project string, config *model.MindConfig) ([]model.Article, error) {
 	articles := []model.Article{}
 	if config.Templates == nil {
 		return articles, nil
@@ -180,6 +195,9 @@ func ScanTemplateArticles(project string, config *model.MindConfig) ([]model.Art
 			return nil, err
 		}
 		err = filepath.WalkDir(project, func(path string, entry os.DirEntry, walkErr error) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if walkErr != nil {
 				return nil
 			}
@@ -220,6 +238,13 @@ func ScanTemplateArticles(project string, config *model.MindConfig) ([]model.Art
 
 // DiscoverArticles combines declarations, docs and generated files without writes.
 func DiscoverArticles(project string, config *model.MindConfig, now time.Time) (model.Index, []string, error) {
+	return discoverArticles(context.Background(), project, config, now)
+}
+
+func discoverArticles(ctx context.Context, project string, config *model.MindConfig, now time.Time) (model.Index, []string, error) {
+	if err := ctx.Err(); err != nil {
+		return model.Index{}, nil, err
+	}
 	document, err := store.ReadIndex(filepath.Join(project, "mind-index.yaml"), false)
 	if err != nil {
 		return model.Index{}, nil, err
@@ -263,7 +288,7 @@ func DiscoverArticles(project string, config *model.MindConfig, now time.Time) (
 			prefixes = append(prefixes, strings.TrimRight(path, "/")+"/")
 		}
 	}
-	scanned, err := ScanArticleDocs(project, config)
+	scanned, err := scanArticleDocs(ctx, project, config)
 	if err != nil {
 		return model.Index{}, nil, err
 	}
@@ -279,7 +304,7 @@ func DiscoverArticles(project string, config *model.MindConfig, now time.Time) (
 		}
 		merged[path] = article
 	}
-	templates, err := ScanTemplateArticles(project, config)
+	templates, err := scanTemplateArticles(ctx, project, config)
 	if err != nil {
 		return model.Index{}, nil, err
 	}
@@ -320,5 +345,8 @@ func DiscoverArticles(project string, config *model.MindConfig, now time.Time) (
 	sort.Slice(articles, func(i, j int) bool { return articles[i].Path < articles[j].Path })
 	result := document.Value
 	result.Articles = &articles
+	if err := ctx.Err(); err != nil {
+		return model.Index{}, nil, err
+	}
 	return result, warnings, nil
 }

@@ -150,3 +150,38 @@ strips the Typora setting from the generated Markdown and leaves the author file
 `mf project lint --fix --rule missing_directory --project notes` adds
 `.gitkeep` to newly created legacy article, source, and asset directories.
 Commit the placeholders to carry the repair to other checkouts.
+
+
+## Check an article before sharing
+
+Run a final lint scan to find internal identifiers, production notes and
+provenance wording that may need editing before publication.
+
+```sh
+mf article lint --mode final -p notes --status completed
+mf article lint --mode final -p notes --json --max-warnings 0
+```
+
+Findings include the source file, line and a suggested revision. The scan
+covers the public body of single-file and split articles. It skips opening
+YAML, private blocks and private callouts using the same privacy boundaries
+as build. Every `final_leak` finding is a warning. Use `--max-warnings 0` to
+exit 1 on a finding. Final mode is read-only and rejects `--fix`.
+
+Add project-specific phrases or Go regular expressions in the project's
+`mind.yaml`. Each rule takes one matcher and a suggestion. The scan applies
+rules one source line at a time.
+
+```yaml
+article_lint:
+  final:
+    rules:
+      - literal: INTERNAL-REVIEW
+        suggestion: Remove the review marker before publication.
+      - pattern: 'DEMO-[0-9]+'
+        suggestion: Refer to the public feature name.
+```
+
+The built-in rules look for week identifiers such as `W37`, Align IDs,
+common Git branch prefixes, and selected Chinese production and provenance
+phrases. Plain `mf article lint` still runs the structural checks.

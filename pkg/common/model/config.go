@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"go.yaml.in/yaml/v3"
@@ -396,6 +397,7 @@ type MindConfig struct {
 	Publish       PublishConfig                `json:"publish" yaml:"publish"`
 	Source        SourceConfig                 `json:"source" yaml:"source"`
 	Term          TermConfig                   `json:"term" yaml:"term"`
+	ArticleLint   *yaml.Node                   `json:"-" yaml:"-"`
 	Paths         PathsConfig                  `json:"-" yaml:"-"`
 	Layout        *LayoutConfig                `json:"layout" yaml:"layout"`
 	Name          *string                      `json:"name,omitempty" yaml:"name,omitempty"`
@@ -442,6 +444,9 @@ func (config *MindConfig) UnmarshalYAML(node *yaml.Node) error {
 	if value := fields["articles"]; value != nil && value.Tag != "!!null" {
 		result.Articles = yamlValue(value)
 	}
+	if value := fields["article_lint"]; value != nil && value.Tag != "!!null" {
+		result.ArticleLint = value
+	}
 	for _, name := range []string{"templates", "minds", "reserved_roots"} {
 		if err := rejectNullItems(fields[name]); err != nil {
 			return err
@@ -456,6 +461,18 @@ func (config *MindConfig) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+func (config MindConfig) MarshalJSON() ([]byte, error) {
+	type wire MindConfig
+	var lint any
+	if config.ArticleLint != nil {
+		lint = yamlValue(config.ArticleLint)
+	}
+	return json.Marshal(struct {
+		wire
+		ArticleLint any `json:"article_lint,omitempty"`
+	}{wire: wire(config), ArticleLint: lint})
+}
+
 func (config MindConfig) MarshalYAML() (any, error) {
 	type wire MindConfig
 	extra := YAMLFields{}
@@ -465,6 +482,9 @@ func (config MindConfig) MarshalYAML() (any, error) {
 			return nil, err
 		}
 		extra = append(extra, YAMLField{scalarString("articles"), &node})
+	}
+	if config.ArticleLint != nil {
+		extra = append(extra, YAMLField{scalarString("article_lint"), config.ArticleLint})
 	}
 	return flattenYAML(wire(config), extra)
 }
