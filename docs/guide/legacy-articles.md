@@ -9,7 +9,7 @@ For explicit category/bundle projects, use [minds and outputs](minds-and-outputs
 mkdir my-repo && cd my-repo
 mf init
 mf project new notes
-mf article new "First Note" --project notes        # creates docs/first-note/
+mf article new "First Note" --file --project notes # creates docs/first-note.md
 
 # Capture evidence
 printf '# Reference\n\nA local reference about gateways.\n' > reference.md
@@ -20,13 +20,13 @@ mf build first-note --project notes
 ```
 
 > [!TIP]
-> `mf build` takes an article slug (`first-note`) or path (`docs/first-note`),
+> `mf build` takes an article slug (`first-note`) or path (`docs/first-note.md`),
 > and `mf publish run` takes the slug. Neither accepts the title. Run
 > `mf article list` to see what is available.
 >
 > Commands that take an article, prompt, thinking, asset or source also accept
 > a path to an existing file or directory, such as
-> `mf build projects/notes/docs/first-note`, and pick the project from that
+> `mf build projects/notes/docs/first-note.md`, and pick the project from that
 > path. `--project` still wins when given.
 
 There is a longer offline walkthrough in [offline walkthrough](../../quickstart.md).
@@ -37,7 +37,7 @@ Set the status of an indexed article with the command below. Add `--dry-run`
 to preview the change.
 
 ```bash
-mf article update docs/first-note --status completed --project notes
+mf article update docs/first-note.md --status completed --project notes
 ```
 
 | Status | Meaning |
@@ -132,8 +132,14 @@ mf article block renumber design-review --project notes
 
 When called without `--file`, `mf article new` creates a directory of numbered
 blocks (`01-opening.md`, ...). Preserve an existing article's shape for prose
-edits. Use `mf article convert --to-single-file|--to-directory` when you
-intend to change its shape.
+edits. To change one article's shape, preview with its selector.
+
+```bash
+mf article convert --article weekly-to-do --to-directory --project notes --dry-run
+```
+
+Remove `--dry-run` to apply the previewed conversion to that article. Use
+`--to-single-file` for the reverse direction when the article is eligible.
 
 With `plugins.typora-front-matter.enabled` enabled (the default), conversion
 sets `typora-copy-images-to` in the destination source file relative to the
