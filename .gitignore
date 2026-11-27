@@ -1,7 +1,6 @@
 target/
 release/
 bin/
-tmp/
 *.exe
 *.test
 *.out
@@ -20,8 +19,6 @@ Thumbs.db
 # Internal planning and local agent workflow files
 .agents/
 .claude/
-.specify
-.specify/
 .mind-forge/
 specs
 specs/
