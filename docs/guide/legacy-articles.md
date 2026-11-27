@@ -104,7 +104,16 @@ my-repo/
 `minds.yaml` describes the repository; `mind.yaml` describes a project;
 `mind-index.yaml` is the project compatibility/index projection.
 
-## Write in blocks
+## Choose the article shape
+
+Use one Markdown file for a short, cohesive article such as a weekly to-do list.
+Use blocks when sections need to be maintained or rearranged independently.
+
+```bash
+mf article new "Weekly To-do" --file --project notes
+```
+
+For a document with independently maintained sections, create a block directory.
 
 ```bash
 mf article new "Design Review" --template arch --project notes
@@ -121,9 +130,10 @@ mf article block renumber design-review --project notes
 | `blog` | Blog post |
 | `<path>` | Any template file under the project root |
 
-New articles are directories of numbered blocks (`01-opening.md`, ...). Pass
-`--file` to create a single-file article instead; `mf article convert
---to-single-file|--to-directory` switches between the two forms.
+When called without `--file`, `mf article new` creates a directory of numbered
+blocks (`01-opening.md`, ...). Preserve an existing article's shape for prose
+edits. Use `mf article convert --to-single-file|--to-directory` when you
+intend to change its shape.
 
 With `plugins.typora-front-matter.enabled` enabled (the default), conversion
 sets `typora-copy-images-to` in the destination source file relative to the

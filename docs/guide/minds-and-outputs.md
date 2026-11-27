@@ -25,13 +25,15 @@ more editable Outputs. Each Output can use one file or ordered Markdown blocks.
 3. Create the selected deliverables:
 
    ```sh
-   mf output new brief design -p research
    mf output new brief summary --file -p research
+   mf output new brief design -p research
    mf output list projects/research::brief
    ```
 
-   The default Output shape is a directory of blocks. `--file` selects one Markdown file.
-   Creation rejects existing names and case or file/directory collisions.
+   Use `--file` for a short, cohesive output such as a summary. Use the default
+   block directory when sections need to be maintained or reordered independently.
+   Keep the existing shape when revising an output. Creation rejects existing names
+   and case or file/directory collisions.
 
 4. Build the selected Output:
 
