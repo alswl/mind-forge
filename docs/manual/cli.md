@@ -1701,11 +1701,15 @@ Examples (use a disposable directory for setup):
 
 
 
-**Usage:** `mf output show <IDENTITY>`
+**Usage:** `mf output show [OPTIONS] <IDENTITY>`
 
 ###### **Arguments:**
 
 * `<IDENTITY>`
+
+###### **Options:**
+
+* `--handoff` — Read the selected output's private handoff record
 
 ```text
 Examples (use a disposable directory for setup):
@@ -1717,6 +1721,14 @@ Examples (use a disposable directory for setup):
   Command:
     mf output show projects/lab::brief::summary --root .
   Effect: Inspect the selected output and build path.
+  Prerequisites:
+    mf init .
+    mf project new projects/lab --layout category --root .
+    mf mind new brief -p lab --root .
+    mf output new brief summary --file -p lab --root .
+  Command:
+    mf output show projects/lab::brief::summary --handoff --json --root .
+  Effect: Locate the editable source and check its handoff record status.
 ```
 
 

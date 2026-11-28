@@ -2,12 +2,12 @@
 name: mf-plan
 metadata:
   version: 0.3.0
-description: Research, plan, or replan a legacy article or a mind and its selected output as an outline-first workflow from an idea, prompt, evidence, draft, or human feedback. Use when defining goals or constraints, collecting and comparing evidence, creating or changing structure, presenting private suggestions for user selection, routing Word-style feedback threads, inspecting progress, or deciding what to investigate next; leave detailed prose development to mf-write.
+description: Research, plan, or replan a legacy article or a mind and its selected output from an idea, prompt, evidence, draft, or human feedback. Use when defining goals or constraints, collecting and comparing evidence, creating or changing structure, presenting private suggestions for user selection, routing Word-style feedback threads, inspecting progress, or deciding what to investigate next; use mf-write for trial and detailed prose.
 ---
 
 # Research and plan a mind-forge article
 
-Own problem framing, evidence gathering, comparison, judgment, and the article outline. Leave a reviewable structure and enough context for the next writing step. `$mf-write` expands the part the author is ready to draft.
+Own problem framing, evidence gathering, comparison, judgment, and the article outline. Let the author's intent, evidence and current draft determine whether to clarify, plan, try a draft with `$mf-write`, or return from writing to planning. A trial draft can help explore an idea before its overall structure is settled.
 
 ## Data report handoff
 
@@ -25,7 +25,7 @@ Before creating a Mind/Output deliverable, reuse the resolved Mind or create it 
 
 | Operation | Legacy: no `content_layout` | Mind/Output: `category` or `bundle` |
 |---|---|---|
-| Locate and read | `mf article list -p <project> --json`, then `mf article show <article-selector> -p <project> --json` | `mf mind list/show --json`, then `mf output list/show --json`, scoped to the project/mind |
+| Locate and read | `mf article list -p <project> --json`, then `mf article show <article-selector> -p <project> --json` | `mf mind list/show --json`, then `mf output list/show --json`; read the selected output's handoff with `mf output show <output-identity> --handoff --json` |
 | New short, cohesive deliverable | `mf article new <title> --file -p <project> --json` | `mf output new <mind> <name> --file -p <project> --json` |
 | New deliverable with independently maintained sections | `mf article new <title> -p <project> --json` | `mf output new <mind> <name> -p <project> --json` |
 | Reconcile after edits | `mf article index -p <project> --json`, then `mf article lint -p <project> --json` (Article index has no `--check`) | `mf mind index -p <project> --json`, then `mf mind index --check -p <project> --json` |
@@ -41,6 +41,12 @@ For a newly created legacy article, read `data.details.path`, refresh `article l
 Prompt holds durable intent; Thinking holds comparisons, conflicts and open questions; Source holds evidence and provenance. Register new sources with the real CLI and inspect the returned location before citing it. An already-owned source should be referenced rather than copied to another mind. Retrieval results from prompts and thinking provide context, not factual evidence. Locate existing evidence with `mf source list`/`show` and file search; read the source before relying on it.
 
 In the rest of this skill, “selected output” also means the resolved legacy article source. Prompt/Thinking references remain conditional on existing bindings; they never require backfilling files.
+
+## Resume and save the selected Output
+
+For category or bundle, resolve the exact Output, then run `mf output show <output-identity> --handoff --json` before editing. Use the returned identity, `editable_path` and `handoff.locations` to read the authored source. Reconcile the returned decision, rework and evidence, open items and next step with the latest author instruction and original evidence. In a fresh session, report the recovered state and next action before revising. With `missing` or an older CLI that lacks the flag, read the existing private notes and bound roles and report any gap. For `invalid` or `ambiguous`, show the diagnostics and locations and resolve the record only when its authority and the authorized edit are clear.
+
+During an authorized creative turn, update one `Handoff` callout in the selected editable Markdown file or one existing author block when a material decision changes, work passes between skills, or a writing checkpoint is saved. Follow the exact four-field format in `$mf-cli`. Summarize the current decision and why a prior approach changed, citing an existing source or identifiable author statement. Preserve open items and the next action, using empty fields for absent information. On later passes carry forward still-relevant reasons, references and open items. Read back with the same CLI before ending the turn. Keep feedback and suggestion states in their own threads and durable intent in any bound Prompt. When no Output exists yet, keep preliminary work in conversation or existing work records. Leave Legacy Article handoff on its existing path.
 
 ## Read and reconcile in order
 

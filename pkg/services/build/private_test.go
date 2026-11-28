@@ -29,6 +29,7 @@ func TestPrivateCalloutLiteralAndSpacing(t *testing.T) {
 	for _, input := range []string{
 		"Before.\n```\n> [!mf-private]\n> literal\n```\nAfter.\n",
 		"~~~\n> [!mf-private]\n> literal\n~~~\n",
+		"~~~markdown\n> [!mf-private] Handoff\n> Decision: literal\n~~~\n",
 		"Before.\n\n> [!note]\n> Public.\n",
 		"    > [!mf-private]\n    > Indented code.\n",
 		"One.\n\n\nTwo.\n\n\n",
@@ -43,6 +44,7 @@ func TestPrivateCalloutLiteralAndSpacing(t *testing.T) {
 		{"## Section\n\n> [!mf-private]\n> Secret.\n\nText.\n", "## Section\n\nText.\n"},
 		{"> [!mf-private]\n> Secret.\n\nPublic.\n", "Public.\n"},
 		{"Before.\n\n> [!mf-private]\n> Secret.\n\n```\n> code\n```\n", "Before.\n\n```\n> code\n```\n"},
+		{"~~~markdown\nLiteral.\n~~~\n\n> [!mf-private] Handoff\n> Decision: Secret.\n\nPublic.\n", "~~~markdown\nLiteral.\n~~~\n\nPublic.\n"},
 	} {
 		got, _ := StripPrivateCallouts(c.input)
 		if got != c.want {

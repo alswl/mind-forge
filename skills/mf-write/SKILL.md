@@ -7,7 +7,7 @@ description: Develop a legacy article or a selected output of a mind into detail
 
 # Write and ship a mind-forge article
 
-Own the outline-to-article pass, expression, editorial quality, assembly, and delivery. Start from the framework and private choices prepared by `$mf-plan`, then develop only the scope the author selected. Work from the same prompt, evidence, reasoning, and feedback state; writing is not a disconnected downstream stage.
+Own drafting, revision, expression, assembly, and delivery. Use an existing framework when available. When the author authorizes trial prose and the intent and evidence support it, start with a small draft even if the overall outline is still open. Use the same prompt, evidence, reasoning, and feedback across writing and planning.
 
 ## Deliver data reports
 
@@ -25,7 +25,7 @@ Before creating a Mind/Output deliverable, reuse the resolved Mind or create it 
 
 | Operation | Legacy: no `content_layout` | Mind/Output: `category` or `bundle` |
 |---|---|---|
-| Locate and read | `mf article list -p <project> --json`, then `mf article show <article-selector> -p <project> --json` | `mf mind list/show --json`, then `mf output list/show --json`, scoped to the project/mind |
+| Locate and read | `mf article list -p <project> --json`, then `mf article show <article-selector> -p <project> --json` | `mf mind list/show --json`, then `mf output list/show --json`; read the selected output's handoff with `mf output show <output-identity> --handoff --json` |
 | New short, cohesive deliverable | `mf article new <title> --file -p <project> --json` | `mf output new <mind> <name> --file -p <project> --json` |
 | New deliverable with independently maintained sections | `mf article new <title> -p <project> --json` | `mf output new <mind> <name> -p <project> --json` |
 | Reconcile after edits | `mf article index -p <project> --json`, then `mf article lint -p <project> --json` (Article index has no `--check`) | `mf mind index -p <project> --json`, then `mf mind index --check -p <project> --json` |
@@ -42,10 +42,16 @@ Read the selected output, relevant sources and terms, existing prompt/thinking, 
 
 In the rest of this skill, “selected output” also means the resolved legacy article source. Prompt/Thinking references remain conditional on existing bindings; they never require backfilling files.
 
+## Resume and save the selected Output
+
+For category or bundle, resolve the exact Output and run `mf output show <output-identity> --handoff --json` before editing. Use the returned `editable_path` and `handoff.locations` to review the authored Markdown alongside the decision, rework and evidence, open items and next step. In a fresh session, report what you recovered and the next action before revising. With `missing` or an older CLI that lacks the flag, read the existing private notes and bound roles and report any gap. For `invalid` or `ambiguous`, report the diagnostics and locations and resolve the record only when its authority and the authorized edit are clear.
+
+During an authorized creative turn, update the one `Handoff` callout in the selected editable Markdown file or its existing author block when saving a writing checkpoint, changing a material decision or returning to `$mf-plan`. Use the four fields in `$mf-cli`. Keep the current decision, still-relevant reasons for rework and their evidence references, open items and next step. Re-query the same identity to verify the saved record. Existing author intent, Sources, Thinking, Suggestions and Feedback retain their own roles. Leave Legacy Article handoff on its existing path.
+
 ## Draft or revise
 
 - Select only the requested files and scope; otherwise continue empty, stub, or explicitly targeted sections.
-- When resuming in a fresh session, recover the selected section, author decisions, and deferred work from the output's private plan or an entry in existing Thinking keyed to its exact CLI identity. Reconcile that context with the latest instruction. Carry forward only explicit author authorization that applies to this output and scope.
+- Reconcile recovered work with the latest instruction. Carry forward only explicit author authorization that applies to this output and scope. For a Legacy Article, recover from its private plan or existing Thinking keyed to the exact CLI identity.
 - Start with a useful, reviewable draft of the authorized section when the saved plan gives it enough direction. Place author-supplied prose verbatim in the agreed context and preserve the surrounding heading hierarchy. Leave deferred sections as they are. Use feedback and verified new material to revise the draft in later passes, and report the next unresolved choice only if it affects the work the author wants to do next.
 - Treat the existing heading hierarchy as the writing contract. Expand it section by section; if the overall structure must change, record the reason and hand the structural decision back to `$mf-plan`.
 - Read private regions titled `Suggestions` and `Feedback` as workflow input. In `Suggestions`, ensure `[x]` items are reflected in the prose and leave `[ ]` items dormant unless the user explicitly overrides the selection. A checked suggestion remains selected after drafting; on later runs, verify or refine its existing realization instead of inserting it again. Generic `mf-private` notes outside these titled regions remain context, not automatic instructions.

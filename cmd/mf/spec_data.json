@@ -3636,7 +3636,21 @@
       "required_subcommand": false,
       "repo_required": true,
       "access": "read",
-      "flags": [],
+      "flags": [
+        {
+          "name": "handoff",
+          "short": "",
+          "kind": "bool",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "",
+          "help": "Read the selected output's private handoff record",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        }
+      ],
       "arguments": [
         {
           "name": "IDENTITY",
@@ -3645,8 +3659,8 @@
           "kind": "string"
         }
       ],
-      "help": "Usage: mf output show [OPTIONS] <IDENTITY>\n\nArguments:\n  <IDENTITY>  \n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
-      "help_default": "Usage: mf output show [OPTIONS] <IDENTITY>\n\nArguments:\n  <IDENTITY>  \n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values: text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help": "Usage: mf output show [OPTIONS] <IDENTITY>\n\nArguments:\n  <IDENTITY>  \n\nOptions:\n      --handoff                 Read the selected output's private handoff record\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Usage: mf output show [OPTIONS] <IDENTITY>\n\nArguments:\n  <IDENTITY>  \n\nOptions:\n      --handoff                 Read the selected output's private handoff record\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values: text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
       "examples": [
         {
           "prerequisites": [
@@ -3657,6 +3671,16 @@
           ],
           "command": "mf output show projects/lab::brief::summary --root .",
           "effect": "Inspect the selected output and build path."
+        },
+        {
+          "prerequisites": [
+            "mf init .",
+            "mf project new projects/lab --layout category --root .",
+            "mf mind new brief -p lab --root .",
+            "mf output new brief summary --file -p lab --root ."
+          ],
+          "command": "mf output show projects/lab::brief::summary --handoff --json --root .",
+          "effect": "Locate the editable source and check its handoff record status."
         }
       ]
     },
