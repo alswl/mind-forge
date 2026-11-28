@@ -35,7 +35,7 @@ Use a separate ignored workspace, such as `.agents/skills-evals/<run-id>`. Befor
 freeze complete baseline skill trees, the current CLI binary, historical inputs,
 source/parent hashes and protected files. Copy the selected freshly built CLI
 into `<workspace>/bin/mf` and record its SHA-256 as `frozen["bin/mf"]` in
-`run-manifest.json` before preparing fixtures. `prepare.py --workspace <path>`
+`run-manifest.json` before preparing fixtures. The prepare command below
 builds synthetic fixtures with that exact binary and refuses a missing or
 mismatched digest. To include R1–R3, supply `--report-store PATH` pointing
 to a preloaded pnpm store. Preparation uses Node 24, pinned pnpm and the
@@ -56,13 +56,22 @@ The isolated content root includes only synthetic data, local skill copies and
 `.mind-forge/tools/mf`; placing the binary in a discovered root such as `bin/`
 can change ownership discovery. Keep the binary in the hidden runtime directory.
 
-The following commands require an existing workspace with `run-manifest.json`,
-frozen snapshots, the matching binary, `suite.json`, and prepared fixtures.
-Replace `<run-id>` with that workspace name.
+Create the workspace with `run-manifest.json`, frozen snapshots, and the
+matching binary before running prepare. Replace `<run-id>` with that workspace
+name and run from the repository root.
 
 ```sh
-python3 skills/evals/run.py --workspace .agents/skills-evals/<run-id>
-python3 skills/evals/check.py --workspace .agents/skills-evals/<run-id>
+export UV_CACHE_DIR="$PWD/bin/uv-cache"
+eval_workspace=".agents/skills-evals/<run-id>"
+uv run --no-project python -B skills/evals/prepare.py --workspace "$eval_workspace"
+```
+
+Record the prepared suite and fixture hashes in `run-manifest.json.frozen`
+before launching runs. Continue in the same shell.
+
+```sh
+uv run --no-project python -B skills/evals/run.py --workspace "$eval_workspace"
+uv run --no-project python -B skills/evals/check.py --workspace "$eval_workspace"
 ```
 
 Optional `--case P1 --arm baseline --repeat 1` selects a single independent run.

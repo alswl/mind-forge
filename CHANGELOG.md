@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-11-28
+
+### Features
+- Add the report catalog and local API plus standalone `mf-report`. Both
+  binaries embed the engine and export chart and table views as offline HTML.
+  Report exports use a caller-provided Node 24 and the project's locked
+  dependencies. Release archives and the installer ship both binaries.
+- Support lifecycle states and read-only final lint for legacy articles (#20, #25).
+- Check explicitly for newer releases with `mf version --check` (#21).
+- Let projects suppress configured held-back terminology findings (#23).
+
+### Fixes
+- Keep adjacent private callouts and quoted fences private during builds, with
+  source locations in diagnostics (#22).
+
+### Documentation
+- Prefer single files for short writing deliverables and guide progressive
+  planning, drafting, and revision (#24, #26).
+
 ## [0.6.3] - 2026-11-23
 
 ### Bug Fixes
