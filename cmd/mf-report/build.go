@@ -6,11 +6,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func init() {
+	registerCommand("build", "", newBuildCommand)
+}
+
 func newBuildCommand() *cobra.Command {
 	var request core.Request
 	var dryRun bool
 	command := &cobra.Command{
 		Use: "build", Short: "Export a report from the working directory", Args: cobra.NoArgs,
+		Example: "  mf-report --workdir ./weekly build --view table\n  mf-report build --entry report.tsx --data data.json --dry-run",
 		RunE: func(command *cobra.Command, _ []string) error {
 			service, err := serviceFor(command)
 			if err != nil {

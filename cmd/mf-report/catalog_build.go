@@ -2,6 +2,10 @@ package main
 
 import "github.com/spf13/cobra"
 
+func init() {
+	registerCommand("catalog build", "catalog", newCatalogBuildCommand)
+}
+
 func newCatalogBuildCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use: "build", Short: "Export the offline component catalog", Args: cobra.NoArgs,

@@ -37,41 +37,87 @@ validate_report_companion() {
     [ "$report_version" = "mf-report version $2" ]
 }
 
-install_pair() {
+finish_install() {
+    install_status=$1
+    trap - EXIT
+    trap '' HUP INT TERM
+    restore_failed=false
+    if [ "$commit_in_progress" = true ]; then
+        for name in $install_names; do
+            # A same-filesystem rename consumes the staged file only if it
+            # reached the destination, including when interrupted.
+            [ ! -e "$install_lock/next/$name" ] || continue
+            saved="$install_lock/previous/$name"
+            if [ -e "$saved" ] || [ -L "$saved" ]; then
+                mv -f "$saved" "$install_dir/$name" || restore_failed=true
+            else
+                rm -f "$install_dir/$name" || restore_failed=true
+            fi
+        done
+    fi
+    if [ "$restore_failed" = true ]; then
+        die "Could not restore the previous installation. Recovery files remain in $install_lock"
+    fi
+    rm -rf "$install_lock" || die "Cannot clean up $install_lock"
+    exit "$install_status"
+}
+
+install_pair() (
     primary=$1
     companion=$2
     version=$3
-    primary_version=$(validate_candidate "$primary" "$version") ||
-        die 'Mind Forge candidate validation failed'
-    primary_version=$(printf '%s\n' "$primary_version" | awk 'NR == 1 {print $2}')
-    [ -z "$companion" ] || validate_report_companion "$companion" "$primary_version" ||
-        die 'mf-report does not match the mf candidate'
-    [ -z "$companion" ] || [ ! -d "$install_dir/mf-report" ] ||
-        die "Install destination is a directory: $install_dir/mf-report"
 
-    # Shared installer validates and replaces the legacy command as before.
-    # Stage the verified companion on the same filesystem before touching mf.
+    mkdir -p "$install_dir" || die "Cannot create install directory: $install_dir"
+    install_lock="$install_dir/.mf-install.lock"
+    waits=0
+    until mkdir "$install_lock" 2>/dev/null; do
+        [ -d "$install_dir" ] && [ -w "$install_dir" ] || die "Cannot lock $install_dir"
+        [ "$waits" -lt 30 ] || die "Timed out waiting for $install_lock"
+        waits=$((waits + 1))
+        sleep 1
+    done
+    commit_in_progress=false
+    trap 'finish_install "$?"' EXIT
+    trap 'exit 1' HUP INT TERM
+
+    mkdir "$install_lock/next" "$install_lock/previous" || die 'Cannot create installation staging directories'
+    install_names=mf
+    install -m 0755 "$primary" "$install_lock/next/mf" || die 'Cannot stage mf'
+    primary_report=$(validate_candidate "$install_lock/next/mf" "$version") ||
+        die 'Mind Forge candidate validation failed'
     if [ -n "$companion" ]; then
-        mkdir -p "$install_dir"
-        companion_stage=$(mktemp "$install_dir/.mf-report-install.XXXXXX")
-        if ! install -m 0755 "$companion" "$companion_stage"; then
-            rm -f "$companion_stage"
-            die 'Cannot stage mf-report'
-        fi
-        if ( install_verified "$primary" "$version" ); then
-            if ! mv -f "$companion_stage" "$install_dir/mf-report"; then
-                rm -f "$companion_stage"
-                die 'Cannot replace mf-report'
-            fi
-        else
-            rm -f "$companion_stage"
-            die 'Could not install the verified mf candidate'
-        fi
-        log "Installed mf-report -> $install_dir/mf-report"
-    else
-        install_verified "$primary" "$version"
+        install_names='mf mf-report'
+        install -m 0755 "$companion" "$install_lock/next/mf-report" || die 'Cannot stage mf-report'
+        primary_version=$(printf '%s\n' "$primary_report" | awk 'NR == 1 {print $2}')
+        validate_report_companion "$install_lock/next/mf-report" "$primary_version" ||
+            die 'mf-report does not match the mf candidate'
     fi
-}
+
+    for name in $install_names; do
+        target_path="$install_dir/$name"
+        [ ! -d "$target_path" ] || die "Install destination is a directory: $target_path"
+        if [ -e "$target_path" ] || [ -L "$target_path" ]; then
+            cp -pP "$target_path" "$install_lock/previous/$name" ||
+                die "Cannot preserve $target_path"
+        fi
+    done
+
+    commit_in_progress=true
+    for name in $install_names; do
+        mv -f "$install_lock/next/$name" "$install_dir/$name" || die "Cannot replace $name"
+    done
+    commit_in_progress=false
+
+    log "Installed mf -> $install_dir/mf"
+    printf '%s\n' "$primary_report"
+    case ":$PATH:" in
+        *":$install_dir:"*) ;;
+        *) log "$install_dir is not on PATH; add it with: export PATH=\"$install_dir:\$PATH\"" ;;
+    esac
+    if [ -n "$companion" ]; then
+        log "Installed mf-report -> $install_dir/mf-report"
+    fi
+)
 
 install_release_pair() {
     primary_candidate=$1

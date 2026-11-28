@@ -5,6 +5,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func init() {
+	registerCommand("serve", "", newServeCommand)
+}
+
 func newServeCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use: "serve", Short: "Serve a report from the working directory", Args: cobra.NoArgs,

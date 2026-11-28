@@ -2,8 +2,10 @@ package main
 
 import "github.com/spf13/cobra"
 
+func init() {
+	registerCommand("catalog", "", newCatalogCommand)
+}
+
 func newCatalogCommand() *cobra.Command {
-	command := &cobra.Command{Use: "catalog", Short: "Export the component catalog"}
-	command.AddCommand(newCatalogBuildCommand())
-	return command
+	return &cobra.Command{Use: "catalog", Short: "Export the component catalog"}
 }

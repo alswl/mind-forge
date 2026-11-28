@@ -5,6 +5,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func init() {
+	registerCommand("list", "", newListCommand)
+}
+
 func newListCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use: "list renderers|components", Short: "List registered renderers or components",

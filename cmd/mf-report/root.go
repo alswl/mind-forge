@@ -33,7 +33,7 @@ func NewCommand() *cobra.Command {
 		}
 		return nil
 	}
-	root.AddCommand(newBuildCommand(), newCatalogCommand(), newListCommand(), newServeCommand(), newOpenAPICommand())
+	addRegisteredCommands(root)
 	return root
 }
 
@@ -68,7 +68,14 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			failure = output.Usage(err.Error(), "")
 		}
 	}
-	if err := output.RenderNamedError(stderr, format(command), "mf-report", failure); err != nil {
+	if command == nil {
+		command = root
+	}
+	diagnosticFormat := format(command)
+	if output.WantsJSON(args) {
+		diagnosticFormat = "json"
+	}
+	if err := output.RenderNamedError(stderr, diagnosticFormat, "mf-report", failure); err != nil {
 		return 1
 	}
 	return failure.ExitCode()

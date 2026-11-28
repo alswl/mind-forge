@@ -46,10 +46,13 @@ jobs:
           go version -m bin/mf > bin/build-info.txt
           go version -m bin/mf-report > bin/report-build-info.txt
           bin/mf-report --version > bin/report-version.txt
-          awk -F '\t' -v revision="$revision" '$2 == "build" && $3 == ("vcs.revision=" revision) {found=1} END {exit !found}' bin/build-info.txt
+          for build_info in bin/build-info.txt bin/report-build-info.txt; do
+            awk -F '\t' -v revision="$revision" '$2 == "build" && $3 == ("vcs.revision=" revision) {found=1} END {exit !found}' "$build_info"
+          done
           printf 'revision=%s\ndirty=false\ngo_version=%s\n' "$revision" "$(go env GOVERSION)" > bin/source.txt
           (cd bin && sha256sum mf mf-report > checksums.txt)
-          printf 'sha256=%s\n' "$(awk '{print $1}' bin/checksums.txt)" >> "$GITHUB_OUTPUT"
+          mf_sha=$(awk '$2 == "mf" {print $1; found++} END {exit found != 1}' bin/checksums.txt)
+          printf 'sha256=%s\n' "$mf_sha" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v6
         with:
           name: mf-go-${{ github.sha }}-linux-amd64

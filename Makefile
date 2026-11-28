@@ -72,6 +72,7 @@ check-linter:
 	  [[ "$$actual" == "$$expected" ]] || { printf 'Expected golangci-lint %s; found %s.\n' "$$expected" "$$actual" >&2; exit 1; }
 
 check: check-toolchain check-installer check-report-assets ## Run the complete local quality gate.
+	sh hack/install-project-test.sh
 	$(MAKE) --no-print-directory lint
 	$(MAKE) --no-print-directory vet
 	go mod verify

@@ -56,11 +56,10 @@ relative paths resolve from the caller's working directory. `MF_INSTALL_DIR`
 overrides `XDG_BIN_HOME`, then `~/.local/bin`.
 
 Downloaded installs keep the four existing archive names and the matching
-`checksums.txt` entry. They verify the checksum, require a regular executable,
-and check that it runs and reports the requested base version before replacing
-an existing `mf`. Installation stages a 0755 file in the destination directory and
-renames it into place. Failed checksum, executable or version validation preserves
-the previously installed program; staging files are cleaned up.
+`checksums.txt` entry. The installer verifies the checksum and validates the
+staged executables and versions before replacing either command. Updates to the
+same destination are serialized. If either replacement fails, the installer
+restores the previous installation. Older single-binary archives update only `mf`.
 
 Latest-version fallback uses GitHub's [latest release endpoint](https://docs.github.com/en/rest/releases/releases#get-the-latest-release),
 which selects a published stable release. Explicit `MF_VERSION` accepts a version
