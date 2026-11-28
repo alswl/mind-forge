@@ -33,7 +33,7 @@ func NewStage(root *os.Root) (*Stage, error) {
 		return nil, err
 	}
 	name := ".mf-report-" + rand.Text() + ".tmp"
-	file, err := dir.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	file, err := dir.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		dir.Close()
 		return nil, err
@@ -49,8 +49,8 @@ func (stage *Stage) Close() {
 	_ = stage.dir.Close()
 }
 
-// Publish verifies the directory and file identities before the atomic rename.
-func (stage *Stage) Publish(ctx context.Context, target string) error {
+// validate verifies the directory and file identities before the atomic rename.
+func (stage *Stage) validate() error {
 	for _, path := range []string{stage.dir.Name(), filepath.Dir(stage.dir.Name())} {
 		info, err := os.Lstat(path)
 		if err != nil || !info.IsDir() {
@@ -75,6 +75,27 @@ func (stage *Stage) Publish(ctx context.Context, target string) error {
 	}
 	if !info.Mode().IsRegular() || info.Size() == 0 || !os.SameFile(info, originalFile) {
 		return fmt.Errorf("%w: worker must write nonempty output to the original staging file", ErrInvalidStage)
+	}
+	return nil
+}
+func (stage *Stage) Bytes() ([]byte, error) {
+	if err := stage.validate(); err != nil {
+		return nil, err
+	}
+	info, err := stage.original.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > maxInput {
+		return nil, fmt.Errorf("SVG exceeds %d bytes", maxInput)
+	}
+	raw := make([]byte, info.Size())
+	_, err = stage.original.ReadAt(raw, 0)
+	return raw, err
+}
+func (stage *Stage) Publish(ctx context.Context, target string) error {
+	if err := stage.validate(); err != nil {
+		return err
 	}
 	if err := Check(stage.dir, target, true); err != nil {
 		return err

@@ -77,9 +77,21 @@ export async function render(job: Job, embedded: string) {
       if (!Component) throw new Error(`renderer ${job.renderer.id} did not declare component ${id}`);
       return Component;
     } };
-    const Report = syncComponent(code.Report, "report entry");
     const Renderer = syncComponent(code.Renderer, job.renderer.id);
     const context = { Renderer, data, view: job.view, theme: job.theme, components };
+    if (job.fragment) {
+      if (css) throw new Error("SVG fragments require presentation attributes; the compiled components import CSS");
+      const { width, height } = job.fragment;
+      const panels = job.fragment.components.map((p, i) => {
+        try {
+          const Panel = syncComponent(code.panels[i], p.entry);
+          return server.renderToStaticMarkup(el("svg", { x: p.x, y: p.y, width: p.width, height: p.height,
+            viewBox: `0 0 ${p.width} ${p.height}` }, el(Panel, { ...context, width: p.width, height: p.height })));
+        } catch (error) { throw new Error(`${p.entry}: ${error}`); }
+      });
+      return server.renderToStaticMarkup(el("svg", { xmlns: "http://www.w3.org/2000/svg", width, height, dangerouslySetInnerHTML: { __html: panels.join("") } }));
+    }
+    const Report = syncComponent(code.Report, "report entry");
     const title = typeof data?.title === "string" ? data.title : "Report";
     return page(title, server.renderToStaticMarkup(el(Report, context)), css, job.theme, job.view === "chart");
   } finally {

@@ -13,4 +13,4 @@ func newReportOpenAPICommand(item CommandSpec, handler Handler) (*cobra.Command,
 	return configureCommand(&cobra.Command{Use: "openapi"}, item, handler)
 }
 
-func runReportOpenAPI(e commandExecution) error { return reportcli.OpenAPI(e.Stdout) }
+func runReportOpenAPI(e commandExecution) error { return reportcli.OpenAPI(e.Stdout, true) }

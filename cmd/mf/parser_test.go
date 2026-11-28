@@ -10,7 +10,7 @@ func TestCommandSpecFrozenTreeAndAliases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(spec.Commands) != 129 {
+	if len(spec.Commands) != 131 {
 		t.Fatalf("command inventory changed: %d", len(spec.Commands))
 	}
 	for _, item := range []struct{ input, want []string }{

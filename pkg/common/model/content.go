@@ -113,13 +113,14 @@ func (source Source) MarshalYAML() (any, error) {
 }
 
 type Asset struct {
-	Name    string            `json:"name" yaml:"name"`
-	Kind    string            `json:"type" yaml:"type"`
-	Path    string            `json:"path" yaml:"path"`
-	Size    uint64            `json:"size" yaml:"size"`
-	Hash    string            `json:"hash" yaml:"hash"`
-	Tags    JSONArray[string] `json:"tags" yaml:"tags"`
-	AddedAt string            `json:"added_at" yaml:"added_at"`
+	GeneratedBy string            `json:"generated_by,omitempty" yaml:"generated_by,omitempty"`
+	Name        string            `json:"name" yaml:"name"`
+	Kind        string            `json:"type" yaml:"type"`
+	Path        string            `json:"path" yaml:"path"`
+	Size        uint64            `json:"size" yaml:"size"`
+	Hash        string            `json:"hash" yaml:"hash"`
+	Tags        JSONArray[string] `json:"tags" yaml:"tags"`
+	AddedAt     string            `json:"added_at" yaml:"added_at"`
 }
 
 func (asset *Asset) UnmarshalYAML(node *yaml.Node) error {

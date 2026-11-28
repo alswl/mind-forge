@@ -51,8 +51,7 @@ jobs:
           done
           bin/mf report openapi > bin/openapi.yaml
           bin/mf-report openapi > bin/report-openapi.yaml
-          test -s bin/openapi.yaml
-          cmp bin/openapi.yaml bin/report-openapi.yaml
+          ruby hack/check-report-openapi.rb bin/openapi.yaml bin/report-openapi.yaml
           printf 'revision=%s\ndirty=false\ngo_version=%s\n' "$revision" "$(go env GOVERSION)" > bin/source.txt
           (cd bin && sha256sum mf mf-report > checksums.txt)
           mf_sha=$(awk '$2 == "mf" {print $1; found++} END {exit found != 1}' bin/checksums.txt)
@@ -66,6 +65,7 @@ jobs:
             bin/report-build-info.txt
             bin/report-version.txt
             bin/openapi.yaml
+            bin/report-openapi.yaml
             bin/version.json
             bin/build-info.txt
             bin/source.txt

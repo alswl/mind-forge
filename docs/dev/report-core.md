@@ -239,3 +239,90 @@ origin. Missing or invalid bearer credentials return 401. Host or Origin
 mismatch returns 403. Unknown reports or IDs return 404. Validation
 failures return 422 and worker failures return 503, with Problem Details.
 Stopping the server cancels in-flight builds.
+
+## Named project SVG fragments
+
+Run `mf report fragment build REPORT FRAGMENT` or send an authenticated
+`POST /v1/reports/{slug}/fragments/{fragment}/exports` with an empty body to
+the project server. The CLI JSON envelope's `data` and the HTTP response carry
+the same result. Use its project-relative `artifact` path to form a Markdown
+image link relative to your document. The path is
+`<layout.assets>/reports/REPORT/FRAGMENT.svg`.
+
+In the named report directory, create `fragments/FRAGMENT.yaml`. Set integer
+canvas `width` and `height`, then list `components` in painting order.
+Each placement specifies a report-relative TSX `entry` and integer `x`, `y`,
+`width`, and `height` inside the canvas. Each entry default-exports a
+synchronous React component receiving the report's validated `data`, renderer,
+component registry, theme, and placement dimensions. Use fixed-size SVG marks,
+presentation attributes, and visible labels. Local paint, clip, and use
+references resolve within the placement. The publisher scopes IDs independently
+for each placement. Scripts, HTML wrappers, stylesheets, inline styles, images,
+and external references are outside this SVG subset.
+
+From the product checkout, run the two-component synthetic example with
+Node 24 and pnpm 10.28.2. Choose a fresh scratch directory.
+
+```sh
+qa=$(mktemp -d)
+cp -R pkg/services/report/testdata/workspace "$qa/repo"
+dir="$qa/repo/projects/lab/templates/reports/synthetic"
+cp -R examples/report-fragment "$dir"
+(cd "$dir" && corepack pnpm install --frozen-lockfile)
+bin/mf --root "$qa/repo" -p lab report fragment build synthetic overview --json
+```
+
+For an API build, run `bin/mf --root "$qa/repo" -p lab report serve` in a separate terminal. Use the printed bearer token with the project URL.
+
+```sh
+curl -fsS -X POST "$url/v1/reports/synthetic/fragments/overview/exports" \
+  -H "Authorization: Bearer $token"
+```
+
+The SVG shows “Completed: 7” using a Recharts Rectangle and “Capacity: 10”
+using a D3 linear scale. Change `completed` in `data.json` and repeat either
+build. A failed build preserves the preceding image and index. An existing
+unowned file or registration at the destination produces a conflict.
+
+### Preview the fragment in a Markdown output
+
+Continue in the product checkout with the same `qa` and `dir` from the example
+above. The bundled project uses a single Markdown file for this output.
+Create it with the normal authoring commands and copy in the example body.
+
+```sh
+mf="$PWD/bin/mf"
+lab="$qa/repo/projects/lab"
+"$mf" --root "$qa/repo" -p lab mind new delivery
+"$mf" --root "$qa/repo" -p lab output new delivery summary --file
+cp "$dir/summary.md" "$lab/delivery/outputs/summary.md"
+(cd "$qa/repo" && "$mf" build projects/lab::delivery::summary)
+(cd "$qa/repo" && "$mf" build projects/lab::delivery::summary --format html)
+```
+
+The image reference in `delivery/outputs/summary.md` is relative to the
+Markdown file. Both built documents in `build/delivery/` resolve that same
+reference to the project's registered SVG.
+
+```markdown
+![Completed requests and available capacity](../../assets/reports/synthetic/overview.svg)
+```
+
+Serve the project directory in a second terminal (substitute the value of
+`lab` there), then open `http://127.0.0.1:8000/build/delivery/summary.html`.
+
+```sh
+python3 -m http.server 8000 --bind 127.0.0.1 --directory "$lab"
+```
+
+The 400 × 90 image initially reads “Completed: 7” and “Capacity: 10”.
+Back in the authoring terminal, change the count and rebuild the fragment.
+
+```sh
+(cd "$dir" && node -e 'const fs = require("node:fs"); const data = JSON.parse(fs.readFileSync("data.json")); data.completed = 8; fs.writeFileSync("data.json", JSON.stringify(data) + "\n");')
+"$mf" --root "$qa/repo" -p lab report fragment build synthetic overview --json
+```
+
+Reload the same page. “Completed: 8” appears over a longer teal bar and the
+blue dot moves right. Capacity stays at 10. The Markdown source and both built
+documents keep their original bytes throughout this second build.

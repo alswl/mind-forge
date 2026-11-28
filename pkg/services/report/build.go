@@ -60,10 +60,10 @@ func (service Service) Plan(ctx context.Context, scope Scope, request Request) (
 		return BuildPlan{}, err
 	}
 	defer root.Close()
-	return service.plan(ctx, root, request)
+	return service.plan(ctx, root, request, "")
 }
 
-func (service Service) plan(ctx context.Context, root *os.Root, request Request) (BuildPlan, error) {
+func (service Service) plan(ctx context.Context, root *os.Root, request Request, fragmentArtifact string) (BuildPlan, error) {
 	if err := ctx.Err(); err != nil {
 		return BuildPlan{}, err
 	}
@@ -97,7 +97,7 @@ func (service Service) plan(ctx context.Context, root *os.Root, request Request)
 	if err != nil {
 		return BuildPlan{}, err
 	}
-	if !slices.Contains(item.Views, view) {
+	if fragmentArtifact == "" && !slices.Contains(item.Views, view) {
 		return BuildPlan{}, fmt.Errorf("%w: renderer %q does not support view %q", ErrInvalid, item.ID, view)
 	}
 	components := make([]Item, 0, len(item.Components))
@@ -108,9 +108,14 @@ func (service Service) plan(ctx context.Context, root *os.Root, request Request)
 		}
 		components = append(components, service.resolveEntry(component))
 	}
-	artifact := filepath.Join("outputs", "report."+view+".html")
-	if err := checkArtifact(root, artifact); err != nil {
-		return BuildPlan{}, fmt.Errorf("%w: %s: %w", ErrInvalid, artifact, err)
+	artifact := fragmentArtifact
+	if artifact == "" {
+		artifact = filepath.Join("outputs", "report."+view+".html")
+		if err := checkArtifact(root, artifact); err != nil {
+			return BuildPlan{}, fmt.Errorf("%w: %s: %w", ErrInvalid, artifact, err)
+		}
+	} else {
+		view = "fragment"
 	}
 	return BuildPlan{
 		Result:    Result{Protocol: Protocol, Renderer: item.ID, RendererVersion: item.Version, View: view, Artifact: artifact},
@@ -171,7 +176,7 @@ func (service Service) Build(ctx context.Context, scope Scope, request Request) 
 		return Result{}, err
 	}
 	defer root.Close()
-	plan, err := service.plan(ctx, root, request)
+	plan, err := service.plan(ctx, root, request, "")
 	if err != nil {
 		return Result{}, err
 	}
@@ -194,27 +199,34 @@ func (service Service) publish(ctx context.Context, root *os.Root, result Result
 	}
 	defer stage.Close()
 	job.Stage = stage.Path()
-	receipt, err := service.Worker.Run(ctx, job)
-	if ctx.Err() != nil {
-		return Result{}, ctx.Err()
-	}
-	if err != nil {
-		if errors.Is(err, ErrInvalid) {
-			return Result{}, err
-		}
-		return Result{}, fmt.Errorf("%w: renderer %s: %w", ErrUnavailable, result.Renderer, err)
-	}
-	expected := Receipt{Protocol: Protocol, Stage: job.Stage, Result: result}
-	if receipt != expected {
-		return Result{}, fmt.Errorf("%w: renderer %s: receipt does not match the build request", ErrUnavailable, result.Renderer)
+	if err := service.run(ctx, job, result); err != nil {
+		return Result{}, err
 	}
 	if err := stage.Publish(ctx, filepath.Base(result.Artifact)); err != nil {
 		if errors.Is(err, dal.ErrInvalidStage) {
-			return Result{}, fmt.Errorf("%w: renderer %s: %w", ErrUnavailable, result.Renderer, err)
+			return Result{}, fmt.Errorf("%w: %w", ErrUnavailable, err)
 		}
 		return Result{}, fmt.Errorf("publish %s: %w", result.Artifact, err)
 	}
 	return result, nil
+}
+
+func (service Service) run(ctx context.Context, job Job, result Result) error {
+	receipt, err := service.Worker.Run(ctx, job)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if err != nil {
+		if errors.Is(err, ErrInvalid) {
+			return err
+		}
+		return fmt.Errorf("%w: renderer %s: %w", ErrUnavailable, result.Renderer, err)
+	}
+	expected := Receipt{Protocol: Protocol, Stage: job.Stage, Result: result}
+	if receipt != expected {
+		return fmt.Errorf("%w: renderer %s: receipt does not match the build request", ErrUnavailable, result.Renderer)
+	}
+	return nil
 }
 
 func validateData(root *os.Root, plan BuildPlan) error {

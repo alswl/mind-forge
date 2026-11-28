@@ -12,6 +12,6 @@ func init() {
 func newOpenAPICommand() *cobra.Command {
 	return &cobra.Command{
 		Use: "openapi", Short: "Print the OpenAPI 3.1 YAML contract", Args: cobra.NoArgs,
-		RunE: func(command *cobra.Command, _ []string) error { return reportcli.OpenAPI(command.OutOrStdout()) },
+		RunE: func(command *cobra.Command, _ []string) error { return reportcli.OpenAPI(command.OutOrStdout(), false) },
 	}
 }
