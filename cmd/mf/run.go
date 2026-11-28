@@ -82,7 +82,9 @@ func runWithProcessIO(ctx context.Context, args []string, stdout, stderr io.Writ
 			return err
 		}
 		access := catalogue.Classify(item.Path, Modifiers{DryRun: boolFlag(command, "dry-run"), Check: boolFlag(command, "check"), Fix: boolFlag(command, "fix")})
-		lock, err := session.Begin(command.Context(), application.RepoRoot, access == Write, access == Recovery)
+		// Report exports use per-invocation staging and atomic replacement.
+		reportExport := len(item.Path) == 2 && item.Path[0] == "report" && item.Path[1] == "build"
+		lock, err := session.Begin(command.Context(), application.RepoRoot, access == Write && !reportExport, access == Recovery)
 		if err != nil {
 			return err
 		}

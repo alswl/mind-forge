@@ -1,0 +1,8 @@
+apiVersion: report.mind-forge/v1
+kind: Component
+id: repo/delivery
+version: 1.0.0
+entry: Metric.tsx
+propsSchema: props.schema.json
+example: example.tsx
+description: Synthetic delivery count

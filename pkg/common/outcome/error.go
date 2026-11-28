@@ -39,7 +39,9 @@ func (err *Error) ExitCode() int {
 	}
 }
 
-func (err *Error) JSON() []byte {
+func (err *Error) JSON() []byte { return err.NamedJSON("mf") }
+
+func (err *Error) NamedJSON(command string) []byte {
 	body := struct {
 		Kind       string    `json:"kind"`
 		Message    string    `json:"message"`
@@ -50,7 +52,7 @@ func (err *Error) JSON() []byte {
 		Status  string `json:"status"`
 		Command string `json:"command"`
 		Error   any    `json:"error"`
-	}{"error", "mf", body})
+	}{"error", command, body})
 	return raw
 }
 

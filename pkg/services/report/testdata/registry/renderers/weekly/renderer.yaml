@@ -1,0 +1,8 @@
+apiVersion: report.mind-forge/v1
+kind: Renderer
+id: repo/weekly
+version: 1.0.0
+entry: Report.tsx
+dataSchema: data.schema.json
+views: [chart, table]
+components: [repo/delivery, builtin/table]

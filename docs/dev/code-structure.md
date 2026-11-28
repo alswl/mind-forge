@@ -6,7 +6,9 @@ retain their own APIs, embedded assets and colocated component tests.
 
 | Directory | Responsibility | Allowed project dependencies |
 | --- | --- | --- |
-| `cmd/mf` | Command construction, flags/arguments, confirmation and presentation | services, config, common, private output/version |
+| `cmd/mf`, `cmd/mf-report` | Command construction, flags/arguments, confirmation and presentation | services, config, common, report server, private output/version and report CLI adapter |
+| `pkg/server/report` | Huma operations, HTTP validation, listener and shutdown | report service |
+| `internal/reportcli` | Shared report command selection and presentation helpers | report service and server, private output |
 | `pkg/services` | Use cases, selection, business orchestration and transaction boundaries | other services, managers, dal, common, config |
 | `pkg/managers/lifecycle` | Entity inventory, conversion plans, journal state and recoverable transaction algorithms | managers, dal, common |
 | `pkg/dal/store` | Filesystem boundaries, locks, atomic writes, YAML/index persistence | dal, common |

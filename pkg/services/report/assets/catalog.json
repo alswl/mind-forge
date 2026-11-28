@@ -1,0 +1,176 @@
+[
+  {
+    "apiVersion": "report.mind-forge/v1",
+    "kind": "Component",
+    "id": "builtin/metric",
+    "version": "1.0.0",
+    "entry": "mind-forge-report/components/metric",
+    "schema": {
+      "type": "object"
+    },
+    "example": "mind-forge-report/examples/metric",
+    "description": "A single labeled metric",
+    "source": "builtin"
+  },
+  {
+    "apiVersion": "report.mind-forge/v1",
+    "kind": "Component",
+    "id": "builtin/table",
+    "version": "1.0.0",
+    "entry": "mind-forge-report/components/table",
+    "schema": {
+      "type": "object"
+    },
+    "example": "mind-forge-report/examples/table",
+    "description": "A data table",
+    "source": "builtin"
+  },
+  {
+    "apiVersion": "report.mind-forge/v1",
+    "kind": "Component",
+    "id": "builtin/line",
+    "version": "1.0.0",
+    "entry": "mind-forge-report/components/line",
+    "schema": {
+      "type": "object"
+    },
+    "example": "mind-forge-report/examples/line",
+    "description": "A line chart",
+    "source": "builtin"
+  },
+  {
+    "apiVersion": "report.mind-forge/v1",
+    "kind": "Component",
+    "id": "builtin/bar",
+    "version": "1.0.0",
+    "entry": "mind-forge-report/components/bar",
+    "schema": {
+      "type": "object"
+    },
+    "example": "mind-forge-report/examples/bar",
+    "description": "A bar chart",
+    "source": "builtin"
+  },
+  {
+    "apiVersion": "report.mind-forge/v1",
+    "kind": "Component",
+    "id": "builtin/scatter",
+    "version": "1.0.0",
+    "entry": "mind-forge-report/components/scatter",
+    "schema": {
+      "type": "object"
+    },
+    "example": "mind-forge-report/examples/scatter",
+    "description": "A scatter plot",
+    "source": "builtin"
+  },
+  {
+    "apiVersion": "report.mind-forge/v1",
+    "kind": "Component",
+    "id": "builtin/stacked-share",
+    "version": "1.0.0",
+    "entry": "mind-forge-report/components/stacked-share",
+    "schema": {
+      "type": "object"
+    },
+    "example": "mind-forge-report/examples/stacked-share",
+    "description": "A stacked share chart",
+    "source": "builtin"
+  },
+  {
+    "apiVersion": "report.mind-forge/v1",
+    "kind": "Renderer",
+    "id": "builtin/brief",
+    "version": "1.0.0",
+    "entry": "mind-forge-report/renderers/brief",
+    "schema": {
+      "type": "object",
+      "required": [
+        "title"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "exampleData": {
+      "title": "Synthetic brief"
+    },
+    "views": [
+      "chart",
+      "table"
+    ],
+    "components": [
+      "builtin/metric",
+      "builtin/table"
+    ],
+    "description": "Metrics and narrative",
+    "source": "builtin"
+  },
+  {
+    "apiVersion": "report.mind-forge/v1",
+    "kind": "Renderer",
+    "id": "builtin/comparison",
+    "version": "1.0.0",
+    "entry": "mind-forge-report/renderers/comparison",
+    "schema": {
+      "type": "object",
+      "required": [
+        "title"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "exampleData": {
+      "title": "Synthetic comparison"
+    },
+    "views": [
+      "chart",
+      "table"
+    ],
+    "components": [
+      "builtin/bar",
+      "builtin/table"
+    ],
+    "description": "Category comparison",
+    "source": "builtin"
+  },
+  {
+    "apiVersion": "report.mind-forge/v1",
+    "kind": "Renderer",
+    "id": "builtin/trend",
+    "version": "1.0.0",
+    "entry": "mind-forge-report/renderers/trend",
+    "schema": {
+      "type": "object",
+      "required": [
+        "title"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "exampleData": {
+      "title": "Synthetic trend"
+    },
+    "views": [
+      "chart",
+      "table"
+    ],
+    "components": [
+      "builtin/line",
+      "builtin/table"
+    ],
+    "description": "Time series",
+    "source": "builtin"
+  }
+]

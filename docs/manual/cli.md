@@ -124,6 +124,15 @@ This document contains the help content for the `mf` command-line program.
 * [`mf config terminal`↴](#mf-config-terminal)
 * [`mf completion`↴](#mf-completion)
 * [`mf version`↴](#mf-version)
+* [`mf report`↴](#mf-report)
+* [`mf report init`↴](#mf-report-init)
+* [`mf report build`↴](#mf-report-build)
+* [`mf report serve`↴](#mf-report-serve)
+* [`mf report openapi`↴](#mf-report-openapi)
+* [`mf report renderer`↴](#mf-report-renderer)
+* [`mf report renderer list`↴](#mf-report-renderer-list)
+* [`mf report component`↴](#mf-report-component)
+* [`mf report component list`↴](#mf-report-component-list)
 
 ## `mf`
 
@@ -151,6 +160,7 @@ mind-forge: a local-first knowledge management CLI
 * `config` — Manage configuration
 * `completion` — Generate shell completion scripts
 * `version` — Show version information
+* `report` — Manage data reports
 
 ###### **Options:**
 
@@ -3432,4 +3442,204 @@ Examples (use a disposable directory for setup):
   Command:
     mf version --check
   Effect: Compare the running version with the latest stable release from GitHub.
+```
+
+
+## `mf report`
+
+Manage data reports
+
+**Usage:** `mf report [COMMAND]`
+
+###### **Subcommands:**
+
+* `init` — Scaffold a report in the selected project
+* `build` — Export a report from the selected project
+* `serve` — Serve the report API for the selected project
+* `openapi` — Print the OpenAPI 3.1 YAML contract
+* `renderer` — Inspect registered renderers
+* `component` — Inspect registered components
+
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # Run in a disposable Mind Repo.
+  Command:
+    mf report renderer list
+  Effect: List the renderer catalog for the repo.
+```
+
+
+## `mf report init`
+
+Scaffold a report in the selected project
+
+**Usage:** `mf report init [OPTIONS] <SLUG>`
+
+###### **Arguments:**
+
+* `<SLUG>` — Lowercase report slug
+
+###### **Options:**
+
+* `--renderer <ID>` — Select a registered renderer
+
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # In a disposable Mind Repo with a research project.
+  Command:
+    mf report init weekly -p research
+  Effect: Create a synthetic report in the research project.
+```
+
+
+## `mf report build`
+
+Export a report from the selected project
+
+**Usage:** `mf report build [OPTIONS] <SLUG>`
+
+###### **Arguments:**
+
+* `<SLUG>` — Lowercase report slug
+
+###### **Options:**
+
+* `--renderer <ID>` — Select a registered renderer
+* `--view <VIEW>` — Report view
+
+  Possible values: `chart`, `table`
+
+* `--theme <THEME>` — Report theme
+
+  Possible values: `system`, `light`, `dark`
+
+* `--worker <PATH>` — Override the executable for the report worker
+* `-n`, `--dry-run` — Show the build plan without running a worker
+
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # After scaffolding weekly in a disposable research project.
+  Command:
+    mf report build weekly -p research --view table --dry-run
+  Effect: Print the table export plan without starting a worker.
+```
+
+
+## `mf report serve`
+
+Serve the report API for the selected project
+
+**Usage:** `mf report serve [OPTIONS]`
+
+###### **Options:**
+
+* `--listen <ADDR>` — Loopback listen address
+* `--worker <PATH>` — Override the executable for the report worker
+
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # In a disposable Mind Repo with a research project.
+  Command:
+    mf report serve -p research --listen 127.0.0.1:0
+  Effect: Start the local API on an available port.
+```
+
+
+## `mf report openapi`
+
+Print the OpenAPI 3.1 YAML contract
+
+**Usage:** `mf report openapi`
+
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # Run with mf on PATH.
+  Command:
+    mf report openapi
+  Effect: Print the OpenAPI document to stdout.
+```
+
+
+## `mf report renderer`
+
+Inspect registered renderers
+
+**Usage:** `mf report renderer [COMMAND]`
+
+###### **Subcommands:**
+
+* `list` — List or look up registered renderers
+
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # Run in a disposable Mind Repo.
+  Command:
+    mf report renderer list
+  Effect: List available renderer IDs and versions.
+```
+
+
+## `mf report renderer list`
+
+List or look up registered renderers
+
+**Usage:** `mf report renderer list [OPTIONS]`
+
+###### **Options:**
+
+* `--id <ID>` — Look up one exact registered ID
+
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # Run in a disposable Mind Repo.
+  Command:
+    mf report renderer list --id builtin/brief --json
+  Effect: Look up the built-in brief renderer.
+```
+
+
+## `mf report component`
+
+Inspect registered components
+
+**Usage:** `mf report component [COMMAND]`
+
+###### **Subcommands:**
+
+* `list` — List or look up registered components
+
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # Run in a disposable Mind Repo.
+  Command:
+    mf report component list
+  Effect: List available component IDs and versions.
+```
+
+
+## `mf report component list`
+
+List or look up registered components
+
+**Usage:** `mf report component list [OPTIONS]`
+
+###### **Options:**
+
+* `--id <ID>` — Look up one exact registered ID
+
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # Run in a disposable Mind Repo.
+  Command:
+    mf report component list --id builtin/metric --json
+  Effect: Look up the built-in metric component.
 ```

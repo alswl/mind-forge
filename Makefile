@@ -10,7 +10,7 @@ $(error Missing makefile-go submodule; run git submodule update --init --recursi
 endif
 include $(MAKEFILE_GO)/makefile-go/general.mk
 
-.PHONY: check check-toolchain check-linter vet test test-raw verify-modules install generate-manual
+.PHONY: build-report check check-toolchain check-linter vet test test-raw verify-modules install generate-manual
 ROOT := github.com/alswl/mind-forge
 TARGETS := mf
 CMD_DIR := ./cmd
@@ -22,6 +22,7 @@ GO_SOURCE_DIRS := cmd pkg internal
 GO_LINT_READ_ONLY := true
 GO_LINT_COMMAND := golangci-lint run ./...
 MF_BUILD_OUT ?= $(OUTPUT_DIR)/mf
+MF_REPORT_BUILD_OUT ?= $(OUTPUT_DIR)/mf-report
 GO_BUILD_OUTPUT = $(MF_BUILD_OUT)
 GO_BUILD_COPY_VARIANTS := false
 COMMIT := $(shell git rev-parse --short HEAD)
@@ -46,6 +47,9 @@ include $(MAKEFILE_GO)/makefile-go/distribution.mk
 bump bump-patch bump-minor bump-major bump-beta bump-alpha: check-toolchain
 
 build: check-toolchain
+build-report: ## Build the standalone report CLI.
+	$(MAKE) --no-print-directory build TARGETS=mf-report MF_BUILD_OUT="$(MF_REPORT_BUILD_OUT)"
+
 check-toolchain:
 	@test -n "$(RELEASE_VERSION)" || { printf 'Invalid version in VERSION.\n' >&2; exit 1; }
 	@expected_go="go$$(awk '$$1 == "golang" { print $$2 }' .tool-versions)"; \
@@ -64,6 +68,7 @@ check: check-toolchain check-installer ## Run the complete local quality gate.
 	go mod verify
 	$(MAKE) --no-print-directory test
 	$(MAKE) --no-print-directory build
+	$(MAKE) --no-print-directory build-report
 
 vet: ## Run Go static analysis.
 	go vet ./...
