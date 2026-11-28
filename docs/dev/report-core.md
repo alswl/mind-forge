@@ -270,10 +270,9 @@ dir="$qa/repo/projects/lab/templates/reports/synthetic"
 cp -R examples/report-fragment "$dir"
 (cd "$dir" && corepack pnpm install --frozen-lockfile)
 bin/mf --root "$qa/repo" -p lab report fragment build synthetic overview --json
-bin/mf --root "$qa/repo" -p lab report serve
 ```
 
-Use the printed bearer token with the project URL.
+For an API build, run `bin/mf --root "$qa/repo" -p lab report serve` in a separate terminal. Use the printed bearer token with the project URL.
 
 ```sh
 curl -fsS -X POST "$url/v1/reports/synthetic/fragments/overview/exports" \
@@ -284,3 +283,46 @@ The SVG shows “Completed: 7” using a Recharts Rectangle and “Capacity: 10�
 using a D3 linear scale. Change `completed` in `data.json` and repeat either
 build. A failed build preserves the preceding image and index. An existing
 unowned file or registration at the destination produces a conflict.
+
+### Preview the fragment in a Markdown output
+
+Continue in the product checkout with the same `qa` and `dir` from the example
+above. The bundled project uses a single Markdown file for this output.
+Create it with the normal authoring commands and copy in the example body.
+
+```sh
+mf="$PWD/bin/mf"
+lab="$qa/repo/projects/lab"
+"$mf" --root "$qa/repo" -p lab mind new delivery
+"$mf" --root "$qa/repo" -p lab output new delivery summary --file
+cp "$dir/summary.md" "$lab/delivery/outputs/summary.md"
+(cd "$qa/repo" && "$mf" build projects/lab::delivery::summary)
+(cd "$qa/repo" && "$mf" build projects/lab::delivery::summary --format html)
+```
+
+The image reference in `delivery/outputs/summary.md` is relative to the
+Markdown file. Both built documents in `build/delivery/` resolve that same
+reference to the project's registered SVG.
+
+```markdown
+![Completed requests and available capacity](../../assets/reports/synthetic/overview.svg)
+```
+
+Serve the project directory in a second terminal (substitute the value of
+`lab` there), then open `http://127.0.0.1:8000/build/delivery/summary.html`.
+
+```sh
+python3 -m http.server 8000 --bind 127.0.0.1 --directory "$lab"
+```
+
+The 400 × 90 image initially reads “Completed: 7” and “Capacity: 10”.
+Back in the authoring terminal, change the count and rebuild the fragment.
+
+```sh
+(cd "$dir" && node -e 'const fs = require("node:fs"); const data = JSON.parse(fs.readFileSync("data.json")); data.completed = 8; fs.writeFileSync("data.json", JSON.stringify(data) + "\n");')
+"$mf" --root "$qa/repo" -p lab report fragment build synthetic overview --json
+```
+
+Reload the same page. “Completed: 8” appears over a longer teal bar and the
+blue dot moves right. Capacity stays at 10. The Markdown source and both built
+documents keep their original bytes throughout this second build.
