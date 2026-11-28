@@ -10,8 +10,9 @@ import (
 var starterFiles embed.FS
 
 type ScaffoldResult struct {
-	Directory string `json:"directory"`
-	Renderer  string `json:"renderer"`
+	Directory string   `json:"directory"`
+	Renderer  string   `json:"renderer"`
+	Install   []string `json:"install"`
 }
 
 func starter(item Item) (map[string][]byte, error) {

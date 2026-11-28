@@ -1,11 +1,10 @@
-# Report Core and API verification
+# Report engine, Core and API verification
 
 `make build build-report` builds `bin/mf` and `bin/mf-report` with the
-repository's version stamp. `make check` also builds both. The Core can discover,
-plan, validate, and run reports with a controlled executable. The React engine,
-the offline component directory, and the version-matched npm dependencies are
-pending. The scaffolder supplies an editable entry, a sample, and an empty pnpm
-starter lockfile. It performs no installation.
+repository's version stamp. `make check` also builds both. The same React engine,
+built-ins, and starter are embedded in both executables. Bring Node 24 and use
+the scaffolder's locked dependency install command. Listing, scaffolding,
+and dry-run work without Node. The report engine requires no SDK installation.
 
 ## CLI
 
@@ -14,10 +13,12 @@ starter lockfile. It performs no installation.
 | `mf report init SLUG` | `--renderer ID` |
 | `mf report build SLUG` | `--renderer ID`, `--view chart\|table`, `--theme system\|light\|dark`, `--worker PATH`, `-n/--dry-run` |
 | `mf report renderer list`, `mf report component list` | `--id ID` |
+| `mf report catalog build SLUG` | `--theme`, `--worker PATH` |
 | `mf report serve` | `--listen ADDR`, `--worker PATH` |
 | `mf report openapi` | Writes YAML to stdout |
 | `mf-report build` | Same build options, plus optional paired `--entry PATH --data PATH` in place of `report.yaml` |
 | `mf-report list renderers\|components` | `--id ID` |
+| `mf-report catalog build` | `--theme`, `--worker PATH` |
 | `mf-report serve` | `--listen ADDR`, `--worker PATH` |
 | `mf-report openapi` | Writes YAML to stdout |
 
@@ -46,12 +47,14 @@ the report data, creating output files, or starting the worker.
 
 ## Worker protocol
 
-The host invokes one executable directly with no arguments, using the absolute
-report directory as its current directory. `--worker` selects an executable
-relative to the caller's directory or by absolute path. Its default is the
-working directory's `node_modules/.bin/mind-forge-report-worker`.
-Use a worker and report sources you trust. The worker runs with the invoking
-user's permissions.
+The default worker invokes Node 24 from PATH with an unpacked, embedded
+script. It resolves React, React DOM, and esbuild from the report workdir's
+locked dependencies. Go removes the private temporary engine and staged
+output on failure or cancellation. Operator-only `--worker` overrides the engine
+with an executable path, resolved relative to the caller or given as an
+absolute path. It receives no arguments. Either process uses the absolute
+report directory as its current directory. Execute trusted source with the
+invoking user's permissions.
 
 The host sends a UTF-8 JSON object followed by a newline on stdin, then closes
 stdin. The worker checks `protocol` before processing input.
@@ -64,10 +67,11 @@ stdin. The worker checks `protocol` before processing input.
 | `components` | Array of the same module objects, in manifest order |
 | `view`, `theme` | Resolved view and theme |
 | `stage` | Absolute path to an existing private temporary file in `outputs` |
-| `artifact` | Expected workdir-relative destination, `outputs/report.<view>.html` |
+| `artifact` | Expected workdir-relative destination, `outputs/report.<view>.html` or `outputs/catalog.html` |
+| `catalog` | Optional array of component modules plus `description` and `example`. Present only for catalog builds. |
 
-A module's `entry` is an absolute path for repository modules and a package
-specifier for built-ins. Its `schema` is the inline JSON Schema document.
+A module's `entry` is an absolute path for repository modules and
+an `embedded:…` identifier for built-ins. Its `schema` is the inline JSON Schema document.
 The worker writes nonempty output into the supplied staging file, keeping its
 file identity. On success, it exits zero and sends exactly one JSON receipt on
 stdout. This receipt is for a table export of the included fixture.
@@ -93,6 +97,76 @@ replaces the destination by same-directory rename, and removes the stage on
 failure or cancellation. Parallel exports have distinct staging filenames.
 If two successful exports target the same view, the last rename determines the
 visible artifact. Cancellation terminates the process group on macOS and Linux.
+
+## Embedded renderer and browser reproduction
+
+Use Node 24, Corepack and a project scratch directory on a supported local
+filesystem. With containers on macOS, copy the synthetic project to a container
+tmpfs before running `mf report init` so the repo write lock uses a supported
+filesystem. Build the CLI for the platform where you will run it.
+
+```sh
+make build build-report
+qa=$(mktemp -d)
+cp -R pkg/services/report/testdata/workspace "$qa/repo"
+mkdir -p "$qa/repo/.mind-forge"
+cp -R pkg/services/report/testdata/registry "$qa/repo/.mind-forge/report"
+bin/mf --root "$qa/repo" -p lab report init january --renderer builtin/trend --json
+
+for slug in january weekly; do
+  report_dir="$qa/repo/projects/lab/templates/reports/$slug"
+  if [ "$slug" = weekly ]; then
+    cp pkg/services/report/starter/package.json pkg/services/report/starter/pnpm-lock.yaml "$report_dir/"
+  fi
+  (cd "$report_dir" && corepack pnpm@10.28.2 install --frozen-lockfile)
+  bin/mf --root "$qa/repo" -p lab report build "$slug" --view chart --json
+  bin/mf-report --workdir "$report_dir" --registry-root "$qa/repo" build --view table --json
+done
+bin/mf --root "$qa/repo" -p lab report catalog build weekly --theme dark --json
+```
+
+Open each file alone from a fresh directory via `file://` with the browser
+offline. For the January report, compare the order and labels of the chart
+tooltips to the semantic table. January 5 has 0 completed requests, January 12
+has an explicitly missing completion count, and January 19 has 7. On the chart,
+focus the plot then tab to a mark or point and press Escape to close its
+tooltip. Try a 375 px viewport, light and dark system preferences, and disabled
+JavaScript. At narrow widths plots can scroll within their own region. Table
+HTML omits the plot and its enhancement script. In `weekly/outputs/catalog.html`,
+open `repo/delivery`'s schema and example and copy the template. Verify that the
+custom CSS and PNG render in both report views and the catalog without network
+requests. Ordinary source links may be present and load only when followed.
+
+Build with an empty PATH to exercise missing Node while keeping the binaries
+addressable by absolute path. The CLI exits nonzero, HTTP exports return 503
+Problem Details, and existing artifacts retain their bytes. A renderer or
+component validation failure returns 422 through HTTP and leaves prior output
+intact. List and dry-run still work.
+
+## Release staging
+
+`make check` verifies hashes of embedded assets and their inputs. Run
+`make check-report-source` under Node 24 to typecheck, test and reproduce those
+assets from the frozen lock. It uses a scratch directory under `bin/`.
+For an offline run point `REPORT_PNPM_STORE` at a preloaded store and set
+`REPORT_PNPM_OFFLINE=1` with a preloaded `COREPACK_HOME`. To regenerate after
+editing TypeScript, stage the same `report/` inputs and run
+`REPORT_REPO=/absolute/checkout node generate.mjs` from the staged directory.
+
+```sh
+make check
+make package PACKAGE_OUT="$PWD/bin/local-report-release"
+(cd bin/local-report-release && shasum -a 256 -c checksums.txt)
+for archive in bin/local-report-release/*.tar.gz; do
+  tar -tzf "$archive"
+done
+```
+
+Use a new staging path from a clean checkout. Each archive has two version-matched
+platform executables and the existing name. The archive carries the engine
+inside those executables. The source installer also installs both commands.
+Node and the report workdir dependencies are supplied separately. The real
+release job requires an authorized tag which matches VERSION at a clean HEAD.
 
 ## Controlled fixture
 
@@ -131,7 +205,9 @@ deterministic synthetic HTML from the request and data for both view values.
 
 ## HTTP
 
-Start the server and copy the URL and bearer token from stderr. The default
+Start the server and copy the URL and bearer token from stderr. The example uses
+the controlled worker. Remove the override after installing the fixture's
+locked dependencies to exercise the real renderer. The default
 bind is `127.0.0.1:8787`. Port `0` asks the OS for an available port. The
 listen host must be a loopback IP or `localhost`.
 

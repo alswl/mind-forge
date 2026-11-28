@@ -5,6 +5,18 @@ description: Use the mf CLI to manage mind 0.3.0-compatible local knowledge repo
 
 # mf-cli — Knowledge Repo CLI
 
+## Data report commands
+
+- `mf report renderer list --json` and `mf report component list --json` inspect the repo registry. Use `--id` for one entry.
+- `mf report init SLUG -p PROJECT --renderer ID --json` scaffolds the project report and returns the locked dependency install command.
+- `mf report build SLUG -p PROJECT --view chart|table --json` exports an artifact relative to the returned plan's working directory. `--dry-run` resolves the plan without Node.
+- `mf report catalog build SLUG -p PROJECT --json` generates `outputs/catalog.html`.
+- `mf report serve -p PROJECT` prints a loopback URL and write token to stderr. Export OpenAPI with `mf report openapi`.
+- `mf-report --workdir PATH --registry-root REPO build` uses a report manifest or paired `--entry` and `--data`. Both binaries include the engine. Builds need Node 24 on PATH and the pinned workdir dependencies. Use the scaffold's install command if dependency resolution fails.
+
+Use `$mf-report` to choose a visualization, extend the registry or verify
+the two offline views.
+
 ## Generated manual
 
 `docs/manual/cli.md` is generated from the built CLI help surface. Do not edit it

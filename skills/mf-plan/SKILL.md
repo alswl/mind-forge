@@ -9,6 +9,13 @@ description: Research, plan, or replan a legacy article or a mind and its select
 
 Own problem framing, evidence gathering, comparison, judgment, and the article outline. Leave a reviewable structure and enough context for the next writing step. `$mf-write` expands the part the author is ready to draft.
 
+## Data report handoff
+
+When the author requests a data report, record the reader's question, source
+and approved data scope, metric definitions, units, date range, denominator
+and missing-data treatment. Hand those inputs to `$mf-report`. Keep exploratory
+evidence and private notes in their existing project roles.
+
 ## Resolve the project mode and writing target
 
 1. Locate the Mind Repo (`minds.yaml`) and the requested project with `mf project list --json`; use the selected entry's repo-relative `path` for `mf project show <project-path> --json` and subsequent project scope. Require a successful `project show`, then read that project's actual `mind.yaml` before invoking `mf mind` or `mf output`. Route each project independently, including projects sharing one repo: absent `content_layout` uses legacy Article; explicit `category` or `bundle` uses Mind/Output. An unreadable or invalid configuration (including an invalid layout value) is an error to report, not a reason to fall back or migrate. Read the file itself for routing; `mf config show` can return defaults after a load error and is not proof that the project configuration is valid. Use `$mf-cli` for exact flags.

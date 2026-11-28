@@ -230,6 +230,69 @@
         "tool_failure",
         "build"
       ]
+    },
+    {
+      "id": "R1",
+      "skill": "mf-report",
+      "layout": "category",
+      "prompt": "Produce the chart and table exports for weekly using the existing synthetic delivery data. Keep builtin/trend, show the reported zero and missing week as distinct, and verify the standalone offline files. Use the actual CLI and state the renderer ID, both paths and the checks you performed. Do not publish.",
+      "historical": {
+        "id": 1,
+        "prompt": "Produce the chart and table exports for weekly using the existing synthetic delivery data. Keep builtin/trend, show the reported zero and missing week as distinct, and verify the standalone offline files. Use the actual CLI and state the renderer ID, both paths and the checks you performed. Do not publish.",
+        "expected_output": "Both standalone HTML views generated with builtin/trend. The views agree on dates, scope and values, including the zero and missing week. The report identifies the offline evidence.",
+        "files": [],
+        "expectations": [
+          "Uses builtin/trend from the real registry with no custom additions",
+          "Produces outputs/report.chart.html and outputs/report.table.html from the same data",
+          "Checks the reported zero, explicit missing week, request count unit and offline behavior"
+        ]
+      },
+      "dimensions": [
+        "report",
+        "builtin"
+      ]
+    },
+    {
+      "id": "R2",
+      "skill": "mf-report",
+      "layout": "bundle",
+      "prompt": "This weekly report already has repo/weekly. Add only a repo/delivery component with a synthetic count preview and schema, then reference it from the existing renderer to display 7 requests in both views. Rebuild the offline catalog and report its actual path and the report paths. Keep other reports and registry entries intact; do not publish.",
+      "historical": {
+        "id": 2,
+        "prompt": "This weekly report already has repo/weekly. Add only a repo/delivery component with a synthetic count preview and schema, then reference it from the existing renderer to display 7 requests in both views. Rebuild the offline catalog and report its actual path and the report paths. Keep other reports and registry entries intact; do not publish.",
+        "expected_output": "The team renderer references exactly the new custom component as needed. Both exports show the same measure and the catalog contains the registered schema and preview.",
+        "files": [],
+        "expectations": [
+          "Adds repo/delivery and reuses repo/weekly without creating another renderer",
+          "The chart and table exports agree on 7 requests",
+          "The offline catalog includes repo/delivery, its schema and its example"
+        ]
+      },
+      "dimensions": [
+        "report",
+        "component"
+      ]
+    },
+    {
+      "id": "R3",
+      "skill": "mf-write",
+      "layout": "category",
+      "prompt": "Use the existing Markdown writing workflow to revise ::brief::design. Remove the repeated sentence in Evidence and leave the judgment unchanged. Verify the selected Output with the actual CLI. No data report or publication is requested.",
+      "historical": {
+        "id": 3,
+        "prompt": "Use the existing Markdown writing workflow to revise ::brief::design. Remove the repeated sentence in Evidence and leave the judgment unchanged. Verify the selected Output with the actual CLI. No data report or publication is requested.",
+        "expected_output": "Only the selected Markdown Output changes substantively. No report inputs, registry or HTML artifacts are created.",
+        "files": [],
+        "expectations": [
+          "Edits the existing Markdown Output through the usual writing workflow",
+          "Preserves the author judgment and removes the repeated sentence",
+          "Does not create report files, exports or registry entries"
+        ]
+      },
+      "dimensions": [
+        "report",
+        "markdown"
+      ]
     }
   ],
   "rubric": [

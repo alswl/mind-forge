@@ -4,85 +4,540 @@
     "kind": "Component",
     "id": "builtin/metric",
     "version": "1.0.0",
-    "entry": "mind-forge-report/components/metric",
+    "entry": "embedded:component/metric",
+    "description": "A labeled value with a unit and optional context",
+    "source": "builtin",
     "schema": {
-      "type": "object"
+      "type": "object",
+      "required": [
+        "label",
+        "value"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "missingLabel": {
+          "type": "string"
+        }
+      }
     },
-    "example": "mind-forge-report/examples/metric",
-    "description": "A single labeled metric",
-    "source": "builtin"
+    "example": "embedded:example/metric"
+  },
+  {
+    "apiVersion": "report.mind-forge/v1",
+    "kind": "Component",
+    "id": "builtin/document",
+    "version": "1.0.0",
+    "entry": "embedded:component/document",
+    "description": "The report title, subtitle and document content",
+    "source": "builtin",
+    "schema": {
+      "type": "object",
+      "required": [
+        "title"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "subtitle": {
+          "type": "string"
+        }
+      }
+    },
+    "example": "embedded:example/document"
+  },
+  {
+    "apiVersion": "report.mind-forge/v1",
+    "kind": "Component",
+    "id": "builtin/narrative",
+    "version": "1.0.0",
+    "entry": "embedded:component/narrative",
+    "description": "A short narrative section",
+    "source": "builtin",
+    "schema": {
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "example": "embedded:example/narrative"
   },
   {
     "apiVersion": "report.mind-forge/v1",
     "kind": "Component",
     "id": "builtin/table",
     "version": "1.0.0",
-    "entry": "mind-forge-report/components/table",
+    "entry": "embedded:component/table",
+    "description": "The observations in a semantic table",
+    "source": "builtin",
     "schema": {
-      "type": "object"
+      "type": "object",
+      "required": [
+        "title",
+        "rows",
+        "x",
+        "series"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "x": {
+          "type": "object",
+          "required": [
+            "key",
+            "label"
+          ],
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "category",
+                "number",
+                "date"
+              ]
+            },
+            "unit": {
+              "type": "string"
+            },
+            "timeZone": {
+              "type": "string"
+            }
+          }
+        },
+        "series": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "label"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "rangeLabel": {
+          "type": "string"
+        },
+        "denominator": {
+          "type": "string"
+        },
+        "missingLabel": {
+          "type": "string"
+        }
+      }
     },
-    "example": "mind-forge-report/examples/table",
-    "description": "A data table",
-    "source": "builtin"
+    "example": "embedded:example/table"
   },
   {
     "apiVersion": "report.mind-forge/v1",
     "kind": "Component",
     "id": "builtin/line",
     "version": "1.0.0",
-    "entry": "mind-forge-report/components/line",
+    "entry": "embedded:component/line",
+    "description": "A trend across dates or an ordered dimension, with gaps for missing observations",
+    "source": "builtin",
     "schema": {
-      "type": "object"
+      "type": "object",
+      "required": [
+        "title",
+        "rows",
+        "x",
+        "series"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "x": {
+          "type": "object",
+          "required": [
+            "key",
+            "label"
+          ],
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "category",
+                "number",
+                "date"
+              ]
+            },
+            "unit": {
+              "type": "string"
+            },
+            "timeZone": {
+              "type": "string"
+            }
+          }
+        },
+        "series": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "label"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "rangeLabel": {
+          "type": "string"
+        },
+        "denominator": {
+          "type": "string"
+        },
+        "missingLabel": {
+          "type": "string"
+        }
+      }
     },
-    "example": "mind-forge-report/examples/line",
-    "description": "A line chart",
-    "source": "builtin"
+    "example": "embedded:example/line"
   },
   {
     "apiVersion": "report.mind-forge/v1",
     "kind": "Component",
     "id": "builtin/bar",
     "version": "1.0.0",
-    "entry": "mind-forge-report/components/bar",
+    "entry": "embedded:component/bar",
+    "description": "Grouped category bars with a zero baseline",
+    "source": "builtin",
     "schema": {
-      "type": "object"
+      "type": "object",
+      "required": [
+        "title",
+        "rows",
+        "x",
+        "series"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "x": {
+          "type": "object",
+          "required": [
+            "key",
+            "label"
+          ],
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "category",
+                "number",
+                "date"
+              ]
+            },
+            "unit": {
+              "type": "string"
+            },
+            "timeZone": {
+              "type": "string"
+            }
+          }
+        },
+        "series": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "label"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "rangeLabel": {
+          "type": "string"
+        },
+        "denominator": {
+          "type": "string"
+        },
+        "missingLabel": {
+          "type": "string"
+        }
+      }
     },
-    "example": "mind-forge-report/examples/bar",
-    "description": "A bar chart",
-    "source": "builtin"
+    "example": "embedded:example/bar"
   },
   {
     "apiVersion": "report.mind-forge/v1",
     "kind": "Component",
     "id": "builtin/scatter",
     "version": "1.0.0",
-    "entry": "mind-forge-report/components/scatter",
+    "entry": "embedded:component/scatter",
+    "description": "An XY plot with a numeric horizontal dimension",
+    "source": "builtin",
     "schema": {
-      "type": "object"
+      "type": "object",
+      "required": [
+        "title",
+        "rows",
+        "x",
+        "series"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "x": {
+          "type": "object",
+          "required": [
+            "key",
+            "label"
+          ],
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "category",
+                "number",
+                "date"
+              ]
+            },
+            "unit": {
+              "type": "string"
+            },
+            "timeZone": {
+              "type": "string"
+            }
+          }
+        },
+        "series": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "label"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "rangeLabel": {
+          "type": "string"
+        },
+        "denominator": {
+          "type": "string"
+        },
+        "missingLabel": {
+          "type": "string"
+        }
+      }
     },
-    "example": "mind-forge-report/examples/scatter",
-    "description": "A scatter plot",
-    "source": "builtin"
+    "example": "embedded:example/scatter"
   },
   {
     "apiVersion": "report.mind-forge/v1",
     "kind": "Component",
     "id": "builtin/stacked-share",
     "version": "1.0.0",
-    "entry": "mind-forge-report/components/stacked-share",
+    "entry": "embedded:component/stacked-share",
+    "description": "Shares using a stated denominator without redistributing missing values",
+    "source": "builtin",
     "schema": {
-      "type": "object"
+      "type": "object",
+      "required": [
+        "title",
+        "rows",
+        "x",
+        "series",
+        "denominator"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "x": {
+          "type": "object",
+          "required": [
+            "key",
+            "label"
+          ],
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "category",
+                "number",
+                "date"
+              ]
+            },
+            "unit": {
+              "type": "string"
+            },
+            "timeZone": {
+              "type": "string"
+            }
+          }
+        },
+        "series": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "label"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "rangeLabel": {
+          "type": "string"
+        },
+        "denominator": {
+          "type": "string"
+        },
+        "missingLabel": {
+          "type": "string"
+        }
+      }
     },
-    "example": "mind-forge-report/examples/stacked-share",
-    "description": "A stacked share chart",
-    "source": "builtin"
+    "example": "embedded:example/stacked-share"
   },
   {
     "apiVersion": "report.mind-forge/v1",
     "kind": "Renderer",
     "id": "builtin/brief",
     "version": "1.0.0",
-    "entry": "mind-forge-report/renderers/brief",
+    "entry": "embedded:renderer/brief",
+    "description": "A short report with narrative, metrics and selected evidence",
+    "source": "builtin",
     "schema": {
       "type": "object",
       "required": [
@@ -92,11 +547,264 @@
         "title": {
           "type": "string",
           "minLength": 1
+        },
+        "subtitle": {
+          "type": "string"
+        },
+        "narrative": {
+          "type": "string"
+        },
+        "rangeLabel": {
+          "type": "string"
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "value"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "value": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "unit": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string"
+              },
+              "missingLabel": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "charts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "title",
+              "rows",
+              "x",
+              "series",
+              "kind"
+            ],
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "x": {
+                "type": "object",
+                "required": [
+                  "key",
+                  "label"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "enum": [
+                      "category",
+                      "number",
+                      "date"
+                    ]
+                  },
+                  "unit": {
+                    "type": "string"
+                  },
+                  "timeZone": {
+                    "type": "string"
+                  }
+                }
+              },
+              "series": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "key",
+                    "label"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "rangeLabel": {
+                "type": "string"
+              },
+              "denominator": {
+                "type": "string"
+              },
+              "missingLabel": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "table",
+                  "line",
+                  "bar",
+                  "scatter",
+                  "stacked-share"
+                ]
+              }
+            }
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "x": {
+          "type": "object",
+          "required": [
+            "key",
+            "label"
+          ],
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "category",
+                "number",
+                "date"
+              ]
+            },
+            "unit": {
+              "type": "string"
+            },
+            "timeZone": {
+              "type": "string"
+            }
+          }
+        },
+        "series": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "label"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              }
+            }
+          }
         }
+      },
+      "dependencies": {
+        "rows": [
+          "x",
+          "series"
+        ],
+        "x": [
+          "rows",
+          "series"
+        ],
+        "series": [
+          "rows",
+          "x"
+        ]
       }
     },
     "exampleData": {
-      "title": "Synthetic brief"
+      "title": "Delivery through January",
+      "subtitle": "January 5 to January 19, 2026",
+      "narrative": "Delivery resumed in the third week. The second week has no reported completion count.",
+      "metrics": [
+        {
+          "label": "Requests completed",
+          "value": 7,
+          "unit": "requests",
+          "note": "Reported weeks only"
+        }
+      ],
+      "charts": [
+        {
+          "kind": "bar",
+          "title": "Requests by group",
+          "x": {
+            "key": "group",
+            "label": "Group"
+          },
+          "series": [
+            {
+              "key": "done",
+              "label": "Completed",
+              "unit": "requests"
+            },
+            {
+              "key": "forecast",
+              "label": "Forecast",
+              "unit": "requests"
+            }
+          ],
+          "rows": [
+            {
+              "week": "2026-01-05",
+              "group": "Intake",
+              "done": 0,
+              "forecast": 3
+            },
+            {
+              "week": "2026-01-12",
+              "group": "Progress",
+              "done": null,
+              "forecast": 5
+            },
+            {
+              "week": "2026-01-19",
+              "group": "Delivery",
+              "done": 7,
+              "forecast": 8
+            }
+          ]
+        }
+      ]
     },
     "views": [
       "chart",
@@ -104,17 +812,23 @@
     ],
     "components": [
       "builtin/metric",
-      "builtin/table"
-    ],
-    "description": "Metrics and narrative",
-    "source": "builtin"
+      "builtin/document",
+      "builtin/narrative",
+      "builtin/table",
+      "builtin/line",
+      "builtin/bar",
+      "builtin/scatter",
+      "builtin/stacked-share"
+    ]
   },
   {
     "apiVersion": "report.mind-forge/v1",
     "kind": "Renderer",
     "id": "builtin/comparison",
     "version": "1.0.0",
-    "entry": "mind-forge-report/renderers/comparison",
+    "entry": "embedded:renderer/comparison",
+    "description": "Compare categories with grouped bars and a shared table",
+    "source": "builtin",
     "schema": {
       "type": "object",
       "required": [
@@ -124,29 +838,282 @@
         "title": {
           "type": "string",
           "minLength": 1
+        },
+        "subtitle": {
+          "type": "string"
+        },
+        "narrative": {
+          "type": "string"
+        },
+        "rangeLabel": {
+          "type": "string"
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "value"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "value": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "unit": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string"
+              },
+              "missingLabel": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "charts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "title",
+              "rows",
+              "x",
+              "series",
+              "kind"
+            ],
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "x": {
+                "type": "object",
+                "required": [
+                  "key",
+                  "label"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "enum": [
+                      "category",
+                      "number",
+                      "date"
+                    ]
+                  },
+                  "unit": {
+                    "type": "string"
+                  },
+                  "timeZone": {
+                    "type": "string"
+                  }
+                }
+              },
+              "series": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "key",
+                    "label"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "rangeLabel": {
+                "type": "string"
+              },
+              "denominator": {
+                "type": "string"
+              },
+              "missingLabel": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "table",
+                  "line",
+                  "bar",
+                  "scatter",
+                  "stacked-share"
+                ]
+              }
+            }
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "x": {
+          "type": "object",
+          "required": [
+            "key",
+            "label"
+          ],
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "category",
+                "number",
+                "date"
+              ]
+            },
+            "unit": {
+              "type": "string"
+            },
+            "timeZone": {
+              "type": "string"
+            }
+          }
+        },
+        "series": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "label"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              }
+            }
+          }
         }
+      },
+      "dependencies": {
+        "rows": [
+          "x",
+          "series"
+        ],
+        "x": [
+          "rows",
+          "series"
+        ],
+        "series": [
+          "rows",
+          "x"
+        ]
       }
     },
     "exampleData": {
-      "title": "Synthetic comparison"
+      "title": "Delivery through January",
+      "subtitle": "January 5 to January 19, 2026",
+      "narrative": "Delivery resumed in the third week. The second week has no reported completion count.",
+      "metrics": [
+        {
+          "label": "Requests completed",
+          "value": 7,
+          "unit": "requests",
+          "note": "Reported weeks only"
+        }
+      ],
+      "x": {
+        "key": "group",
+        "label": "Group"
+      },
+      "series": [
+        {
+          "key": "done",
+          "label": "Completed",
+          "unit": "requests"
+        },
+        {
+          "key": "forecast",
+          "label": "Forecast",
+          "unit": "requests"
+        }
+      ],
+      "rows": [
+        {
+          "week": "2026-01-05",
+          "group": "Intake",
+          "done": 0,
+          "forecast": 3
+        },
+        {
+          "week": "2026-01-12",
+          "group": "Progress",
+          "done": null,
+          "forecast": 5
+        },
+        {
+          "week": "2026-01-19",
+          "group": "Delivery",
+          "done": 7,
+          "forecast": 8
+        }
+      ]
     },
     "views": [
       "chart",
       "table"
     ],
     "components": [
+      "builtin/metric",
+      "builtin/document",
+      "builtin/narrative",
+      "builtin/table",
+      "builtin/line",
       "builtin/bar",
-      "builtin/table"
-    ],
-    "description": "Category comparison",
-    "source": "builtin"
+      "builtin/scatter",
+      "builtin/stacked-share"
+    ]
   },
   {
     "apiVersion": "report.mind-forge/v1",
     "kind": "Renderer",
     "id": "builtin/trend",
     "version": "1.0.0",
-    "entry": "mind-forge-report/renderers/trend",
+    "entry": "embedded:renderer/trend",
+    "description": "Describe change over time with a gap for missing observations",
+    "source": "builtin",
     "schema": {
       "type": "object",
       "required": [
@@ -156,21 +1123,274 @@
         "title": {
           "type": "string",
           "minLength": 1
+        },
+        "subtitle": {
+          "type": "string"
+        },
+        "narrative": {
+          "type": "string"
+        },
+        "rangeLabel": {
+          "type": "string"
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "value"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "value": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "unit": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string"
+              },
+              "missingLabel": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "charts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "title",
+              "rows",
+              "x",
+              "series",
+              "kind"
+            ],
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "x": {
+                "type": "object",
+                "required": [
+                  "key",
+                  "label"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "enum": [
+                      "category",
+                      "number",
+                      "date"
+                    ]
+                  },
+                  "unit": {
+                    "type": "string"
+                  },
+                  "timeZone": {
+                    "type": "string"
+                  }
+                }
+              },
+              "series": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "key",
+                    "label"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "rangeLabel": {
+                "type": "string"
+              },
+              "denominator": {
+                "type": "string"
+              },
+              "missingLabel": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "table",
+                  "line",
+                  "bar",
+                  "scatter",
+                  "stacked-share"
+                ]
+              }
+            }
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "x": {
+          "type": "object",
+          "required": [
+            "key",
+            "label"
+          ],
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "category",
+                "number",
+                "date"
+              ]
+            },
+            "unit": {
+              "type": "string"
+            },
+            "timeZone": {
+              "type": "string"
+            }
+          }
+        },
+        "series": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "label"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              }
+            }
+          }
         }
+      },
+      "dependencies": {
+        "rows": [
+          "x",
+          "series"
+        ],
+        "x": [
+          "rows",
+          "series"
+        ],
+        "series": [
+          "rows",
+          "x"
+        ]
       }
     },
     "exampleData": {
-      "title": "Synthetic trend"
+      "title": "Delivery through January",
+      "subtitle": "January 5 to January 19, 2026",
+      "narrative": "Delivery resumed in the third week. The second week has no reported completion count.",
+      "metrics": [
+        {
+          "label": "Requests completed",
+          "value": 7,
+          "unit": "requests",
+          "note": "Reported weeks only"
+        }
+      ],
+      "x": {
+        "key": "week",
+        "label": "Week starting",
+        "type": "date",
+        "timeZone": "UTC"
+      },
+      "series": [
+        {
+          "key": "done",
+          "label": "Completed",
+          "unit": "requests"
+        },
+        {
+          "key": "forecast",
+          "label": "Forecast",
+          "unit": "requests"
+        }
+      ],
+      "rows": [
+        {
+          "week": "2026-01-05",
+          "group": "Intake",
+          "done": 0,
+          "forecast": 3
+        },
+        {
+          "week": "2026-01-12",
+          "group": "Progress",
+          "done": null,
+          "forecast": 5
+        },
+        {
+          "week": "2026-01-19",
+          "group": "Delivery",
+          "done": 7,
+          "forecast": 8
+        }
+      ]
     },
     "views": [
       "chart",
       "table"
     ],
     "components": [
+      "builtin/metric",
+      "builtin/document",
+      "builtin/narrative",
+      "builtin/table",
       "builtin/line",
-      "builtin/table"
-    ],
-    "description": "Time series",
-    "source": "builtin"
+      "builtin/bar",
+      "builtin/scatter",
+      "builtin/stacked-share"
+    ]
   }
 ]

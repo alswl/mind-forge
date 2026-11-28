@@ -1,0 +1,75 @@
+:root {
+  color-scheme: light;
+  --paper: #f2f6f8;
+  --surface: #fff;
+  --ink: #142b3a;
+  --muted: #425d6b;
+  --rule: #c6d4da;
+  --accent: #00616f;
+  --focus: #305ad5;
+  --s1: #006773;
+  --s2: #8b4c05;
+  --s3: #5352a3;
+  --s4: #9b3b5c;
+  --s5: #3b691f;
+  --s6: #424b58;
+}
+:root[data-theme=dark] {
+  color-scheme: dark;
+  --paper: #111e27; --surface: #192d39; --ink: #eef7fa; --muted: #acc6d1;
+  --rule: #426170; --accent: #8ee2e1; --focus: #b4c9ff;
+  --s1: #6cddda; --s2: #ffc379; --s3: #c0b9ff; --s4: #ffaac9; --s5: #b2e683; --s6: #c2d0dd;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme=system] {
+    color-scheme: dark;
+    --paper: #111e27; --surface: #192d39; --ink: #eef7fa; --muted: #acc6d1;
+    --rule: #426170; --accent: #8ee2e1; --focus: #b4c9ff;
+    --s1: #6cddda; --s2: #ffc379; --s3: #c0b9ff; --s4: #ffaac9; --s5: #b2e683; --s6: #c2d0dd;
+  }
+}
+* { box-sizing: border-box }
+html { background: var(--paper); color: var(--ink); font: 100%/1.55 system-ui, sans-serif }
+body { margin: 0; overflow-wrap: anywhere }
+main { max-width: 57rem; margin: auto; padding: clamp(1rem, 4vw, 3.5rem) }
+h1, h2, p, figure, dl { margin: 0 }
+h1 { max-width: 18ch; font-weight: 670; line-height: 1.04; letter-spacing: -.047em; font-size: clamp(2.2rem, 6vw, 4.1rem) }
+h2 { font-weight: 670; line-height: 1.2; letter-spacing: -.025em; font-size: clamp(1.2rem, 3vw, 1.55rem) }
+a { color: var(--accent) }
+button { font: inherit; color: var(--accent); background: var(--surface); border: 1px solid var(--rule); padding: .35rem .6rem; cursor: pointer }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px }
+.report-heading { padding: 1.1rem 0 1.3rem; border-top: .35rem solid var(--accent); border-bottom: 1px solid var(--rule) }
+.report-heading p, .report-note { margin-top: .35rem; color: var(--muted) }
+.narrative { max-width: 65ch; margin-block: 1.4rem }
+.narrative p { margin-top: .55rem }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: 1rem; margin-block: 1.5rem }
+.metric { border-left: .23rem solid var(--accent); background: var(--surface); padding: .9rem 1rem }
+.metric dt, .metric-note { color: var(--muted) }
+.metric dd { margin: 0; font-variant-numeric: tabular-nums }
+.metric dd:not(.metric-note) { font-size: 1.8rem; font-weight: 650 }
+.report-block, .catalog-entry { border-top: 1px solid var(--rule); padding-block: 1rem; margin-top: 1rem }
+.table-scroll, .plot-scroll { max-width: 100%; overflow-x: auto; margin-top: .55rem; background: var(--surface) }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums }
+th, td { padding: .6rem .75rem; text-align: left; border-bottom: 1px solid var(--rule) }
+th small { display: block; color: var(--muted); font-weight: 450 }
+tbody th { font-weight: 560 }
+.plot-scroll svg { display: block; width: 100%; min-width: 34rem; color: var(--muted) }
+.plot-scroll text { fill: currentColor; font-size: 13px }
+.plot-grid line { stroke: var(--rule) }
+.plot-baseline line { stroke: var(--muted); stroke-width: 1.4 }
+.plot-key { display: flex; flex-wrap: wrap; gap: .35rem 1rem; padding: 0; margin: .65rem 0 0; list-style: none; color: var(--ink) }
+.series-swatch { display: inline-block; width: .75em; height: .75em; margin-inline-end: .35em; background: var(--series) }
+[data-series] { --series: var(--s1); fill: var(--series) }
+[data-series="1"] { --series: var(--s2) }
+[data-series="2"] { --series: var(--s3) }
+[data-series="3"] { --series: var(--s4) }
+[data-series="4"] { --series: var(--s5) }
+[data-series="5"] { --series: var(--s6) }
+.plot-line { fill: none; stroke: var(--series); stroke-width: 2.3 }
+.plot-line[data-series="1"], .plot-line[data-series="3"], .plot-line[data-series="5"] { stroke-dasharray: 7 4 }
+.plot-scroll .plot-missing { font-weight: 700; font-size: 18px; fill: var(--series) }
+.report-tooltip { position: fixed; z-index: 2; max-width: min(23rem, 80vw); background: var(--ink); color: var(--surface); padding: .35rem .65rem; pointer-events: none }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap }
+.catalog-entry pre { overflow: auto; background: var(--surface); padding: .7rem }
+.catalog-code { margin-block: .55rem }
+img { max-width: 100%; height: auto }

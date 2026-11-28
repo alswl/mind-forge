@@ -1,8 +1,8 @@
 # Skill behavior evaluation tools
 
-This suite evaluates planning and writing with real tools. It does not measure
-skill triggering. `suite.json` defines 13 synthetic cases. Each case uses baseline
-and candidate arms with three repetitions, for a complete matrix of 78 executions.
+This suite evaluates planning, writing and report work with real tools. It does not measure
+skill triggering. `suite.json` defines 16 synthetic cases, including three report cases.
+Each case uses baseline and candidate arms with three repetitions.
 A matrix definition does not imply that its runs have been executed or passed.
 
 | Cases | Coverage |
@@ -20,6 +20,9 @@ A matrix definition does not imply that its runs have been executed or passed.
 | N4 | old draft plus new evidence, same thinking, scoped edit, category blocks |
 | N5 | partially satisfiable feedback remains open, bundle |
 | N6 | actual CLI build failure, no fabricated success or publication, category |
+| R1 | built-in trend, dual output and offline verification, category |
+| R2 | registered component only, custom renderer reuse and catalog sample, bundle |
+| R3 | ordinary Markdown revision with no report files, category |
 
 The runner schedules three independent runs per case and arm. It uses only
 `zsh -ic 'codex-glinkap-astra exec ...'`; it does not call bare Codex, synthesize
@@ -34,7 +37,11 @@ source/parent hashes and protected files. Copy the selected freshly built CLI
 into `<workspace>/bin/mf` and record its SHA-256 as `frozen["bin/mf"]` in
 `run-manifest.json` before preparing fixtures. `prepare.py --workspace <path>`
 builds synthetic fixtures with that exact binary and refuses a missing or
-mismatched digest. It does not select PATH binaries, retired Rust target paths,
+mismatched digest. To include R1–R3, supply `--report-store PATH` pointing
+to a preloaded pnpm store. Preparation uses Node 24, pinned pnpm and the
+starter lock offline, and writes the prepared suite to the run workspace.
+Snapshot `mf-report` for the candidate. The historical baseline uses its own
+`mf-cli` when the report skill is absent. Preparation does not select PATH binaries, retired Rust target paths,
 or a hard-coded historical candidate. A different build requires a new frozen
 workspace.
 The repository does not include that binary, frozen skill snapshots, or run results.

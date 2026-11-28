@@ -252,5 +252,6 @@ func (service Service) Scaffold(ctx context.Context, scope Scope, slug, renderer
 		}
 		return ScaffoldResult{}, fmt.Errorf("scaffold %s: %w", dir, err)
 	}
-	return ScaffoldResult{Directory: dir, Renderer: renderer}, nil
+	return ScaffoldResult{Directory: dir, Renderer: renderer,
+		Install: []string{"pnpm", "--dir", filepath.Join(scope.Directory, dir), "install", "--frozen-lockfile"}}, nil
 }

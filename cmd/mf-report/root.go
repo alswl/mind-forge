@@ -33,20 +33,26 @@ func NewCommand() *cobra.Command {
 		}
 		return nil
 	}
-	root.AddCommand(newBuildCommand(), newListCommand(), newServeCommand(), newOpenAPICommand())
+	root.AddCommand(newBuildCommand(), newCatalogCommand(), newListCommand(), newServeCommand(), newOpenAPICommand())
 	return root
 }
 
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	root := NewCommand()
 	dispatched := false
-	for _, child := range root.Commands() {
-		action := child.RunE
-		child.RunE = func(command *cobra.Command, args []string) error {
-			dispatched = true
-			return action(command, args)
+	var trackDispatch func(*cobra.Command)
+	trackDispatch = func(command *cobra.Command) {
+		for _, child := range command.Commands() {
+			if action := child.RunE; action != nil {
+				child.RunE = func(command *cobra.Command, args []string) error {
+					dispatched = true
+					return action(command, args)
+				}
+			}
+			trackDispatch(child)
 		}
 	}
+	trackDispatch(root)
 	root.SetArgs(args)
 	root.SetOut(stdout)
 	root.SetErr(stderr)

@@ -34,6 +34,16 @@ def main():
                            not p.startswith('.mind-forge/') and
                            not (cid not in ['N1', 'N2', 'N6'] and
                                 (p == output+'.md' or p.startswith(output+'/')))]
+            report_root = 'templates/reports/weekly/'
+            report_outputs = {report_root + 'outputs/report.' + view + '.html' for view in ('chart', 'table')}
+            report_catalog = report_root + 'outputs/catalog.html'
+            if cid in ['R1', 'R2']:
+                report_allowed = report_outputs.copy()
+                if cid == 'R2':
+                    report_allowed |= {report_catalog, '.mind-forge/report/renderers/weekly/Report.tsx',
+                                       '.mind-forge/report/renderers/weekly/renderer.yaml'}
+                out_changes = [p for p in changes if p not in report_allowed and
+                               not (cid == 'R2' and p.startswith('.mind-forge/report/components/delivery/'))]
             evidence = []
             def check(name, ok, why):
                 evidence.append({'text': name, 'passed': bool(ok), 'evidence': why})
@@ -68,7 +78,7 @@ def main():
                 try: events.append(json.loads(line))
                 except ValueError: pass
             commands = [e['item'] for e in events if e.get('type') == 'item.completed' and e.get('item', {}).get('type') == 'command_execution']
-            real = [i for i in commands if re.search(r'(?:/mf|\bmf)\s+(mind|output|article|build|additional|lifecycle)', i.get('command', ''))]
+            real = [i for i in commands if re.search(r'(?:/mf|\bmf)\s+(mind|output|article|build|additional|lifecycle|report)', i.get('command', ''))]
             check('real_cli_calls', bool(real), [{'id': i['id'], 'command': i['command'], 'exit_code': i.get('exit_code')} for i in real])
             forbidden = [i['id'] for i in commands if re.search(r'\bpublish\s+(run|update)\b', i.get('command', ''))]
             check('no_unauthorized_publication', not forbidden, {'event_ids': forbidden})
@@ -79,6 +89,27 @@ def main():
                 check('observed_build_failure', bool(failed), {'event_ids': failed})
             if cid == 'P1':
                 check('new_short_output_is_single_file', (work/(output+'.md')).is_file() and not (work/output).is_dir(), output+'.md')
+            if cid in ['R1', 'R2']:
+                expected_id = 'builtin/trend' if cid == 'R1' else 'repo/weekly'
+                exports = sorted(report_outputs)
+                check('dual_exports', all((work/p).is_file() for p in exports), {'artifacts': exports})
+                check('observed_renderer', any(expected_id in i.get('aggregated_output', '') for i in real), expected_id)
+                if cid == 'R1':
+                    expected_values = ('0 requests', 'Not reported')
+                else:
+                    expected_values = ('7', 'requests')
+                    catalog = work/report_catalog
+                    check('catalog_preview', catalog.is_file() and 'repo/delivery' in catalog.read_text(), report_catalog)
+                check('matching_report_values', all((work/p).is_file() and
+                      all(v in (work/p).read_text() for v in expected_values) for p in exports), expected_values)
+                check('offline_content_policy', all((work/p).is_file() and
+                      "default-src 'none'" in (work/p).read_text()
+                      for p in exports), {'artifacts': exports, 'browser_checks': 'see transcript'})
+            if cid == 'R3':
+                writes = [p for p in changes if p.startswith(('templates/reports/', '.mind-forge/report/'))]
+                report_calls = [i['id'] for i in real if re.search(r'(?:/mf|\bmf)\s+report', i.get('command', ''))]
+                check('markdown_workflow', not writes and not report_calls and new.count('The sample is small.') == 1,
+                      {'report_writes': writes, 'report_calls': report_calls})
             (run/'hard-checks.json').write_text(json.dumps({'expectations': evidence, 'all_passed': all(i['passed'] for i in evidence), 'semantic_status': 'not_graded'}, ensure_ascii=False, indent=2)+'\n')
             print(cid, run.parent.name, run.name, 'hard_pass' if all(i['passed'] for i in evidence) else 'hard_fail', flush=True)
 

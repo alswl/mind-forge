@@ -164,5 +164,56 @@
       "type": "contains",
       "check": "An actual failing CLI build is observed and accurately reported; no source repair, publication or success registration occurs."
     }
+  ],
+  "R1": [
+    {
+      "name": "report_1_1",
+      "type": "contains",
+      "check": "Uses builtin/trend from the real registry with no custom additions"
+    },
+    {
+      "name": "report_1_2",
+      "type": "contains",
+      "check": "Produces outputs/report.chart.html and outputs/report.table.html from the same data"
+    },
+    {
+      "name": "report_1_3",
+      "type": "contains",
+      "check": "Checks the reported zero, explicit missing week, request count unit and offline behavior"
+    }
+  ],
+  "R2": [
+    {
+      "name": "report_2_1",
+      "type": "contains",
+      "check": "Adds repo/delivery and reuses repo/weekly without creating another renderer"
+    },
+    {
+      "name": "report_2_2",
+      "type": "contains",
+      "check": "The chart and table exports agree on 7 requests"
+    },
+    {
+      "name": "report_2_3",
+      "type": "contains",
+      "check": "The offline catalog includes repo/delivery, its schema and its example"
+    }
+  ],
+  "R3": [
+    {
+      "name": "report_3_1",
+      "type": "contains",
+      "check": "Edits the existing Markdown Output through the usual writing workflow"
+    },
+    {
+      "name": "report_3_2",
+      "type": "contains",
+      "check": "Preserves the author judgment and removes the repeated sentence"
+    },
+    {
+      "name": "report_3_3",
+      "type": "contains",
+      "check": "Does not create report files, exports or registry entries"
+    }
   ]
 }

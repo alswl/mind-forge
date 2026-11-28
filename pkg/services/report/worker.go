@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/alswl/mind-forge/pkg/common/task"
 )
-
-const DefaultWorker = "node_modules/.bin/mind-forge-report-worker"
 
 type Module struct {
 	ID      string          `json:"id"`
@@ -22,17 +22,24 @@ type Module struct {
 	Schema  json.RawMessage `json:"schema"`
 }
 
+type CatalogComponent struct {
+	Module
+	Description string `json:"description,omitempty"`
+	Example     string `json:"example"`
+}
+
 type Job struct {
-	Protocol   string   `json:"protocol"`
-	WorkDir    string   `json:"workDir"`
-	Entry      string   `json:"entry"`
-	Data       string   `json:"data"`
-	Renderer   Module   `json:"renderer"`
-	Components []Module `json:"components"`
-	View       string   `json:"view"`
-	Theme      string   `json:"theme"`
-	Stage      string   `json:"stage"`
-	Artifact   string   `json:"artifact"`
+	Protocol   string             `json:"protocol"`
+	WorkDir    string             `json:"workDir"`
+	Entry      string             `json:"entry"`
+	Data       string             `json:"data"`
+	Renderer   Module             `json:"renderer"`
+	Components []Module           `json:"components"`
+	View       string             `json:"view"`
+	Theme      string             `json:"theme"`
+	Stage      string             `json:"stage"`
+	Artifact   string             `json:"artifact"`
+	Catalog    []CatalogComponent `json:"catalog,omitempty"`
 }
 
 type Receipt struct {
@@ -61,8 +68,8 @@ func (plan BuildPlan) job(stage string) Job {
 }
 
 type ProcessWorker struct {
-	// Executable is an absolute, operator-selected path. An empty value uses
-	// the report working directory's locked package executable.
+	// Executable is an absolute, operator-selected path. An empty value
+	// selects the embedded engine and looks up Node on PATH.
 	Executable string
 	Stderr     io.Writer
 }
@@ -72,8 +79,16 @@ func (worker ProcessWorker) Run(ctx context.Context, job Job) (Receipt, error) {
 		return Receipt{}, fmt.Errorf("unsupported worker request protocol %q", job.Protocol)
 	}
 	executable := worker.Executable
+	var args []string
+	var directory string
 	if executable == "" {
-		executable = filepath.Join(job.WorkDir, DefaultWorker)
+		var err error
+		executable, directory, err = embeddedEngine()
+		if err != nil {
+			return Receipt{}, err
+		}
+		defer os.RemoveAll(directory)
+		args = []string{filepath.Join(directory, "worker.cjs")}
 	}
 	if !filepath.IsAbs(executable) {
 		return Receipt{}, fmt.Errorf("worker executable must be absolute")
@@ -83,7 +98,7 @@ func (worker ProcessWorker) Run(ctx context.Context, job Job) (Receipt, error) {
 		return Receipt{}, err
 	}
 	var stdout receiptBuffer
-	cmd := task.Command(ctx, executable)
+	cmd := task.Command(ctx, executable, args...)
 	cmd.Dir = job.WorkDir
 	cmd.Stdin = bytes.NewReader(append(input, '\n'))
 	cmd.Stdout = &stdout
@@ -91,7 +106,28 @@ func (worker ProcessWorker) Run(ctx context.Context, job Job) (Receipt, error) {
 	if cmd.Stderr == nil {
 		cmd.Stderr = os.Stderr
 	}
+	var diagnostic diagnosticTail
+	if directory != "" {
+		cmd.Env = append(cmd.Environ(), "TMPDIR="+directory)
+		cmd.Stderr = io.MultiWriter(cmd.Stderr, &diagnostic)
+	}
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return Receipt{}, ctx.Err()
+		}
+		if directory != "" {
+			var exit *exec.ExitError
+			message := strings.TrimSpace(diagnostic.String())
+			if _, detail, found := strings.Cut(message, "report engine: "); found {
+				message = detail
+			}
+			if message != "" {
+				if errors.As(err, &exit) && exit.ExitCode() == 2 {
+					return Receipt{}, fmt.Errorf("%w: %s", ErrInvalid, message)
+				}
+				return Receipt{}, fmt.Errorf("%s: %w", message, err)
+			}
+		}
 		return Receipt{}, fmt.Errorf("execute %s: %w", executable, err)
 	}
 	decoder := json.NewDecoder(&stdout.Buffer)
@@ -115,4 +151,21 @@ func (buffer *receiptBuffer) Write(p []byte) (int, error) {
 		return 0, fmt.Errorf("worker receipt exceeds %d bytes", limit)
 	}
 	return buffer.Buffer.Write(p)
+}
+
+// diagnosticTail keeps HTTP errors contextual even when the operator can also
+// see the worker's diagnostic stream. Author output cannot grow this buffer.
+type diagnosticTail struct{ bytes.Buffer }
+
+func (buffer *diagnosticTail) Write(p []byte) (int, error) {
+	const limit = 8192
+	length := len(p)
+	if length >= limit {
+		buffer.Reset()
+		p = p[length-limit:]
+	} else if excess := buffer.Len() + length - limit; excess > 0 {
+		buffer.Next(excess)
+	}
+	_, _ = buffer.Buffer.Write(p)
+	return length, nil
 }

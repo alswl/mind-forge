@@ -62,6 +62,10 @@ package_before() {
     host_arch=$(go env GOHOSTARCH)
     package_build "$host_os" "$host_arch" "$staging/work/probe"
     "$staging/work/probe" version --json > "$staging/build-info/version.json"
+    package_build "$host_os" "$host_arch" "$staging/work/probe-report" TARGETS=mf-report
+    [[ "$("$staging/work/probe-report" --version)" == "mf-report version $expected_version" ]] ||
+        package_die 'Compiled mf-report version differs from mf'
+    cp pkg/services/report/engine/inputs.sha256 "$staging/build-info/report-engine.sha256"
     metadata=$(cat "$staging/build-info/version.json")
     metadata_field() { printf '%s\n' "$metadata" | sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"; }
     [[ "$(metadata_field base_version)" == "$base_version" ]] || package_die 'Compiled base_version differs from source/tag'
@@ -75,9 +79,21 @@ package_before() {
 }
 
 package_verify() {
-    local staging=$1 binary=$2 target_os=$3 target_arch=$4 suffix=$5 build_info setting
+    local staging=$1 binary=$2 target_os=$3 target_arch=$4 suffix=$5 companion
+    verify_binary "$staging" "$binary" "$target_os" "$target_arch" "$suffix" mf
+    companion="$staging/work/mf-report-$suffix"
+    package_build "$target_os" "$target_arch" "$companion" TARGETS=mf-report ||
+        package_die "Build failed for mf-report-$suffix"
+    chmod 0755 "$companion"
+    verify_binary "$staging" "$companion" "$target_os" "$target_arch" "mf-report-$suffix" mf-report
+}
+
+verify_binary() {
+    local staging=$1 binary=$2 target_os=$3 target_arch=$4 suffix=$5 command=$6 build_info setting
     build_info=$(go version -m "$binary")
     [[ "${build_info%%$'\n'*}" == "$binary: $expected_go" ]] || package_die "Wrong compiler for $suffix"
+    printf '%s\n' "$build_info" | awk -F '\t' -v path="github.com/alswl/mind-forge/cmd/$command" '$2 == "path" && $3 == path {found=1} END {exit !found}' ||
+        package_die "Wrong command for $suffix"
     for setting in "GOOS=$target_os" "GOARCH=$target_arch" 'CGO_ENABLED=0' '-compiler=gc' "vcs.revision=$revision" "vcs.modified=$dirty"; do
         printf '%s\n' "$build_info" | awk -F '\t' -v wanted="$setting" '$2 == "build" && $3 == wanted {found=1} END {exit !found}' || package_die "Missing $setting for $suffix"
     done
@@ -91,7 +107,17 @@ package_verify() {
 }
 
 package_after() {
-    local staging=$1
+    local staging=$1 archive suffix primary companion
+    : > "$staging/checksums.txt"
+    for archive in "$staging"/mf-"$tag"-*.tar.gz; do
+        suffix=${archive##*/mf-"$tag"-}
+        suffix=${suffix%.tar.gz}
+        primary="mf-$suffix"
+        companion="mf-report-$suffix"
+        COPYFILE_DISABLE=1 tar --format=ustar -czf "$archive" -C "$staging/work" "$primary" "$companion" ||
+            package_die "Could not archive the binary pair for $suffix"
+        printf '%s  %s\n' "$(package_sha256 "$archive")" "${archive##*/}" >> "$staging/checksums.txt"
+    done
     cat > "$staging/build-info/package.txt" <<MANIFEST
 tag=$tag
 base_version=$base_version

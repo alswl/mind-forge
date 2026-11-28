@@ -3,6 +3,7 @@ package report
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -100,6 +101,16 @@ func TestHumaCoreAPI(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "data.json"), []byte(`{"title":12}`), 0644))
 	requireProblem(t, send(http.MethodPost, path, host, "", token, "{}"), 422)
 	require.Equal(t, 2, worker.called)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "data.json"), []byte(`{"title":"Synthetic"}`), 0644))
+	t.Setenv("PATH", t.TempDir())
+	handler, _ = NewAPI(APIOptions{Service: core.Service{Worker: core.ProcessWorker{Stderr: io.Discard}}, Scope: scope, Address: host, Token: token})
+	missingNode := send(http.MethodPost, path, host, "", token, `{"view":"table"}`)
+	requireProblem(t, missingNode, 503)
+	require.Contains(t, missingNode.Body.String(), "node executable not found on PATH")
+	output, err := os.ReadFile(filepath.Join(dir, "outputs/report.table.html"))
+	require.NoError(t, err)
+	require.Equal(t, "synthetic table", string(output))
 
 	raw, err := OpenAPI()
 	require.NoError(t, err)

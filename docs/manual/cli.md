@@ -133,6 +133,8 @@ This document contains the help content for the `mf` command-line program.
 * [`mf report renderer list`↴](#mf-report-renderer-list)
 * [`mf report component`↴](#mf-report-component)
 * [`mf report component list`↴](#mf-report-component-list)
+* [`mf report catalog`↴](#mf-report-catalog)
+* [`mf report catalog build`↴](#mf-report-catalog-build)
 
 ## `mf`
 
@@ -3459,6 +3461,7 @@ Manage data reports
 * `openapi` — Print the OpenAPI 3.1 YAML contract
 * `renderer` — Inspect registered renderers
 * `component` — Inspect registered components
+* `catalog` — Export an offline component catalog
 
 ```text
 Examples (use a disposable directory for setup):
@@ -3642,4 +3645,52 @@ Examples (use a disposable directory for setup):
   Command:
     mf report component list --id builtin/metric --json
   Effect: Look up the built-in metric component.
+```
+
+
+## `mf report catalog`
+
+Export an offline component catalog
+
+**Usage:** `mf report catalog [COMMAND]`
+
+###### **Subcommands:**
+
+* `build` — Build the offline component catalog
+
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # In a disposable project with a weekly report and locked dependencies installed.
+  Command:
+    mf report catalog build weekly -p research
+  Effect: Write the offline catalog with schemas and copyable examples.
+```
+
+
+## `mf report catalog build`
+
+Build the offline component catalog
+
+**Usage:** `mf report catalog build [OPTIONS] <SLUG>`
+
+###### **Arguments:**
+
+* `<SLUG>` — Report working directory slug
+
+###### **Options:**
+
+* `--theme <THEME>` — Report theme
+
+  Possible values: `system`, `light`, `dark`
+
+* `--worker <PATH>` — Override the executable for the report worker
+
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # In a disposable project with a weekly report and locked dependencies installed.
+  Command:
+    mf report catalog build weekly -p research
+  Effect: Write the offline catalog with schemas and copyable examples.
 ```

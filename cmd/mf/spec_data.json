@@ -7882,8 +7882,8 @@
       "access": "read",
       "flags": [],
       "arguments": [],
-      "help": "Manage data reports\n\nUsage: mf report [OPTIONS] [COMMAND]\n\nCommands:\n  init      Scaffold a report in the selected project\n  build     Export a report from the selected project\n  serve     Serve the report API for the selected project\n  openapi   Print the OpenAPI 3.1 YAML contract\n  renderer  Inspect registered renderers\n  component Inspect registered components\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
-      "help_default": "Manage data reports\n\nUsage: mf report [OPTIONS] [COMMAND]\n\nCommands:\n  init      Scaffold a report in the selected project\n  build     Export a report from the selected project\n  serve     Serve the report API for the selected project\n  openapi   Print the OpenAPI 3.1 YAML contract\n  renderer  Inspect registered renderers\n  component Inspect registered components\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help": "Manage data reports\n\nUsage: mf report [OPTIONS] [COMMAND]\n\nCommands:\n  init      Scaffold a report in the selected project\n  build     Export a report from the selected project\n  catalog   Export an offline component catalog\n  serve     Serve the report API for the selected project\n  openapi   Print the OpenAPI 3.1 YAML contract\n  renderer  Inspect registered renderers\n  component Inspect registered components\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Manage data reports\n\nUsage: mf report [OPTIONS] [COMMAND]\n\nCommands:\n  init      Scaffold a report in the selected project\n  build     Export a report from the selected project\n  catalog   Export an offline component catalog\n  serve     Serve the report API for the selected project\n  openapi   Print the OpenAPI 3.1 YAML contract\n  renderer  Inspect registered renderers\n  component Inspect registered components\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
       "examples": [
         {
           "prerequisites": [
@@ -8251,6 +8251,96 @@
           ],
           "command": "mf report component list --id builtin/metric --json",
           "effect": "Look up the built-in metric component."
+        }
+      ]
+    },
+    {
+      "path": [
+        "report",
+        "catalog"
+      ],
+      "aliases": [],
+      "about": "Export an offline component catalog",
+      "usage": "report catalog [OPTIONS] [COMMAND]",
+      "required_subcommand": false,
+      "repo_required": false,
+      "access": "read",
+      "flags": [],
+      "arguments": [],
+      "help": "Export an offline component catalog\n\nUsage: mf report catalog [OPTIONS] [COMMAND]\n\nCommands:\n  build  Build the offline component catalog\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Export an offline component catalog\n\nUsage: mf report catalog [OPTIONS] [COMMAND]\n\nCommands:\n  build  Build the offline component catalog\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "examples": [
+        {
+          "prerequisites": [
+            "# In a disposable project with a weekly report and locked dependencies installed."
+          ],
+          "command": "mf report catalog build weekly -p research",
+          "effect": "Write the offline catalog with schemas and copyable examples."
+        }
+      ]
+    },
+    {
+      "path": [
+        "report",
+        "catalog",
+        "build"
+      ],
+      "aliases": [],
+      "about": "Build the offline component catalog",
+      "usage": "report catalog build [OPTIONS] <SLUG>",
+      "required_subcommand": false,
+      "repo_required": true,
+      "access": "write",
+      "flags": [
+        {
+          "name": "theme",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "THEME",
+          "help": "Report theme [default: system]",
+          "aliases": [],
+          "conflicts": [],
+          "requires": [],
+          "choices": [
+            "system",
+            "light",
+            "dark"
+          ]
+        },
+        {
+          "name": "worker",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "PATH",
+          "help": "Override the executable for the report worker",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        }
+      ],
+      "arguments": [
+        {
+          "name": "SLUG",
+          "required": true,
+          "repeat": false,
+          "kind": "string"
+        }
+      ],
+      "help": "Build the offline component catalog\n\nUsage: mf report catalog build [OPTIONS] <SLUG>\n\nArguments:\n  <SLUG>  Report working directory slug\n\nOptions:\n      --theme <THEME>            Report theme [default: system]\n      --worker <PATH>            Override the executable for the report worker\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Build the offline component catalog\n\nUsage: mf report catalog build [OPTIONS] <SLUG>\n\nArguments:\n  <SLUG>  Report working directory slug\n\nOptions:\n      --theme <THEME>            Report theme [default: system]\n      --worker <PATH>            Override the executable for the report worker\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "examples": [
+        {
+          "prerequisites": [
+            "# In a disposable project with a weekly report and locked dependencies installed."
+          ],
+          "command": "mf report catalog build weekly -p research",
+          "effect": "Write the offline catalog with schemas and copyable examples."
         }
       ]
     }

@@ -52,6 +52,8 @@ type BuildPlan struct {
 
 func validView(view string) bool { return view == "chart" || view == "table" }
 
+func validTheme(theme string) bool { return theme == "system" || theme == "light" || theme == "dark" }
+
 func (service Service) Plan(ctx context.Context, scope Scope, request Request) (BuildPlan, error) {
 	root, err := scope.openReport(request.Slug)
 	if err != nil {
@@ -84,7 +86,7 @@ func (service Service) plan(ctx context.Context, root *os.Root, request Request)
 	if theme == "" {
 		theme = "system"
 	}
-	if !validView(view) || theme != "system" && theme != "light" && theme != "dark" {
+	if !validView(view) || !validTheme(theme) {
 		return BuildPlan{}, fmt.Errorf("%w: unsupported view %q or theme %q", ErrInvalid, view, theme)
 	}
 	catalog, err := service.discover()
@@ -176,6 +178,10 @@ func (service Service) Build(ctx context.Context, scope Scope, request Request) 
 	if err := validateData(root, plan); err != nil {
 		return Result{}, fmt.Errorf("%w: renderer %s, %s: %w", ErrInvalid, plan.Renderer, plan.Data, err)
 	}
+	return service.publish(ctx, root, plan.Result, plan.job(""))
+}
+
+func (service Service) publish(ctx context.Context, root *os.Root, result Result, job Job) (Result, error) {
 	if service.Worker == nil {
 		return Result{}, fmt.Errorf("%w: no worker configured", ErrUnavailable)
 	}
@@ -184,28 +190,31 @@ func (service Service) Build(ctx context.Context, scope Scope, request Request) 
 	}
 	stage, err := dal.NewStage(root)
 	if err != nil {
-		return Result{}, fmt.Errorf("stage %s: %w", plan.Artifact, err)
+		return Result{}, fmt.Errorf("stage %s: %w", result.Artifact, err)
 	}
 	defer stage.Close()
-	job := plan.job(stage.Path())
+	job.Stage = stage.Path()
 	receipt, err := service.Worker.Run(ctx, job)
 	if ctx.Err() != nil {
 		return Result{}, ctx.Err()
 	}
 	if err != nil {
-		return Result{}, fmt.Errorf("%w: renderer %s: %w", ErrUnavailable, plan.Renderer, err)
-	}
-	expected := Receipt{Protocol: Protocol, Stage: job.Stage, Result: plan.Result}
-	if receipt != expected {
-		return Result{}, fmt.Errorf("%w: renderer %s: receipt does not match the build request", ErrUnavailable, plan.Renderer)
-	}
-	if err := stage.Publish(ctx, filepath.Base(plan.Artifact)); err != nil {
-		if errors.Is(err, dal.ErrInvalidStage) {
-			return Result{}, fmt.Errorf("%w: renderer %s: %w", ErrUnavailable, plan.Renderer, err)
+		if errors.Is(err, ErrInvalid) {
+			return Result{}, err
 		}
-		return Result{}, fmt.Errorf("publish %s: %w", plan.Artifact, err)
+		return Result{}, fmt.Errorf("%w: renderer %s: %w", ErrUnavailable, result.Renderer, err)
 	}
-	return plan.Result, nil
+	expected := Receipt{Protocol: Protocol, Stage: job.Stage, Result: result}
+	if receipt != expected {
+		return Result{}, fmt.Errorf("%w: renderer %s: receipt does not match the build request", ErrUnavailable, result.Renderer)
+	}
+	if err := stage.Publish(ctx, filepath.Base(result.Artifact)); err != nil {
+		if errors.Is(err, dal.ErrInvalidStage) {
+			return Result{}, fmt.Errorf("%w: renderer %s: %w", ErrUnavailable, result.Renderer, err)
+		}
+		return Result{}, fmt.Errorf("publish %s: %w", result.Artifact, err)
+	}
+	return result, nil
 }
 
 func validateData(root *os.Root, plan BuildPlan) error {

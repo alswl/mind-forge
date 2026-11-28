@@ -10,7 +10,7 @@ $(error Missing makefile-go submodule; run git submodule update --init --recursi
 endif
 include $(MAKEFILE_GO)/makefile-go/general.mk
 
-.PHONY: build-report check check-toolchain check-linter vet test test-raw verify-modules install generate-manual
+.PHONY: build-report check-report-assets check-report-source check check-toolchain check-linter vet test test-raw verify-modules install generate-manual
 ROOT := github.com/alswl/mind-forge
 TARGETS := mf
 CMD_DIR := ./cmd
@@ -43,6 +43,15 @@ PACKAGE_TARGETS := linux:amd64:x86_64-unknown-linux-gnu linux:arm64:aarch64-unkn
                    darwin:amd64:x86_64-apple-darwin darwin:arm64:aarch64-apple-darwin
 PACKAGE_HOOKS := hack/release-checks.sh
 include $(MAKEFILE_GO)/makefile-go/distribution.mk
+INSTALLER_RENDER = bash hack/render-mf-installer.sh "$(MAKEFILE_GO_DISTRIBUTION_DIR)/render-install.sh" "$(INSTALLER_PROJECT)"
+
+check-report-assets: ## Verify the report engine, starter and their source inputs.
+	sh hack/check-report-assets.sh
+
+check-report-source: ## Typecheck, test, and reproduce the embedded report engine with locked Node dependencies.
+	sh hack/check-report-source.sh
+
+package: check-report-assets
 
 bump bump-patch bump-minor bump-major bump-beta bump-alpha: check-toolchain
 
@@ -62,7 +71,7 @@ check-linter:
 	  actual=$$(golangci-lint version --short) && \
 	  [[ "$$actual" == "$$expected" ]] || { printf 'Expected golangci-lint %s; found %s.\n' "$$expected" "$$actual" >&2; exit 1; }
 
-check: check-toolchain check-installer ## Run the complete local quality gate.
+check: check-toolchain check-installer check-report-assets ## Run the complete local quality gate.
 	$(MAKE) --no-print-directory lint
 	$(MAKE) --no-print-directory vet
 	go mod verify
