@@ -18,7 +18,7 @@ func PrivateCallouts(lines []string) []PrivateCallout {
 	var fence FenceTracker
 	for i := 0; i < len(lines); {
 		line := strings.TrimRight(lines[i], "\r\n")
-		inside := fence.ProcessLine(line)
+		inside := fence.processLine(line, true)
 		quoted, _ := privateQuote(line)
 		title, private := privateHeader(quoted)
 		i++
@@ -39,7 +39,7 @@ func PrivateCallouts(lines []string) []PrivateCallout {
 			if !ok {
 				break
 			}
-			if !quotedFence.ProcessLine(quoted) {
+			if !quotedFence.processLine(quoted, true) {
 				if _, nextPrivate := privateHeader(quoted); nextPrivate {
 					break
 				}

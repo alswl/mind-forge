@@ -213,6 +213,49 @@ Root-project identities begin `::`. `mind show` returns existing `roles`
 Paths are project-relative. Creation returns actual `path`; a dry run returns
 `path: null` and `details.proposed_path`, which is not proof of creation.
 
+### Read and maintain an Output handoff
+
+```sh
+mf output show projects/notes::brief::design --handoff --json
+mf output show brief::design -p projects/notes --handoff
+```
+
+Use the normal Output selectors, including a canonical identity, a project-relative
+source path, or a short selector that resolves uniquely. The flag adds an
+absolute `editable_path` and `handoff` to the usual `data` fields. The following
+Markdown callout belongs in the single-file source or in an existing author
+block of the selected directory Output. Keep one callout per Output.
+
+```markdown
+> [!mf-private] Handoff
+> Decision: Trial on Saturdays for four weeks.
+> Rework: Weekday coverage ended per the [updated roster](../../sources/roster.md).
+> Open items: Whether to charge a fee.
+> Next step: Confirm the Saturday hours.
+>   Then update the first-time borrowing steps.
+```
+
+Use the exact title and field labels. Each field appears once; leave its value
+empty after the colon when there is nothing to record. Start continuation lines
+with `>   ` and use `>` for a visual separator inside the callout. Keep the reasons
+and a reference to evidence in `Rework`. Use a relative Markdown link from the
+author block or identify the author statement when that is the only source.
+Keep this callout separate from feedback, suggestions and the underlying evidence.
+
+In JSON, `handoff.status` is `found` or `missing` on exit 0. On `found`, `record`
+contains the strings `decision`, `rework`, `open_items` and `next_step`, with
+continuations joined by newlines. On `missing`, `record` is null and
+`locations` and `diagnostics` are empty. A malformed record is `invalid` and
+multiple records are `ambiguous`. Both exit 1 with the same inspection
+envelope, a null record, locations to inspect and diagnostic messages.
+Each location has an absolute Markdown `path` and one-based inclusive
+`start_line` and `end_line`. Text shows the same state and available fields.
+Selector errors still use the usual query diagnostics. The flag reads author
+files without updating them or their index. With `missing`, read existing
+private notes and bound roles before continuing. Write or update the record
+directly in the editable Markdown during an authorized creative turn. Builds
+exclude it under the existing private content rules.
+
 `outputs/` holds authored source; `build/` holds derived artifacts. Category uses
 `outputs/<mind>/<output>.md` (or a block directory), `prompts/<mind>.md`, and
 `thinking/<mind>.md`; bundle uses `<mind>/outputs/<output>.md`, `<mind>/prompt.md`

@@ -227,20 +227,10 @@ func Prepare(repo, project, selector string, opts Options) (*Prepared, error) {
 	p.sourceDir = filepath.Dir(source)
 	if info.IsDir() {
 		p.sourceDir = source
-		entries, err := os.ReadDir(source)
-		if err != nil {
-			return nil, err
-		}
-		for _, entry := range entries {
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
-			if filepath.Ext(entry.Name()) == ".md" {
-				p.files = append(p.files, filepath.Join(source, entry.Name()))
-			}
-		}
-	} else {
-		p.files = []string{source}
+	}
+	p.files, err = store.MarkdownSourceFiles(ctx, source, info.IsDir())
+	if err != nil {
+		return nil, err
 	}
 	if len(p.files) == 0 {
 		return nil, output.Usage("no markdown files found in "+p.Plan.ArticlePath, "")
