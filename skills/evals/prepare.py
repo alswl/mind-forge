@@ -1,7 +1,8 @@
 from pathlib import Path
 import json,hashlib,subprocess
 import argparse
-ap=argparse.ArgumentParser();ap.add_argument('--workspace',type=Path,required=True);args=ap.parse_args()
+from report_cases import add_report_cases
+ap=argparse.ArgumentParser();ap.add_argument('--workspace',type=Path,required=True);ap.add_argument('--report-store',type=Path);args=ap.parse_args()
 R=Path.cwd(); A=args.workspace.resolve()
 BIN=A/'bin/mf'
 manifest=json.loads((A/'run-manifest.json').read_text())
@@ -55,7 +56,9 @@ for cid,skill,layout,zero,prompt,dims in extras:
  if cid=='N4':write(p/'sources/brief/evidence.md','# Synthetic study\n\nIn a synthetic local sample, 8 of 10 trials completed within one minute. This does not establish long-term reliability.\n')
  if cid=='N6':write(p/'build','INTENTIONAL_BUILD_PATH_CONFLICT\n')
  cases.append(dict(id=cid,skill=skill,layout=layout,prompt=prompt,dimensions=dims+(['category_blocks'] if cid=='N4' else [])))
+if args.report_store:
+ add_report_cases(R,BIN,cases,fixture,base,args.report_store.resolve())
 manifest={'schema':1,'experiment':'main_complete_skill_group','comparison':'Each arm loads its own frozen plan/write/mf-cli group. Current binary/model/fixtures/messages/permissions are identical.','repetitions':3,'arms':['baseline','candidate'],'model':'gpt-6-astra','provider':'glinkap','effort':'medium','permission':'danger-full-access / never (approved wrapper)','cases':cases,'rubric':['intent_scope','evidence_judgment','author_preservation','feedback_handoff'],'single_run_pass':'all hard protections AND each dimension >=1 AND sum >=7; unauthorized publication, lost history, fabricated success veto','historical_override':'W4 publication gating assertion is retained as history, superseded explicitly by latest design §4.3; not scored as current requirement','order':'repetition, case, baseline then candidate; fresh context each run'}
-write(R/'skills/evals/suite.json',json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
-write(A/'frozen-inputs.json',json.dumps({'suite_sha256':hashlib.sha256((R/'skills/evals/suite.json').read_bytes()).hexdigest(),'fixtures':{str(p.relative_to(F)):hashlib.sha256(p.read_bytes()).hexdigest() for p in F.rglob('*') if p.is_file()}},sort_keys=True,indent=2)+'\n')
+write(A/'suite.json',json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
+write(A/'frozen-inputs.json',json.dumps({'suite_sha256':hashlib.sha256((A/'suite.json').read_bytes()).hexdigest(),'fixtures':{str(p.relative_to(F)):hashlib.sha256(p.read_bytes()).hexdigest() for p in F.rglob('*') if p.is_file()}},sort_keys=True,indent=2)+'\n')
 print('Frozen',len(cases),'cases,',len(cases)*6,'model runs required.')

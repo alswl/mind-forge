@@ -9,6 +9,13 @@ description: Develop a legacy article or a selected output of a mind into detail
 
 Own the outline-to-article pass, expression, editorial quality, assembly, and delivery. Start from the framework and private choices prepared by `$mf-plan`, then develop only the scope the author selected. Work from the same prompt, evidence, reasoning, and feedback state; writing is not a disconnected downstream stage.
 
+## Deliver data reports
+
+When the author requests a data report, pass approved narrative and
+deliverable data to `$mf-report`. Use its verified artifact paths in the
+handoff. Continue the existing Markdown build or authorized publish for
+ordinary editable Outputs.
+
 ## Resolve the project mode and writing target
 
 1. Locate the Mind Repo (`minds.yaml`) and the requested project with `mf project list --json`; use the selected entry's repo-relative `path` for `mf project show <project-path> --json` and subsequent project scope. Require a successful `project show`, then read that project's actual `mind.yaml` before invoking `mf mind` or `mf output`. Route each project independently, including projects sharing one repo: absent `content_layout` uses legacy Article; explicit `category` or `bundle` uses Mind/Output. An unreadable or invalid configuration (including an invalid layout value) is an error to report, not a reason to fall back or migrate. Read the file itself for routing; `mf config show` can return defaults after a load error and is not proof that the project configuration is valid. Use `$mf-cli` for exact flags.

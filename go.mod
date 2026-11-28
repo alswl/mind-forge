@@ -5,14 +5,17 @@ go 1.26.0
 toolchain go1.26.11
 
 require (
+	github.com/danielgtaylor/huma/v2 v2.35.0
+	github.com/go-chi/chi/v5 v5.2.2
 	github.com/microcosm-cc/bluemonday v1.0.27
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
 	github.com/yuin/goldmark v1.7.13
 	go.yaml.in/yaml/v3 v3.0.6
-	golang.org/x/net v0.26.0
+	golang.org/x/net v0.40.0
 	golang.org/x/sys v0.50.0
 	golang.org/x/term v0.48.0
 )

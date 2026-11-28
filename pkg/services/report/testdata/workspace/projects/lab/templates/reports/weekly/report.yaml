@@ -1,0 +1,6 @@
+apiVersion: report.mind-forge/v1
+kind: Report
+version: 1.0.0
+renderer: repo/weekly
+entry: report.tsx
+data: data.json

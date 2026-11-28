@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mind Forge Report"
+  short_description: "Build offline reports and verify chart and table exports"
+  default_prompt: "Use $mf-report to choose a renderer for this data and verify its offline exports."

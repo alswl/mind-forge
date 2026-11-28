@@ -369,7 +369,7 @@ func jaro(left, right string) float64 {
 }
 
 func renderParseFailure(command *cobra.Command, spec *Spec, failure *parseFailure, args []string, stderr io.Writer) int {
-	jsonError := wantsJSON(args)
+	jsonError := output.WantsJSON(args)
 	if settings, ok := runtimeFromCommand(command); ok && settings.Output == "json" {
 		jsonError = true
 	}

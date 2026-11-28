@@ -1,0 +1,40 @@
+(() => {
+  const tooltip = document.createElement("div");
+  tooltip.className = "report-tooltip";
+  tooltip.hidden = true;
+  tooltip.setAttribute("aria-hidden", "true");
+  document.body.append(tooltip);
+  const show = (node) => {
+    if (!node) return;
+    tooltip.textContent = node.dataset.tooltip;
+    tooltip.hidden = false;
+    const rect = node.getBoundingClientRect();
+    tooltip.style.left = Math.max(6, Math.min(window.innerWidth - tooltip.offsetWidth - 6, rect.left)) + "px";
+    tooltip.style.top = Math.max(6, rect.top - tooltip.offsetHeight - 8) + "px";
+  };
+  const hide = () => { tooltip.hidden = true; };
+  for (const event of ["pointerover", "focusin"])
+    document.addEventListener(event, e => show(e.target.closest("[data-tooltip]")));
+  for (const event of ["pointerout", "focusout"])
+    document.addEventListener(event, hide);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") hide(); });
+  for (const button of document.querySelectorAll("[data-copy]")) {
+    button.hidden = false;
+    button.addEventListener("click", async () => {
+      const code = document.getElementById(button.dataset.copy);
+      const status = button.nextElementSibling;
+      try {
+        if (!navigator.clipboard) throw new Error("clipboard unavailable");
+        await navigator.clipboard.writeText(code.textContent);
+        status.textContent = "Copied.";
+      } catch {
+        const range = document.createRange();
+        range.selectNodeContents(code);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        status.textContent = document.execCommand("copy") ? "Copied." : "Template selected. Use your copy shortcut.";
+      }
+    });
+  }
+})();

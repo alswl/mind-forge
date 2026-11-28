@@ -35,8 +35,12 @@ func RenderRaw(writer io.Writer, format, content string) error {
 }
 
 func RenderError(writer io.Writer, format string, failure *Error) error {
+	return RenderNamedError(writer, format, "mf", failure)
+}
+
+func RenderNamedError(writer io.Writer, format, command string, failure *Error) error {
 	if format == "json" {
-		_, err := writer.Write(failure.JSON())
+		_, err := writer.Write(failure.NamedJSON(command))
 		return err
 	}
 	var text strings.Builder
@@ -44,7 +48,7 @@ func RenderError(writer io.Writer, format string, failure *Error) error {
 	if failure.Hint != nil {
 		fmt.Fprintf(&text, "\nHint: %s\n", *failure.Hint)
 	}
-	text.WriteString("\nRun `mf --help` for usage.\n")
+	fmt.Fprintf(&text, "\nRun `%s --help` for usage.\n", command)
 	_, err := io.WriteString(writer, text.String())
 	return err
 }

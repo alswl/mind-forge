@@ -1,0 +1,3 @@
+.delivery-metric { margin-block: 1rem; padding: .75rem; border: 1px solid var(--rule) }
+.delivery-metric dt { color: var(--muted) }
+.delivery-metric dd { margin: 0; font-variant-numeric: tabular-nums; font-weight: 650 }

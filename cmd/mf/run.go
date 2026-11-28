@@ -82,7 +82,9 @@ func runWithProcessIO(ctx context.Context, args []string, stdout, stderr io.Writ
 			return err
 		}
 		access := catalogue.Classify(item.Path, Modifiers{DryRun: boolFlag(command, "dry-run"), Check: boolFlag(command, "check"), Fix: boolFlag(command, "fix")})
-		lock, err := session.Begin(command.Context(), application.RepoRoot, access == Write, access == Recovery)
+		// Report exports use per-invocation staging and atomic replacement.
+		reportExport := len(item.Path) >= 2 && item.Path[0] == "report" && item.Path[len(item.Path)-1] == "build"
+		lock, err := session.Begin(command.Context(), application.RepoRoot, access == Write && !reportExport, access == Recovery)
 		if err != nil {
 			return err
 		}
@@ -138,7 +140,7 @@ func runWithProcessIO(ctx context.Context, args []string, stdout, stderr io.Writ
 		return renderParseFailure(selected, catalogue, parseError, args, stderr)
 	}
 	format := diagnosticFormat
-	if wantsJSON(args) {
+	if output.WantsJSON(args) {
 		format = "json"
 	}
 	var failure *output.Error
@@ -204,17 +206,6 @@ func boolFlag(command *cobra.Command, name string) bool {
 
 	value, _ := command.Flags().GetBool(name)
 	return value
-}
-
-func wantsJSON(args []string) bool {
-	previousOutput := false
-	for _, arg := range args {
-		if arg == "--json" || previousOutput && arg == "json" || arg == "--output=json" || arg == "-o=json" || arg == "-ojson" {
-			return true
-		}
-		previousOutput = arg == "--output" || arg == "-o"
-	}
-	return false
 }
 
 func Execute() int {

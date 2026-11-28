@@ -30,14 +30,16 @@ func dependencyViolations(root string) ([]string, error) {
 	violations := []string{}
 	const module = "github.com/alswl/mind-forge/"
 	allowed := map[string][]string{
-		"cmd":              {"pkg/services/", "pkg/config", "pkg/common/", "internal/output", "internal/version"},
-		"services":         {"pkg/services/", "pkg/managers/", "pkg/dal/", "pkg/common/", "pkg/config"},
-		"managers":         {"pkg/managers/", "pkg/dal/", "pkg/common/"},
-		"dal":              {"pkg/dal/", "pkg/common/"},
-		"config":           {"pkg/config", "pkg/dal/", "pkg/common/"},
-		"common":           {"pkg/common/"},
-		"internal/output":  {"pkg/common/"},
-		"internal/version": {},
+		"cmd":                {"pkg/services/", "pkg/config", "pkg/common/", "internal/output", "internal/version", "internal/reportcli", "pkg/server/report"},
+		"server":             {"pkg/services/report"},
+		"internal/reportcli": {"pkg/server/report", "pkg/services/report", "internal/output"},
+		"services":           {"pkg/services/", "pkg/managers/", "pkg/dal/", "pkg/common/", "pkg/config"},
+		"managers":           {"pkg/managers/", "pkg/dal/", "pkg/common/"},
+		"dal":                {"pkg/dal/", "pkg/common/"},
+		"config":             {"pkg/config", "pkg/dal/", "pkg/common/"},
+		"common":             {"pkg/common/"},
+		"internal/output":    {"pkg/common/"},
+		"internal/version":   {},
 	}
 	for _, tree := range []string{"cmd", "pkg", "internal"} {
 		err := filepath.WalkDir(filepath.Join(root, tree), func(path string, entry fs.DirEntry, walkErr error) error {

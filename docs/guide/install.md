@@ -13,6 +13,10 @@ export PATH="${MF_INSTALL_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}:$PATH"
 The installer downloads the latest stable tagged release for macOS or Linux on
 x86_64 or ARM64 and verifies its SHA-256 checksum. Set `MF_VERSION=vX.Y.Z` to
 install a specific tag, or `MF_INSTALL_DIR` to choose the install directory.
+Current archives install both `mf` and `mf-report` at the same version.
+Older archives can still install `mf` by itself. The report engine is embedded.
+For report exports, provide Node 24 and install the report project's locked
+dependencies. See the [report commands](../dev/report-core.md).
 For a source install, run the installer from a checkout. Source builds use the
 pinned Go toolchain and its normal module/compiler caches; `MF_INSTALL_TARGET_DIR`
 chooses the binary output directory.
@@ -44,19 +48,18 @@ Install Go `1.26.11` and GNU Make, then run:
 hack/install.sh
 ```
 
-Source builds disable CGO. `make build` writes `bin/mf`; use this
-explicit artifact path for verification. The installer accepts no additional
+Source builds disable CGO. `make build build-report` writes `bin/mf` and
+`bin/mf-report`. Use these explicit artifact paths for verification. The installer accepts no additional
 arguments. `MF_IMPLEMENTATION=go` is accepted for existing callers; other values
 are refused. `MF_INSTALL_TARGET_DIR` chooses the reusable build output directory;
 relative paths resolve from the caller's working directory. `MF_INSTALL_DIR`
 overrides `XDG_BIN_HOME`, then `~/.local/bin`.
 
 Downloaded installs keep the four existing archive names and the matching
-`checksums.txt` entry. They verify the checksum, require a regular executable,
-and check that it runs and reports the requested base version before replacing
-an existing `mf`. Installation stages a 0755 file in the destination directory and
-renames it into place. Failed checksum, executable or version validation preserves
-the previously installed program; staging files are cleaned up.
+`checksums.txt` entry. The installer verifies the checksum and validates the
+staged executables and versions before replacing either command. Updates to the
+same destination are serialized. If either replacement fails, the installer
+restores the previous installation. Older single-binary archives update only `mf`.
 
 Latest-version fallback uses GitHub's [latest release endpoint](https://docs.github.com/en/rest/releases/releases#get-the-latest-release),
 which selects a published stable release. Explicit `MF_VERSION` accepts a version

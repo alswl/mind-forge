@@ -135,8 +135,8 @@
       "access": "read",
       "flags": [],
       "arguments": [],
-      "help": "mind-forge: a local-first knowledge management CLI\n\nUsage: mf [OPTIONS] [COMMAND]\n\nCommands:\n  init        Initialize a directory as a Mind Repo\n  project     Manage projects\n  article     Manage legacy articles\n  mind        Manage minds, including minds without outputs\n  additional  Discover and manage additional files and directories\n  lifecycle   Apply and recover local layout lifecycle transactions\n  output      Manage editable outputs belonging to minds\n  prompt      View prompt projections\n  thinking    View thinking projections\n  source      Manage content sources\n  asset       Manage project assets\n  term        Manage terminology [aliases: terms]\n  build       Build a selected mind output or legacy article\n  publish     Publish selected outputs or legacy articles to configured targets\n  render      Generate render prompts (emits prompts only, no output files)\n  config      Manage configuration\n  completion  Generate shell completion scripts\n  version     Show version information\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
-      "help_default": "mind-forge: a local-first knowledge management CLI\n\nUsage: mf [OPTIONS] [COMMAND]\n\nCommands:\n  init        Initialize a directory as a Mind Repo\n  project     Manage projects\n  article     Manage legacy articles\n  mind        Manage minds, including minds without outputs\n  additional  Discover and manage additional files and directories\n  lifecycle   Apply and recover local layout lifecycle transactions\n  output      Manage editable outputs belonging to minds\n  prompt      View prompt projections\n  thinking    View thinking projections\n  source      Manage content sources\n  asset       Manage project assets\n  term        Manage terminology [aliases: terms]\n  build       Build a selected mind output or legacy article\n  publish     Publish selected outputs or legacy articles to configured targets\n  render      Generate render prompts (emits prompts only, no output files)\n  config      Manage configuration\n  completion  Generate shell completion scripts\n  version     Show version information\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values: text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help": "mind-forge: a local-first knowledge management CLI\n\nUsage: mf [OPTIONS] [COMMAND]\n\nCommands:\n  init        Initialize a directory as a Mind Repo\n  project     Manage projects\n  article     Manage legacy articles\n  mind        Manage minds, including minds without outputs\n  additional  Discover and manage additional files and directories\n  lifecycle   Apply and recover local layout lifecycle transactions\n  output      Manage editable outputs belonging to minds\n  prompt      View prompt projections\n  thinking    View thinking projections\n  source      Manage content sources\n  asset       Manage project assets\n  term        Manage terminology [aliases: terms]\n  build       Build a selected mind output or legacy article\n  publish     Publish selected outputs or legacy articles to configured targets\n  render      Generate render prompts (emits prompts only, no output files)\n  report      Manage data reports\n  config      Manage configuration\n  completion  Generate shell completion scripts\n  version     Show version information\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "mind-forge: a local-first knowledge management CLI\n\nUsage: mf [OPTIONS] [COMMAND]\n\nCommands:\n  init        Initialize a directory as a Mind Repo\n  project     Manage projects\n  article     Manage legacy articles\n  mind        Manage minds, including minds without outputs\n  additional  Discover and manage additional files and directories\n  lifecycle   Apply and recover local layout lifecycle transactions\n  output      Manage editable outputs belonging to minds\n  prompt      View prompt projections\n  thinking    View thinking projections\n  source      Manage content sources\n  asset       Manage project assets\n  term        Manage terminology [aliases: terms]\n  build       Build a selected mind output or legacy article\n  publish     Publish selected outputs or legacy articles to configured targets\n  render      Generate render prompts (emits prompts only, no output files)\n  report      Manage data reports\n  config      Manage configuration\n  completion  Generate shell completion scripts\n  version     Show version information\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values: text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative, repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
       "examples": [
         {
           "prerequisites": [
@@ -1697,7 +1697,10 @@
           "value_name": "MODE",
           "help": "Lint mode (standard or final)",
           "default": "standard",
-          "choices": ["standard", "final"],
+          "choices": [
+            "standard",
+            "final"
+          ],
           "aliases": [],
           "conflicts": [],
           "requires": []
@@ -7864,6 +7867,480 @@
           ],
           "command": "mf render template show report --root .",
           "effect": "Show the built-in report template."
+        }
+      ]
+    },
+    {
+      "path": [
+        "report"
+      ],
+      "aliases": [],
+      "about": "Manage data reports",
+      "usage": "report [OPTIONS] [COMMAND]",
+      "required_subcommand": false,
+      "repo_required": false,
+      "access": "read",
+      "flags": [],
+      "arguments": [],
+      "help": "Manage data reports\n\nUsage: mf report [OPTIONS] [COMMAND]\n\nCommands:\n  init      Scaffold a report in the selected project\n  build     Export a report from the selected project\n  catalog   Export an offline component catalog\n  serve     Serve the report API for the selected project\n  openapi   Print the OpenAPI 3.1 YAML contract\n  renderer  Inspect registered renderers\n  component Inspect registered components\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Manage data reports\n\nUsage: mf report [OPTIONS] [COMMAND]\n\nCommands:\n  init      Scaffold a report in the selected project\n  build     Export a report from the selected project\n  catalog   Export an offline component catalog\n  serve     Serve the report API for the selected project\n  openapi   Print the OpenAPI 3.1 YAML contract\n  renderer  Inspect registered renderers\n  component Inspect registered components\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "examples": [
+        {
+          "prerequisites": [
+            "# Run in a disposable Mind Repo."
+          ],
+          "command": "mf report renderer list",
+          "effect": "List the renderer catalog for the repo."
+        }
+      ]
+    },
+    {
+      "path": [
+        "report",
+        "init"
+      ],
+      "aliases": [],
+      "about": "Scaffold a report in the selected project",
+      "usage": "report init [OPTIONS] <SLUG>",
+      "required_subcommand": false,
+      "repo_required": true,
+      "access": "write",
+      "flags": [
+        {
+          "name": "renderer",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "ID",
+          "help": "Select a registered renderer",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        }
+      ],
+      "arguments": [
+        {
+          "name": "SLUG",
+          "required": true,
+          "repeat": false,
+          "kind": "string"
+        }
+      ],
+      "help": "Scaffold a report in the selected project\n\nUsage: mf report init [OPTIONS] <SLUG>\n\nArguments:\n  <SLUG>  Lowercase report slug\n\nOptions:\n      --renderer <ID>           Select a registered renderer\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Scaffold a report in the selected project\n\nUsage: mf report init [OPTIONS] <SLUG>\n\nArguments:\n  <SLUG>  Lowercase report slug\n\nOptions:\n      --renderer <ID>           Select a registered renderer\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "examples": [
+        {
+          "prerequisites": [
+            "# In a disposable Mind Repo with a research project."
+          ],
+          "command": "mf report init weekly -p research",
+          "effect": "Create a synthetic report in the research project."
+        }
+      ]
+    },
+    {
+      "path": [
+        "report",
+        "build"
+      ],
+      "aliases": [],
+      "about": "Export a report from the selected project",
+      "usage": "report build [OPTIONS] <SLUG>",
+      "required_subcommand": false,
+      "repo_required": true,
+      "access": "write",
+      "flags": [
+        {
+          "name": "renderer",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "ID",
+          "help": "Select a registered renderer",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        },
+        {
+          "name": "view",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "VIEW",
+          "help": "Report view [default: chart]",
+          "aliases": [],
+          "conflicts": [],
+          "requires": [],
+          "choices": [
+            "chart",
+            "table"
+          ]
+        },
+        {
+          "name": "theme",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "THEME",
+          "help": "Report theme [default: system]",
+          "aliases": [],
+          "conflicts": [],
+          "requires": [],
+          "choices": [
+            "system",
+            "light",
+            "dark"
+          ]
+        },
+        {
+          "name": "worker",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "PATH",
+          "help": "Override the executable for the report worker",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        },
+        {
+          "name": "dry-run",
+          "short": "n",
+          "kind": "bool",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "",
+          "help": "Show the build plan without running a worker",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        }
+      ],
+      "arguments": [
+        {
+          "name": "SLUG",
+          "required": true,
+          "repeat": false,
+          "kind": "string"
+        }
+      ],
+      "help": "Export a report from the selected project\n\nUsage: mf report build [OPTIONS] <SLUG>\n\nArguments:\n  <SLUG>  Lowercase report slug\n\nOptions:\n      --renderer <ID>           Select a registered renderer\n      --view <VIEW>             Report view [default: chart]\n      --theme <THEME>           Report theme [default: system]\n      --worker <PATH>           Override the executable for the report worker\n  -n, --dry-run                 Show the build plan without running a worker\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Export a report from the selected project\n\nUsage: mf report build [OPTIONS] <SLUG>\n\nArguments:\n  <SLUG>  Lowercase report slug\n\nOptions:\n      --renderer <ID>           Select a registered renderer\n      --view <VIEW>             Report view [default: chart]\n      --theme <THEME>           Report theme [default: system]\n      --worker <PATH>           Override the executable for the report worker\n  -n, --dry-run                 Show the build plan without running a worker\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "examples": [
+        {
+          "prerequisites": [
+            "# After scaffolding weekly in a disposable research project."
+          ],
+          "command": "mf report build weekly -p research --view table --dry-run",
+          "effect": "Print the table export plan without starting a worker."
+        }
+      ]
+    },
+    {
+      "path": [
+        "report",
+        "serve"
+      ],
+      "aliases": [],
+      "about": "Serve the report API for the selected project",
+      "usage": "report serve [OPTIONS]",
+      "required_subcommand": false,
+      "repo_required": true,
+      "access": "read",
+      "flags": [
+        {
+          "name": "listen",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "ADDR",
+          "help": "Loopback listen address [default: 127.0.0.1:8787]",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        },
+        {
+          "name": "worker",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "PATH",
+          "help": "Override the executable for the report worker",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        }
+      ],
+      "arguments": [],
+      "help": "Serve the report API for the selected project\n\nUsage: mf report serve [OPTIONS]\n\nOptions:\n      --listen <ADDR>           Loopback listen address [default: 127.0.0.1:8787]\n      --worker <PATH>           Override the executable for the report worker\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Serve the report API for the selected project\n\nUsage: mf report serve [OPTIONS]\n\nOptions:\n      --listen <ADDR>           Loopback listen address [default: 127.0.0.1:8787]\n      --worker <PATH>           Override the executable for the report worker\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "examples": [
+        {
+          "prerequisites": [
+            "# In a disposable Mind Repo with a research project."
+          ],
+          "command": "mf report serve -p research --listen 127.0.0.1:0",
+          "effect": "Start the local API on an available port."
+        }
+      ]
+    },
+    {
+      "path": [
+        "report",
+        "openapi"
+      ],
+      "aliases": [],
+      "about": "Print the OpenAPI 3.1 YAML contract",
+      "usage": "report openapi [OPTIONS]",
+      "required_subcommand": false,
+      "repo_required": false,
+      "access": "read",
+      "flags": [],
+      "arguments": [],
+      "help": "Print the OpenAPI 3.1 YAML contract\n\nUsage: mf report openapi [OPTIONS]\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Print the OpenAPI 3.1 YAML contract\n\nUsage: mf report openapi [OPTIONS]\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "examples": [
+        {
+          "prerequisites": [
+            "# Run with mf on PATH."
+          ],
+          "command": "mf report openapi",
+          "effect": "Print the OpenAPI document to stdout."
+        }
+      ]
+    },
+    {
+      "path": [
+        "report",
+        "renderer"
+      ],
+      "aliases": [],
+      "about": "Inspect registered renderers",
+      "usage": "report renderer [OPTIONS] [COMMAND]",
+      "required_subcommand": false,
+      "repo_required": false,
+      "access": "read",
+      "flags": [],
+      "arguments": [],
+      "help": "Inspect registered renderers\n\nUsage: mf report renderer [OPTIONS] [COMMAND]\n\nCommands:\n  list      List or look up registered renderers\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Inspect registered renderers\n\nUsage: mf report renderer [OPTIONS] [COMMAND]\n\nCommands:\n  list      List or look up registered renderers\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "examples": [
+        {
+          "prerequisites": [
+            "# Run in a disposable Mind Repo."
+          ],
+          "command": "mf report renderer list",
+          "effect": "List available renderer IDs and versions."
+        }
+      ]
+    },
+    {
+      "path": [
+        "report",
+        "renderer",
+        "list"
+      ],
+      "aliases": [],
+      "about": "List or look up registered renderers",
+      "usage": "report renderer list [OPTIONS]",
+      "required_subcommand": false,
+      "repo_required": true,
+      "access": "read",
+      "flags": [
+        {
+          "name": "id",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "ID",
+          "help": "Look up one exact registered ID",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        }
+      ],
+      "arguments": [],
+      "help": "List or look up registered renderers\n\nUsage: mf report renderer list [OPTIONS]\n\nOptions:\n      --id <ID>                 Look up one exact registered ID\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "List or look up registered renderers\n\nUsage: mf report renderer list [OPTIONS]\n\nOptions:\n      --id <ID>                 Look up one exact registered ID\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "examples": [
+        {
+          "prerequisites": [
+            "# Run in a disposable Mind Repo."
+          ],
+          "command": "mf report renderer list --id builtin/brief --json",
+          "effect": "Look up the built-in brief renderer."
+        }
+      ]
+    },
+    {
+      "path": [
+        "report",
+        "component"
+      ],
+      "aliases": [],
+      "about": "Inspect registered components",
+      "usage": "report component [OPTIONS] [COMMAND]",
+      "required_subcommand": false,
+      "repo_required": false,
+      "access": "read",
+      "flags": [],
+      "arguments": [],
+      "help": "Inspect registered components\n\nUsage: mf report component [OPTIONS] [COMMAND]\n\nCommands:\n  list      List or look up registered components\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Inspect registered components\n\nUsage: mf report component [OPTIONS] [COMMAND]\n\nCommands:\n  list      List or look up registered components\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "examples": [
+        {
+          "prerequisites": [
+            "# Run in a disposable Mind Repo."
+          ],
+          "command": "mf report component list",
+          "effect": "List available component IDs and versions."
+        }
+      ]
+    },
+    {
+      "path": [
+        "report",
+        "component",
+        "list"
+      ],
+      "aliases": [],
+      "about": "List or look up registered components",
+      "usage": "report component list [OPTIONS]",
+      "required_subcommand": false,
+      "repo_required": true,
+      "access": "read",
+      "flags": [
+        {
+          "name": "id",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "ID",
+          "help": "Look up one exact registered ID",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        }
+      ],
+      "arguments": [],
+      "help": "List or look up registered components\n\nUsage: mf report component list [OPTIONS]\n\nOptions:\n      --id <ID>                 Look up one exact registered ID\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "List or look up registered components\n\nUsage: mf report component list [OPTIONS]\n\nOptions:\n      --id <ID>                 Look up one exact registered ID\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "examples": [
+        {
+          "prerequisites": [
+            "# Run in a disposable Mind Repo."
+          ],
+          "command": "mf report component list --id builtin/metric --json",
+          "effect": "Look up the built-in metric component."
+        }
+      ]
+    },
+    {
+      "path": [
+        "report",
+        "catalog"
+      ],
+      "aliases": [],
+      "about": "Export an offline component catalog",
+      "usage": "report catalog [OPTIONS] [COMMAND]",
+      "required_subcommand": false,
+      "repo_required": false,
+      "access": "read",
+      "flags": [],
+      "arguments": [],
+      "help": "Export an offline component catalog\n\nUsage: mf report catalog [OPTIONS] [COMMAND]\n\nCommands:\n  build  Build the offline component catalog\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Export an offline component catalog\n\nUsage: mf report catalog [OPTIONS] [COMMAND]\n\nCommands:\n  build  Build the offline component catalog\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "examples": [
+        {
+          "prerequisites": [
+            "# In a disposable project with a weekly report and locked dependencies installed."
+          ],
+          "command": "mf report catalog build weekly -p research",
+          "effect": "Write the offline catalog with schemas and copyable examples."
+        }
+      ]
+    },
+    {
+      "path": [
+        "report",
+        "catalog",
+        "build"
+      ],
+      "aliases": [],
+      "about": "Build the offline component catalog",
+      "usage": "report catalog build [OPTIONS] <SLUG>",
+      "required_subcommand": false,
+      "repo_required": true,
+      "access": "write",
+      "flags": [
+        {
+          "name": "theme",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "THEME",
+          "help": "Report theme [default: system]",
+          "aliases": [],
+          "conflicts": [],
+          "requires": [],
+          "choices": [
+            "system",
+            "light",
+            "dark"
+          ]
+        },
+        {
+          "name": "worker",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "PATH",
+          "help": "Override the executable for the report worker",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        }
+      ],
+      "arguments": [
+        {
+          "name": "SLUG",
+          "required": true,
+          "repeat": false,
+          "kind": "string"
+        }
+      ],
+      "help": "Build the offline component catalog\n\nUsage: mf report catalog build [OPTIONS] <SLUG>\n\nArguments:\n  <SLUG>  Report working directory slug\n\nOptions:\n      --theme <THEME>            Report theme [default: system]\n      --worker <PATH>            Override the executable for the report worker\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Build the offline component catalog\n\nUsage: mf report catalog build [OPTIONS] <SLUG>\n\nArguments:\n  <SLUG>  Report working directory slug\n\nOptions:\n      --theme <THEME>            Report theme [default: system]\n      --worker <PATH>            Override the executable for the report worker\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "examples": [
+        {
+          "prerequisites": [
+            "# In a disposable project with a weekly report and locked dependencies installed."
+          ],
+          "command": "mf report catalog build weekly -p research",
+          "effect": "Write the offline catalog with schemas and copyable examples."
         }
       ]
     }
