@@ -58,6 +58,50 @@ func TestPlanDoesNotStartWorkerOrReadData(t *testing.T) {
 	require.ErrorContains(t, err, "/title")
 }
 
+func TestBuiltinRendererDataContractsInBothViews(t *testing.T) {
+	for _, renderer := range []string{"builtin/trend", "builtin/comparison", "builtin/brief"} {
+		for _, view := range []string{"chart", "table"} {
+			t.Run(renderer+"/"+view, func(t *testing.T) {
+				scope, request := standalone(t)
+				request.Renderer, request.View = renderer, view
+				artifact := "outputs/report." + view + ".html"
+				writeFile(t, scope.Directory, artifact, "previous")
+				calls := 0
+				service := Service{Worker: workerFunc(func(_ context.Context, job Job) (Receipt, error) {
+					calls++
+					require.NoError(t, os.WriteFile(job.Stage, []byte("rendered"), 0600))
+					return receiptFor(job), nil
+				})}
+				_, err := service.Build(t.Context(), scope, request)
+				if renderer == "builtin/brief" {
+					require.NoError(t, err)
+					require.Equal(t, 1, calls)
+					writeFile(t, scope.Directory, "data.json", `{"title":"Synthetic","rows":[]}`)
+					_, err = service.Build(t.Context(), scope, request)
+					require.ErrorIs(t, err, ErrInvalid)
+					require.Equal(t, 1, calls)
+					return
+				}
+				require.ErrorIs(t, err, ErrInvalid)
+				for _, field := range []string{"rows", "x", "series"} {
+					require.ErrorContains(t, err, "'"+field+"'")
+				}
+				require.Zero(t, calls)
+				raw, err := os.ReadFile(filepath.Join(scope.Directory, artifact))
+				require.NoError(t, err)
+				require.Equal(t, "previous", string(raw))
+
+				catalog, err := service.Catalog(Renderer, renderer)
+				require.NoError(t, err)
+				writeFile(t, scope.Directory, "data.json", string(catalog.Items[0].ExampleData))
+				_, err = service.Build(t.Context(), scope, request)
+				require.NoError(t, err)
+				require.Equal(t, 1, calls)
+			})
+		}
+	}
+}
+
 func TestBuildKeepsPriorArtifactAndCleansStagingOnFailure(t *testing.T) {
 	const path = "outputs/report.chart.html"
 	for _, mode := range []string{"error", "cancel", "protocol", "artifact", "stage", "replace", "symlink", "empty"} {

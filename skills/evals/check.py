@@ -2,9 +2,66 @@
 """Extract hard protection evidence. Semantic grading remains a separate review."""
 import argparse
 import hashlib
+from html.parser import HTMLParser
 import json
 from pathlib import Path
 import re
+
+
+def renderer_renders_delivery(source):
+    source = re.sub(r'//[^\n]*|/\*.*?\*/', '', source, flags=re.S)
+    if 'data-report-component' in source:
+        return False
+    lookup = r'''\b(?:const|let|var)\s+([\w$]+)\s*=\s*components\s*\.\s*get\(\s*(["'])repo/delivery\2\s*\)'''
+    for match in re.finditer(lookup, source):
+        component = re.escape(match[1])
+        invocation = rf'<{component}(?=[\s/>])|\bcreateElement\(\s*{component}(?=\s*[,\)])'
+        if re.search(invocation, source[match.end():]):
+            return True
+    return False
+
+
+class DeliveryMarkup(HTMLParser):
+    void_tags = set('area base br col embed hr img input link meta param source track wbr'.split())
+
+    def __init__(self):
+        super().__init__()
+        self.elements = []
+        self.components = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.void_tags:
+            return
+        attrs = dict(attrs)
+        parent_visible, text = self.elements[-1][1:] if self.elements else (True, None)
+        visible = parent_visible and tag not in ('script', 'style', 'template') and 'hidden' not in attrs
+        if visible and text is None and attrs.get('data-report-component') == 'repo/delivery':
+            text = []
+            self.components.append(text)
+        self.elements.append((tag, visible, text))
+
+    def handle_endtag(self, tag):
+        for index in range(len(self.elements) - 1, -1, -1):
+            if self.elements[index][0] == tag:
+                del self.elements[index:]
+                break
+
+    def handle_data(self, data):
+        if self.elements:
+            _, visible, text = self.elements[-1]
+            if visible and text is not None:
+                text.append(data)
+
+
+def report_contains_delivery(html):
+    parser = DeliveryMarkup()
+    parser.feed(html)
+    parser.close()
+    for component in parser.components:
+        text = ' '.join(' '.join(component).split())
+        if re.search(r'\bDelivery completion\b', text) and re.search(r'\b7 requests\b', text):
+            return True
+    return False
 
 
 def main():
@@ -100,6 +157,11 @@ def main():
                     expected_values = ('7', 'requests')
                     catalog = work/report_catalog
                     check('catalog_preview', catalog.is_file() and 'repo/delivery' in catalog.read_text(), report_catalog)
+                    renderer = '.mind-forge/report/renderers/weekly/Report.tsx'
+                    source = work/renderer
+                    check('renderer_renders_delivery', source.is_file() and renderer_renders_delivery(source.read_text()), renderer)
+                    rendered = [p for p in exports if (work/p).is_file() and report_contains_delivery((work/p).read_text())]
+                    check('rendered_delivery_component', rendered == exports, {'matched_exports': rendered})
                 check('matching_report_values', all((work/p).is_file() and
                       all(v in (work/p).read_text() for v in expected_values) for p in exports), expected_values)
                 check('offline_content_policy', all((work/p).is_file() and

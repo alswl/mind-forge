@@ -191,7 +191,7 @@
     {
       "name": "report_2_2",
       "type": "contains",
-      "check": "The chart and table exports agree on 7 requests"
+      "check": "The renderer invokes the registered component, and both views render Delivery completion and 7 requests inside its marker"
     },
     {
       "name": "report_2_3",

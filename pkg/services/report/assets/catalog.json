@@ -539,10 +539,8 @@
     "description": "A short report with narrative, metrics and selected evidence",
     "source": "builtin",
     "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
-      "required": [
-        "title"
-      ],
       "properties": {
         "title": {
           "type": "string",
@@ -736,7 +734,10 @@
           }
         }
       },
-      "dependencies": {
+      "required": [
+        "title"
+      ],
+      "dependentRequired": {
         "rows": [
           "x",
           "series"
@@ -830,10 +831,8 @@
     "description": "Compare categories with grouped bars and a shared table",
     "source": "builtin",
     "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
-      "required": [
-        "title"
-      ],
       "properties": {
         "title": {
           "type": "string",
@@ -1027,20 +1026,12 @@
           }
         }
       },
-      "dependencies": {
-        "rows": [
-          "x",
-          "series"
-        ],
-        "x": [
-          "rows",
-          "series"
-        ],
-        "series": [
-          "rows",
-          "x"
-        ]
-      }
+      "required": [
+        "title",
+        "rows",
+        "x",
+        "series"
+      ]
     },
     "exampleData": {
       "title": "Delivery through January",
@@ -1115,10 +1106,8 @@
     "description": "Describe change over time with a gap for missing observations",
     "source": "builtin",
     "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
-      "required": [
-        "title"
-      ],
       "properties": {
         "title": {
           "type": "string",
@@ -1312,20 +1301,12 @@
           }
         }
       },
-      "dependencies": {
-        "rows": [
-          "x",
-          "series"
-        ],
-        "x": [
-          "rows",
-          "series"
-        ],
-        "series": [
-          "rows",
-          "x"
-        ]
-      }
+      "required": [
+        "title",
+        "rows",
+        "x",
+        "series"
+      ]
     },
     "exampleData": {
       "title": "Delivery through January",

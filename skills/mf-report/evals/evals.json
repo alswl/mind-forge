@@ -14,12 +14,12 @@
     },
     {
       "id": 2,
-      "prompt": "This weekly report already has repo/weekly. Add only a repo/delivery component with a synthetic count preview and schema, then reference it from the existing renderer to display 7 requests in both views. Rebuild the offline catalog and report its actual path and the report paths. Keep other reports and registry entries intact; do not publish.",
+      "prompt": "This weekly report already has repo/weekly. Add only a repo/delivery component with a synthetic count preview and schema, then look it up with components.get(\"repo/delivery\") and render the returned component in the existing renderer. In both views the component should render the visible label Delivery completion and the value 7 requests within an element marked data-report-component=\"repo/delivery\". Rebuild the offline catalog and report its actual path and the report paths. Keep other reports and registry entries intact; do not publish.",
       "expected_output": "The team renderer references exactly the new custom component as needed. Both exports show the same measure and the catalog contains the registered schema and preview.",
       "files": [],
       "expectations": [
         "Adds repo/delivery and reuses repo/weekly without creating another renderer",
-        "The chart and table exports agree on 7 requests",
+        "The renderer invokes the registered component, and both views render Delivery completion and 7 requests inside its marker",
         "The offline catalog includes repo/delivery, its schema and its example"
       ]
     },

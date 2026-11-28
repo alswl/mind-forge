@@ -47,8 +47,9 @@ const chart = {
 };
 const metric = { type: "object", required: ["label", "value"],
   properties: { label: text, value: number, unit: text, note: text, missingLabel: text } };
-const data = {
-  type: "object", required: ["title"],
+const reportData = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  type: "object",
   properties: {
     title: { type: "string", minLength: 1 }, subtitle: text, narrative: text, rangeLabel: text,
     metrics: { type: "array", items: metric },
@@ -58,8 +59,13 @@ const data = {
     } },
     rows: chart.properties.rows, x: chart.properties.x, series: chart.properties.series,
   },
-  dependencies: { rows: ["x", "series"], x: ["rows", "series"], series: ["rows", "x"] },
 };
+const briefData = {
+  ...reportData,
+  required: ["title"],
+  dependentRequired: { rows: ["x", "series"], x: ["rows", "series"], series: ["rows", "x"] },
+};
+const chartData = { ...reportData, required: ["title", "rows", "x", "series"] };
 const views = ["chart", "table"];
 const base = (kind, slug, description) => ({
   apiVersion: "report.mind-forge/v1", kind, id: `builtin/${slug}`, version: "1.0.0",
@@ -85,13 +91,13 @@ const example = { title: "Delivery through January", subtitle: "January 5 to Jan
   metrics: [{ label: "Requests completed", value: 7, unit: "requests", note: "Reported weeks only" }] };
 const renderers = [
   ["brief", "A short report with narrative, metrics and selected evidence", { ...example,
-    charts: [{ kind: "bar", title: "Requests by group", x: { key: "group", label: "Group" }, series, rows }] }],
+    charts: [{ kind: "bar", title: "Requests by group", x: { key: "group", label: "Group" }, series, rows }] }, briefData],
   ["comparison", "Compare categories with grouped bars and a shared table", { ...example,
-    x: { key: "group", label: "Group" }, series, rows }],
+    x: { key: "group", label: "Group" }, series, rows }, chartData],
   ["trend", "Describe change over time with a gap for missing observations", { ...example,
-    x: { key: "week", label: "Week starting", type: "date", timeZone: "UTC" }, series, rows }],
-].map(([slug, description, exampleData]) => ({
-  ...base("Renderer", slug, description), schema: data, exampleData, views, components: components.map(item => item.id),
+    x: { key: "week", label: "Week starting", type: "date", timeZone: "UTC" }, series, rows }, chartData],
+].map(([slug, description, exampleData, schema]) => ({
+  ...base("Renderer", slug, description), schema, exampleData, views, components: components.map(item => item.id),
 }));
 output.set(`${service}/assets/catalog.json`, Buffer.from(JSON.stringify([...components, ...renderers], null, 2) + "\n"));
 
