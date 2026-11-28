@@ -1,0 +1,5 @@
+apiVersion: report.mind-forge/v1
+kind: Report
+renderer: builtin/brief
+entry: report.tsx
+data: data.json

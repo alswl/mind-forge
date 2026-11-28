@@ -19,6 +19,7 @@ const projectMarker = "mind.yaml"
 type Scope struct {
 	Directory string
 	Reports   string
+	Assets    string
 	boundary  string
 }
 
@@ -64,6 +65,7 @@ func ProjectScope(repo, cwd string, selector *string) (Scope, error) {
 	if err := dal.Local(layout.Templates); err != nil {
 		return Scope{}, fmt.Errorf("%w: layout.templates: %w", ErrInvalid, err)
 	}
+	scope.Assets = layout.Assets
 	scope.Reports = filepath.Join(layout.Templates, "reports")
 	for _, category := range []struct{ name, path string }{
 		{"layout.articles", layout.Articles}, {"layout.sources", layout.Sources},

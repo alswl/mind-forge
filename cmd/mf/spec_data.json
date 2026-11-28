@@ -7882,8 +7882,8 @@
       "access": "read",
       "flags": [],
       "arguments": [],
-      "help": "Manage data reports\n\nUsage: mf report [OPTIONS] [COMMAND]\n\nCommands:\n  init      Scaffold a report in the selected project\n  build     Export a report from the selected project\n  catalog   Export an offline component catalog\n  serve     Serve the report API for the selected project\n  openapi   Print the OpenAPI 3.1 YAML contract\n  renderer  Inspect registered renderers\n  component Inspect registered components\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
-      "help_default": "Manage data reports\n\nUsage: mf report [OPTIONS] [COMMAND]\n\nCommands:\n  init      Scaffold a report in the selected project\n  build     Export a report from the selected project\n  catalog   Export an offline component catalog\n  serve     Serve the report API for the selected project\n  openapi   Print the OpenAPI 3.1 YAML contract\n  renderer  Inspect registered renderers\n  component Inspect registered components\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help": "Manage data reports\n\nUsage: mf report [OPTIONS] [COMMAND]\n\nCommands:\n  init      Scaffold a report in the selected project\n  build     Export a report from the selected project\n  fragment   Build named SVG fragments\n  catalog   Export an offline component catalog\n  serve     Serve the report API for the selected project\n  openapi   Print the OpenAPI 3.1 YAML contract\n  renderer  Inspect registered renderers\n  component Inspect registered components\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Manage data reports\n\nUsage: mf report [OPTIONS] [COMMAND]\n\nCommands:\n  init      Scaffold a report in the selected project\n  build     Export a report from the selected project\n  fragment   Build named SVG fragments\n  catalog   Export an offline component catalog\n  serve     Serve the report API for the selected project\n  openapi   Print the OpenAPI 3.1 YAML contract\n  renderer  Inspect registered renderers\n  component Inspect registered components\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
       "examples": [
         {
           "prerequisites": [
@@ -8341,6 +8341,84 @@
           ],
           "command": "mf report catalog build weekly -p research",
           "effect": "Write the offline catalog with schemas and copyable examples."
+        }
+      ]
+    },
+    {
+      "path": [
+        "report",
+        "fragment"
+      ],
+      "aliases": [],
+      "about": "Export named SVG fragments",
+      "usage": "report fragment [OPTIONS] [COMMAND]",
+      "required_subcommand": false,
+      "repo_required": false,
+      "access": "read",
+      "flags": [],
+      "arguments": [],
+      "help": "Export named SVG fragments\n\nUsage: mf report fragment [OPTIONS] [COMMAND]\n\nCommands:\n  build  Build a named SVG fragment\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Export named SVG fragments\n\nUsage: mf report fragment [OPTIONS] [COMMAND]\n\nCommands:\n  build  Build a named SVG fragment\n\nOptions:\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "examples": [
+        {
+          "prerequisites": [
+            "# In a disposable project with a weekly report and locked dependencies installed."
+          ],
+          "command": "mf report fragment build weekly overview -p research",
+          "effect": "Publish the overview SVG Asset."
+        }
+      ]
+    },
+    {
+      "path": [
+        "report",
+        "fragment",
+        "build"
+      ],
+      "aliases": [],
+      "about": "Build a named SVG fragment",
+      "usage": "report fragment build [OPTIONS] <REPORT> <FRAGMENT>",
+      "required_subcommand": false,
+      "repo_required": true,
+      "access": "write",
+      "flags": [
+        {
+          "name": "worker",
+          "short": "",
+          "kind": "string",
+          "repeat": false,
+          "required": false,
+          "hidden": false,
+          "value_name": "PATH",
+          "help": "Override the executable for the report worker",
+          "aliases": [],
+          "conflicts": [],
+          "requires": []
+        }
+      ],
+      "arguments": [
+        {
+          "name": "REPORT",
+          "required": true,
+          "repeat": false,
+          "kind": "string"
+        },
+        {
+          "name": "FRAGMENT",
+          "required": true,
+          "repeat": false,
+          "kind": "string"
+        }
+      ],
+      "help": "Build a named SVG fragment\n\nUsage: mf report fragment build [OPTIONS] <REPORT> <FRAGMENT>\n\nArguments:\n  <REPORT>    Report working directory slug\n  <FRAGMENT>  Name from fragments/<name>.yaml\n\nOptions:\n      --worker <PATH>            Override the executable for the report worker\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "help_default": "Build a named SVG fragment\n\nUsage: mf report fragment build [OPTIONS] <REPORT> <FRAGMENT>\n\nArguments:\n  <REPORT>    Report working directory slug\n  <FRAGMENT>  Name from fragments/<name>.yaml\n\nOptions:\n      --worker <PATH>            Override the executable for the report worker\n      --root <PATH>             Mind Repo root directory\n      --config <PATH>           Config file path\n  -v, --verbose...              Verbose output\n  -q, --quiet                   Silence non-error output\n  -o, --output <FORMAT>         Output format [default: text] [possible values:\n                                text, json]\n      --json                    Shorthand for --output json\n      --no-color                Disable colored output\n  -p, --project <NAME_OR_PATH>  Project name or path (cwd-relative,\n                                repo-relative, or absolute)\n  -h, --help                    Print help\n  -V, --version                 Print version\n",
+      "examples": [
+        {
+          "prerequisites": [
+            "# In a disposable project with a weekly report and locked dependencies installed."
+          ],
+          "command": "mf report fragment build weekly overview -p research",
+          "effect": "Publish the overview SVG Asset."
         }
       ]
     }

@@ -29,9 +29,14 @@ export interface Job {
   data: string;
   renderer: Module;
   components: Module[];
-  view: View;
+  view: View | "fragment";
   theme: Theme;
   stage: string;
   artifact: string;
+  fragment?: {
+    width: number;
+    height: number;
+    components: { entry: string; x: number; y: number; width: number; height: number }[];
+  };
   catalog?: CatalogComponent[];
 }

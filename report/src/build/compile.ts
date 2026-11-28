@@ -53,9 +53,16 @@ export async function compile(job: Job, scratch: string, embedded: string) {
     } else {
       sources.push(`export {default as Renderer} from ${quoted(job.renderer.entry)};`);
     }
-    sources.push(`export {default as Report} from ${quoted(job.entry)};`);
+    if (!job.fragment) sources.push(`export {default as Report} from ${quoted(job.entry)};`);
   }
   sources.push(`export const components = new Map([${entries.join(",")}]);`);
+  if (job.fragment) {
+    const names = job.fragment.components.map(({entry}, i) => {
+      sources.push(`import Panel${i} from ${quoted(join(job.workDir, entry))};`);
+      return `Panel${i}`;
+    });
+    sources.push(`export const panels = [${names.join(",")}];`);
+  }
   const moduleFile = join(scratch, "render.cjs");
   const options = {
     stdin: { contents: sources.join("\n"), resolveDir: job.workDir, sourcefile: "report-entry.ts" },

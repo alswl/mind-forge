@@ -33,8 +33,8 @@ func Build(command *cobra.Command, service core.Service, scope core.Scope, reque
 	return service.Build(command.Context(), scope, request)
 }
 
-func OpenAPI(writer io.Writer) error {
-	raw, err := server.OpenAPI()
+func OpenAPI(writer io.Writer, project bool) error {
+	raw, err := server.Schema(project)
 	if err != nil {
 		return err
 	}

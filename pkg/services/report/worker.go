@@ -29,6 +29,7 @@ type CatalogComponent struct {
 }
 
 type Job struct {
+	Fragment   *Fragment          `json:"fragment,omitempty"`
 	Protocol   string             `json:"protocol"`
 	WorkDir    string             `json:"workDir"`
 	Entry      string             `json:"entry"`

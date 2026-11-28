@@ -40,6 +40,11 @@ type exportInput struct {
 	Body *exportOptions
 }
 
+type fragmentInput struct {
+	Slug     string `path:"slug" maxLength:"100" pattern:"^[a-z0-9]+(-[a-z0-9]+)*$"`
+	Fragment string `path:"fragment" maxLength:"100" pattern:"^[a-z0-9]+(-[a-z0-9]+)*$"`
+}
+
 type exportOutput struct {
 	Body core.Result
 }
@@ -86,6 +91,16 @@ func NewAPI(options APIOptions) (http.Handler, huma.API) {
 		}
 		return &exportOutput{Body: result}, nil
 	})
+	if options.Scope.Reports != "" {
+		huma.Register(api, huma.Operation{OperationID: "build-report-fragment", Method: http.MethodPost, Path: "/v1/reports/{slug}/fragments/{fragment}/exports", DefaultStatus: 200,
+			Errors: []int{401, 403, 404, 409, 422, 500, 503, 504}, Security: []map[string][]string{{"localBearer": {}}}, Middlewares: huma.Middlewares{protectWrite(api, options.Address, options.Token)}}, func(ctx context.Context, input *fragmentInput) (*exportOutput, error) {
+			result, err := options.Service.BuildFragment(ctx, options.Scope, input.Slug, input.Fragment)
+			if err != nil {
+				return nil, problem(err)
+			}
+			return &exportOutput{Body: result}, nil
+		})
+	}
 	return router, api
 }
 
@@ -110,6 +125,8 @@ func problem(err error) error {
 	switch {
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return huma.Error504GatewayTimeout("report build canceled", err)
+	case errors.Is(err, core.ErrConflict):
+		return huma.Error409Conflict("asset publication conflict", err)
 	case errors.Is(err, core.ErrNotFound):
 		return huma.Error404NotFound("report resource not found", err)
 	case errors.Is(err, core.ErrInvalid):
@@ -149,6 +166,14 @@ func protectWrite(api huma.API, address, token string) func(huma.Context, func(h
 }
 
 func OpenAPI() ([]byte, error) {
-	_, api := NewAPI(APIOptions{})
+	return Schema(true)
+}
+
+func Schema(project bool) ([]byte, error) {
+	var scope core.Scope
+	if project {
+		scope.Reports = "reports"
+	}
+	_, api := NewAPI(APIOptions{Scope: scope})
 	return api.OpenAPI().YAML()
 }

@@ -1,0 +1,13 @@
+width: 400
+height: 90
+components:
+  - entry: fragments/Completed.tsx
+    x: 0
+    y: 0
+    width: 190
+    height: 90
+  - entry: fragments/Capacity.tsx
+    x: 210
+    y: 0
+    width: 190
+    height: 90

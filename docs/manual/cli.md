@@ -135,6 +135,8 @@ This document contains the help content for the `mf` command-line program.
 * [`mf report component list`↴](#mf-report-component-list)
 * [`mf report catalog`↴](#mf-report-catalog)
 * [`mf report catalog build`↴](#mf-report-catalog-build)
+* [`mf report fragment`↴](#mf-report-fragment)
+* [`mf report fragment build`↴](#mf-report-fragment-build)
 
 ## `mf`
 
@@ -3462,6 +3464,7 @@ Manage data reports
 * `renderer` — Inspect registered renderers
 * `component` — Inspect registered components
 * `catalog` — Export an offline component catalog
+* `fragment` — Export named SVG fragments
 
 ```text
 Examples (use a disposable directory for setup):
@@ -3693,4 +3696,49 @@ Examples (use a disposable directory for setup):
   Command:
     mf report catalog build weekly -p research
   Effect: Write the offline catalog with schemas and copyable examples.
+```
+
+
+## `mf report fragment`
+
+Export named SVG fragments
+
+**Usage:** `mf report fragment [COMMAND]`
+
+###### **Subcommands:**
+
+* `build` — Build a named SVG fragment
+
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # In a disposable project with a weekly report and locked dependencies installed.
+  Command:
+    mf report fragment build weekly overview -p research
+  Effect: Publish the overview SVG Asset.
+```
+
+
+## `mf report fragment build`
+
+Build a named SVG fragment
+
+**Usage:** `mf report fragment build [OPTIONS] <REPORT> <FRAGMENT>`
+
+###### **Arguments:**
+
+* `<REPORT>` — Report working directory slug
+* `<FRAGMENT>` — Name from fragments/<name>.yaml
+
+###### **Options:**
+
+* `--worker <PATH>` — Override the executable for the report worker
+
+```text
+Examples (use a disposable directory for setup):
+  Prerequisites:
+    # In a disposable project with a weekly report and locked dependencies installed.
+  Command:
+    mf report fragment build weekly overview -p research
+  Effect: Publish the overview SVG Asset.
 ```
